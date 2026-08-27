@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "test": "TZ=UTC node --test src/lib/*.test.mjs"
+    "test": "TZ=UTC node --test src/lib/*.test.mjs src/lib/rh/*.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
