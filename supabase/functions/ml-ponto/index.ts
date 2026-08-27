@@ -37,7 +37,11 @@ const T_REG = "ml_registros";
 const T_META = "ml_meta";
 const SIS = "minaslab";
 
-const IDENTITY = "https://identity.jibble.io/connect/token";
+/* identity.PROD.jibble.io — o "prod" não é enfeite: identity.jibble.io não
+   existe (nem resolve em DNS), e sem ele a ponte morria antes de pedir a
+   primeira batida. Medido em 27/08/2026 pela ação `diagnostico`, que existe
+   exatamente para isto: perguntar, em vez de o código apostar num endereço. */
+const IDENTITY = "https://identity.prod.jibble.io/connect/token";
 const HOST_WORKSPACE = "https://workspace.prod.jibble.io/v1";
 const HOST_TRACKING = "https://time-tracking.prod.jibble.io/v1";
 const HOST_ATTENDANCE = "https://time-attendance.prod.jibble.io/v1";
@@ -316,7 +320,26 @@ Deno.serve(async (req) => {
         } catch (e) {
           erroAuth = e instanceof Error ? e.message : "falhou";
         }
-        if (!autenticou) return resp({ autenticou, erro: erroAuth, fontes });
+        if (!autenticou) {
+          /* O FORMATO do que foi gravado, NUNCA o valor. "invalid_client" tem
+             três causas comuns e indistinguíveis pela mensagem do Jibble:
+             segredo colado pela metade, espaço invisível no começo/fim, ou o
+             par trocado (o ID é de um cliente e o segredo é de outro). Estes
+             três números respondem qual é, sem revelar nada: o Client ID não é
+             segredo (aparece na tela do Jibble) e do segredo só sai o tamanho. */
+          return resp({
+            autenticou,
+            erro: erroAuth,
+            credencial: {
+              clientId: CLIENT_ID,
+              idTemEspacos: CLIENT_ID !== CLIENT_ID.trim(),
+              segredoTamanho: CLIENT_SECRET.length,
+              segredoTemEspacos: CLIENT_SECRET !== CLIENT_SECRET.trim(),
+              segredoTemQuebraDeLinha: /[\r\n]/.test(CLIENT_SECRET),
+            },
+            fontes,
+          });
+        }
 
         const tentar = async (nome: string, url: string) => {
           try {
