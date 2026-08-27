@@ -9,11 +9,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Trash2, Pencil, Instagram, Globe, Search, Tent, FileText, CircleDot,
-  Megaphone, Lightbulb, CalendarClock, Wallet, ChevronDown, ChevronRight,
+  Megaphone, Lightbulb, CalendarClock, Wallet, ChevronDown, ChevronRight, Download,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { dataCurta, moeda, paraNumero, ymdLocal } from "../lib/format.js";
+import { baixarPlanilha } from "../lib/planilha.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
 } from "../components/ui.jsx";
@@ -52,6 +53,32 @@ const K_ENCERRADAS = "ml_mkt_encerradas";
 
 // Custo em branco não é custo zero: só conta (e só aparece) quando há número.
 const temCusto = (m) => m.custo !== "" && m.custo !== null && m.custo !== undefined;
+
+// Colunas da planilha, na ordem do arquivo. O custo vai como NÚMERO (tipo
+// "dinheiro"): coluna de "R$ 1.500,00" em texto não soma, e a primeira coisa
+// que se faz com a planilha de marketing é somar o investido.
+const COLUNAS_PLANILHA = [
+  { chave: "titulo", rotulo: "Título" },
+  { chave: "canal", rotulo: "Canal" },
+  { chave: "data", rotulo: "Data", tipo: "data" },
+  { chave: "custo", rotulo: "Custo", tipo: "dinheiro" },
+  { chave: "status", rotulo: "Status" },
+  { chave: "resultado", rotulo: "O que rendeu" },
+];
+
+// Canal e status vão com o rótulo resolvido — quem abre o arquivo lê
+// "Feira/Evento", não "feira_evento". Os campos que a tela monta (cn, st)
+// ficam de fora: são conta do render.
+const paraPlanilha = (m) => ({
+  titulo: m.titulo,
+  canal: m.cn.rotulo,
+  data: m.data,
+  // Sem custo registrado a célula fica VAZIA, nunca R$ 0 — "não anotamos
+  // quanto custou" é diferente de "custou zero".
+  custo: temCusto(m) ? m.custo : null,
+  status: m.st.rotulo,
+  resultado: m.resultado,
+});
 
 function Linha({ m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
   const Icone = m.cn.icone;
@@ -362,6 +389,37 @@ export default function Marketing() {
     : vm.grupos.filter((g) => g.status !== "encerrada");
   const encerradas = recorte ? null : vm.grupos.find((g) => g.status === "encerrada");
 
+  // A planilha leva EXATAMENTE o que está na tela: o recorte do cartão vale, e
+  // as encerradas só entram se estiverem abertas. Se exportasse tudo, o total
+  // do arquivo divergiria do total dos cartões e a conversa passaria a ser
+  // sobre qual dos dois números está certo.
+  const baixar = () => {
+    const visiveis = [
+      ...gruposVisiveis.flatMap((g) => g.itens),
+      ...(encerradas && verEncerradas ? encerradas.itens : []),
+    ];
+    if (visiveis.length === 0) {
+      setAviso({ tipo: "erro", texto: "Não há nada neste recorte para baixar." });
+      return;
+    }
+    try {
+      const arquivo = baixarPlanilha({
+        nome: "marketing",
+        titulo: `Marketing — ${recorte ? STATUS[recorte].grupo : "em aberto"}${
+          !recorte && verEncerradas ? " e encerradas" : ""
+        }`,
+        colunas: COLUNAS_PLANILHA,
+        linhas: visiveis.map(paraPlanilha),
+      });
+      setAviso({
+        tipo: "ok",
+        texto: `Planilha baixada: ${arquivo} (${visiveis.length} ${visiveis.length === 1 ? "linha" : "linhas"}).`,
+      });
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: `Não consegui gerar a planilha: ${e.message}` });
+    }
+  };
+
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
@@ -369,11 +427,17 @@ export default function Marketing() {
         titulo="Marketing"
         descricao="O que a MinasLab está fazendo para aparecer — do que está no ar até a ideia na gaveta."
         acao={
-          editavel && (
-            <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Nova ação
+          /* Baixar não é escrita: quem só consulta também precisa da planilha. */
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-outline" onClick={baixar}>
+              <Download size={16} strokeWidth={2.5} /> Baixar planilha
             </button>
-          )
+            {editavel && (
+              <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
+                <Plus size={16} strokeWidth={2.5} /> Nova ação
+              </button>
+            )}
+          </div>
         }
       />
 

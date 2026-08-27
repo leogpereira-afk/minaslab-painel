@@ -13,7 +13,6 @@ const Login = lazy(() => import("./pages/Login.jsx"));
 const Home = lazy(() => import("./pages/Home.jsx"));
 const Calendario = lazy(() => import("./pages/Calendario.jsx"));
 const Compromissos = lazy(() => import("./pages/Compromissos.jsx"));
-const Coletas = lazy(() => import("./pages/Coletas.jsx"));
 const Licitacoes = lazy(() => import("./pages/Licitacoes.jsx"));
 const Marketing = lazy(() => import("./pages/Marketing.jsx"));
 const Compras = lazy(() => import("./pages/Compras.jsx"));
@@ -53,7 +52,6 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/calendario" element={<Calendario />} />
             <Route path="/compromissos" element={<Compromissos />} />
-            <Route path="/coletas" element={<Coletas />} />
             <Route path="/licitacoes" element={<Licitacoes />} />
             <Route path="/marketing" element={<Marketing />} />
             <Route path="/compras" element={<Compras />} />

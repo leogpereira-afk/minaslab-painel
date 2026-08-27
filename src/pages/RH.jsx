@@ -1,9 +1,9 @@
-// RH — a CASCA do módulo: carrega as 4 coleções, guarda o estado, calcula os
-// KPIs e orquestra as abas (Pessoas, Férias, Feedback, Vencimentos). A
-// renderização de cada aba mora em src/components/rh/Aba*.jsx; helpers usados
-// por mais de uma aba em src/components/rh/uteis.js. Só a direção chega nesta
-// rota — e o servidor confere de novo em toda chamada; o que a tela esconde é
-// conforto.
+// RH — a CASCA do módulo: carrega as 8 coleções, guarda o estado, calcula os
+// KPIs e orquestra as abas (Pessoas, Ponto, Férias, Feedback, Exames,
+// Vencimentos). A renderização de cada aba mora em src/components/rh/Aba*.jsx;
+// helpers usados por mais de uma aba em src/components/rh/uteis.js. Só a
+// direção chega nesta rota — e o servidor confere de novo em toda chamada; o
+// que a tela esconde é conforto.
 //
 // Decisões desta tela:
 // - Uma linha POR PESSOA na aba Férias: a pergunta da direção é "quem está
@@ -14,28 +14,52 @@
 //   e ausência de dado não é zero (lição paga na Impresilk).
 // - Toda gravação/exclusão passa por gravarRegistro/apagarRegistro daqui: as
 //   abas recebem callbacks, nunca falam com services/dados.js por conta.
+// - CARIMBO NO ATO: mudança de cargo, setor ou salário grava, junto da ficha,
+//   um registro em "rh_historico" com o valor de antes e o de depois. O sistema
+//   só sabe o que gravou — deduzir a mudança depois, pelo autor do registro,
+//   foi o que produziu 118 falsos positivos na Impresilk.
+// - Os 4 cartões estão na ordem da urgência: quadro, exame vencendo, conversa
+//   atrasada, quem está fora. Clicar em um cartão leva à aba dele.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Users, Sun, MessagesSquare, CalendarClock } from "lucide-react";
+import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataCurta, dataLonga, diaLocalISO, diasEntre, paraNumero } from "../lib/format.js";
+import { baixarPlanilha } from "../lib/planilha.js";
 import { cadenciaDe, cadenciaDaPessoa } from "../lib/rh/feedbackCadencia.js";
 import { situacaoExperiencia } from "../lib/rh/clt.js";
 import { feriasEmCurso } from "../lib/rh/ferias.js";
 import {
   PageTitle, StatCard, Segmented, CarregandoModulo, ErroModulo, Aviso,
 } from "../components/ui.jsx";
-import { anoRuim, chipVenc } from "../components/rh/uteis.js";
+import { anoRuim, chipVenc, marcosDaFicha, radarExames } from "../components/rh/uteis.js";
 import AbaPessoas from "../components/rh/AbaPessoas.jsx";
+import AbaPonto from "../components/rh/AbaPonto.jsx";
 import AbaFerias from "../components/rh/AbaFerias.jsx";
 import AbaFeedback from "../components/rh/AbaFeedback.jsx";
+import AbaExames from "../components/rh/AbaExames.jsx";
 import AbaVencimentos from "../components/rh/AbaVencimentos.jsx";
 
+// Todo campo da ficha nasce aqui: campo ausente no VAZIO chega `undefined` no
+// input e o React troca o campo de controlado para não controlado no meio da
+// digitação. Ficha antiga, gravada antes destes campos existirem, entra pelo
+// spread e ganha "" — sem migração e sem apagar nada do que já estava lá.
 const VAZIO_PESSOA = {
   id: "", nome: "", apelido: "", cargo: "", admissao: "", telefone: "",
   cpf: "", cnh: "", contatoEmergencia: "", salario: "", obs: "",
   ativo: true, desligadoEm: "", experienciaDecididaEm: "", planoAberto: false,
+  // Pessoais
+  dataNascimento: "", rg: "", estadoCivil: "", endereco: "", cidade: "", uf: "", email: "",
+  // Contrato
+  matricula: "", tipoContrato: "", jornada: "", horasSemanais: "", setor: "",
+  gestorId: "", gestorNome: "",
+  // Banco
+  banco: "", agencia: "", conta: "", chavePix: "",
+  // Formação
+  escolaridade: "", formacao: "", registroConselho: "",
+  // Perfil
+  pontosFortes: "", pontosMelhoria: "", estiloAprendizagem: "", observacoesPerfil: "",
 };
 const VAZIO_FERIAS = {
   id: "", pessoaId: "", pessoaNome: "", inicio: "", retorno: "", abonoDias: "", obs: "", status: "marcada",
@@ -44,11 +68,58 @@ const VAZIO_VENC = {
   id: "", pessoaId: "", pessoaNome: "", tipo: "ASO", descricao: "", vence: "",
 };
 
+// A ficha RESUMIDA que vai para a planilha: o que se usa fora da tela (folha,
+// conferência de contrato, lista de contato). Perfil, banco e endereço ficam de
+// fora de propósito — planilha baixada circula por e-mail.
+const COLUNAS_PESSOAS = [
+  { chave: "nome", rotulo: "Nome" },
+  { chave: "apelido", rotulo: "Apelido" },
+  { chave: "matricula", rotulo: "Matrícula" },
+  { chave: "cargo", rotulo: "Cargo" },
+  { chave: "setor", rotulo: "Setor" },
+  { chave: "tipoContrato", rotulo: "Tipo de contrato" },
+  { chave: "gestorNome", rotulo: "Gestor" },
+  { chave: "admissao", rotulo: "Admissão", tipo: "data" },
+  { chave: "salario", rotulo: "Salário", tipo: "dinheiro" },
+  { chave: "jornada", rotulo: "Jornada" },
+  { chave: "telefone", rotulo: "Telefone" },
+  { chave: "email", rotulo: "E-mail" },
+  { chave: "cpf", rotulo: "CPF" },
+  { chave: "contatoEmergencia", rotulo: "Contato de emergência" },
+  { chave: "situacao", rotulo: "Situação" },
+  { chave: "desligadoEm", rotulo: "Desligado em", tipo: "data" },
+];
+
+const pessoaParaPlanilha = (p) => ({
+  nome: p.nome,
+  apelido: p.apelido,
+  matricula: p.matricula,
+  cargo: p.cargo,
+  setor: p.setor,
+  tipoContrato: p.tipoContrato,
+  gestorNome: p.gestorNome,
+  admissao: p.admissao,
+  // Dinheiro vai NÚMERO — coluna de texto não soma, e somar é a primeira coisa
+  // que se faz com a planilha. Vazio fica vazio: a planilha não inventa
+  // "R$ 0,00" para quem não tem salário registrado.
+  salario: p.salario === "" || p.salario === null || p.salario === undefined ? "" : Number(p.salario),
+  jornada: p.jornada,
+  telefone: p.telefone,
+  email: p.email,
+  cpf: p.cpf,
+  contatoEmergencia: p.contatoEmergencia,
+  situacao: p.ativo === false ? "Desligado" : "Ativo",
+  desligadoEm: p.desligadoEm,
+});
+
+// Texto que vai ao banco: aparado e nunca undefined.
+const txt = (v) => String(v ?? "").trim();
+
 export default function RH() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
 
-  const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks }
+  const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico }
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [aba, setAba] = useState("pessoas");
@@ -68,9 +139,10 @@ export default function RH() {
     setHojeISO(ymdLocal(new Date()));
     Promise.all([
       listar("rh_pessoas"), listar("rh_ferias"), listar("rh_vencimentos"), listar("rh_feedbacks"),
+      listar("rh_ponto"), listar("rh_ponto_dia"), listar("rh_exames"), listar("rh_historico"),
     ])
-      .then(([pessoas, ferias, vencimentos, feedbacks]) => {
-        setDados({ pessoas, ferias, vencimentos, feedbacks });
+      .then(([pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico]) => {
+        setDados({ pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico });
         setErro(null);
       })
       .catch((e) => {
@@ -173,6 +245,31 @@ export default function RH() {
     }
     pessoasComVenc.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
 
+    // Exames: o cartão e a aba leem o MESMO radar (components/rh/uteis.js) —
+    // vale o exame mais novo de cada pessoa+tipo, e desligado sai da conta.
+    const radar = radarExames(dados.exames, dados.pessoas, hojeISO);
+    // A frase do cartão. Nenhum exame cadastrado NÃO é "tudo em dia": é
+    // ausência de informação, e sai neutra dizendo o que falta. Exame sem data
+    // de validade também é dito — some da conta de prazo, não da tela.
+    const sobraExames = [];
+    if (radar.vencidos.length) {
+      sobraExames.push(`${radar.vencidos.length} já ${radar.vencidos.length === 1 ? "venceu" : "venceram"}`);
+    }
+    if (radar.semData.length) sobraExames.push(`${radar.semData.length} sem data de validade`);
+    const cartaoExames = {
+      nenhum: radar.vigentes.length === 0,
+      emRisco: radar.emRisco.length,
+      tom:
+        radar.vigentes.length === 0
+          ? "neutral"
+          : radar.vencidos.length > 0
+            ? "bad"
+            : radar.emRisco.length > 0
+              ? "warn"
+              : "ok",
+      sub: radar.vigentes.length === 0 ? "nenhum exame cadastrado" : sobraExames.join(" · ") || undefined,
+    };
+
     // Feedback: quem está esperando conversa, pelo motor portado da Impresilk.
     // Na taxonomia da lib, "atrasado" JÁ inclui quem nunca recebeu e passou do
     // prazo contado da admissão (cadenciaDe dobra os dois no mesmo rótulo);
@@ -203,10 +300,10 @@ export default function RH() {
       linhasFerias,
       vencimentos,
       pessoasComVenc,
+      radarExames: radar,
+      cartaoExames,
       feriasAgora: linhasFerias.filter((l) => l.situacao.ordem === 0).length,
       feedbackEsperando,
-      venc60: vencimentos.filter((v) => v.dias !== null && v.dias <= 60).length,
-      vencidos: vencimentos.filter((v) => v.dias !== null && v.dias < 0).length,
     };
   }, [dados, hojeISO, busca]);
 
@@ -236,6 +333,46 @@ export default function RH() {
     }
   };
 
+  /* Grava a ficha e, DEPOIS de o servidor confirmar como ela ficou, carimba no
+     histórico o que mudou. A ordem importa: histórico de uma mudança que não
+     gravou é mentira gravada. E os marcos saem do registro CONFIRMADO, não do
+     rascunho — ficha nova só tem id depois que o servidor devolve.
+     Devolve true quando a ficha foi gravada (quem chamou fecha o próprio modal).
+     Falha ao carimbar NÃO derruba a gravação da ficha, mas é DITA: histórico
+     que falha calado é pior que histórico que não existe. */
+  const gravarFichaComHistorico = async (registro, fazerMarcos, frase, fechar) => {
+    setSalvando(true);
+    try {
+      const gravada = await salvar("rh_pessoas", registro);
+      const marcos = fazerMarcos(gravada);
+      let falhas = 0;
+      for (const m of marcos) {
+        try {
+          await salvar("rh_historico", m);
+        } catch {
+          falhas += 1;
+        }
+      }
+      fechar?.();
+      const texto = frase(marcos.length - falhas);
+      setAviso(
+        falhas
+          ? {
+              tipo: "erro",
+              texto: `${texto} Mas ${falhas === 1 ? "1 mudança não entrou" : `${falhas} mudanças não entraram`} no histórico — registre à mão em "Registrar acontecimento".`,
+            }
+          : { tipo: "ok", texto }
+      );
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const abrirPessoa = (p) =>
     setFormPessoa(
       p
@@ -248,6 +385,10 @@ export default function RH() {
             // a regra é a da lib (completudeCadastro): salário 0 é lacuna, não
             // registro — a ficha segue cobrando o campo até ter valor de verdade.
             salario: p.salario == null || p.salario === "" ? "" : String(p.salario).replace(".", ","),
+            // Mesmo desenho para as horas semanais: 0 gravado tem que voltar
+            // como "0" no campo, senão o próximo Gravar apaga o zero em silêncio.
+            horasSemanais:
+              p.horasSemanais == null || p.horasSemanais === "" ? "" : String(p.horasSemanais).replace(".", ","),
           }
         : { ...VAZIO_PESSOA }
     );
@@ -259,34 +400,98 @@ export default function RH() {
     const f = formPessoa;
     const ano = anoRuim(f.admissao);
     if (ano) return setAviso({ tipo: "erro", texto: `Confira o ano da admissão: ${ano}` });
+    const anoNasc = anoRuim(f.dataNascimento);
+    if (anoNasc) return setAviso({ tipo: "erro", texto: `Confira o ano do nascimento: ${anoNasc}` });
+    if (f.dataNascimento && f.dataNascimento > hojeISO) {
+      return setAviso({ tipo: "erro", texto: "A data de nascimento está no futuro. Confira o campo." });
+    }
+
+    // O gestor é id + NOME CARIMBADO: se o id não resolve no quadro (gestor
+    // desligado, ou trocou de nome), o nome já gravado fica. Zerar aqui apagaria
+    // o histórico de quem respondia a quem.
+    const gestor = vm.ativos.find((x) => x.id === f.gestorId);
+    const gestorNome = f.gestorId ? gestor?.nome || f.gestorNome || "" : "";
+
     const limpo = {
       ...f,
-      nome: f.nome.trim(),
-      apelido: f.apelido.trim(),
-      cargo: f.cargo.trim(),
-      telefone: f.telefone.trim(),
-      cpf: f.cpf.trim(),
-      contatoEmergencia: f.contatoEmergencia.trim(),
-      obs: f.obs.trim(),
+      nome: txt(f.nome),
+      apelido: txt(f.apelido),
+      cargo: txt(f.cargo),
+      telefone: txt(f.telefone),
+      cpf: txt(f.cpf),
+      contatoEmergencia: txt(f.contatoEmergencia),
+      obs: txt(f.obs),
+      rg: txt(f.rg),
+      endereco: txt(f.endereco),
+      cidade: txt(f.cidade),
+      uf: txt(f.uf).toUpperCase(),
+      email: txt(f.email),
+      matricula: txt(f.matricula),
+      jornada: txt(f.jornada),
+      banco: txt(f.banco),
+      agencia: txt(f.agencia),
+      conta: txt(f.conta),
+      chavePix: txt(f.chavePix),
+      formacao: txt(f.formacao),
+      registroConselho: txt(f.registroConselho),
+      pontosFortes: txt(f.pontosFortes),
+      pontosMelhoria: txt(f.pontosMelhoria),
+      observacoesPerfil: txt(f.observacoesPerfil),
+      gestorNome,
       // Vazio fica vazio: gravar 0 afirmaria "salário zero", e não é isso.
-      salario: String(f.salario).trim() ? paraNumero(f.salario) : "",
+      salario: txt(f.salario) ? paraNumero(f.salario) : "",
+      // Idem para a carga horária: sem registro não é jornada de zero hora.
+      horasSemanais: txt(f.horasSemanais) ? paraNumero(f.horasSemanais) : "",
     };
-    gravarRegistro(
-      "rh_pessoas", limpo,
-      f.id ? "Ficha atualizada." : `${limpo.nome} entrou no quadro.`,
+
+    // O "antes" vem do SERVIDOR, não do rascunho: é ele que diz o que a ficha
+    // afirmava até agora, e é dele que sai o valorDe do carimbo.
+    const antes = f.id ? dados.pessoas.find((x) => x.id === f.id) || null : null;
+
+    return gravarFichaComHistorico(
+      limpo,
+      (gravada) => marcosDaFicha(antes, gravada, hojeISO),
+      (n) =>
+        f.id
+          ? n
+            ? `Ficha atualizada — ${n === 1 ? "1 mudança registrada" : `${n} mudanças registradas`} no histórico.`
+            : "Ficha atualizada."
+          : `${limpo.nome} entrou no quadro.`,
       () => setFormPessoa(null)
     );
   };
 
-  // Desligar mexe no registro do servidor, não no rascunho do formulário —
-  // edição não gravada não pega carona no desligamento.
-  const desligarPessoa = () => {
+  /* Desligar mexe no registro do servidor, não no rascunho do formulário —
+     edição não gravada não pega carona no desligamento. O motivo digitado no
+     modal vira o registro "desligamento" no histórico: quem pediu conta daqui a
+     dois anos vai perguntar POR QUE a pessoa saiu, e essa resposta só existe se
+     for gravada no ato. A confirmação é o próprio modal (com o botão dizendo
+     "Desligar"), por isso não há window.confirm aqui. */
+  const desligarPessoa = async (motivo, dataISO) => {
     const p = dados.pessoas.find((x) => x.id === formPessoa?.id);
-    if (!p) return;
-    if (!window.confirm(`Desligar ${p.nome}? A ficha não é apagada — fica guardada em "Desligados".`)) return;
-    gravarRegistro(
-      "rh_pessoas", { ...p, ativo: false, desligadoEm: hojeISO },
-      `${p.nome} saiu do quadro. A ficha está em "Desligados".`,
+    if (!p) return false;
+    const dia = dataISO || hojeISO;
+    const ano = anoRuim(dia);
+    if (ano) {
+      setAviso({ tipo: "erro", texto: `Confira o ano da data do desligamento: ${ano}` });
+      return false;
+    }
+    return gravarFichaComHistorico(
+      { ...p, ativo: false, desligadoEm: dia },
+      (gravada) => [
+        {
+          pessoaId: gravada.id,
+          pessoaNome: gravada.nome || "",
+          data: dia,
+          tipo: "desligamento",
+          titulo: "Desligamento",
+          detalhe: txt(motivo),
+          valorDe: gravada.cargo || "",
+          valorPara: "",
+          obs: "",
+        },
+      ],
+      () => `${p.nome} saiu do quadro. A ficha está em "Desligados".`,
       () => setFormPessoa(null)
     );
   };
@@ -372,27 +577,64 @@ export default function RH() {
   if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
+  // A planilha leva EXATAMENTE o que está na tela: a busca vale, e os
+  // desligados só entram se a lista deles estiver aberta. Se exportasse tudo, o
+  // total do arquivo divergiria do cartão "No quadro" e a conversa passaria a
+  // ser sobre qual dos dois números está certo.
+  const baixarPessoas = () => {
+    const visiveisAgora = [...vm.visiveis, ...(verDesligados ? vm.desligados : [])];
+    if (visiveisAgora.length === 0) {
+      setAviso({ tipo: "erro", texto: "Não há ninguém neste recorte para baixar." });
+      return;
+    }
+    try {
+      const arquivo = baixarPlanilha({
+        nome: "rh-quadro",
+        titulo: `Quadro da MinasLab${busca.trim() ? ` — busca "${busca.trim()}"` : ""}${verDesligados ? " (com desligados)" : ""}`,
+        colunas: COLUNAS_PESSOAS,
+        linhas: visiveisAgora.map(pessoaParaPlanilha),
+      });
+      setAviso({
+        tipo: "ok",
+        texto: `Planilha baixada: ${arquivo} (${visiveisAgora.length} ${visiveisAgora.length === 1 ? "pessoa" : "pessoas"}).`,
+      });
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: `Não consegui gerar a planilha: ${e.message}` });
+    }
+  };
+
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <PageTitle
         titulo="RH"
-        descricao="O quadro da MinasLab: quem trabalha aqui, férias, feedback e o radar de ASO, NR e treinamento."
+        descricao="O quadro da MinasLab: quem trabalha aqui, ponto, férias, feedback, exames e o radar de NR e treinamento."
         acao={
-          editavel &&
-          (aba === "pessoas" ? (
-            <button type="button" className="btn-primary" onClick={() => abrirPessoa(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Nova pessoa
-            </button>
-          ) : aba === "ferias" ? (
-            <button type="button" className="btn-primary" onClick={() => abrirFerias(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Marcar férias
-            </button>
-          ) : aba === "vencimentos" ? (
-            <button type="button" className="btn-primary" onClick={() => abrirVenc(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Novo vencimento
-            </button>
-          ) : null) // Feedback: o botão de escrita chega com o motor da aba.
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Baixar não é escrita: quem só consulta também precisa da planilha. */}
+            {aba === "pessoas" && (
+              <button type="button" className="btn-outline" onClick={baixarPessoas}>
+                <Download size={16} strokeWidth={2.5} /> Baixar planilha
+              </button>
+            )}
+            {editavel && aba === "pessoas" && (
+              <button type="button" className="btn-primary" onClick={() => abrirPessoa(null)}>
+                <Plus size={16} strokeWidth={2.5} /> Nova pessoa
+              </button>
+            )}
+            {editavel && aba === "ferias" && (
+              <button type="button" className="btn-primary" onClick={() => abrirFerias(null)}>
+                <Plus size={16} strokeWidth={2.5} /> Marcar férias
+              </button>
+            )}
+            {editavel && aba === "vencimentos" && (
+              <button type="button" className="btn-primary" onClick={() => abrirVenc(null)}>
+                <Plus size={16} strokeWidth={2.5} /> Novo vencimento
+              </button>
+            )}
+            {/* Feedback, Ponto e Exames: o botão de escrita chega com o motor
+                de cada aba — botão que não faz nada é pior que a falta dele. */}
+          </div>
         }
       />
 
@@ -408,13 +650,18 @@ export default function RH() {
           }}
           ativo={aba === "pessoas"}
         />
+        {/* ZERO NÃO É RESULTADO: sem nenhum exame cadastrado, "0 vencendo" se
+            lê como "está tudo em dia", e a verdade é que ninguém sabe. Por isso
+            a coleção vazia sai NEUTRA e dizendo o que falta — e os exames sem
+            data de validade também são ditos, em vez de sumirem na conta. */}
         <StatCard
-          rotulo="Férias agora"
-          valor={String(vm.feriasAgora)}
-          tom={vm.feriasAgora > 0 ? "ok" : "neutral"}
-          icone={Sun}
-          onClick={() => setAba("ferias")}
-          ativo={aba === "ferias"}
+          rotulo="Exames vencendo (60 dias)"
+          valor={vm.cartaoExames.nenhum ? "—" : String(vm.cartaoExames.emRisco)}
+          tom={vm.cartaoExames.tom}
+          sub={vm.cartaoExames.sub}
+          icone={Stethoscope}
+          onClick={() => setAba("exames")}
+          ativo={aba === "exames"}
         />
         <StatCard
           rotulo="Feedback esperando"
@@ -425,22 +672,25 @@ export default function RH() {
           ativo={aba === "feedback"}
         />
         <StatCard
-          rotulo="Vencimentos em 60 dias"
-          valor={String(vm.venc60)}
-          tom={vm.vencidos > 0 ? "bad" : vm.venc60 > 0 ? "warn" : "ok"}
-          sub={vm.vencidos > 0 ? `${vm.vencidos} já ${vm.vencidos === 1 ? "venceu" : "venceram"}` : undefined}
-          icone={CalendarClock}
-          onClick={() => setAba("vencimentos")}
-          ativo={aba === "vencimentos"}
+          rotulo="Férias agora"
+          valor={String(vm.feriasAgora)}
+          tom={vm.feriasAgora > 0 ? "ok" : "neutral"}
+          icone={Sun}
+          onClick={() => setAba("ferias")}
+          ativo={aba === "ferias"}
         />
       </div>
 
-      <div className="mb-4">
+      {/* Seis abas não cabem na largura do celular. Sem o overflow aqui, a
+          PÁGINA INTEIRA passava a rolar de lado. */}
+      <div className="mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented
           opcoes={[
             { valor: "pessoas", rotulo: "Pessoas" },
+            { valor: "ponto", rotulo: "Ponto" },
             { valor: "ferias", rotulo: "Férias" },
             { valor: "feedback", rotulo: "Feedback" },
+            { valor: "exames", rotulo: "Exames" },
             { valor: "vencimentos", rotulo: "Vencimentos" },
           ]}
           valor={aba}
@@ -453,6 +703,7 @@ export default function RH() {
           ativos={vm.ativos}
           desligados={vm.desligados}
           visiveis={vm.visiveis}
+          historico={dados.historico}
           hojeISO={hojeISO}
           editavel={editavel}
           busca={busca}
@@ -468,6 +719,24 @@ export default function RH() {
           aoDesligar={desligarPessoa}
           aoReativar={reativarPessoa}
           aoEfetivar={efetivarPessoa}
+          gravar={gravarRegistro}
+          apagarReg={apagarRegistro}
+          setAviso={setAviso}
+        />
+      )}
+
+      {aba === "ponto" && (
+        <AbaPonto
+          pessoas={dados.pessoas}
+          ativos={vm.ativos}
+          ponto={dados.ponto}
+          pontoDia={dados.pontoDia}
+          hojeISO={hojeISO}
+          editavel={editavel}
+          gravar={gravarRegistro}
+          apagarReg={apagarRegistro}
+          setAviso={setAviso}
+          recarregar={recarregar}
         />
       )}
 
@@ -500,6 +769,20 @@ export default function RH() {
           apagarReg={apagarRegistro}
           setAviso={setAviso}
           recarregar={recarregar}
+        />
+      )}
+
+      {aba === "exames" && (
+        <AbaExames
+          pessoas={dados.pessoas}
+          ativos={vm.ativos}
+          exames={dados.exames}
+          radar={vm.radarExames}
+          hojeISO={hojeISO}
+          editavel={editavel}
+          gravar={gravarRegistro}
+          apagarReg={apagarRegistro}
+          setAviso={setAviso}
         />
       )}
 

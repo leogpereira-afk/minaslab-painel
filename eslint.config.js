@@ -27,4 +27,10 @@ export default [
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
+  {
+    // Os testes rodam no Node (node --test), não no navegador: sem isto,
+    // Buffer/process viram "não definido" e o lint reprova código correto.
+    files: ["src/**/*.test.mjs"],
+    languageOptions: { globals: { ...globals.node } },
+  },
 ];

@@ -3,6 +3,9 @@
 // resultado perde a rastreabilidade. A tela abre pelo que VENCEU e pelo que
 // vence em 30 dias — é assim que o problema chega.
 //
+// A FROTA mora aqui. Antes o cadastro de carros ficava em Coletas; com aquele
+// módulo fora do painel, quem cuida do carro é quem cuida da manutenção dele.
+//
 // Segue o exemplar (Compromissos.jsx): linhas e formulários declarados FORA
 // do componente da página; "hoje" é estado e refaz a conta no
 // visibilitychange; depois de gravar, recarrega do servidor — conferir o
@@ -11,13 +14,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Check, Pencil, Trash2, Car, Wrench, AlertTriangle, CalendarClock,
-  CheckCircle2, HandCoins,
+  CheckCircle2, HandCoins, Download,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { chaveAlvo, proximasPorAlvo } from "../lib/manutencaoRegra.js";
+import { baixarPlanilha } from "../lib/planilha.js";
 import {
-  dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, paraNumero,
+  dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, numero, paraNumero,
 } from "../lib/format.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
@@ -36,6 +40,18 @@ const VAZIO = {
   id: "", alvoTipo: "carro", alvoId: "", alvoNome: "", tipo: "preventiva",
   descricao: "", data: "", custo: "", proxima: "", status: "agendada", obs: "",
 };
+
+// A ficha do carro vive como TEXTO enquanto está no formulário; ano e km viram
+// número (ou null) só na gravação — campo em branco não é zero.
+const FICHA_VAZIA = {
+  nome: "", placa: "", modelo: "", ano: "", kmAtual: "", renavam: "", obs: "",
+};
+
+// Renavam fica como TEXTO de propósito: começa com zero em muito carro, e
+// número apagaria o zero da frente sem ninguém ver.
+const soDigitos = (v) => String(v ?? "").replace(/\D/g, "");
+
+const temKm = (c) => c && c.kmAtual != null && c.kmAtual !== "";
 
 const ndias = (n) => `${n} ${n === 1 ? "dia" : "dias"}`;
 
@@ -74,6 +90,16 @@ function LinhaAlvo({ a }) {
         <span className="block truncate font-display text-sm font-medium text-slate-900">
           {a.nome}
           {a.placa ? <span className="font-normal text-slate-500"> — {a.placa}</span> : null}
+          {/* Quilometragem manda na preventiva do carro tanto quanto a data.
+              A DATA da leitura vai no title: km sem data envelhece calado. */}
+          {a.km != null ? (
+            <span
+              className="font-normal text-slate-500"
+              title={a.kmEm ? `Quilometragem lida em ${dataLonga(a.kmEm)}` : "Quilometragem sem data de leitura"}
+            >
+              {" · "}{numero(a.km)} km
+            </span>
+          ) : null}
         </span>
         <span className="block truncate text-xs text-slate-500">{a.sub}</span>
       </span>
@@ -292,9 +318,202 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
   );
 }
 
+// Cadastro da FROTA — gêmea da gaveta de equipamentos, com a ficha a mais que
+// a manutenção do carro pede (modelo, ano, km, renavam). Carro NÃO se apaga:
+// o histórico de manutenção aponta para ele; desativar tira das opções de alvo
+// novo e mantém o que já foi feito legível.
+function ModalCarros({ aberto, aoFechar, carros, salvando, aoAdicionar, aoAlternar, aoGravarFicha }) {
+  const [novoNome, setNovoNome] = useState("");
+  const [novaPlaca, setNovaPlaca] = useState("");
+  const [fichaId, setFichaId] = useState("");
+  const [ficha, setFicha] = useState(FICHA_VAZIA);
+  if (!aberto) return null;
+
+  const ordenados = [...carros].sort(
+    (a, b) =>
+      Number(b.ativo !== false) - Number(a.ativo !== false) ||
+      String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR")
+  );
+
+  const setCampoFicha = (campo) => (e) => setFicha({ ...ficha, [campo]: e.target.value });
+
+  // A ficha é semeada AQUI, no clique, e não num efeito: efeito que copia prop
+  // para estado reescreve o que a pessoa está digitando quando a lista
+  // recarrega do servidor.
+  const abrirFicha = (c) => {
+    setFichaId(c.id);
+    setFicha({
+      nome: c.nome || "",
+      placa: c.placa || "",
+      modelo: c.modelo || "",
+      ano: c.ano == null ? "" : String(c.ano),
+      kmAtual: temKm(c) ? String(c.kmAtual) : "",
+      renavam: c.renavam || "",
+      obs: c.obs || "",
+    });
+  };
+
+  const adicionar = async (e) => {
+    e.preventDefault();
+    const nome = novoNome.trim();
+    if (!nome) return;
+    // Só limpa os campos se o servidor confirmou: limpar antes some com o que
+    // foi digitado justamente quando a gravação falhou e precisa de repetição.
+    const ok = await aoAdicionar(nome, novaPlaca.trim().toUpperCase());
+    if (ok) {
+      setNovoNome("");
+      setNovaPlaca("");
+    }
+  };
+
+  const gravarFicha = async (e) => {
+    e.preventDefault();
+    const km = String(ficha.kmAtual).trim();
+    const ok = await aoGravarFicha(fichaId, {
+      nome: ficha.nome.trim(),
+      placa: ficha.placa.trim().toUpperCase(),
+      modelo: ficha.modelo.trim(),
+      ano: ficha.ano === "" ? null : Number(ficha.ano),
+      // Km em branco grava null, não 0: carro sem leitura não é carro zerado.
+      kmAtual: km === "" ? null : Math.round(paraNumero(km)),
+      renavam: soDigitos(ficha.renavam),
+      obs: ficha.obs.trim(),
+    });
+    if (ok) setFichaId("");
+  };
+
+  return (
+    <Modal titulo="Frota" aberto={aberto} aoFechar={aoFechar}>
+      <form onSubmit={adicionar} className="mb-4 flex flex-wrap items-end gap-2">
+        <div className="min-w-0 flex-1 basis-40">
+          <label className="label" htmlFor="ca-nome">Novo carro</label>
+          <input
+            id="ca-nome" type="text" className="input" placeholder="Ex.: Fiorino branca"
+            value={novoNome} onChange={(e) => setNovoNome(e.target.value)}
+          />
+        </div>
+        <div className="w-32">
+          <label className="label" htmlFor="ca-placa">Placa</label>
+          <input
+            id="ca-placa" type="text" className="input uppercase" placeholder="ABC1D23"
+            value={novaPlaca} onChange={(e) => setNovaPlaca(e.target.value)}
+          />
+        </div>
+        <button type="submit" className="btn-primary" disabled={salvando || !novoNome.trim()}>
+          <Plus size={16} strokeWidth={2.5} /> Adicionar
+        </button>
+      </form>
+
+      {ordenados.length === 0 ? (
+        <Empty>Nenhum carro cadastrado ainda.</Empty>
+      ) : (
+        <div className="space-y-2">
+          {ordenados.map((c) => {
+            const ativo = c.ativo !== false;
+            const aberta = fichaId === c.id;
+            const resumo = [
+              c.placa ? String(c.placa).toUpperCase() : "sem placa",
+              c.modelo || null,
+              c.ano || null,
+              temKm(c) ? `${numero(c.kmAtual)} km` : null,
+            ].filter(Boolean).join(" · ");
+            return (
+              <div key={c.id} className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Car size={16} strokeWidth={2.2} className={ativo ? "text-brand-600" : "text-slate-300"} />
+                  <span className="min-w-0 flex-1 basis-40">
+                    <span className={`block truncate text-sm ${ativo ? "text-slate-900" : "text-slate-400 line-through"}`}>
+                      {c.nome}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500">{resumo}</span>
+                  </span>
+                  {!ativo && <span className="chip">desativado</span>}
+                  <button
+                    type="button"
+                    className="btn-outline px-2.5 py-1 text-xs"
+                    aria-expanded={aberta}
+                    onClick={() => (aberta ? setFichaId("") : abrirFicha(c))}
+                  >
+                    {aberta ? "Fechar" : "Ficha"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-outline px-2.5 py-1 text-xs"
+                    disabled={salvando}
+                    onClick={() => aoAlternar(c)}
+                  >
+                    {ativo ? "Desativar" : "Reativar"}
+                  </button>
+                </div>
+
+                {aberta && (
+                  <form onSubmit={gravarFicha} className="mt-3 space-y-3 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label" htmlFor="ficha-nome">Nome</label>
+                        <input id="ficha-nome" type="text" className="input" value={ficha.nome} onChange={setCampoFicha("nome")} required />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="ficha-placa">Placa</label>
+                        <input id="ficha-placa" type="text" className="input uppercase" value={ficha.placa} onChange={setCampoFicha("placa")} />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="ficha-modelo">Modelo</label>
+                        <input id="ficha-modelo" type="text" className="input" placeholder="opcional" value={ficha.modelo} onChange={setCampoFicha("modelo")} />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="ficha-ano">Ano</label>
+                        <input
+                          id="ficha-ano" type="number" className="input" min="1950" max="2100" step="1"
+                          placeholder="opcional" value={ficha.ano} onChange={setCampoFicha("ano")}
+                        />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="ficha-km">Quilometragem</label>
+                        <input
+                          id="ficha-km" type="text" inputMode="numeric" className="input"
+                          placeholder="em branco = sem registro"
+                          value={ficha.kmAtual} onChange={setCampoFicha("kmAtual")}
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          {!temKm(c)
+                            ? "Nenhuma leitura registrada."
+                            : c.kmAtualEm
+                              ? `Última leitura em ${dataLonga(c.kmAtualEm)}.`
+                              : "Leitura antiga, sem data."}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="ficha-renavam">Renavam</label>
+                        <input
+                          id="ficha-renavam" type="text" inputMode="numeric" className="input"
+                          placeholder="opcional" value={ficha.renavam} onChange={setCampoFicha("renavam")}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="ficha-obs">Observações</label>
+                      <textarea id="ficha-obs" className="input" rows={2} value={ficha.obs} onChange={setCampoFicha("obs")} />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className="btn-outline" onClick={() => setFichaId("")}>Cancelar</button>
+                      <button type="submit" className="btn-primary" disabled={salvando || !ficha.nome.trim()}>
+                        {salvando ? "Gravando..." : "Gravar ficha"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // Cadastro de equipamentos. Desativar em vez de apagar: o histórico de
 // manutenções aponta para o equipamento, e apagar deixaria linhas órfãs.
-// (Carros são cadastrados na tela de Coletas — aqui só se lê.)
 function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicionar, aoAlternar }) {
   const [novoNome, setNovoNome] = useState("");
   if (!aberto) return null;
@@ -375,6 +594,7 @@ export default function Manutencoes() {
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [modalEq, setModalEq] = useState(false);
+  const [modalCarros, setModalCarros] = useState(false);
   const [filtroAlvo, setFiltroAlvo] = useState("");
   // Os cartões viram recorte: clicar filtra as seções; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
@@ -445,7 +665,12 @@ export default function Manutencoes() {
     const alvos = alvosAtivos
       .map((a) => {
         const doAlvo = itens.filter((m) => m.alvoTipo === a.alvoTipo && m.alvoId === a.id);
-        const base = { alvoTipo: a.alvoTipo, id: a.id, nome: a.nome, placa: a.placa };
+        const base = {
+          alvoTipo: a.alvoTipo, id: a.id, nome: a.nome, placa: a.placa,
+          // Km só existe para carro; equipamento não roda estrada.
+          km: a.alvoTipo === "carro" && temKm(a) ? Number(a.kmAtual) : null,
+          kmEm: a.kmAtualEm || null,
+        };
         const ult = proximas.get(chaveAlvo(a.alvoTipo, a.id));
         if (ult) {
           const dias = diasEntre(hojeISO, ult.proxima);
@@ -591,6 +816,69 @@ export default function Manutencoes() {
     }
   };
 
+  const adicionarCarro = async (nome, placa) => {
+    setSalvando(true);
+    try {
+      await salvar("carros", { nome, placa, ativo: true });
+      setAviso({ tipo: "ok", texto: `Carro "${nome}" adicionado à frota.` });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const alternarCarro = async (c) => {
+    const ativo = c.ativo !== false;
+    setSalvando(true);
+    try {
+      await salvar("carros", { ...c, ativo: !ativo });
+      setAviso({
+        tipo: "ok",
+        texto: ativo
+          ? `"${c.nome}" desativado. O histórico de manutenção dele continua aqui.`
+          : `"${c.nome}" reativado.`,
+      });
+      recarregar();
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const gravarFichaCarro = async (id, campos) => {
+    // Relê o carro da lista PELO ID na hora de gravar: o objeto capturado
+    // quando a ficha abriu pode ter envelhecido num recarregar, e gravar por
+    // cima apagaria o que mudou no servidor enquanto a ficha estava aberta.
+    const atual = carros.find((c) => c.id === id);
+    if (!atual) {
+      setAviso({ tipo: "erro", texto: "Este carro não está mais na lista. Recarregue e tente de novo." });
+      return false;
+    }
+    setSalvando(true);
+    try {
+      // A data da leitura é carimbada quando o NÚMERO muda. Regravar a ficha
+      // sem mexer no km não rejuvenesce a leitura — e o carimbo usa o relógio,
+      // não o "hoje" da tela, que pode estar aberta desde ontem.
+      const mudouKm = campos.kmAtual !== (atual.kmAtual ?? null);
+      const kmAtualEm =
+        campos.kmAtual == null ? null : mudouKm ? ymdLocal(new Date()) : atual.kmAtualEm || null;
+      await salvar("carros", { ...atual, ...campos, kmAtualEm });
+      setAviso({ tipo: "ok", texto: `Ficha de "${campos.nome || atual.nome}" gravada.` });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
@@ -610,6 +898,51 @@ export default function Manutencoes() {
     ? vm.feitas.filter((m) => `${m.alvoTipo}|${m.alvoId}` === filtroAlvo)
     : vm.feitas;
 
+  // Sai o que está na tela — o mesmo recorte do filtro. Planilha que exporta
+  // "tudo" enquanto a tela mostra um alvo entrega uma conta que ninguém pediu.
+  // Por isso o alvo filtrado vai ESCRITO no título: fora da tela, a planilha
+  // perde o filtro de vista e um recorte anônimo passa por total.
+  const alvoFiltrado = filtroAlvo
+    ? vm.opcoesFiltro.find((o) => o.chave === filtroAlvo)?.nome
+    : null;
+
+  const exportarHistorico = () => {
+    try {
+      // baixarPlanilha já carimba o dia local no nome do arquivo — repetir a
+      // data aqui sairia "…-2026-08-27-2026-08-27.xlsx".
+      const arquivo = baixarPlanilha({
+        nome: "manutencoes-historico",
+        titulo: `Histórico de manutenções${alvoFiltrado ? ` — ${alvoFiltrado}` : ""}`,
+        colunas: [
+          { chave: "data", rotulo: "Data", tipo: "data" },
+          { chave: "alvo", rotulo: "Alvo", tipo: "texto" },
+          { chave: "tipo", rotulo: "Tipo", tipo: "texto" },
+          { chave: "descricao", rotulo: "Descrição", tipo: "texto" },
+          { chave: "custo", rotulo: "Custo", tipo: "dinheiro" },
+          { chave: "proxima", rotulo: "Próxima", tipo: "data" },
+          { chave: "status", rotulo: "Situação", tipo: "texto" },
+        ],
+        linhas: historicoVisivel.map((m) => ({
+          data: m.data || null,
+          alvo: m.alvoNome || "(alvo sem nome)",
+          tipo: TIPOS[m.tipo] || m.tipo,
+          descricao: m.descricao || "",
+          // Custo ausente vai VAZIO, não 0: a planilha vai ser somada, e um
+          // zero inventado viraria "manutenção de graça" na conta do ano.
+          custo: m.custo == null || m.custo === "" ? null : Number(m.custo),
+          proxima: m.proxima || null,
+          status: m.status === "feita" ? "Feita" : "Agendada",
+        })),
+      });
+      setAviso({
+        tipo: "ok",
+        texto: `${arquivo} baixado (${historicoVisivel.length} ${historicoVisivel.length === 1 ? "linha" : "linhas"}).`,
+      });
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: `Não consegui gerar a planilha: ${e.message}` });
+    }
+  };
+
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
@@ -617,16 +950,32 @@ export default function Manutencoes() {
         titulo="Manutenções"
         descricao="Carros e equipamentos do laboratório — calibração vencida compromete o laudo."
         acao={
-          editavel && (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-outline" onClick={() => setModalEq(true)}>
-                <Wrench size={16} strokeWidth={2.2} /> Equipamentos
-              </button>
-              <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
-                <Plus size={16} strokeWidth={2.5} /> Nova manutenção
-              </button>
-            </div>
-          )
+          <div className="flex flex-wrap gap-2">
+            {/* Baixar é LEITURA: quem enxerga a tela pode levar o recorte
+                embora, mesmo sem permissão de escrita. */}
+            <button
+              type="button"
+              className="btn-outline disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={exportarHistorico}
+              disabled={historicoVisivel.length === 0}
+              title={historicoVisivel.length === 0 ? "Nada no histórico para baixar" : undefined}
+            >
+              <Download size={16} strokeWidth={2.2} /> Baixar planilha
+            </button>
+            {editavel && (
+              <>
+                <button type="button" className="btn-outline" onClick={() => setModalCarros(true)}>
+                  <Car size={16} strokeWidth={2.2} /> Carros
+                </button>
+                <button type="button" className="btn-outline" onClick={() => setModalEq(true)}>
+                  <Wrench size={16} strokeWidth={2.2} /> Equipamentos
+                </button>
+                <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
+                  <Plus size={16} strokeWidth={2.5} /> Nova manutenção
+                </button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -666,7 +1015,9 @@ export default function Manutencoes() {
             <Empty>
               {recorte
                 ? "Nada neste recorte. Clique de novo no cartão para ver tudo."
-                : "Nenhum carro ou equipamento ativo. Cadastre equipamentos no botão lá em cima; carros são cadastrados na tela de Coletas."}
+                : editavel
+                  ? "Nenhum carro ou equipamento ativo. Cadastre pelos botões Carros e Equipamentos, lá em cima."
+                  : "Nenhum carro ou equipamento ativo cadastrado."}
             </Empty>
           ) : (
             <div className="space-y-2">
@@ -739,6 +1090,18 @@ export default function Manutencoes() {
         aoSalvar={salvarForm}
         aoFechar={() => setForm(null)}
       />
+
+      {editavel && (
+        <ModalCarros
+          aberto={modalCarros}
+          aoFechar={() => setModalCarros(false)}
+          carros={carros}
+          salvando={salvando}
+          aoAdicionar={adicionarCarro}
+          aoAlternar={alternarCarro}
+          aoGravarFicha={gravarFichaCarro}
+        />
+      )}
 
       {editavel && (
         <ModalEquipamentos

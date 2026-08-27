@@ -17,11 +17,11 @@
 //   3) p.sis === "minaslab"                   4) o PAPEL, em cada ação
 //
 // Papéis (decididos com o Léo em 27/08/2026):
-//   direcao — tudo, inclusive coleções rh_*, config e contas
-//   equipe  — lê e edita o operacional; NÃO lê rh_* (a régua vale na porta de
-//             dados, não só na tela — folha de pagamento já vazou na Impresilk
-//             por porta larga com tela estreita)
-//   leitura — só lê (e também não lê rh_*)
+//   direcao — tudo, inclusive coleções rh_* e fin_*, config e contas
+//   equipe  — lê e edita o operacional; NÃO lê rh_* nem fin_* (a régua vale na
+//             porta de dados, não só na tela — folha de pagamento já vazou na
+//             Impresilk por porta larga com tela estreita)
+//   leitura — só lê (e também não lê rh_* nem fin_*)
 //
 // Regras herdadas (cada uma custou horas na Impresilk):
 //  - lápide (apagado=true), nunca DELETE
@@ -185,8 +185,11 @@ async function contaSegueAtiva(usuario: string): Promise<boolean> {
   }
 }
 
-// Coleções do RH: a régua vale AQUI, na porta — não só no menu da tela.
-const ehColecaoRH = (c: string) => c.startsWith("rh_");
+/* Coleções da DIREÇÃO: a régua vale AQUI, na porta — não só no menu da tela.
+   RH (folha, ficha, ponto) e FINANCEIRO (vendas, títulos, impostos) têm a
+   mesma natureza: tela estreita com porta larga já vazou folha de pagamento
+   na Impresilk. Quem esconde de verdade é o servidor. */
+const ehColecaoRH = (c: string) => c.startsWith("rh_") || c.startsWith("fin_");
 
 // O freio ATÔMICO do login (função SQL ml_freio): consome a ficha na mesma
 // operação que confere a janela. >8 tentativas em 15 min = espera.
@@ -297,7 +300,7 @@ Deno.serve(async (req) => {
         const colecao = String(body.colecao ?? "");
         if (!colecao) return resp({ erro: "Informe a coleção." }, 400);
         if (ehColecaoRH(colecao) && !ehDirecao) {
-          return resp({ erro: "As informações do RH são só da direção.", semPermissao: true }, 403);
+          return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const desde = String(body.desde ?? "") || "1970-01-01";
         // Cursor COMPOSTO (atualizado_em, id): só o timestamp deixava sumir,
@@ -324,7 +327,7 @@ Deno.serve(async (req) => {
       case "get": {
         const colecao = String(body.colecao ?? "");
         if (ehColecaoRH(colecao) && !ehDirecao) {
-          return resp({ erro: "As informações do RH são só da direção.", semPermissao: true }, 403);
+          return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const { data } = await sb
           .from(T_REG)
@@ -341,7 +344,7 @@ Deno.serve(async (req) => {
         const registro = body.registro as Record<string, unknown>;
         if (!colecao || !registro?.id) return resp({ erro: "colecao e registro.id obrigatórios." }, 400);
         if (ehColecaoRH(colecao) && !ehDirecao) {
-          return resp({ erro: "As informações do RH são só da direção.", semPermissao: true }, 403);
+          return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         // Carimbo no ato: quem gravou e quando ficam NO registro, decididos
         // aqui — dedução depois já produziu 118 falsos positivos na Impresilk.
@@ -363,7 +366,7 @@ Deno.serve(async (req) => {
         const colecao = String(body.colecao ?? "");
         const id = String(body.id ?? "");
         if (ehColecaoRH(colecao) && !ehDirecao) {
-          return resp({ erro: "As informações do RH são só da direção.", semPermissao: true }, 403);
+          return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const agora = new Date().toISOString();
         // Lápide, nunca DELETE: quem estava offline precisa saber que morreu.

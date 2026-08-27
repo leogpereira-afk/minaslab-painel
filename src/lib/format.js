@@ -52,10 +52,17 @@ export function dataLonga(iso) {
   return `${d}/${m}/${a}`;
 }
 
-// Le um valor digitado por gente e devolve numero. O separador decimal e
-// decidido pelo ULTIMO sinal: "1.500,50" e "1500.50" valem 1500,5; "1.500" e
-// "85.000" sao milhar. Sem isso, todo ponto virava milhar e 1500.5 virava
-// 15005 — foi o que corrompeu valores de licitacao na Impresilk.
+/* Le um valor digitado por gente e devolve numero.
+   Duas reguas, porque os dois sinais nao sao ambiguos do mesmo jeito:
+
+   VIRGULA em pt-BR e SEMPRE decimal — ninguem escreve milhar com virgula aqui.
+   Foi o que quebrou no estoque do laboratorio: "0,125" (125 mL de acido) caia
+   na regra do teto de 2 casas, virava milhar e gravava uma saida de 125 L. O
+   aviso de saldo negativo ate aparecia, mas culpando a entrada, nao o numero.
+
+   PONTO e ambiguo ("1.500" = milhar; "1500.50" = decimal), e ai o teto de 2
+   casas decide — sem ele, todo ponto virava milhar e 1500.5 virava 15005, o
+   que corrompeu valores de licitacao na Impresilk. */
 export function paraNumero(v) {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   const s = String(v ?? "").trim().replace(/[^\d.,-]/g, "");
@@ -63,7 +70,9 @@ export function paraNumero(v) {
   const ultimaVirgula = s.lastIndexOf(",");
   const ultimoPonto = s.lastIndexOf(".");
   const corte = Math.max(ultimaVirgula, ultimoPonto);
-  const ehDecimal = corte > -1 && s.length - corte - 1 > 0 && s.length - corte - 1 <= 2;
+  const casas = corte > -1 ? s.length - corte - 1 : 0;
+  const ehDecimal =
+    corte > -1 && casas > 0 && (corte === ultimaVirgula || casas <= 2);
   const limpo = ehDecimal
     ? s.slice(0, corte).replace(/[.,]/g, "") + "." + s.slice(corte + 1)
     : s.replace(/[.,]/g, "");

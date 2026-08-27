@@ -10,13 +10,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Pencil, Trash2, Gavel, CalendarClock, Trophy, Percent,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Download,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import {
   dataCurta, diasEntre, ymdLocal, diaLocalISO, moeda, paraNumero,
 } from "../lib/format.js";
+import { baixarPlanilha } from "../lib/planilha.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
 } from "../components/ui.jsx";
@@ -65,6 +66,38 @@ function prazoSessao(dias) {
 
 const chipDesfecho = (status) =>
   status === "ganha" ? "chip-ok" : status === "perdida" ? "chip-bad" : "chip";
+
+// Colunas da planilha: a ordem aqui é a ordem no arquivo. Os dois valores vão
+// como NÚMERO (tipo "dinheiro") — coluna de "R$ 79.500,00" em texto não soma,
+// e somar é a primeira coisa que se faz com o arquivo baixado.
+const COLUNAS_PLANILHA = [
+  { chave: "orgao", rotulo: "Órgão" },
+  { chave: "edital", rotulo: "Edital" },
+  { chave: "modalidade", rotulo: "Modalidade" },
+  { chave: "objeto", rotulo: "Objeto" },
+  { chave: "portal", rotulo: "Portal" },
+  { chave: "dataSessao", rotulo: "Data da sessão", tipo: "data" },
+  { chave: "valorEstimado", rotulo: "Valor estimado", tipo: "dinheiro" },
+  { chave: "valorProposta", rotulo: "Valor da proposta", tipo: "dinheiro" },
+  { chave: "situacao", rotulo: "Situação" },
+  { chave: "resultado", rotulo: "Resultado" },
+];
+
+// A linha vai para a planilha com os rótulos já resolvidos: quem abre o
+// arquivo lê "Pregão eletrônico", não "pregao". Os campos que a tela calcula
+// (dias, pz) ficam de fora — são conta do render, não dado.
+const paraPlanilha = (l) => ({
+  orgao: l.orgao,
+  edital: l.edital,
+  modalidade: MODALIDADES[l.modalidade] || MODALIDADES.outra,
+  objeto: l.objeto,
+  portal: l.portal,
+  dataSessao: l.dataSessao,
+  valorEstimado: l.valorEstimado,
+  valorProposta: l.valorProposta,
+  situacao: STATUS_ROTULOS[l.status] || l.status,
+  resultado: l.resultado,
+});
 
 function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
   return (
@@ -473,6 +506,34 @@ export default function Licitacoes() {
       ? vm.andamento.filter((l) => l.dias !== null && l.dias >= 0 && l.dias <= 7)
       : vm.andamento;
 
+  // A planilha leva EXATAMENTE o que está na tela: o recorte de sessão em 7
+  // dias vale, e as encerradas só entram se estiverem abertas. Se exportasse
+  // tudo, o total do arquivo divergiria do total dos cartões e a conversa
+  // passaria a ser sobre qual dos dois números está certo.
+  const baixar = () => {
+    const visiveis = [...andamentoVisiveis, ...(verEncerradas ? vm.encerradas : [])];
+    if (visiveis.length === 0) {
+      setAviso({ tipo: "erro", texto: "Não há nada neste recorte para baixar." });
+      return;
+    }
+    try {
+      const arquivo = baixarPlanilha({
+        nome: "licitacoes",
+        titulo: `Licitações — ${recorte === "sessao7" ? "sessão em 7 dias" : "em andamento"}${
+          verEncerradas ? " e encerradas" : ""
+        }`,
+        colunas: COLUNAS_PLANILHA,
+        linhas: visiveis.map(paraPlanilha),
+      });
+      setAviso({
+        tipo: "ok",
+        texto: `Planilha baixada: ${arquivo} (${visiveis.length} ${visiveis.length === 1 ? "linha" : "linhas"}).`,
+      });
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: `Não consegui gerar a planilha: ${e.message}` });
+    }
+  };
+
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
@@ -480,11 +541,17 @@ export default function Licitacoes() {
         titulo="Licitações"
         descricao="Do estudo do edital ao desfecho — a tela abre pela sessão mais próxima."
         acao={
-          editavel && (
-            <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Nova licitação
+          /* Baixar não é escrita: quem só consulta também precisa da planilha. */
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-outline" onClick={baixar}>
+              <Download size={16} strokeWidth={2.5} /> Baixar planilha
             </button>
-          )
+            {editavel && (
+              <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
+                <Plus size={16} strokeWidth={2.5} /> Nova licitação
+              </button>
+            )}
+          </div>
         }
       />
 

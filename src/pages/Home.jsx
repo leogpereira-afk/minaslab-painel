@@ -1,14 +1,17 @@
-// Início — o resumo do dia da MinasLab: quem está na rua, o que está marcado
-// para hoje e o que vence na semana. A tela é só leitura de propósito: quem
-// quer mexer clica no "Ver tudo" e resolve no módulo, onde moram as regras.
+// Início — o resumo do dia da MinasLab: o que está marcado para hoje, o que
+// vence na semana e o que está para chegar. A tela é só leitura de propósito:
+// quem quer mexer clica no "Ver tudo" e resolve no módulo, onde moram as regras.
 //
-// As coleções carregam com Promise.allSettled: se uma porta falhar (equipe não
-// abre rh_*, rede caiu no meio), as outras aparecem mesmo assim — um resumo
-// que some inteiro porque UM módulo falhou não resume nada.
+// O módulo "Coletas de campo" saiu do painel em 27/08/2026 (decisão do Léo).
+// A coleção "coletas" NÃO foi apagada do banco — só sumiu da interface.
+//
+// As coleções carregam com Promise.allSettled: se uma porta falhar (rede caiu
+// no meio, o servidor recusou uma delas), as outras aparecem mesmo assim — um
+// resumo que some inteiro porque UM módulo falhou não resume nada.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarCheck, Truck, Gavel, Wrench, Car, Users } from "lucide-react";
+import { CalendarCheck, Gavel, Wrench, ShoppingCart } from "lucide-react";
 import { listar } from "../services/dados.js";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import { proximasPorAlvo } from "../lib/manutencaoRegra.js";
@@ -18,10 +21,9 @@ import {
 
 const COLECOES = [
   { nome: "compromissos", rotulo: "Compromissos" },
-  { nome: "coletas", rotulo: "Coletas" },
   { nome: "licitacoes", rotulo: "Licitações" },
   { nome: "manutencoes", rotulo: "Manutenções" },
-  { nome: "carros", rotulo: "Carros" },
+  { nome: "compras", rotulo: "Compras" },
 ];
 
 // Sessão de licitação só interessa enquanto a disputa está viva.
@@ -46,29 +48,25 @@ function CardModulo({ titulo, para, children }) {
   );
 }
 
-function LinhaColeta({ c }) {
-  const equipe = (c.equipeNomes || []).filter(Boolean).join(", ");
+// A compra que já foi comprada e ainda não chegou: o que é, de quem, e desde
+// quando espera. Ausência vira palavra — "sem registro", nunca espaço em branco.
+function LinhaCompra({ c }) {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border p-3"
+      className="flex items-center gap-3 rounded-xl border p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
-      <span className="shrink-0 font-display text-sm font-semibold tabular-nums text-slate-900">
-        {c.hora || <span className="text-xs font-normal text-slate-500">sem hora</span>}
-      </span>
-      {c.os && <span className="chip-brand shrink-0">O.S. {c.os}</span>}
-      <span className="min-w-0 flex-1 basis-40">
+      <ShoppingCart size={16} strokeWidth={2.2} className="shrink-0 text-brand-600" />
+      <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-slate-900">
-          {c.cliente || "sem cliente informado"}
+          {c.item || "item sem registro"}
         </span>
-        <span className="flex items-center gap-1 truncate text-xs text-slate-500">
-          <Users size={12} className="shrink-0" />
-          {equipe || "sem equipe definida"}
+        <span className="block truncate text-xs text-slate-500">
+          {c.fornecedor || "fornecedor sem registro"}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
-        <Car size={14} className="shrink-0" />
-        {c.carroNome}
+      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-slate-500">
+        {c.data ? `pedida ${dataCurta(c.data)}` : "sem data"}
       </span>
     </div>
   );
@@ -169,8 +167,7 @@ export default function Home() {
 
   const vm = useMemo(() => {
     if (!dados) return null;
-    const { compromissos, coletas, licitacoes, manutencoes, carros } = dados;
-    const carroPorId = new Map((carros || []).map((c) => [c.id, c]));
+    const { compromissos, licitacoes, manutencoes, compras } = dados;
 
     let comps = null;
     if (compromissos) {
@@ -183,22 +180,19 @@ export default function Home() {
       };
     }
 
-    let cols = null;
-    if (coletas) {
-      const agendadas = coletas.filter((c) => c.status === "agendada");
-      cols = {
-        deHoje: agendadas
-          .filter((c) => c.data && diasEntre(hojeISO, c.data) === 0)
-          .sort((a, b) => horaDe(a).localeCompare(horaDe(b)))
-          .map((c) => ({
-            ...c,
-            carroNome: !c.carroId
-              ? "sem carro definido"
-              : carros === null
-                ? "carro não carregado"
-                : carroPorId.get(c.carroId)?.nome || "carro não encontrado",
-          })),
-        totalAgendadas: agendadas.length,
+    // Comprada = paga/pedida e ainda não recebida. A mais antiga primeiro: é a
+    // que espera há mais tempo, e é dela que o fornecedor precisa ser cobrado.
+    let cprs = null;
+    if (compras) {
+      cprs = {
+        aReceber: compras
+          .filter((c) => c.status === "comprada")
+          .sort(
+            (a, b) =>
+              String(a.data || "9999").localeCompare(String(b.data || "9999")) ||
+              String(a.criadoEm || "").localeCompare(String(b.criadoEm || ""))
+          ),
+        cotando: compras.filter((c) => c.status === "cotando").length,
       };
     }
 
@@ -233,13 +227,13 @@ export default function Home() {
       };
     }
 
-    return { comps, cols, lics, mans };
+    return { comps, cprs, lics, mans };
   }, [dados, hojeISO]);
 
   if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
-  const { comps, cols, lics, mans } = vm;
+  const { comps, cprs, lics, mans } = vm;
   const dataExtensa = new Date(hojeISO + "T00:00:00").toLocaleDateString("pt-BR", {
     weekday: "long",
     day: "numeric",
@@ -267,17 +261,6 @@ export default function Home() {
           icone={CalendarCheck}
         />
         <StatCard
-          rotulo="Coletas hoje"
-          valor={cols ? String(cols.deHoje.length) : "—"}
-          sub={
-            !cols
-              ? "sem dados agora"
-              : `${cols.totalAgendadas} ${cols.totalAgendadas === 1 ? "agendada" : "agendadas"} no total`
-          }
-          tom={cols && cols.deHoje.length > 0 ? "brand" : "neutral"}
-          icone={Truck}
-        />
-        <StatCard
           rotulo="Sessões em 7 dias"
           valor={lics ? String(lics.sessoes.length) : "—"}
           sub={
@@ -297,25 +280,16 @@ export default function Home() {
           tom={mans && mans.qtd > 0 ? "warn" : "neutral"}
           icone={Wrench}
         />
+        <StatCard
+          rotulo="Compras para receber"
+          valor={cprs ? String(cprs.aReceber.length) : "—"}
+          sub={!cprs ? "sem dados agora" : `${cprs.cotando} em cotação`}
+          tom={cprs && cprs.aReceber.length > 0 ? "warn" : "neutral"}
+          icone={ShoppingCart}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="lg:col-span-2">
-          <CardModulo titulo="Hoje na rua" para="/coletas">
-            {!cols ? (
-              <Empty>O módulo de coletas não respondeu agora.</Empty>
-            ) : cols.deHoje.length === 0 ? (
-              <Empty>Nenhuma coleta marcada para hoje.</Empty>
-            ) : (
-              <div className="space-y-2">
-                {cols.deHoje.map((c) => (
-                  <LinhaColeta key={c.id} c={c} />
-                ))}
-              </div>
-            )}
-          </CardModulo>
-        </div>
-
         <CardModulo titulo="Compromissos de hoje" para="/compromissos">
           {!comps ? (
             <Empty>O módulo de compromissos não respondeu agora.</Empty>
@@ -343,6 +317,22 @@ export default function Home() {
             </div>
           )}
         </CardModulo>
+
+        <div className="lg:col-span-2">
+          <CardModulo titulo="Compras a receber" para="/compras">
+            {!cprs ? (
+              <Empty>O módulo de compras não respondeu agora.</Empty>
+            ) : cprs.aReceber.length === 0 ? (
+              <Empty>Nenhuma compra esperando chegar.</Empty>
+            ) : (
+              <div className="space-y-2">
+                {cprs.aReceber.map((c) => (
+                  <LinhaCompra key={c.id} c={c} />
+                ))}
+              </div>
+            )}
+          </CardModulo>
+        </div>
       </div>
     </div>
   );

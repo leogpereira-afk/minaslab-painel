@@ -15,6 +15,20 @@ test("paraNumero: o ultimo sinal decide o decimal", () => {
   assert.equal(paraNumero(1500.5), 1500.5);
 });
 
+/* O caso do laboratorio (achado da revisao de 27/08/2026): quantidade em
+   fracao. Virgula em pt-BR e SEMPRE decimal — a regra do teto de 2 casas so
+   vale para o ponto, que e o sinal ambiguo. Antes, "0,125" virava 125 e uma
+   retirada de 125 mL zerava um estoque de litros. */
+test("paraNumero: virgula e sempre decimal, mesmo com 3 casas", () => {
+  assert.equal(paraNumero("0,125"), 0.125);
+  assert.equal(paraNumero("1,250"), 1.25);
+  assert.equal(paraNumero("12,500"), 12.5);
+  assert.equal(paraNumero("1.500,125"), 1500.125);
+  // E o ponto continua ambiguo, resolvido pelo teto de 2 casas:
+  assert.equal(paraNumero("1.500"), 1500);
+  assert.equal(paraNumero("0.125"), 125); // sem virgula, 3 casas = milhar
+});
+
 test("diasEntre conta dias de calendario, nunca instantes", () => {
   assert.equal(diasEntre("2026-08-27", "2026-08-27"), 0);
   assert.equal(diasEntre("2026-08-27", "2026-08-28"), 1);
