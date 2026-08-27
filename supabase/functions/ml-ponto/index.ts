@@ -108,22 +108,34 @@ async function tokenJibble(): Promise<string> {
   if (guardado?.token && typeof guardado.ate === "number" && guardado.ate > Date.now() + 60_000) {
     return guardado.token;
   }
-  const corpo = new URLSearchParams({
-    grant_type: "client_credentials",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
-  });
-  const r = await fetch(IDENTITY, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: corpo.toString(),
-  });
-  const dados = await r.json().catch(() => ({} as Record<string, unknown>));
-  if (!r.ok || !dados.access_token) {
+  /* DUAS FORMAS DE APRESENTAR A CREDENCIAL, nesta ordem. O padrão OAuth aceita
+     as duas e servidores diferentes preferem uma: no corpo do pedido
+     (client_secret_post) ou no cabeçalho Basic (client_secret_basic). Como as
+     duas devolvem o MESMO "invalid_client" quando falham, tentar só uma deixa
+     a dúvida entre "segredo errado" e "forma errada" — e a dúvida custou uma
+     ida e volta com o usuário. */
+  const tentar = async (comBasic: boolean) => {
+    const corpo = new URLSearchParams({ grant_type: "client_credentials" });
+    const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
+    if (comBasic) {
+      headers.Authorization = "Basic " + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+    } else {
+      corpo.set("client_id", CLIENT_ID);
+      corpo.set("client_secret", CLIENT_SECRET);
+    }
+    const r = await fetch(IDENTITY, { method: "POST", headers, body: corpo.toString() });
+    const dados = await r.json().catch(() => ({} as Record<string, unknown>));
+    return { ok: r.ok && !!dados.access_token, dados, status: r.status };
+  };
+
+  let tentativa = await tentar(false);
+  if (!tentativa.ok) tentativa = await tentar(true);
+  const { ok, dados, status } = tentativa;
+  if (!ok) {
     /* A mensagem do Jibble volta como error/error_description e NÃO carrega o
        segredo — mas o corpo inteiro poderia. Repassamos só o essencial. */
-    const erro = String(dados.error_description ?? dados.error ?? r.status);
-    throw new Error("Jibble · autenticação: " + erro);
+    const erro = String(dados.error_description ?? dados.error ?? status);
+    throw new Error("Jibble · autenticação: " + erro + " (tentado no corpo e em Basic)");
   }
   const validade = Number(dados.expires_in) || 3600;
   await gravarMeta("jibble:token", {
@@ -336,6 +348,13 @@ Deno.serve(async (req) => {
               segredoTamanho: CLIENT_SECRET.length,
               segredoTemEspacos: CLIENT_SECRET !== CLIENT_SECRET.trim(),
               segredoTemQuebraDeLinha: /[\r\n]/.test(CLIENT_SECRET),
+              /* As pontas do segredo — 3 caracteres de cada lado, e só quando a
+                 autenticação JÁ falhou. É o que distingue "colei o pedaço que
+                 aparecia na tela" de "colei o valor inteiro": se o fim bate com
+                 onde o campo estava cortado, o segredo veio truncado. Três
+                 caracteres de 46 não abrem porta nenhuma. */
+              segredoComeca: CLIENT_SECRET.slice(0, 3),
+              segredoTermina: CLIENT_SECRET.slice(-3),
             },
             fontes,
           });
