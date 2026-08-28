@@ -512,6 +512,203 @@ Deno.serve(async (req) => {
         });
       }
 
+      /* SINCRONIZAR — o botão único do topo da tela: "Puxar do relógio".
+         Faz, numa chamada só, o que antes eram três passos manuais:
+           1) traz as pessoas do relógio e CRIA no RH a ficha de quem não tem;
+           2) o vínculo nasce pronto (a ficha já guarda o jibbleId) — não existe
+              mais tela de "vincular", que era o passo que ninguém completava:
+              numa casa com o RH vazio, o seletor de ficha aparecia sem opção
+              nenhuma e a pessoa ficava sem saber o que fazer;
+           3) importa o resumo diário do período e CARIMBA o pessoaId nos dias,
+              inclusive nos que já estavam importados sem vínculo.
+         Continua valendo o que não se automatiza: ficha que já existe não é
+         sobrescrita (o RH sabe mais que o relógio), e ninguém é DESLIGADO por
+         estar removido no relógio — isso vira aviso, porque desligar tem data
+         e verbas. */
+      case "sincronizar": {
+        const de = String(body.de ?? "");
+        const ate = String(body.ate ?? "");
+        if (!de || !ate) return resp({ erro: "Informe o período (de, ate)." }, 400);
+
+        // ---- 1. as pessoas do relógio
+        const rp = await jibble(`${HOST_WORKSPACE}/People?$top=200&$count=true`);
+        const doRelogio = ((rp.value ?? []) as Record<string, any>[]).map((p) => {
+          const removido = !!p.removedAt || String(p.status ?? "") === "Removed";
+          return {
+            jibbleId: String(p.id ?? ""),
+            nome: String(p.fullName ?? p.name ?? "").trim(),
+            apelido: String(p.preferredName ?? "").trim(),
+            email: String(p.email ?? "").trim(),
+            telefone: String(p.phoneNumber ?? "").trim(),
+            matricula: String(p.code ?? "").trim(),
+            entrouNoRelogio: String(p.joinDate ?? p.workStartDate ?? "").slice(0, 10),
+            removidoEm: String(p.removedAt ?? "").slice(0, 10),
+            ativoNoRelogio: !removido,
+          };
+        }).filter((p) => p.jibbleId && p.nome);
+
+        // ---- 2. as fichas que já existem (casadas por jibbleId, NUNCA por nome)
+        const { data: fichasBrutas } = await sb.from(T_REG)
+          .select("id, registro").eq("colecao", "rh_pessoas").eq("apagado", false);
+        const fichaPorJibble = new Map<string, Record<string, any>>();
+        for (const l of fichasBrutas ?? []) {
+          const f = l.registro as Record<string, any>;
+          if (f?.jibbleId) fichaPorJibble.set(String(f.jibbleId), f);
+        }
+
+        const agora = new Date().toISOString();
+        const novas: Record<string, unknown>[] = [];
+        const completadas: Record<string, unknown>[] = [];
+        const divergencias: Record<string, unknown>[] = [];
+
+        for (const p of doRelogio) {
+          const ficha = fichaPorJibble.get(p.jibbleId);
+          if (!ficha) {
+            novas.push({
+              id: `pes_${p.jibbleId}`,
+              nome: p.nome,
+              apelido: p.apelido,
+              email: p.email,
+              telefone: p.telefone,
+              matricula: p.matricula,
+              jibbleId: p.jibbleId,
+              /* A ADMISSÃO É SUGESTÃO, e o campo ao lado diz isso. joinDate é o
+                 dia em que a pessoa entrou NO RELÓGIO, não na empresa: quem
+                 trabalhava antes de o Jibble existir tem admissão anterior, e
+                 admissão errada estraga férias, experiência e 13º. */
+              admissao: p.entrouNoRelogio,
+              admissaoConferida: false,
+              ativo: p.ativoNoRelogio,
+              desligadoEm: p.ativoNoRelogio ? "" : p.removidoEm,
+              origem: "jibble",
+              criadoEm: agora,
+            });
+            continue;
+          }
+          // Ficha existente: só preenche o que está VAZIO. A ficha do RH tem
+          // mais informação que o relógio e é a verdade.
+          const faltando: Record<string, unknown> = {};
+          if (!ficha.jibbleId) faltando.jibbleId = p.jibbleId;
+          if (!ficha.email && p.email) faltando.email = p.email;
+          if (!ficha.telefone && p.telefone) faltando.telefone = p.telefone;
+          if (!ficha.matricula && p.matricula) faltando.matricula = p.matricula;
+          if (!ficha.apelido && p.apelido) faltando.apelido = p.apelido;
+          if (Object.keys(faltando).length) completadas.push({ ...ficha, ...faltando });
+          // Situação divergente é AVISO, nunca correção automática.
+          if ((ficha.ativo !== false) !== p.ativoNoRelogio) {
+            /* O jibbleId VAI JUNTO, e é ele a chave de quem lê. Sem
+               identificador, duas "Maria Silva" na mesma situação viravam UMA
+               linha na tela (a dedução por nome funde), o RH resolvia uma,
+               achava que acabou, e a segunda seguia ativa na folha. Homonímia
+               em folha de pagamento é comum, e a fusão é silenciosa. */
+            divergencias.push({
+              jibbleId: p.jibbleId,
+              pessoaId: ficha.id ?? "",
+              nome: ficha.nome ?? p.nome,
+              noRelogio: p.ativoNoRelogio ? "ativa" : "removida",
+              naFicha: ficha.ativo !== false ? "ativa" : "desligada",
+            });
+          }
+        }
+
+        const fichasCriadas = await gravarVarios("rh_pessoas", novas);
+        const fichasCompletadas = await gravarVarios("rh_pessoas", completadas);
+
+        // ---- 3. o resumo diário do período (uma janela por chamada)
+        const skip = Math.max(0, numero(body.skip));
+        const tamanho = 10;
+        const ru = `${HOST_ATTENDANCE}/TimesheetsSummary` +
+          `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
+        const rr = await jibble(ru);
+        const pessoasResumo = (rr.value ?? []) as Record<string, any>[];
+
+        // O de-para completo depois das criações: é ele que carimba o vínculo.
+        const idFichaPorJibble = new Map<string, string>();
+        for (const [j, f] of fichaPorJibble) idFichaPorJibble.set(j, String(f.id));
+        for (const n of novas) idFichaPorJibble.set(String(n.jibbleId), String(n.id));
+
+        const linhas: Record<string, any>[] = [];
+        for (const pr of pessoasResumo) {
+          const jibbleId = String(pr.personId ?? "");
+          if (!jibbleId) continue;
+          for (const d of (pr.daily ?? []) as Record<string, any>[]) {
+            const dia = String(d.date ?? "").slice(0, 10);
+            if (!dia || dia < de || dia > ate) continue;
+            const trabalhado = duracaoISO(d.payrollHours);
+            const tracked = duracaoISO(d.tracked);
+            if (!d.firstIn && !tracked) continue;
+            linhas.push({
+              id: `pd_${jibbleId}_${dia}`,
+              jibbleId,
+              pessoaId: idFichaPorJibble.get(jibbleId) ?? "",
+              pessoaNome: String(pr.person?.fullName ?? ""),
+              data: dia,
+              entrada: horaLocal(d.firstIn),
+              saida: horaLocal(d.lastOut),
+              pausaMin: duracaoISO(d.unpaidBreak) ?? 0,
+              pausaPagaMin: duracaoISO(d.paidBreak) ?? 0,
+              trabalhadoMin: trabalhado,
+              trackedMin: tracked,
+              extraMin: duracaoISO(d.dailyOvertime) ?? 0,
+              extraDobroMin:
+                (duracaoISO(d.dailyDoubleOvertime) ?? 0) +
+                (duracaoISO(d.restDayOvertime) ?? 0) +
+                (duracaoISO(d.publicHolidayOvertime) ?? 0),
+              emAberto: !!d.firstIn && !d.lastOut,
+              origem: "jibble",
+              corrigido: false,
+            });
+          }
+        }
+
+        const jaGravados = await diasJaGravados(linhas.map((l) => String(l.id)));
+        const dias: Record<string, any>[] = [];
+        let preservados = 0;
+        for (const l of linhas) {
+          const antigo = jaGravados.get(String(l.id));
+          if (antigo?.corrigido === true) { preservados++; continue; }
+          dias.push(l);
+        }
+        const diasGravados = await gravarVarios("rh_ponto_dia", dias);
+
+        /* ---- 4. carimba o vínculo nos dias que JÁ estavam importados sem ele.
+           Sem este passo, os 120 dias trazidos antes de existirem as fichas
+           continuariam como "pessoa não vinculada" para sempre — e a tela
+           mostraria identificador no lugar de gente. */
+        let vinculados = 0;
+        if (idFichaPorJibble.size) {
+          const { data: semVinculo } = await sb.from(T_REG)
+            .select("id, registro").eq("colecao", "rh_ponto_dia").eq("apagado", false)
+            .limit(2000);
+          const ajustar = (semVinculo ?? [])
+            .map((l) => l.registro as Record<string, any>)
+            .filter((r) => !r.pessoaId && r.jibbleId && idFichaPorJibble.has(String(r.jibbleId)))
+            .map((r) => ({ ...r, pessoaId: idFichaPorJibble.get(String(r.jibbleId)) }));
+          vinculados = await gravarVarios("rh_ponto_dia", ajustar);
+        }
+
+        const proximaSkip = pessoasResumo.length === tamanho ? skip + tamanho : null;
+        await gravarMeta("jibble:ultimaImportacao", {
+          em: agora, por: String(cracha?.sub ?? "maquina"), de, ate,
+          fichasCriadas, diasGravados, vinculados,
+        });
+
+        return resp({
+          ok: true,
+          pessoasNoRelogio: doRelogio.length,
+          ativas: doRelogio.filter((p) => p.ativoNoRelogio).length,
+          removidas: doRelogio.filter((p) => !p.ativoNoRelogio).length,
+          fichasCriadas,
+          fichasCompletadas,
+          diasGravados,
+          preservados,
+          vinculados,
+          divergencias,
+          skip,
+          proximaSkip,
+        });
+      }
+
       case "carimbarImportacao": {
         await gravarMeta("jibble:ultimaImportacao", {
           em: new Date().toISOString(),
