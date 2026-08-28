@@ -73,3 +73,37 @@ export const contaAtiva = (usuario, ativo) => chamar("contaAtiva", { usuario, at
 // A propria pessoa troca a propria senha (qualquer papel).
 export const trocarMinhaSenha = (senhaAtual, senhaNova) =>
   chamar("trocarSenha", { senhaAtual, senhaNova });
+
+// -----------------------------------------------------------------------------
+// Financeiro — Recebimentos
+// -----------------------------------------------------------------------------
+
+export const recebimentosListar = (empresaId = "") =>
+  chamar("finRecebimentosListar", {
+    empresaId,
+    limite: 500,
+  }).then((r) => r.recebimentos || []);
+
+export const recebimentoSalvar = async (registro) => {
+  const r = await chamar("finRecebimentoSalvar", { registro });
+
+  if (!r?.recebimento?.id) {
+    throw new Error(
+      "O servidor não confirmou a gravação do recebimento. Recarregue e confira."
+    );
+  }
+
+  return r.recebimento;
+};
+
+export const recebimentoExcluir = async (id) => {
+  const r = await chamar("finRecebimentoExcluir", { id });
+
+  if (!r?.ok) {
+    throw new Error(
+      "O servidor não confirmou a exclusão do recebimento."
+    );
+  }
+
+  return true;
+};
