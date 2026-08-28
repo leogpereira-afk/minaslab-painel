@@ -20,6 +20,7 @@ const Manutencoes = lazy(() => import("./pages/Manutencoes.jsx"));
 const Laboratorio = lazy(() => import("./pages/Laboratorio.jsx"));
 const RH = lazy(() => import("./pages/RH.jsx"));
 const Financas = lazy(() => import("./pages/Financas.jsx"));
+const Recebimentos = lazy(() => import("./pages/Recebimentos.jsx"));
 const Acessos = lazy(() => import("./pages/Acessos.jsx"));
 
 // Porta da rota: sem sessao vai para o login; sem papel para o modulo, volta
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/laboratorio" element={<Laboratorio />} />
             <Route path="/rh" element={<Guarda modulo="rh"><RH /></Guarda>} />
             <Route path="/financas" element={<Guarda modulo="financas"><Financas /></Guarda>} />
+            <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>}/>
             <Route path="/acessos" element={<Guarda modulo="acessos"><Acessos /></Guarda>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
