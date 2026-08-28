@@ -378,6 +378,333 @@ Deno.serve(async (req) => {
         return resp({ ok: true });
       }
 
+      // ================================================================
+      // FINANCEIRO — RECEBIMENTOS
+      // MinasLab + M Lab.
+      // Somente a direção acessa.
+      // Exclusão sempre lógica.
+      // Registros OMIE não podem ser alterados/excluídos manualmente.
+      // ================================================================
+
+      case "finRecebimentosListar": {
+        if (!ehDirecao) {
+          return resp(
+            {
+              erro: "As informações financeiras são somente da direção.",
+              semPermissao: true,
+            },
+            403,
+          );
+        }
+
+        const empresaId = String(body.empresaId ?? "").trim();
+
+        const limite = Math.min(
+          Math.max(Number(body.limite ?? 100), 1),
+          500,
+        );
+
+        let q = sb
+          .from("recebimentos")
+          .select(`
+            *,
+            empresa:empresas(id, nome),
+            categoria:categorias_financeiras(id, nome),
+            conta_bancaria:contas_bancarias(id, nome)
+          `)
+          .eq("apagado", false)
+          .order("data_vencimento", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(limite);
+
+        if (empresaId) {
+          q = q.eq("empresa_id", empresaId);
+        }
+
+        const { data, error } = await q;
+
+        if (error) throw error;
+
+        return resp({
+          recebimentos: data ?? [],
+        });
+      }
+
+      case "finRecebimentoSalvar": {
+        if (!ehDirecao) {
+          return resp(
+            {
+              erro: "Somente a direção pode alterar recebimentos.",
+              semPermissao: true,
+            },
+            403,
+          );
+        }
+
+        const registro =
+          (body.registro ?? {}) as Record<string, unknown>;
+
+        const id = String(registro.id ?? "").trim();
+        const empresaId = String(registro.empresa_id ?? "").trim();
+        const cliente = String(registro.cliente ?? "").trim();
+
+        if (!empresaId) {
+          return resp({ erro: "Informe a empresa." }, 400);
+        }
+
+        if (!cliente) {
+          return resp({ erro: "Informe o cliente." }, 400);
+        }
+
+        const valorPrevisto = Number(registro.valor_previsto ?? 0);
+        const valorRecebido = Number(registro.valor_recebido ?? 0);
+
+        if (
+          !Number.isFinite(valorPrevisto) ||
+          !Number.isFinite(valorRecebido)
+        ) {
+          return resp({ erro: "Valor financeiro inválido." }, 400);
+        }
+
+        if (valorPrevisto < 0 || valorRecebido < 0) {
+          return resp(
+            { erro: "Os valores não podem ser negativos." },
+            400,
+          );
+        }
+
+        if (valorRecebido > valorPrevisto) {
+          return resp(
+            {
+              erro: "O valor recebido não pode ser maior que o valor previsto.",
+            },
+            400,
+          );
+        }
+
+        const agora = new Date().toISOString();
+
+        // ------------------------------------------------------------
+        // EDIÇÃO
+        // ------------------------------------------------------------
+
+        if (id) {
+          const { data: atual, error: erroAtual } = await sb
+            .from("recebimentos")
+            .select("id, origem, apagado")
+            .eq("id", id)
+            .maybeSingle();
+
+          if (erroAtual) throw erroAtual;
+
+          if (!atual || atual.apagado) {
+            return resp(
+              { erro: "Recebimento não encontrado." },
+              404,
+            );
+          }
+
+          // Título controlado pela Omie não deve ser alterado manualmente.
+          if (String(atual.origem ?? "").toUpperCase() === "OMIE") {
+            return resp(
+              {
+                erro:
+                  "Este recebimento é controlado pela Omie e não pode ser alterado manualmente.",
+              },
+              409,
+            );
+          }
+
+          const dadosAtualizacao: Record<string, unknown> = {
+            empresa_id: empresaId,
+            cliente,
+            cnpj_cpf: registro.cnpj_cpf || null,
+            descricao: registro.descricao || null,
+
+            valor_previsto: valorPrevisto,
+            valor_recebido: valorRecebido,
+            valor_pendente: Math.max(
+              valorPrevisto - valorRecebido,
+              0,
+            ),
+
+            data_vencimento: registro.data_vencimento || null,
+            data_pagamento: registro.data_pagamento || null,
+
+            status: registro.status || "A RECEBER",
+
+            categoria_id: registro.categoria_id || null,
+            conta_bancaria_id: registro.conta_bancaria_id || null,
+
+            numero_nf: registro.numero_nf || null,
+            observacao: registro.observacao || null,
+
+            updated_by: usuario || "maquina",
+            updated_at: agora,
+          };
+
+          const { data, error } = await sb
+            .from("recebimentos")
+            .update(dadosAtualizacao)
+            .eq("id", id)
+            .eq("apagado", false)
+            .select("*")
+            .maybeSingle();
+
+          if (error) throw error;
+
+          if (!data) {
+            return resp(
+              { erro: "O servidor não confirmou a alteração." },
+              500,
+            );
+          }
+
+          return resp({
+            ok: true,
+            recebimento: data,
+          });
+        }
+
+        // ------------------------------------------------------------
+        // NOVO RECEBIMENTO MANUAL
+        // ------------------------------------------------------------
+
+        const dadosNovo: Record<string, unknown> = {
+          empresa_id: empresaId,
+          cliente,
+          cnpj_cpf: registro.cnpj_cpf || null,
+          descricao: registro.descricao || null,
+
+          valor_previsto: valorPrevisto,
+          valor_recebido: valorRecebido,
+          valor_pendente: Math.max(
+            valorPrevisto - valorRecebido,
+            0,
+          ),
+
+          data_vencimento: registro.data_vencimento || null,
+          data_pagamento: registro.data_pagamento || null,
+
+          status: registro.status || "A RECEBER",
+
+          categoria_id: registro.categoria_id || null,
+          conta_bancaria_id: registro.conta_bancaria_id || null,
+
+          numero_nf: registro.numero_nf || null,
+          observacao: registro.observacao || null,
+
+          origem: "MANUAL",
+
+          apagado: false,
+
+          created_by: usuario || "maquina",
+          updated_by: usuario || "maquina",
+
+          created_at: agora,
+          updated_at: agora,
+        };
+
+        const { data, error } = await sb
+          .from("recebimentos")
+          .insert(dadosNovo)
+          .select("*")
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          return resp(
+            { erro: "O servidor não confirmou a gravação." },
+            500,
+          );
+        }
+
+        return resp({
+          ok: true,
+          recebimento: data,
+        });
+      }
+
+      case "finRecebimentoExcluir": {
+        if (!ehDirecao) {
+          return resp(
+            {
+              erro: "Somente a direção pode excluir recebimentos.",
+              semPermissao: true,
+            },
+            403,
+          );
+        }
+
+        const id = String(body.id ?? "").trim();
+
+        if (!id) {
+          return resp(
+            { erro: "Informe o recebimento." },
+            400,
+          );
+        }
+
+        // Primeiro verifica o registro.
+        const { data: atual, error: erroAtual } = await sb
+          .from("recebimentos")
+          .select("id, origem, apagado")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (erroAtual) throw erroAtual;
+
+        if (!atual || atual.apagado) {
+          return resp(
+            { erro: "Recebimento não encontrado." },
+            404,
+          );
+        }
+
+        // A Omie é dona dos títulos que ela criou.
+        if (String(atual.origem ?? "").toUpperCase() === "OMIE") {
+          return resp(
+            {
+              erro:
+                "Este recebimento é controlado pela Omie e não pode ser excluído manualmente.",
+            },
+            409,
+          );
+        }
+
+        const agora = new Date().toISOString();
+
+        // Exclusão lógica — nunca DELETE físico.
+        const { data, error } = await sb
+          .from("recebimentos")
+          .update({
+            apagado: true,
+            apagado_em: agora,
+            apagado_por: usuario || "maquina",
+            updated_by: usuario || "maquina",
+            updated_at: agora,
+          })
+          .eq("id", id)
+          .eq("apagado", false)
+          .select("id")
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          return resp(
+            { erro: "O servidor não confirmou a exclusão." },
+            500,
+          );
+        }
+
+        return resp({
+          ok: true,
+          id: data.id,
+        });
+      }
+
       case "getCfg": {
         const { data } = await sb.from(T_CFG).select("config").eq("id", true).maybeSingle();
         return resp({ config: data?.config ?? null });
