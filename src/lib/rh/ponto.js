@@ -56,6 +56,12 @@
 //    de ligar o relógio, deduzir falta da ausência de linha seria inventar
 //    desconto na folha de gente que estava trabalhando. Ver TIPOS_AUSENCIA.
 //
+// 11. TOLERÂNCIA É TUDO OU NADA, NÃO FRANQUIA (28/08/2026). CLT art. 58 § 1º
+//    com a Súmula 366 do TST: variação de até 5 min por marcação, no máximo 10
+//    no dia, não é atraso nem extra; passando disso, conta-se a TOTALIDADE do
+//    tempo. Quem chega 08:12 deve 12 minutos, não 2 — abater os 10 daria um
+//    terceiro número, que não é nem o fato nem a lei. Ver atrasoDoDia.
+//
 // Sem dependência de nenhum outro arquivo do projeto, como as demais libs de
 // src/lib/rh: quem formata dinheiro na tela é lib/format.js, e esta lib só
 // devolve NÚMEROS — assim a conta escrita na tela é composta exatamente dos
@@ -556,11 +562,16 @@ export const TOLERANCIA_DIA_MIN = 10;
  *  - `atrasoEntradaMin` é o atraso CRU da entrada, COM SINAL: 7 é sete minutos
  *    depois do previsto, −7 é sete minutos antes. É o fato, sem interpretação.
  *
- *  - `atrasoMin` é o que a lei deixa contar. CLT art. 58 § 1º: variações de até
- *    5 minutos por marcação, e no máximo 10 minutos no dia, não são descontadas
- *    nem pagas como extra.
+ *  - `atrasoCobravelMin` é o que a lei deixa contar. CLT art. 58 § 1º:
+ *    variações de até 5 minutos por marcação, e no máximo 10 minutos no dia,
+ *    não são descontadas nem pagas como extra. Sai também sob o nome antigo
+ *    `atrasoMin`, que a tela já lê — mesmo número, mesma variável.
  *
- * POR QUE `atrasoMin` NÃO É `atrasoEntradaMin − 5`: a tolerância não é uma
+ *  - `pontual` é o booleano que o Leonardo pediu ("qual funcionário chega no
+ *    horário"): não há nada a cobrar neste dia. É `atrasoCobravelMin === 0`, e
+ *    NÃO `tolerado` — ver o porquê no próprio campo.
+ *
+ * POR QUE `atrasoCobravelMin` NÃO É `atrasoEntradaMin − 5`: a tolerância não é uma
  * franquia que se abate. Ou a variação cabe nos dois limites e vale ZERO, ou
  * estoura e vale INTEIRA — é a leitura firmada na Súmula 366 do TST
  * ("ultrapassado o limite, será considerada como extra a totalidade do tempo").
@@ -605,15 +616,28 @@ export function atrasoDoDia(dia, jornada) {
   // hora extra, e quem apura hora extra é o relógio.
   const atrasoBrutoMin = Math.max(0, atrasoEntradaMin) + Math.max(0, saidaAntesMin ?? 0);
 
+  const atrasoCobravelMin = tolerado ? 0 : atrasoBrutoMin;
+
   return {
     inicioPrevisto,
     fimPrevisto,
     atrasoEntradaMin,
     saidaAntesMin,
     atrasoBrutoMin,
-    atrasoMin: tolerado ? 0 : atrasoBrutoMin,
+    atrasoCobravelMin,
+    /* O MESMO número de `atrasoCobravelMin`, saído da MESMA variável: é um
+       campo com dois nomes, não dois campos que podem divergir. `atrasoMin` é o
+       nome antigo, mantido porque a tela já lê por ele; some daqui só quando
+       ela parar. Cuidado com a leitura: o atraso CRU, com sinal, é
+       `atrasoEntradaMin` — nunca este. */
+    atrasoMin: atrasoCobravelMin,
     toleradoMin: tolerado ? atrasoBrutoMin : 0,
     tolerado,
+    /* PONTUAL é "não há nada a cobrar", e NÃO é `tolerado`: quem chegou 20
+       minutos ANTES estourou a tolerância (a variação passa de 5) e mesmo assim
+       chegou no horário. Ler `tolerado` como pontualidade transformaria em
+       acusação o dia de quem madrugou. */
+    pontual: atrasoCobravelMin === 0,
     variacaoTotalMin: somaVariacoes,
   };
 }

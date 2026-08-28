@@ -126,3 +126,195 @@ textarea {
     @apply inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 font-display text-xs font-semibold text-brand-700;
   }
 }
+
+/* ============================================================================
+   IMPRESSÃO — a folha e o PDF
+   ----------------------------------------------------------------------------
+   O PDF do painel É a impressão do navegador: o botão "Imprimir / PDF" chama
+   window.print(), e o destino "Salvar como PDF" faz o arquivo. Não há segunda
+   geração de documento em lugar nenhum — se houvesse, a folha e a tela
+   passariam a discordar no dia em que uma das duas mudasse.
+
+   AS DUAS CLASSES DA CASA:
+     .sem-impressao      some no papel. É de TODO CONTROLE — menu lateral,
+                         barra do celular, abas, botões, seletores, busca. No
+                         papel um controle sai como se fosse dado: um seletor
+                         de mês impresso vira um rótulo afirmando um mês.
+     .apenas-impressao   só existe no papel. É para o que a tela não precisa
+                         dizer e a folha precisa: de que sistema saiu, de qual
+                         recorte, de quem e de quando. Folha impressa circula
+                         solta pela mesa de outra pessoa.
+
+   O SENTIDO VAI NAS PALAVRAS, NÃO NA COR. Impressão em cinza mata o vermelho:
+   um chip vermelho e um verde saem do mesmo tom, e a folha continua tendo de
+   avisar. Por isso, no papel, TODO chip vira branco com borda preta — a cor
+   deixa de fingir que informa, e o que informa é a palavra escrita nele. Quem
+   escreve tela nova: se a informação só existe na cor, escreva a palavra ao
+   lado (use .apenas-impressao quando ela só fizer falta impressa).
+
+   ZERO NÃO É RESULTADO também no papel: campo sem dado imprime "sem registro",
+   nunca 0 nem R$ 0,00 — a regra é a mesma da tela, e aqui é onde ela some sem
+   ninguém para perguntar.
+   ========================================================================== */
+
+/* Na tela, o que é só do papel não ocupa lugar. */
+.apenas-impressao {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* Fundos e sombras zerados: economiza tinta e, principalmente, impede que um
+     fundo claro engula o texto escuro na impressora de escritório. */
+  *,
+  *::before,
+  *::after {
+    background-image: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: economy;
+    print-color-adjust: economy;
+  }
+
+  html,
+  body,
+  #root,
+  main,
+  .card,
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    background-color: #fff !important;
+    color: #000 !important;
+  }
+
+  body {
+    font-size: 11pt;
+  }
+
+  /* Controle não é dado — mas o corte é POR CLASSE DE BOTÃO, nunca pela tag
+     <button>. Cartão de KPI clicável (StatCard, em components/ui.jsx) É um
+     <button>, e uma regra por tag apagaria da folha justamente os números do
+     alto da tela — sem erro nenhum, sem ninguém notar. Aqui somem as classes
+     que só existem para clicar. */
+  .sem-impressao,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .select,
+  [role="status"] {
+    display: none !important;
+  }
+
+  .apenas-impressao {
+    display: block !important;
+  }
+  span.apenas-impressao,
+  em.apenas-impressao,
+  strong.apenas-impressao {
+    display: inline !important;
+  }
+
+  /* A moldura da tela some: sem isso a folha sai com a largura de um celular e
+     uma coluna de margem branca no lugar do menu. */
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Rolagem lateral não existe no papel: sem isto, a tabela larga sai CORTADA
+     na dobra e ninguém percebe que faltou coluna. Só os contêineres de rolagem
+     — mexer em todo .overflow-hidden faria o texto truncado transbordar por
+     cima do vizinho. */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-auto {
+    overflow: visible !important;
+  }
+
+  /* Nome cortado com "..." no papel é nome perdido: não há para onde rolar. */
+  .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+
+  /* Cartões viram fio, não caixa com sombra. */
+  .card {
+    border: 1px solid #999 !important;
+    border-radius: 0 !important;
+  }
+
+  /* A página não quebra no meio de uma linha. E o cabeçalho da tabela se repete
+     em cada folha — tabela de três páginas sem cabeçalho é coluna sem nome. */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+  tr,
+  th,
+  td,
+  li,
+  .nao-quebrar {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  th,
+  td {
+    border-bottom: 1px solid #ccc !important;
+    padding: 4px 6px !important;
+  }
+  th {
+    text-align: left;
+    border-bottom: 1px solid #666 !important;
+  }
+
+  /* Título não fica órfão no pé da folha. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* O chip perde a cor de propósito (ver o comentário acima): no cinza ela
+     mentiria que ainda informa. Fica a borda, para o chip continuar sendo um
+     chip, e a palavra escrita dentro dele, que é o que informa. */
+  .chip,
+  .chip-ok,
+  .chip-warn,
+  .chip-bad,
+  .chip-brand {
+    background-color: #fff !important;
+    color: #000 !important;
+    border: 1px solid #333 !important;
+    padding: 0 4px !important;
+  }
+
+  /* Link impresso é texto: o endereço do painel não serve em papel. */
+  a {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+
+  /* Foco e animação não existem no papel. */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

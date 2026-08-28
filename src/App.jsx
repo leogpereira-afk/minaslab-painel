@@ -19,6 +19,7 @@ const Compras = lazy(() => import("./pages/Compras.jsx"));
 const Manutencoes = lazy(() => import("./pages/Manutencoes.jsx"));
 const Laboratorio = lazy(() => import("./pages/Laboratorio.jsx"));
 const RH = lazy(() => import("./pages/RH.jsx"));
+const Ponto = lazy(() => import("./pages/Ponto.jsx"));
 const Financas = lazy(() => import("./pages/Financas.jsx"));
 const Recebimentos = lazy(() => import("./pages/Recebimentos.jsx"));
 const Acessos = lazy(() => import("./pages/Acessos.jsx"));
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/manutencoes" element={<Manutencoes />} />
             <Route path="/laboratorio" element={<Laboratorio />} />
             <Route path="/rh" element={<Guarda modulo="rh"><RH /></Guarda>} />
+            <Route path="/ponto" element={<Guarda modulo="ponto"><Ponto /></Guarda>} />
             <Route path="/financas" element={<Guarda modulo="financas"><Financas /></Guarda>} />
             <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>}/>
             <Route path="/acessos" element={<Guarda modulo="acessos"><Acessos /></Guarda>} />
