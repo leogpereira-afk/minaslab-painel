@@ -7,6 +7,7 @@ import { clsx } from "clsx";
 import {
   CalendarDays,
   CalendarCheck,
+  Clock,
   Gavel,
   Megaphone,
   ShoppingCart,
@@ -38,6 +39,7 @@ const MODULOS = [
   { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", icone: Wrench },
   { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", icone: FlaskConical },
   { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users },
+  { id: "ponto", rotulo: "Ponto", caminho: "/ponto", icone: Clock },
   { id: "financas", rotulo: "Finanças", caminho: "/financas", icone: Wallet },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
@@ -176,7 +178,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Menu fixo no computador */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-white lg:flex" style={{ borderColor: "var(--hairline)" }}>
+      <aside className="sem-impressao sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-white lg:flex" style={{ borderColor: "var(--hairline)" }}>
         <Marca />
         <ItensMenu sessao={sessao} />
         <RodapeSessao sessao={sessao} aoSair={aoSair} aoTrocarSenha={aoTrocarSenha} />
@@ -184,7 +186,7 @@ export default function Layout() {
 
       {/* Gaveta no celular */}
       {menuAberto && (
-        <div className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden" onClick={() => setMenuAberto(false)}>
+        <div className="sem-impressao fixed inset-0 z-30 bg-slate-900/40 lg:hidden" onClick={() => setMenuAberto(false)}>
           <aside className="flex h-full w-64 flex-col bg-white shadow-card-hover" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between pr-2">
               <Marca />
@@ -202,7 +204,7 @@ export default function Layout() {
 
       <div className="min-w-0 flex-1">
         {/* Barra do celular */}
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-b bg-white/90 px-3 py-2 backdrop-blur lg:hidden" style={{ borderColor: "var(--hairline)" }}>
+        <header className="sem-impressao sticky top-0 z-20 flex items-center gap-2 border-b bg-white/90 px-3 py-2 backdrop-blur lg:hidden" style={{ borderColor: "var(--hairline)" }}>
           <button type="button" onClick={() => setMenuAberto(true)} className="btn-ghost h-9 w-9 p-0" title="Abrir menu">
             <Menu size={18} />
           </button>

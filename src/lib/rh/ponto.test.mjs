@@ -45,6 +45,7 @@ import {
   FATOR_HE_PADRAO,
   JORNADA_PADRAO,
   PERCENTUAL_NOTURNO_PADRAO,
+  TIPOS_AUSENCIA,
   TOLERANCIA_DIA_MIN,
   TOLERANCIA_MARCACAO_MIN,
 } from "./ponto.js";
@@ -286,11 +287,38 @@ test("atrasoDoDia: o atraso CRU da entrada vem com sinal — negativo é ter che
   const atrasado = atrasoDoDia({ data: SEGUNDA, entrada: "08:12" }, JORNADA_PADRAO);
   assert.equal(atrasado.inicioPrevisto, "08:00");
   assert.equal(atrasado.atrasoEntradaMin, 12);
+  assert.equal(atrasado.atrasoCobravelMin, 12);
+  assert.equal(atrasado.pontual, false);
   const adiantado = atrasoDoDia({ data: SEGUNDA, entrada: "07:48" }, JORNADA_PADRAO);
   assert.equal(adiantado.atrasoEntradaMin, -12);
   // Chegar antes não é atraso: o que encurta o dia é o que conta.
   assert.equal(adiantado.atrasoBrutoMin, 0);
   assert.equal(adiantado.atrasoMin, 0);
+  assert.equal(adiantado.atrasoCobravelMin, 0);
+  // E é PONTUAL, ainda que os 12 min de adiantamento estourem a tolerância:
+  // `tolerado` responde outra pergunta, e confundir as duas acusaria de atraso
+  // quem madrugou.
+  assert.equal(adiantado.tolerado, false);
+  assert.equal(adiantado.pontual, true);
+});
+
+test("atrasoDoDia: 08:04 é pontual; 08:12 são 12 min cobráveis, não 2 (Súmula 366)", () => {
+  // O caso que o Leonardo quer ver na tela: quem chega no horário.
+  const quatro = atrasoDoDia({ data: SEGUNDA, entrada: "08:04" }, JORNADA_PADRAO);
+  assert.equal(quatro.atrasoEntradaMin, 4); // o fato: chegou 4 min depois
+  assert.equal(quatro.atrasoCobravelMin, 0); // a lei: nada a cobrar
+  assert.equal(quatro.pontual, true);
+
+  // 12 minutos NÃO viram "12 crus e 2 cobráveis". A tolerância não é franquia
+  // que se abate do atraso: uma única marcação de 12 min já passa dos 5 do art.
+  // 58 § 1º, e passando o limite conta-se "a totalidade do tempo" (Súmula 366
+  // do TST). Descontar os 10 daria 2 — um número que não é nem o fato (12) nem
+  // a lei (12), e que ninguém defende numa mesa de negociação.
+  const doze = atrasoDoDia({ data: SEGUNDA, entrada: "08:12" }, JORNADA_PADRAO);
+  assert.equal(doze.atrasoEntradaMin, 12);
+  assert.equal(doze.atrasoCobravelMin, 12);
+  assert.notEqual(doze.atrasoCobravelMin, 2);
+  assert.equal(doze.pontual, false);
 });
 
 test("atrasoDoDia: até 5 min por marcação e 10 no dia não contam (CLT art. 58 § 1º)", () => {
@@ -304,6 +332,8 @@ test("atrasoDoDia: até 5 min por marcação e 10 no dia não contam (CLT art. 5
   assert.equal(dentro.atrasoBrutoMin, 6);
   assert.equal(dentro.tolerado, true);
   assert.equal(dentro.atrasoMin, 0); // o que a folha pode cobrar
+  assert.equal(dentro.atrasoCobravelMin, 0); // o mesmo número, pelo nome novo
+  assert.equal(dentro.pontual, true); // e por isso ela ENTRA na lista dos pontuais
   assert.equal(dentro.toleradoMin, 6); // o que a tolerância absorveu
   // No limite exato: 5 + 5 = 10, ainda dentro. Com DUAS marcações o teto de 10
   // é justamente 5+5 — ele existe para o dia com mais marcações que estas.
@@ -319,6 +349,8 @@ test("atrasoDoDia: estourou a tolerância, conta o tempo INTEIRO (Súmula 366 do
   assert.equal(um.atrasoEntradaMin, 7);
   assert.equal(um.tolerado, false);
   assert.equal(um.atrasoMin, 7);
+  assert.equal(um.atrasoCobravelMin, 7);
+  assert.equal(um.pontual, false);
   assert.equal(um.toleradoMin, 0);
   // Uma marcação dentro e outra fora: o dia inteiro deixa de ser tolerado.
   const dois = atrasoDoDia({ data: SEGUNDA, entrada: "08:05", saida: "17:54" }, JORNADA_PADRAO);
@@ -365,6 +397,24 @@ test("atrasoDoDia: sem o que medir devolve null — 0 seria dizer 'chegou na hor
 });
 
 // ---- ausências --------------------------------------------------------------
+
+test("TIPOS_AUSENCIA: a regra do dinheiro mora na lista, para a tela não repeti-la", () => {
+  // A tela monta o seletor daqui. Se ela mantivesse a própria lista, a cópia
+  // envelheceria calada — no dia em que um tipo mudasse de efeito, a régua da
+  // tela e a régua da conta passariam a discordar sem ninguém ver.
+  assert.deepEqual(
+    TIPOS_AUSENCIA.map((t) => t.tipo),
+    ["falta", "atestado", "justificada", "ferias", "folga"]
+  );
+  for (const t of TIPOS_AUSENCIA) {
+    assert.equal(typeof t.rotulo, "string", t.tipo);
+    assert.ok(t.rotulo.length > 0, t.tipo);
+    assert.equal(typeof t.desconta, "boolean", t.tipo);
+    assert.ok(t.ajuda.length > 0, t.tipo); // o porquê viaja junto com a opção
+  }
+  // Uma única linha da lista custa dinheiro, e é a falta injustificada.
+  assert.deepEqual(TIPOS_AUSENCIA.filter((t) => t.desconta).map((t) => t.tipo), ["falta"]);
+});
 
 test("ausenciaDoDia: só 'falta' desconta; atestado, justificada, férias e folga não", () => {
   assert.equal(ausenciaDoDia({ ausencia: { tipo: "falta" } }).desconta, true);

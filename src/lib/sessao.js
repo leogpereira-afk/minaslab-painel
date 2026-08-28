@@ -115,7 +115,10 @@ export const podeEditar = (sessao = getSessao()) =>
 
 // Modulos que so a direcao abre. Mesma lista que o servidor usa para as
 // colecoes rh_* — mudar aqui exige mudar la (ml-sync).
-const SO_DIRECAO = ["rh", "financas", "acessos"];
+// "ponto" entra pela MESMA regua do RH: ele le e grava "rh_pessoas",
+// "rh_ponto" e "rh_ponto_dia", que sao dado de pessoa e o servidor ja protege.
+// Deixa-lo aberto a equipe abriria a folha de todo mundo por outra porta.
+const SO_DIRECAO = ["rh", "ponto", "financas", "acessos"];
 export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);

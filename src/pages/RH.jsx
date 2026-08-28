@@ -1,6 +1,6 @@
-// RH — a CASCA do módulo: carrega as 8 coleções, guarda o estado, calcula os
-// KPIs e orquestra as abas (Pessoas, Ponto, Férias, Feedback, Exames,
-// Vencimentos). A renderização de cada aba mora em src/components/rh/Aba*.jsx;
+// RH — a CASCA do módulo: carrega as 6 coleções, guarda o estado, calcula os
+// KPIs e orquestra as abas (Pessoas, Férias, Feedback, Exames, Vencimentos).
+// A renderização de cada aba mora em src/components/rh/Aba*.jsx;
 // helpers usados por mais de uma aba em src/components/rh/uteis.js. Só a
 // direção chega nesta rota — e o servidor confere de novo em toda chamada; o
 // que a tela esconde é conforto.
@@ -20,9 +20,17 @@
 //   foi o que produziu 118 falsos positivos na Impresilk.
 // - Os 4 cartões estão na ordem da urgência: quadro, exame vencendo, conversa
 //   atrasada, quem está fora. Clicar em um cartão leva à aba dele.
+// - O PONTO SAIU DAQUI em 28/08/2026: virou módulo próprio, em /ponto
+//   (pages/Ponto.jsx), com as abas Fechamento e Batidas, Faltas, Relatórios e
+//   Pessoas do relógio. Duas portas para a mesma tela criam a dúvida de onde
+//   mexer, e uma das duas envelhece calada — então aqui ficou UMA LINHA
+//   apontando para lá, e mais nada. As coleções "rh_ponto" e "rh_ponto_dia"
+//   também deixaram de ser carregadas nesta casca: quem vinha ver férias
+//   baixava o mês inteiro de batidas sem precisar.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope, Clock } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataCurta, dataLonga, diaLocalISO, diasEntre, paraNumero } from "../lib/format.js";
@@ -35,7 +43,6 @@ import {
 } from "../components/ui.jsx";
 import { anoRuim, chipVenc, marcosDaFicha, radarExames } from "../components/rh/uteis.js";
 import AbaPessoas from "../components/rh/AbaPessoas.jsx";
-import AbaPonto from "../components/rh/AbaPonto.jsx";
 import AbaFerias from "../components/rh/AbaFerias.jsx";
 import AbaFeedback from "../components/rh/AbaFeedback.jsx";
 import AbaExames from "../components/rh/AbaExames.jsx";
@@ -119,7 +126,7 @@ export default function RH() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
 
-  const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico }
+  const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, exames, historico }
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [aba, setAba] = useState("pessoas");
@@ -139,10 +146,10 @@ export default function RH() {
     setHojeISO(ymdLocal(new Date()));
     Promise.all([
       listar("rh_pessoas"), listar("rh_ferias"), listar("rh_vencimentos"), listar("rh_feedbacks"),
-      listar("rh_ponto"), listar("rh_ponto_dia"), listar("rh_exames"), listar("rh_historico"),
+      listar("rh_exames"), listar("rh_historico"),
     ])
-      .then(([pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico]) => {
-        setDados({ pessoas, ferias, vencimentos, feedbacks, ponto, pontoDia, exames, historico });
+      .then(([pessoas, ferias, vencimentos, feedbacks, exames, historico]) => {
+        setDados({ pessoas, ferias, vencimentos, feedbacks, exames, historico });
         setErro(null);
       })
       .catch((e) => {
@@ -608,7 +615,7 @@ export default function RH() {
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <PageTitle
         titulo="RH"
-        descricao="O quadro da MinasLab: quem trabalha aqui, ponto, férias, feedback, exames e o radar de NR e treinamento."
+        descricao="O quadro da MinasLab: quem trabalha aqui, férias, feedback, exames e o radar de NR e treinamento."
         acao={
           <div className="flex flex-wrap items-center gap-2">
             {/* Baixar não é escrita: quem só consulta também precisa da planilha. */}
@@ -632,8 +639,13 @@ export default function RH() {
                 <Plus size={16} strokeWidth={2.5} /> Novo vencimento
               </button>
             )}
-            {/* Feedback, Ponto e Exames: o botão de escrita chega com o motor
-                de cada aba — botão que não faz nada é pior que a falta dele. */}
+            {/* Feedback e Exames: o botão de escrita chega com o motor de cada
+                aba — botão que não faz nada é pior que a falta dele. */}
+            {/* O ponto não mora mais aqui. Quem vier procurar na casa velha sai
+                daqui direto para a nova, em vez de achar uma cópia parada. */}
+            <Link to="/ponto" className="btn-outline">
+              <Clock size={16} strokeWidth={2.5} /> Ponto: virou módulo próprio
+            </Link>
           </div>
         }
       />
@@ -681,13 +693,12 @@ export default function RH() {
         />
       </div>
 
-      {/* Seis abas não cabem na largura do celular. Sem o overflow aqui, a
+      {/* Cinco abas não cabem na largura do celular. Sem o overflow aqui, a
           PÁGINA INTEIRA passava a rolar de lado. */}
-      <div className="mb-4 max-w-full overflow-x-auto pb-1">
+      <div className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented
           opcoes={[
             { valor: "pessoas", rotulo: "Pessoas" },
-            { valor: "ponto", rotulo: "Ponto" },
             { valor: "ferias", rotulo: "Férias" },
             { valor: "feedback", rotulo: "Feedback" },
             { valor: "exames", rotulo: "Exames" },
@@ -722,21 +733,6 @@ export default function RH() {
           gravar={gravarRegistro}
           apagarReg={apagarRegistro}
           setAviso={setAviso}
-        />
-      )}
-
-      {aba === "ponto" && (
-        <AbaPonto
-          pessoas={dados.pessoas}
-          ativos={vm.ativos}
-          ponto={dados.ponto}
-          pontoDia={dados.pontoDia}
-          hojeISO={hojeISO}
-          editavel={editavel}
-          gravar={gravarRegistro}
-          apagarReg={apagarRegistro}
-          setAviso={setAviso}
-          recarregar={recarregar}
         />
       )}
 

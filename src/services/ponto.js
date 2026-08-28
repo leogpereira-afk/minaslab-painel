@@ -29,8 +29,26 @@ export const estadoDoRelogio = () => chamar("estado");
 // controle antes de confiar em qualquer número importado.
 export const diagnosticar = (de, ate) => chamar("diagnostico", { de, ate });
 
-// As pessoas cadastradas no relógio, para vincular a cada ficha do RH.
-export const pessoasDoRelogio = () => chamar("pessoas").then((r) => r.pessoas || []);
+/* AS PESSOAS CADASTRADAS NO RELÓGIO, já casadas com as fichas do RH pelo
+   jibbleId. Devolve o CORPO INTEIRO, não só a lista — o resto do envelope é
+   controle, e controle jogado fora é controle que não existe:
+
+     total        quantas o Jibble diz TER (@odata.count). A busca traz 200 por
+                  vez: se `total` for maior que a lista, ela veio cortada, e
+                  "não está aqui" deixa de provar "não existe".
+     semFicha     contadas NO SERVIDOR, que enxerga todas as fichas — a tela só
+                  conhece as que carregou.
+     divergentes  removida no relógio com ficha ativa (ou o contrário).
+
+   DADO AUSENTE NÃO É ZERO: o que não vier fica `null`, para a tela dizer "sem
+   registro" em vez de afirmar zero que ninguém contou. */
+export const pessoasDoRelogio = () =>
+  chamar("pessoas").then((r) => ({
+    pessoas: Array.isArray(r?.pessoas) ? r.pessoas : [],
+    total: Number.isFinite(r?.total) ? r.total : null,
+    semFicha: Number.isFinite(r?.semFicha) ? r.semFicha : null,
+    divergentes: Number.isFinite(r?.divergentes) ? r.divergentes : null,
+  }));
 
 /* Importa o período inteiro, janela a janela. `aoAndar` recebe o progresso
    para a tela mostrar; devolve o total. Erro no meio NÃO descarta o que já
