@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Plus,
@@ -10,26 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-
-const DADOS_EXEMPLO = [
-  {
-    id: "1",
-    empresa: "MinasLab",
-    cliente: "Cliente Exemplo",
-    documento: "00.000.000/0001-00",
-    descricao: "Análises laboratoriais",
-    valorPrevisto: 3500,
-    valorRecebido: 1500,
-    valorPendente: 2000,
-    vencimento: "05/09/2026",
-    pagamento: "",
-    status: "Parcial",
-    categoria: "Serviços",
-    conta: "Conta Principal",
-    nf: "12345",
-    origem: "OMIE"
-  }
-];
+import { recebimentosListar } from "../services/dados.js";
 
 function moeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -38,7 +19,59 @@ function moeda(valor) {
   });
 }
 
+function dataBR(valor) {
+  if (!valor) return "—";
+
+  const partes = String(valor).split("-");
+
+  if (partes.length === 3) {
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  }
+
+  return valor;
+}
+
+function normalizarStatus(status) {
+  const valor = String(status || "").trim().toUpperCase();
+
+  if (valor === "PAGO" || valor === "RECEBIDO" || valor === "LIQUIDADO") {
+    return "Pago";
+  }
+
+  if (
+    valor === "PARCIAL" ||
+    valor === "PAGTOPARCIAL" ||
+    valor === "PAGTO_PARCIAL"
+  ) {
+    return "Parcial";
+  }
+
+  if (
+    valor === "A RECEBER" ||
+    valor === "ARECEBER" ||
+    valor === "A_RECEBER" ||
+    valor === "EMABERTO" ||
+    valor === "EM ABERTO" ||
+    valor === "AVENCER" ||
+    valor === "A VENCER"
+  ) {
+    return "A Receber";
+  }
+
+  if (valor === "VENCIDO" || valor === "ATRASADO") {
+    return "Vencido";
+  }
+
+  if (valor === "CANCELADO" || valor === "CANCELADA") {
+    return "Cancelado";
+  }
+
+  return status || "A Receber";
+}
+
 function StatusBadge({ status }) {
+  const statusExibido = normalizarStatus(status);
+
   const estilos = {
     Pago: "bg-emerald-50 text-emerald-700",
     Parcial: "bg-amber-50 text-amber-700",
@@ -50,10 +83,10 @@ function StatusBadge({ status }) {
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-        estilos[status] || "bg-slate-100 text-slate-600"
+        estilos[statusExibido] || "bg-slate-100 text-slate-600"
       }`}
     >
-      {status}
+      {statusExibido}
     </span>
   );
 }
@@ -65,31 +98,77 @@ export default function Recebimentos() {
   const [empresa, setEmpresa] = useState("Todas");
   const [status, setStatus] = useState("Todos");
 
-  const dados = DADOS_EXEMPLO;
+  const [dados, setDados] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let ativo = true;
+
+    async function carregarRecebimentos() {
+      try {
+        setCarregando(true);
+        setErro("");
+
+        const lista = await recebimentosListar();
+
+        if (ativo) {
+          setDados(Array.isArray(lista) ? lista : []);
+        }
+      } catch (e) {
+        if (ativo) {
+          setErro(
+            e?.message ||
+              "Não foi possível carregar os recebimentos."
+          );
+        }
+      } finally {
+        if (ativo) {
+          setCarregando(false);
+        }
+      }
+    }
+
+    carregarRecebimentos();
+
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   const filtrados = useMemo(() => {
     return dados.filter((item) => {
-      const texto = `${item.cliente} ${item.documento} ${item.descricao} ${item.nf}`.toLowerCase();
+      const nomeEmpresa = item.empresa?.nome || "";
+
+      const texto = `
+        ${item.cliente || ""}
+        ${item.cnpj_cpf || ""}
+        ${item.descricao || ""}
+        ${item.numero_nf || ""}
+      `.toLowerCase();
 
       const bateBusca =
         !busca || texto.includes(busca.toLowerCase());
 
       const bateEmpresa =
-        empresa === "Todas" || item.empresa === empresa;
+        empresa === "Todas" || nomeEmpresa === empresa;
+
+      const statusItem = normalizarStatus(item.status);
 
       const bateStatus =
-        status === "Todos" || item.status === status;
+        status === "Todos" || statusItem === status;
 
       return bateBusca && bateEmpresa && bateStatus;
     });
   }, [dados, busca, empresa, status]);
 
   const totais = useMemo(() => {
-    return dados.reduce(
+    return filtrados.reduce(
       (acc, item) => {
-        acc.previsto += Number(item.valorPrevisto || 0);
-        acc.recebido += Number(item.valorRecebido || 0);
-        acc.pendente += Number(item.valorPendente || 0);
+        acc.previsto += Number(item.valor_previsto || 0);
+        acc.recebido += Number(item.valor_recebido || 0);
+        acc.pendente += Number(item.valor_pendente || 0);
+
         return acc;
       },
       {
@@ -98,7 +177,7 @@ export default function Recebimentos() {
         pendente: 0
       }
     );
-  }, [dados]);
+  }, [filtrados]);
 
   return (
     <div>
@@ -128,21 +207,30 @@ export default function Recebimentos() {
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Valor previsto</p>
+          <p className="text-sm text-slate-500">
+            Valor previsto
+          </p>
+
           <p className="mt-2 text-2xl font-bold text-slate-900">
             {moeda(totais.previsto)}
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Recebido</p>
+          <p className="text-sm text-slate-500">
+            Recebido
+          </p>
+
           <p className="mt-2 text-2xl font-bold text-emerald-700">
             {moeda(totais.recebido)}
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">A receber</p>
+          <p className="text-sm text-slate-500">
+            A receber
+          </p>
+
           <p className="mt-2 text-2xl font-bold text-amber-700">
             {moeda(totais.pendente)}
           </p>
@@ -168,7 +256,10 @@ export default function Recebimentos() {
 
           <div className="flex gap-3">
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
-              <Filter size={16} className="text-slate-400" />
+              <Filter
+                size={16}
+                className="text-slate-400"
+              />
 
               <select
                 value={empresa}
@@ -197,99 +288,234 @@ export default function Recebimentos() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1400px] w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Empresa</th>
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">CNPJ / CPF</th>
-                <th className="px-4 py-3">Descrição</th>
-                <th className="px-4 py-3">Previsto</th>
-                <th className="px-4 py-3">Recebido</th>
-                <th className="px-4 py-3">A receber</th>
-                <th className="px-4 py-3">Vencimento</th>
-                <th className="px-4 py-3">Pagamento</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Categoria</th>
-                <th className="px-4 py-3">Conta</th>
-                <th className="px-4 py-3">NF</th>
-                <th className="px-4 py-3">Origem</th>
-                <th className="px-4 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {filtrados.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-4">{item.empresa}</td>
-                  <td className="px-4 py-4 font-medium text-slate-900">
-                    {item.cliente}
-                  </td>
-                  <td className="px-4 py-4">{item.documento}</td>
-                  <td className="px-4 py-4">{item.descricao}</td>
-                  <td className="px-4 py-4">{moeda(item.valorPrevisto)}</td>
-                  <td className="px-4 py-4 text-emerald-700">
-                    {moeda(item.valorRecebido)}
-                  </td>
-                  <td className="px-4 py-4 text-amber-700">
-                    {moeda(item.valorPendente)}
-                  </td>
-                  <td className="px-4 py-4">{item.vencimento}</td>
-                  <td className="px-4 py-4">{item.pagamento || "—"}</td>
-                  <td className="px-4 py-4">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-4 py-4">{item.categoria}</td>
-                  <td className="px-4 py-4">{item.conta}</td>
-                  <td className="px-4 py-4">{item.nf || "—"}</td>
-                  <td className="px-4 py-4">{item.origem}</td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                        title="Editar"
-                      >
-                        <Pencil size={16} />
-                      </button>
-
-                      <button
-                        type="button"
-                        className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50"
-                        title="Dar baixa"
-                      >
-                        <CheckCircle2 size={16} />
-                      </button>
-
-                      <button
-                        type="button"
-                        className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {filtrados.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="15"
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    Nenhum recebimento encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {carregando && (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+          Carregando recebimentos...
         </div>
-      </div>
+      )}
+
+      {erro && (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {erro}
+        </div>
+      )}
+
+      {!carregando && !erro && (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-[1400px] w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">
+                    Empresa
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Cliente
+                  </th>
+
+                  <th className="px-4 py-3">
+                    CNPJ / CPF
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Descrição
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Previsto
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Recebido
+                  </th>
+
+                  <th className="px-4 py-3">
+                    A receber
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Vencimento
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Pagamento
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Status
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Categoria
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Conta
+                  </th>
+
+                  <th className="px-4 py-3">
+                    NF
+                  </th>
+
+                  <th className="px-4 py-3">
+                    Origem
+                  </th>
+
+                  <th className="px-4 py-3 text-right">
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {filtrados.map((item) => {
+                  const ehOmie =
+                    String(item.origem || "").toUpperCase() ===
+                    "OMIE";
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-4">
+                        {item.empresa?.nome || "—"}
+                      </td>
+
+                      <td className="px-4 py-4 font-medium text-slate-900">
+                        {item.cliente || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {item.cnpj_cpf || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {item.descricao || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {moeda(item.valor_previsto)}
+                      </td>
+
+                      <td className="px-4 py-4 text-emerald-700">
+                        {moeda(item.valor_recebido)}
+                      </td>
+
+                      <td className="px-4 py-4 text-amber-700">
+                        {moeda(item.valor_pendente)}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {dataBR(item.data_vencimento)}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {dataBR(item.data_pagamento)}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <StatusBadge status={item.status} />
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {item.categoria?.nome || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {item.conta_bancaria?.nome || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {item.numero_nf || "—"}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            ehOmie
+                              ? "bg-violet-50 text-violet-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {ehOmie ? "OMIE" : "MANUAL"}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={ehOmie}
+                            className={`rounded-lg p-2 ${
+                              ehOmie
+                                ? "cursor-not-allowed text-slate-300"
+                                : "text-slate-500 hover:bg-slate-100"
+                            }`}
+                            title={
+                              ehOmie
+                                ? "Registros da Omie não podem ser editados manualmente"
+                                : "Editar"
+                            }
+                          >
+                            <Pencil size={16} />
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={ehOmie}
+                            className={`rounded-lg p-2 ${
+                              ehOmie
+                                ? "cursor-not-allowed text-slate-300"
+                                : "text-emerald-600 hover:bg-emerald-50"
+                            }`}
+                            title={
+                              ehOmie
+                                ? "Registros da Omie são atualizados pela integração"
+                                : "Dar baixa"
+                            }
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={ehOmie}
+                            className={`rounded-lg p-2 ${
+                              ehOmie
+                                ? "cursor-not-allowed text-slate-300"
+                                : "text-red-500 hover:bg-red-50"
+                            }`}
+                            title={
+                              ehOmie
+                                ? "Registros da Omie não podem ser excluídos manualmente"
+                                : "Excluir"
+                            }
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {filtrados.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan="15"
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      Nenhum recebimento encontrado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
