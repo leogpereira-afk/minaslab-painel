@@ -165,77 +165,41 @@ const numero = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// "2026-08-31" + 1 → "2026-09-01" (vira mês e ano sozinho).
-function somaDias(iso: string, n: number): string {
-  const [a, m, d] = String(iso).slice(0, 10).split("-").map(Number);
-  const dt = new Date(Date.UTC(a, m - 1, d + n));
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+/* Duração ISO 8601 do Jibble → minutos. "PT8H12M21S" = 492 min;
+   "P1DT6H23M53S" = 1823 min. Devolve null para o que não entende — 0 minuto
+   seria indistinguível de "não trabalhou", e a diferença entre as duas coisas
+   é justamente o que o RH precisa ver. */
+function duracaoISO(v: unknown): number | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/^P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+  if (!m) return null;
+  const [, d, h, min, seg] = m;
+  const total = (Number(d) || 0) * 1440 + (Number(h) || 0) * 60 + (Number(min) || 0) + (Number(seg) || 0) / 60;
+  return Math.round(total);
 }
 
-const minutosDe = (hhmm: string): number | null => {
-  const [h, m] = String(hhmm || "").split(":").map(Number);
-  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+/* "2026-08-17T08:03:36.18107-03:00" → "08:03".
+   O Jibble já devolve o instante NO FUSO DA PESSOA (o offset vem junto), então
+   a hora local são os caracteres 11..16 — sem conversão nenhuma. Converter à
+   mão foi o que jogava a batida das 22h para o dia seguinte. */
+const horaLocal = (iso: unknown): string => {
+  const s = String(iso ?? "");
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) ? s.slice(11, 16) : "";
 };
 
-/* O DIA SAI DOS PARES, não de "primeira batida até a última".
-   Numa jornada normal — 08:00 entra, 12:00 sai, 13:00 entra, 17:00 sai — a
-   conta ingênua dava 9h (o almoço dentro) e a apuração acusava 12 min de hora
-   extra POR DIA que não existiu: 22 dias viravam 4h24 de extra inventada, e o
-   botão "usar o apurado" transformava isso em dinheiro.
-   Aqui os intervalos entra→sai são somados um a um, e o que fica ENTRE eles é
-   a pausa. Batida sem par (entrou e esqueceu de sair) NÃO vira zero: o dia
-   fica com trabalhadoMin null e a tela mostra "em aberto" — é justamente o
-   esquecimento que o RH precisa enxergar. */
-function fecharDia(batidas: { hora: string; tipo: string }[]) {
-  const ordenadas = [...batidas].sort((a, b) => a.hora.localeCompare(b.hora));
-  let trabalhado = 0;
-  let pausa = 0;
-  let abertoEm: number | null = null;
-  let ultimaSaida: number | null = null;
-  let parImpar = false;
-  for (const b of ordenadas) {
-    const min = minutosDe(b.hora);
-    if (min === null) continue;
-    const entrando = b.tipo.includes("in");
-    if (entrando) {
-      if (abertoEm !== null) { parImpar = true; continue; } // duas entradas seguidas
-      if (ultimaSaida !== null && min > ultimaSaida) pausa += min - ultimaSaida;
-      abertoEm = min;
-    } else {
-      if (abertoEm === null) { parImpar = true; continue; }  // saída sem entrada
-      if (min > abertoEm) trabalhado += min - abertoEm;
-      ultimaSaida = min;
-      abertoEm = null;
-    }
-  }
-  const emAberto = abertoEm !== null;
-  return {
-    entrada: ordenadas.find((b) => b.tipo.includes("in"))?.hora ?? "",
-    saida: [...ordenadas].reverse().find((b) => !b.tipo.includes("in"))?.hora ?? "",
-    pausaMin: pausa,
-    // Dia em aberto ou com batida solta não afirma total nenhum.
-    trabalhadoMin: emAberto || trabalhado === 0 ? null : trabalhado,
-    emAberto,
-    inconsistente: parImpar,
-  };
-}
-
-/* "2026-08-27T07:31:00Z" → { dia: "2026-08-27", hora: "07:31" } no fuso de
-   Brasília. O relógio devolve UTC; ler o dia direto do texto ISO jogaria toda
-   batida depois das 21h para o dia seguinte — a pessoa que entra às 22h no
-   plantão apareceria trabalhando amanhã. */
-const FUSO_MIN = -180; // America/Sao_Paulo (sem horário de verão desde 2019)
-function localDe(iso: unknown): { dia: string; hora: string } | null {
-  const t = Date.parse(String(iso ?? ""));
-  if (!Number.isFinite(t)) return null;
-  const d = new Date(t + FUSO_MIN * 60_000);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return {
-    dia: `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`,
-    hora: `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`,
-  };
-}
+/* POR QUE NÃO REAGREGAMOS AS BATIDAS CRUAS.
+   A primeira versão daqui montava o dia a partir dos pares entra→sai do
+   TimeEntries. Media-se, então descobriu-se (27/08/2026, pela ação
+   `diagnostico`) que o Jibble já entrega o dia FECHADO em TimesheetsSummary,
+   respeitando a escala de cada pessoa: primeira entrada, última saída, pausa
+   paga e não paga, horas da folha e hora extra SEPARADA POR TIPO (dia normal,
+   dia de descanso, feriado — que na CLT valem adicionais diferentes).
+   É a mesma decisão que a Impresilk tomou com o cartão do Secullum: quando o
+   relógio já apurou, o painel usa o número DELE. Refazer a conta aqui criaria
+   um segundo resultado, e o número do painel passaria a divergir do que a
+   própria pessoa vê no aplicativo — e número em que o RH não confia manda todo
+   mundo de volta para a planilha. */
 
 // ---------------------------------------------------------------- gravação
 async function bump(colecao: string) {
@@ -413,98 +377,89 @@ Deno.serve(async (req) => {
 
       /* IMPORTAR as batidas de um período. Uma janela por chamada (teto de
          150s); a tela comanda o laço com o cursor `skip`. */
+      /* IMPORTAR o resumo diário de um período. A unidade da paginação é a
+         PESSOA (cada item traz o mês inteiro dela), então 20 pessoas cabem em
+         uma ou duas chamadas — bem abaixo do teto de 150s. */
       case "importar": {
         const de = String(body.de ?? "");
         const ate = String(body.ate ?? "");
         const skip = Math.max(0, numero(body.skip));
-        const tamanho = 500;
+        const tamanho = 10;
         if (!de || !ate) return resp({ erro: "Informe o período (de, ate)." }, 400);
 
-        /* A JANELA PEDIDA AO JIBBLE É EM UTC; o dia que gravamos é LOCAL.
-           Pedir de T00:00Z a ate T23:59Z parecia certo e errava nas duas
-           pontas: a batida das 22h do último dia (já 01:00Z do dia seguinte)
-           ficava de fora do mês, e a batida das 22h do último dia do mês
-           ANTERIOR entrava — sobrescrevendo, pela metade, um dia que a
-           importação anterior já tinha fechado. A janela agora é exatamente o
-           intervalo de dias locais pedido. */
-        const inicioUtc = `${de}T03:00:00Z`;              // 00:00 local
-        const fimUtc = `${somaDias(ate, 1)}T03:00:00Z`;   // 00:00 local do dia seguinte (exclusivo)
-        const url = `${HOST_TRACKING}/TimeEntries?$top=${tamanho}&$skip=${skip}&$count=true` +
-          `&$filter=time ge ${inicioUtc} and time lt ${fimUtc}&$orderby=time asc`;
+        const url = `${HOST_ATTENDANCE}/TimesheetsSummary` +
+          `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
         const r = await jibble(url);
-        const entradas = (r.value ?? []) as Record<string, any>[];
+        const pessoas = (r.value ?? []) as Record<string, any>[];
 
-        // O Jibble entrega BATIDAS; a unidade com que o RH trabalha é o DIA.
-        const porDia = new Map<string, Record<string, any>>();
-        for (const e of entradas) {
-          const jibbleId = String(e.personId ?? e.person?.id ?? "");
-          const quando = localDe(e.time ?? e.startTime ?? e.date);
-          if (!jibbleId || !quando) continue;
-          // Fora da competência pedida (a folga do fuso pode trazer vizinhos).
-          if (quando.dia < de || quando.dia > ate) continue;
-          const chave = `pd_${jibbleId}_${quando.dia}`;
-          const atual = porDia.get(chave) ?? {
-            id: chave,
-            jibbleId,
-            pessoaNome: String(e.person?.fullName ?? e.personName ?? ""),
-            data: quando.dia,
-            origem: "jibble",
-            corrigido: false,
-            batidas: [] as { hora: string; tipo: string }[],
-          };
-          const tipo = String(e.type ?? e.entryType ?? "").toLowerCase();
-          atual.batidas.push({ hora: quando.hora, tipo });
-          porDia.set(chave, atual);
+        /* Um registro por pessoa/dia, com o que o RELÓGIO apurou. Os nomes dos
+           campos do Jibble e o que fazemos com cada um:
+             firstIn/lastOut  → entrada/saida (já vêm no fuso da pessoa)
+             unpaidBreak      → pausaMin (o almoço, que não é tempo trabalhado)
+             payrollHours     → trabalhadoMin, o que vai para a folha
+             tracked          → trackedMin, o tempo de crachá aberto (só leitura)
+             dailyOvertime    → extraMin, hora extra de dia normal (+50%)
+             restDay/publicHoliday/doubleOvertime → extraDobroMin (+100%)
+           Guardamos os dois adicionais SEPARADOS porque a CLT os paga
+           diferente: somá-los aqui obrigaria a tela a adivinhar depois qual
+           fator usar, e adivinhar erra em dinheiro. */
+        const linhas: Record<string, any>[] = [];
+        for (const p of pessoas) {
+          const jibbleId = String(p.personId ?? "");
+          const nome = String(p.person?.fullName ?? "");
+          if (!jibbleId) continue;
+          for (const d of (p.daily ?? []) as Record<string, any>[]) {
+            const dia = String(d.date ?? "").slice(0, 10);
+            if (!dia || dia < de || dia > ate) continue;
+            const trabalhado = duracaoISO(d.payrollHours);
+            const tracked = duracaoISO(d.tracked);
+            /* DIA SEM MOVIMENTO NÃO VIRA REGISTRO. Gravar o dia vazio encheria
+               a tela de zeros e faria "sem batida" parecer "trabalhou 0h" — e
+               falta quem decide é a escala, não a ausência de linha aqui. */
+            if (!d.firstIn && !tracked) continue;
+            linhas.push({
+              id: `pd_${jibbleId}_${dia}`,
+              jibbleId,
+              pessoaNome: nome,
+              data: dia,
+              entrada: horaLocal(d.firstIn),
+              saida: horaLocal(d.lastOut),
+              pausaMin: duracaoISO(d.unpaidBreak) ?? 0,
+              pausaPagaMin: duracaoISO(d.paidBreak) ?? 0,
+              trabalhadoMin: trabalhado,
+              trackedMin: tracked,
+              extraMin: duracaoISO(d.dailyOvertime) ?? 0,
+              extraDobroMin:
+                (duracaoISO(d.dailyDoubleOvertime) ?? 0) +
+                (duracaoISO(d.restDayOvertime) ?? 0) +
+                (duracaoISO(d.publicHolidayOvertime) ?? 0),
+              // Entrou e não saiu: o dia não afirma total nenhum, e a tela
+              // mostra "em aberto" — o esquecimento é o que o RH precisa ver.
+              emAberto: !!d.firstIn && !d.lastOut,
+              origem: "jibble",
+              corrigido: false,
+            });
+          }
         }
 
-        /* MESCLA COM O QUE JÁ ESTÁ GRAVADO — e é isto que salva o dia partido
-           na fronteira das páginas. A janela 1 podia terminar no meio de um
-           dia; a janela 2 trazia o resto e, gravando o registro inteiro, apagava
-           a manhã: o dia valia 4h em vez de 8h e virava desconto na folha.
-           Aqui as batidas das duas janelas se somam antes de fechar a conta. */
-        const ids = [...porDia.keys()];
-        const jaGravados = await diasJaGravados(ids);
-
+        // Dia corrigido à mão pelo RH manda: a importação não o toca.
+        const jaGravados = await diasJaGravados(linhas.map((l) => String(l.id)));
         const dias: Record<string, any>[] = [];
         let preservados = 0;
-        for (const [chave, novo] of porDia) {
-          const antigo = jaGravados.get(chave);
-          // Dia corrigido à mão pelo RH manda: a importação não o toca.
+        for (const l of linhas) {
+          const antigo = jaGravados.get(String(l.id));
           if (antigo?.corrigido === true) { preservados++; continue; }
-          const todas = [...((antigo?.batidas ?? []) as { hora: string; tipo: string }[]), ...novo.batidas];
-          // Dedup: reimportar o mesmo período não pode duplicar batida.
-          const vistas = new Set<string>();
-          const batidas = todas.filter((b) => {
-            const k = `${b.hora}|${b.tipo}`;
-            if (vistas.has(k)) return false;
-            vistas.add(k);
-            return true;
-          });
-          const fechado = fecharDia(batidas);
-          dias.push({
-            ...novo,
-            pessoaId: antigo?.pessoaId ?? undefined,  // o vínculo é da tela; a ponte não mexe
-            pessoaNome: novo.pessoaNome || antigo?.pessoaNome || "",
-            batidas,
-            entrada: fechado.entrada,
-            saida: fechado.saida,
-            pausaMin: fechado.pausaMin,
-            trabalhadoMin: fechado.trabalhadoMin,
-            emAberto: fechado.emAberto,
-            inconsistente: fechado.inconsistente,
-          });
+          // O vínculo pessoa↔ficha é da tela; a ponte não mexe nele.
+          dias.push(antigo?.pessoaId ? { ...l, pessoaId: antigo.pessoaId } : l);
         }
 
         const gravados = await gravarVarios("rh_ponto_dia", dias);
-
-        const total = numero(r["@odata.count"]);
-        const proximaSkip = entradas.length === tamanho ? skip + tamanho : null;
+        const proximaSkip = pessoas.length === tamanho ? skip + tamanho : null;
         return resp({
-          lidos: entradas.length,
+          lidos: pessoas.length,
           dias: dias.length,
           gravados,
           preservados,
-          total,
           skip,
           proximaSkip,
         });
