@@ -364,19 +364,66 @@ Deno.serve(async (req) => {
          Não gravamos ficha nenhuma aqui: quem manda no cadastro é o RH, e
          criar pessoa a partir do relógio encheria o quadro de gente que já
          existe com outro nome. */
+      /* AS PESSOAS DO RELÓGIO, já casadas com as fichas do RH.
+         Devolve a lista pronta para a tela criar as fichas que faltam — mas
+         NÃO cria nada aqui. Quem manda no cadastro é o RH: se a ponte criasse
+         ficha sozinha, um nome digitado diferente no relógio viraria um
+         funcionário novo que nunca existiu, e ninguém descobriria até a folha.
+         O casamento é por jibbleId, NUNCA por nome (nome igual entre duas
+         pessoas cria sósia; nome que mudou some com a pessoa). */
       case "pessoas": {
         const r = await jibble(`${HOST_WORKSPACE}/People?$top=200&$count=true`);
-        const lista = ((r.value ?? []) as Record<string, any>[]).map((p) => ({
-          jibbleId: String(p.id ?? ""),
-          nome: String(p.fullName ?? p.name ?? ""),
-          email: String(p.email ?? ""),
-          status: String(p.status ?? ""),
-        }));
-        return resp({ pessoas: lista, total: r["@odata.count"] ?? lista.length });
+        const doRelogio = ((r.value ?? []) as Record<string, any>[]).map((p) => {
+          const removido = !!p.removedAt || String(p.status ?? "") === "Removed";
+          return {
+            jibbleId: String(p.id ?? ""),
+            nome: String(p.fullName ?? p.name ?? "").trim(),
+            apelido: String(p.preferredName ?? "").trim(),
+            email: String(p.email ?? "").trim(),
+            telefone: String(p.phoneNumber ?? "").trim(),
+            matricula: String(p.code ?? "").trim(),
+            // joinDate é o dia em que a pessoa entrou NO RELÓGIO. Vira sugestão
+            // de admissão, não verdade: quem entrou na empresa antes de o
+            // Jibble existir tem admissão anterior, e é o RH que sabe.
+            entrouNoRelogio: String(p.joinDate ?? p.workStartDate ?? "").slice(0, 10),
+            statusRelogio: String(p.status ?? ""),
+            removidoEm: String(p.removedAt ?? "").slice(0, 10),
+            ativoNoRelogio: !removido,
+          };
+        }).filter((p) => p.jibbleId);
+
+        // O de-para com as fichas que já existem (por jibbleId).
+        const { data: fichas } = await sb.from(T_REG)
+          .select("registro").eq("colecao", "rh_pessoas").eq("apagado", false);
+        const porJibble = new Map<string, Record<string, any>>();
+        for (const l of fichas ?? []) {
+          const f = l.registro as Record<string, any>;
+          if (f?.jibbleId) porJibble.set(String(f.jibbleId), f);
+        }
+
+        const pessoas = doRelogio.map((p) => {
+          const ficha = porJibble.get(p.jibbleId);
+          return {
+            ...p,
+            pessoaId: ficha?.id ?? "",
+            temFicha: !!ficha,
+            fichaAtiva: ficha ? ficha.ativo !== false : null,
+            /* DIVERGÊNCIA, não correção automática: pessoa removida no relógio
+               com ficha ativa (ou o contrário) é apontada para o RH decidir.
+               Desligar alguém é ato trabalhista, com data e verbas — nunca a
+               consequência silenciosa de um cadastro em outro sistema. */
+            divergeAtivo: ficha ? (ficha.ativo !== false) !== p.ativoNoRelogio : false,
+          };
+        });
+
+        return resp({
+          pessoas,
+          total: numero(r["@odata.count"]) || pessoas.length,
+          semFicha: pessoas.filter((p) => !p.temFicha).length,
+          divergentes: pessoas.filter((p) => p.divergeAtivo).length,
+        });
       }
 
-      /* IMPORTAR as batidas de um período. Uma janela por chamada (teto de
-         150s); a tela comanda o laço com o cursor `skip`. */
       /* IMPORTAR o resumo diário de um período. A unidade da paginação é a
          PESSOA (cada item traz o mês inteiro dela), então 20 pessoas cabem em
          uma ou duas chamadas — bem abaixo do teto de 150s. */

@@ -3,32 +3,61 @@
 //
 // Os casos foram escolhidos começando pelo CASO RUIM: o que já deu errado na
 // Impresilk (os três centavos), o que erra em dinheiro se for adivinhado
-// ("2.50") e o que vira desconto indevido se ausência virar zero (dia em
-// aberto, mês sem batida, ficha sem salário).
+// ("2.50"), o que vira desconto indevido se ausência virar zero (dia em aberto,
+// mês sem batida, ficha sem salário) e o que a MÉDIA de 44h ÷ 5 mentia (sexta,
+// que tem 8h, e sábado, que não tem nenhuma).
+//
+// As datas de agosto/2026 não são decorativas: 17/08 é SEGUNDA (9h previstas),
+// 21/08 é SEXTA (8h), 22/08 é SÁBADO e 23/08 é DOMINGO (nenhuma).
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  apuracaoDoRelogio,
   apurarCompetencia,
+  atrasoDoDia,
+  ausenciaDoDia,
   calcularFechamento,
   cfgDoPonto,
   competenciaDe,
+  descreverJornada,
+  diaDaSemanaISO,
+  diasDoMes,
+  diasUteisDoMes,
   diferencaDoCalculo,
+  divisorDaJornada,
   duracaoCampo,
   duracaoTexto,
   ehCompetencia,
+  fimPrevistoDoDia,
   horasDecimais,
+  inicioPrevistoDoDia,
+  jornadaParaCfg,
   minutosDaDuracao,
   minutosDoDia,
   minutosEntre,
-  minutosPrevistosPorDia,
+  minutosPrevistosDoDia,
+  minutosPrevistosDoMes,
   minutosTrabalhados,
+  normalizarJornada,
+  origemDoLancamento,
   DIVISOR_MENSAL_PADRAO,
+  FATOR_HE_DOBRA,
   FATOR_HE_PADRAO,
+  JORNADA_PADRAO,
   PERCENTUAL_NOTURNO_PADRAO,
+  TOLERANCIA_DIA_MIN,
+  TOLERANCIA_MARCACAO_MIN,
 } from "./ponto.js";
 
 // O salário que a Impresilk usou para descobrir o defeito dos três centavos.
 const SALARIO = 2462;
+
+const SEGUNDA = "2026-08-17";
+const TERCA = "2026-08-18";
+const QUARTA = "2026-08-19";
+const SEXTA = "2026-08-21";
+const SABADO = "2026-08-22";
+const DOMINGO = "2026-08-23";
 
 // ---- leitura da duração digitada -------------------------------------------
 
@@ -93,45 +122,476 @@ test("minutosTrabalhados: o que a ponte gravou manda, inclusive o zero de verdad
   assert.equal(minutosTrabalhados({ trabalhadoMin: null, entrada: "08:00", saida: "" }), null);
 });
 
-// ---- apuração do mês -------------------------------------------------------
+test("minutosTrabalhados: a marca EM ABERTO é lida ANTES do total — o PT0S do Jibble não vira dia fechado", () => {
+  // O caso que motivou o conserto: quem entrou e não saiu recebe payrollHours
+  // "PT0S", que a ponte entende e grava como trabalhadoMin 0 — não null. Lido
+  // depois do total, esse zero fazia o dia em aberto contar como dia FECHADO de
+  // zero minuto: entrava em diasComBatida, a tela escrevia "0h00 para a folha"
+  // ao lado do selo "em aberto" e a planilha exportava 0.0 na coluna do
+  // desconto.
+  assert.equal(
+    minutosTrabalhados({ trabalhadoMin: 0, emAberto: true, entrada: "08:03", saida: "" }),
+    null
+  );
+  // E vale mesmo com total apurado e as duas batidas: quem diz que o dia não
+  // terminou é o relógio, e enquanto ele disser isso o dia não tem total.
+  assert.equal(minutosTrabalhados({ trabalhadoMin: 492, emAberto: true }), null);
+  assert.equal(
+    minutosTrabalhados({ trabalhadoMin: null, emAberto: true, entrada: "08:00", saida: "17:00" }),
+    null
+  );
+  // Fechado o dia, a próxima importação reescreve as duas coisas juntas.
+  assert.equal(minutosTrabalhados({ trabalhadoMin: 492, emAberto: false }), 492);
+});
 
-test("apurarCompetencia: saldo por dia, com o dia em aberto contado à parte", () => {
+test("apuracaoDoRelogio: reconhece o dia pelo DADO, não pelo rótulo de origem", () => {
+  // O dia real de 17/08: 10h16 de crachá, 1h04 de pausa, 8h12 para a folha.
+  assert.deepEqual(
+    apuracaoDoRelogio({ trabalhadoMin: 492, trackedMin: 616, pausaMin: 64, extraMin: 12 }),
+    { extraMin: 12, extraDobroMin: 0 }
+  );
+  // Domingo trabalhado: só dobra. A faixa que não veio conta 0 porque o relógio
+  // APUROU o dia e disse que ela não existiu.
+  assert.deepEqual(apuracaoDoRelogio({ trabalhadoMin: 240, extraDobroMin: 240 }), {
+    extraMin: 0,
+    extraDobroMin: 240,
+  });
+  // Dia lançado à mão (e dia importado antes desta versão): sem apuração.
+  assert.equal(apuracaoDoRelogio({ trabalhadoMin: 480, origem: "manual" }), null);
+  assert.equal(apuracaoDoRelogio({ origem: "jibble", extraMin: null, extraDobroMin: null }), null);
+  assert.equal(apuracaoDoRelogio(null), null);
+});
+
+// ---- a jornada da casa -----------------------------------------------------
+
+test("a escala padrão fecha exatamente 44h por semana — o mesmo fato que o divisor 220", () => {
+  const escala = normalizarJornada(undefined);
+  assert.equal(escala.semanaMin, 44 * 60);
+  assert.equal(escala.padrao, true);
+  // Escala e divisor são o mesmo fato dito de dois jeitos. Se um dia deixarem
+  // de bater, é porque alguém mexeu num e esqueceu o outro.
+  assert.equal(divisorDaJornada(escala), DIVISOR_MENSAL_PADRAO);
+});
+
+test("previsto por dia da semana: segunda 540, sexta 480, sábado e domingo 0", () => {
+  assert.equal(minutosPrevistosDoDia(SEGUNDA, JORNADA_PADRAO), 540); // 9h
+  assert.equal(minutosPrevistosDoDia(TERCA, JORNADA_PADRAO), 540);
+  assert.equal(minutosPrevistosDoDia(QUARTA, JORNADA_PADRAO), 540);
+  assert.equal(minutosPrevistosDoDia("2026-08-20", JORNADA_PADRAO), 540); // quinta
+  assert.equal(minutosPrevistosDoDia(SEXTA, JORNADA_PADRAO), 480); // 8h
+  // Zero de RESULTADO: a escala foi consultada e disse que não se trabalha.
+  assert.equal(minutosPrevistosDoDia(SABADO, JORNADA_PADRAO), 0);
+  assert.equal(minutosPrevistosDoDia(DOMINGO, JORNADA_PADRAO), 0);
+  // A MÉDIA que isto substituiu diria 528 nos cinco dias: 48 min de atraso toda
+  // sexta, e uma jornada inteira cobrada de quem não trabalha no sábado.
+  assert.notEqual(minutosPrevistosDoDia(SEXTA, JORNADA_PADRAO), 528);
+});
+
+test("previsto por dia: data que não dá para ler devolve null, nunca 0", () => {
+  // 0 aqui faria a apuração tratar o dia inteiro como hora extra.
+  assert.equal(minutosPrevistosDoDia("", JORNADA_PADRAO), null);
+  assert.equal(minutosPrevistosDoDia(null, JORNADA_PADRAO), null);
+  assert.equal(minutosPrevistosDoDia("2026-08", JORNADA_PADRAO), null);
+  assert.equal(minutosPrevistosDoDia("2026-13-01", JORNADA_PADRAO), null);
+  // 30 de fevereiro rolaria para 2 de março e responderia sobre OUTRO dia.
+  assert.equal(minutosPrevistosDoDia("2026-02-30", JORNADA_PADRAO), null);
+});
+
+test("diaDaSemanaISO: monta a data em meia-noite LOCAL (UTC voltaria um dia)", () => {
+  assert.equal(diaDaSemanaISO(DOMINGO), 0);
+  assert.equal(diaDaSemanaISO(SEGUNDA), 1);
+  assert.equal(diaDaSemanaISO(SEXTA), 5);
+  assert.equal(diaDaSemanaISO(SABADO), 6);
+  assert.equal(diaDaSemanaISO("2026-08-32"), null);
+});
+
+test("início e fim previstos saem da escala — e a sexta termina uma hora antes", () => {
+  assert.equal(inicioPrevistoDoDia(SEGUNDA, JORNADA_PADRAO), "08:00");
+  assert.equal(fimPrevistoDoDia(SEGUNDA, JORNADA_PADRAO), "18:00");
+  assert.equal(inicioPrevistoDoDia(SEXTA, JORNADA_PADRAO), "08:00");
+  assert.equal(fimPrevistoDoDia(SEXTA, JORNADA_PADRAO), "17:00");
+  // Dia sem turno não tem começo previsto: null, não "00:00".
+  assert.equal(inicioPrevistoDoDia(SABADO, JORNADA_PADRAO), null);
+  assert.equal(fimPrevistoDoDia(SABADO, JORNADA_PADRAO), null);
+});
+
+test("previsto do MÊS: soma os dias úteis da escala, e a régua vem escrita", () => {
+  // Agosto/2026 começa num sábado: 5 segundas, 4 terças, 4 quartas, 4 quintas
+  // (17 × 9h) e 4 sextas (4 × 8h) = 185h = 11100 min, em 21 dias úteis.
+  assert.equal(minutosPrevistosDoMes("2026-08", JORNADA_PADRAO), 11100);
+  assert.equal(diasUteisDoMes("2026-08", JORNADA_PADRAO), 21);
+  assert.equal(diasDoMes("2026-08").length, 31);
+  // Fevereiro/2026 tem 28 dias e começa num domingo: 4 semanas cheias.
+  assert.equal(minutosPrevistosDoMes("2026-02", JORNADA_PADRAO), 4 * 44 * 60);
+  assert.equal(diasUteisDoMes("2026-02", JORNADA_PADRAO), 20);
+  // O que não é competência sai null — nunca 0, que afirmaria "mês sem jornada".
+  assert.equal(minutosPrevistosDoMes("2026-13", JORNADA_PADRAO), null);
+  assert.equal(minutosPrevistosDoMes("", JORNADA_PADRAO), null);
+  assert.equal(diasUteisDoMes("2026-13", JORNADA_PADRAO), null);
+});
+
+test("a escala é CONFIGURÁVEL: acordo coletivo que põe o sábado muda o previsto", () => {
+  const comSabado = [
+    { dia: 0, turnos: [] },
+    { dia: 1, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "17:00" }] },
+    { dia: 2, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "17:00" }] },
+    { dia: 3, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "17:00" }] },
+    { dia: 4, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "17:00" }] },
+    { dia: 5, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "17:00" }] },
+    { dia: 6, turnos: [{ inicio: "08:00", fim: "12:00" }] },
+  ];
+  const escala = normalizarJornada(comSabado);
+  assert.equal(escala.padrao, false);
+  assert.equal(minutosPrevistosDoDia(SABADO, escala), 240);
+  assert.equal(minutosPrevistosDoDia(SEXTA, escala), 480);
+  assert.equal(escala.semanaMin, 5 * 480 + 240); // 44h também, por outro caminho
+  assert.equal(divisorDaJornada(escala), 220);
+  // Ida e volta pela configuração não muda a escala.
+  assert.deepEqual(normalizarJornada(jornadaParaCfg(escala)).dias, escala.dias);
+});
+
+test("normalizarJornada peneira DIZENDO, e o que não é escala cai inteiro no padrão", () => {
+  const comLixo = [
+    { dia: 1, turnos: [{ inicio: "08:00", fim: "12:00" }, { inicio: "13:00", fim: "25:00" }] },
+    { dia: 5, turnos: [{ inicio: "08:00", fim: "08:00" }] },
+  ];
+  const escala = normalizarJornada(comLixo);
+  assert.equal(escala.padrao, false);
+  assert.equal(escala.ignorados, 2); // "25:00" não é hora; turno de duração zero
+  assert.equal(escala.dias[1].previstoMin, 240); // sobrou o turno que presta
+  // Dia que a configuração não menciona é dia NÃO trabalhado — o padrão da casa
+  // não reaparece por baixo.
+  assert.equal(escala.dias[2].previstoMin, 0);
+
+  // Nada disso é escala: vale o padrão, e a tela diz que está no padrão.
+  for (const ruim of [null, undefined, "seg a sex", {}, []]) {
+    const p = normalizarJornada(ruim);
+    assert.equal(p.padrao, true, JSON.stringify(ruim));
+    assert.equal(p.semanaMin, 44 * 60);
+  }
+  // Idempotente: escala já normalizada volta como está.
+  assert.equal(normalizarJornada(escala), escala);
+});
+
+test("descreverJornada: a régua em uma frase, para a tela não mostrar previsto sem dono", () => {
+  assert.equal(
+    descreverJornada(JORNADA_PADRAO),
+    "9h00 de segunda a quinta · 8h00 na sexta · 44h00 por semana"
+  );
+});
+
+// ---- pontualidade e a tolerância do art. 58 § 1º ---------------------------
+
+test("atrasoDoDia: o atraso CRU da entrada vem com sinal — negativo é ter chegado antes", () => {
+  const atrasado = atrasoDoDia({ data: SEGUNDA, entrada: "08:12" }, JORNADA_PADRAO);
+  assert.equal(atrasado.inicioPrevisto, "08:00");
+  assert.equal(atrasado.atrasoEntradaMin, 12);
+  const adiantado = atrasoDoDia({ data: SEGUNDA, entrada: "07:48" }, JORNADA_PADRAO);
+  assert.equal(adiantado.atrasoEntradaMin, -12);
+  // Chegar antes não é atraso: o que encurta o dia é o que conta.
+  assert.equal(adiantado.atrasoBrutoMin, 0);
+  assert.equal(adiantado.atrasoMin, 0);
+});
+
+test("atrasoDoDia: até 5 min por marcação e 10 no dia não contam (CLT art. 58 § 1º)", () => {
+  assert.equal(TOLERANCIA_MARCACAO_MIN, 5);
+  assert.equal(TOLERANCIA_DIA_MIN, 10);
+  // Entrou 4 min depois, saiu 2 min antes: 4 e 2 cabem nos 5, e a soma (6) cabe
+  // nos 10. Nada é descontado — e o atraso CRU continua à vista.
+  const dentro = atrasoDoDia({ data: SEGUNDA, entrada: "08:04", saida: "17:58" }, JORNADA_PADRAO);
+  assert.equal(dentro.atrasoEntradaMin, 4);
+  assert.equal(dentro.saidaAntesMin, 2);
+  assert.equal(dentro.atrasoBrutoMin, 6);
+  assert.equal(dentro.tolerado, true);
+  assert.equal(dentro.atrasoMin, 0); // o que a folha pode cobrar
+  assert.equal(dentro.toleradoMin, 6); // o que a tolerância absorveu
+  // No limite exato: 5 + 5 = 10, ainda dentro. Com DUAS marcações o teto de 10
+  // é justamente 5+5 — ele existe para o dia com mais marcações que estas.
+  const limite = atrasoDoDia({ data: SEGUNDA, entrada: "08:05", saida: "17:55" }, JORNADA_PADRAO);
+  assert.equal(limite.tolerado, true);
+  assert.equal(limite.atrasoMin, 0);
+  assert.equal(limite.toleradoMin, 10);
+});
+
+test("atrasoDoDia: estourou a tolerância, conta o tempo INTEIRO (Súmula 366 do TST)", () => {
+  // 7 min passam dos 5 da marcação: não se abatem 5 e cobram 2 — cobra-se 7.
+  const um = atrasoDoDia({ data: SEGUNDA, entrada: "08:07" }, JORNADA_PADRAO);
+  assert.equal(um.atrasoEntradaMin, 7);
+  assert.equal(um.tolerado, false);
+  assert.equal(um.atrasoMin, 7);
+  assert.equal(um.toleradoMin, 0);
+  // Uma marcação dentro e outra fora: o dia inteiro deixa de ser tolerado.
+  const dois = atrasoDoDia({ data: SEGUNDA, entrada: "08:05", saida: "17:54" }, JORNADA_PADRAO);
+  assert.equal(dois.saidaAntesMin, 6);
+  assert.equal(dois.tolerado, false);
+  assert.equal(dois.atrasoMin, 11); // 5 da entrada + 6 da saída, tudo
+  assert.equal(dois.toleradoMin, 0);
+});
+
+test("atrasoDoDia: a sexta termina às 17:00, e é contra ISSO que a saída é medida", () => {
+  const sexta = atrasoDoDia({ data: SEXTA, entrada: "08:00", saida: "16:00" }, JORNADA_PADRAO);
+  assert.equal(sexta.fimPrevisto, "17:00");
+  assert.equal(sexta.saidaAntesMin, 60);
+  assert.equal(sexta.atrasoMin, 60);
+  // Sair às 17:00 na sexta é sair na hora — pela média de 8h48 seria "faltou".
+  const naHora = atrasoDoDia({ data: SEXTA, entrada: "08:00", saida: "17:00" }, JORNADA_PADRAO);
+  assert.equal(naHora.atrasoBrutoMin, 0);
+  assert.equal(naHora.atrasoMin, 0);
+});
+
+test("atrasoDoDia: turno que vira a meia-noite não vira 12h de 'saída antecipada'", () => {
+  // Plantão 22:00 → 06:00. A subtração de relógio (18:00 − 06:00) descreveria
+  // outra coisa, e inventaria atraso numa noite inteira trabalhada.
+  const noturna = [
+    { dia: 1, turnos: [{ inicio: "22:00", fim: "06:00" }] },
+    { dia: 2, turnos: [] },
+  ];
+  const p = atrasoDoDia({ data: SEGUNDA, entrada: "22:05", saida: "06:00" }, noturna);
+  assert.equal(p.inicioPrevisto, "22:00");
+  assert.equal(p.atrasoEntradaMin, 5);
+  assert.equal(p.saidaAntesMin, null); // não se afirma nada sobre a saída
+  assert.equal(p.atrasoBrutoMin, 5);
+  assert.equal(p.tolerado, true); // 5 min cabem na tolerância da marcação
+  assert.equal(p.atrasoMin, 0);
+  assert.equal(p.toleradoMin, 5);
+});
+
+test("atrasoDoDia: sem o que medir devolve null — 0 seria dizer 'chegou na hora' sem medir", () => {
+  assert.equal(atrasoDoDia({ data: SABADO, entrada: "08:30" }, JORNADA_PADRAO), null);
+  assert.equal(atrasoDoDia({ data: DOMINGO, entrada: "08:30" }, JORNADA_PADRAO), null);
+  assert.equal(atrasoDoDia({ data: SEGUNDA, entrada: "" }, JORNADA_PADRAO), null);
+  assert.equal(atrasoDoDia({ data: "", entrada: "08:30" }, JORNADA_PADRAO), null);
+  assert.equal(atrasoDoDia(null, JORNADA_PADRAO), null);
+});
+
+// ---- ausências --------------------------------------------------------------
+
+test("ausenciaDoDia: só 'falta' desconta; atestado, justificada, férias e folga não", () => {
+  assert.equal(ausenciaDoDia({ ausencia: { tipo: "falta" } }).desconta, true);
+  for (const tipo of ["atestado", "justificada", "ferias", "folga"]) {
+    const a = ausenciaDoDia({ ausencia: { tipo } });
+    assert.equal(a.desconta, false, tipo);
+    assert.equal(a.conhecido, true, tipo);
+  }
+  // O motivo é texto livre — a palavra da casa vale mais que uma etiqueta.
+  const atestado = ausenciaDoDia({
+    ausencia: { tipo: "atestado", motivo: "consulta no ortopedista", documento: "ASO 4471" },
+  });
+  assert.equal(atestado.motivo, "consulta no ortopedista");
+  assert.equal(atestado.documento, "ASO 4471");
+  assert.equal(atestado.chip, "chip");
+  assert.equal(ausenciaDoDia({ ausencia: { tipo: "falta" } }).chip, "chip-bad");
+  // Dia sem ausência é dia sem ausência.
+  assert.equal(ausenciaDoDia({ trabalhadoMin: 480 }), null);
+  assert.equal(ausenciaDoDia({ ausencia: { tipo: "  " } }), null);
+  assert.equal(ausenciaDoDia(null), null);
+});
+
+test("ausenciaDoDia: tipo desconhecido NÃO some e NÃO desconta", () => {
+  // Descartar em silêncio esconderia o lançamento de alguém; cair em "falta"
+  // por omissão inventaria desconto na folha.
+  const a = ausenciaDoDia({ ausencia: { tipo: "licenca_paternidade" } });
+  assert.equal(a.conhecido, false);
+  assert.equal(a.desconta, false);
+  assert.equal(a.tipo, "licenca_paternidade");
+});
+
+test("apurarCompetencia: conta as ausências por tipo, e separa o que desconta do que não", () => {
   const r = apurarCompetencia(
     [
-      { trabalhadoMin: 600 }, // +72 sobre 8h48
-      { trabalhadoMin: 480 }, // −48
-      { trabalhadoMin: null, entrada: "08:00", saida: "" }, // em aberto
+      { data: "2026-08-03", ausencia: { tipo: "atestado", documento: "ASO 1" } },
+      { data: "2026-08-04", ausencia: { tipo: "atestado", documento: "ASO 1" } },
+      { data: "2026-08-05", ausencia: { tipo: "atestado", documento: "ASO 1" } },
+      { data: "2026-08-06", ausencia: { tipo: "atestado", documento: "ASO 1" } },
+      { data: "2026-08-07", ausencia: { tipo: "falta", motivo: "não avisou" } },
+      { data: "2026-08-10", ausencia: { tipo: "ferias" } },
+      { data: "2026-08-11", ausencia: { tipo: "folga", motivo: "compensou o sábado" } },
     ],
-    528
+    JORNADA_PADRAO
+  );
+  // Quem soma 4 atestados não pode aparecer como quem teve 4 faltas.
+  assert.equal(r.ausencias.atestado, 4);
+  assert.equal(r.ausencias.falta, 1);
+  assert.equal(r.ausencias.ferias, 1);
+  assert.equal(r.ausencias.folga, 1);
+  assert.equal(r.ausenciasTotal, 7);
+  assert.equal(r.faltasQueDescontam, 1);
+  assert.equal(r.ausenciasSemDesconto, 6);
+  assert.equal(r.ausenciasDesconhecidas, 0);
+  // Dia de ausência pura não é dia com batida nem dia em aberto: é dia explicado.
+  assert.equal(r.diasComBatida, 0);
+  assert.equal(r.diasEmAberto, 0);
+  assert.equal(r.trabalhadoMin, null);
+
+  // E é SÓ a falta que vira dinheiro: 1/30 do salário, uma vez.
+  const conta = calcularFechamento({ salario: SALARIO, faltas: r.faltasQueDescontam });
+  assert.equal(conta.valorDia, 82.07); // 2462 ÷ 30
+  assert.equal(conta.valorFaltas, 82.07);
+  // Se os atestados descontassem, seriam R$ 410,35 tirados de quem estava doente.
+  assert.equal(calcularFechamento({ salario: SALARIO, faltas: 5 }).valorFaltas, 410.35);
+});
+
+test("apurarCompetencia: tipo desconhecido sai contado à parte e não desconta nada", () => {
+  const r = apurarCompetencia(
+    [{ data: "2026-08-03", ausencia: { tipo: "licenca_paternidade" } }],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.ausenciasTotal, 1);
+  assert.equal(r.ausenciasDesconhecidas, 1);
+  assert.equal(r.faltasQueDescontam, 0);
+  assert.equal(r.ausencias.falta, 0);
+});
+
+test("apurarCompetencia: dia SEM batida e SEM ausência lançada NÃO é falta", () => {
+  // Regra da casa: falta é afirmação trabalhista, e quem afirma é o RH no
+  // lançamento. Numa empresa que acabou de ligar o relógio, deduzir falta da
+  // ausência de linha inventaria desconto na folha de gente que trabalhou.
+  const mesVazio = apurarCompetencia([], JORNADA_PADRAO);
+  assert.equal(mesVazio.faltasQueDescontam, 0);
+  assert.equal(mesVazio.ausenciasTotal, 0);
+  assert.equal(mesVazio.diasComBatida, 0);
+  // Dia em aberto também não vira falta: vira pendência.
+  const aberto = apurarCompetencia(
+    [{ data: SEGUNDA, trabalhadoMin: 0, emAberto: true, entrada: "08:00", saida: "" }],
+    JORNADA_PADRAO
+  );
+  assert.equal(aberto.faltasQueDescontam, 0);
+  assert.equal(aberto.diasEmAberto, 1);
+});
+
+test("apurarCompetencia: ausência num dia que TAMBÉM teve trabalho não desconta 1/30", () => {
+  // "Atestado da tarde": a hora trabalhada é real e continua somando, e o caso
+  // sai contado para a tela pedir conferência — descontar o dia inteiro de quem
+  // trabalhou metade dele seria cobrar duas vezes.
+  const r = apurarCompetencia(
+    [{ data: SEGUNDA, trabalhadoMin: 240, ausencia: { tipo: "atestado" } }],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.ausenciasComTrabalho, 1);
+  assert.equal(r.faltasQueDescontam, 0);
+  assert.equal(r.diasComBatida, 1);
+  assert.equal(r.trabalhadoMin, 240);
+});
+
+// ---- apuração do mês -------------------------------------------------------
+
+test("apurarCompetencia: saldo por dia pela ESCALA, com o dia em aberto contado à parte", () => {
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 600 }, // +60 sobre as 9h da segunda
+      { data: TERCA, trabalhadoMin: 480 }, // −60
+      { data: QUARTA, trabalhadoMin: null, entrada: "08:00", saida: "" }, // em aberto
+    ],
+    JORNADA_PADRAO
   );
   assert.equal(r.diasComBatida, 2);
   assert.equal(r.diasEmAberto, 1);
   assert.equal(r.trabalhadoMin, 1080);
-  assert.equal(r.extrasMin, 72);
-  assert.equal(r.atrasosMin, 48);
-  assert.equal(r.semJornada, false);
+  assert.equal(r.extrasMin, 60);
+  assert.equal(r.atrasosMin, 60);
+  assert.equal(r.previstoDerivadoMin, 1080); // 540 + 540, a régua que foi usada
 });
 
-test("apurarCompetencia: sem jornada na ficha não inventa saldo", () => {
-  const r = apurarCompetencia([{ trabalhadoMin: 600 }], null);
-  assert.equal(r.semJornada, true);
-  assert.equal(r.extrasMin, null);
+test("apurarCompetencia: a MÉDIA mentia na sexta e no sábado — a escala não mente", () => {
+  // Oito horas cravadas na sexta: jornada cumprida, saldo zero. A média de
+  // 44h ÷ 5 = 8h48 acusaria 48 min de atraso em quem cumpriu o expediente.
+  const sexta = apurarCompetencia([{ data: SEXTA, trabalhadoMin: 480 }], JORNADA_PADRAO);
+  assert.equal(sexta.extrasMin, 0);
+  assert.equal(sexta.atrasosMin, 0);
+  assert.equal(sexta.previstoDerivadoMin, 480);
+
+  // Quatro horas num sábado: a escala não prevê nada, então TUDO é excedente.
+  // A média cobraria 288 min de atraso de quem foi trabalhar no fim de semana.
+  const sabado = apurarCompetencia([{ data: SABADO, trabalhadoMin: 240 }], JORNADA_PADRAO);
+  assert.equal(sabado.extrasMin, 240);
+  assert.equal(sabado.atrasosMin, 0);
+  assert.equal(sabado.diasForaDaEscala, 1); // a tela lembra que dobra é outra faixa
+  assert.equal(sabado.previstoDerivadoMin, 0);
+});
+
+test("apurarCompetencia: o apurado do relógio MANDA sobre a conta derivada", () => {
+  // O relógio, que respeita a escala de cada um, apurou 12 min de extra e um
+  // domingo inteiro em dobra.
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, origem: "jibble", entrada: "08:03", saida: "18:19", pausaMin: 64, trackedMin: 616, trabalhadoMin: 492, extraMin: 12 },
+      { data: TERCA, origem: "jibble", trabalhadoMin: 480, extraMin: 0, extraDobroMin: 0 },
+      { data: DOMINGO, origem: "jibble", trabalhadoMin: 240, extraMin: 0, extraDobroMin: 240 },
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.extrasMin, 12); // e não o que a conta derivada diria
+  assert.equal(r.extrasDobroMin, 240);
+  assert.equal(r.trabalhadoMin, 1212);
+  assert.equal(r.diasDoRelogio, 3);
+  assert.equal(r.diasDerivados, 0);
+  assert.equal(r.fonteExtras, "relogio");
+  // Atraso derivado NÃO se afirma sobre dia que o relógio apurou: seria um
+  // segundo resultado, com régua diferente, em cima de desconto de folha.
   assert.equal(r.atrasosMin, null);
-  assert.equal(r.trabalhadoMin, 600); // o total trabalhado continua sendo verdade
+  assert.equal(r.previstoDerivadoMin, null);
+});
+
+test("apurarCompetencia: mês misto soma cada dia pela sua régua e diz que é misto", () => {
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 492, extraMin: 12 }, // apurado pelo relógio
+      { data: TERCA, trabalhadoMin: 600 }, // lançado à mão: +60 sobre as 9h
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.extrasMin, 72); // 12 do relógio + 60 derivados
+  assert.equal(r.extrasRelogioMin, 12);
+  assert.equal(r.extrasDerivadosMin, 60);
+  assert.equal(r.fonteExtras, "misto");
+  assert.equal(r.atrasosMin, 0); // medido no dia derivável, e zero medido é resultado
+  // Dobra continua SEM APURAÇÃO na parte derivada — mas o dia do relógio já
+  // basta para o número existir, e ele é zero de verdade.
+  assert.equal(r.extrasDobroMin, 0);
+});
+
+test("apurarCompetencia: dia sem total não entra em soma nenhuma, nem na extra do relógio", () => {
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 0, emAberto: true, entrada: "08:00", saida: "", extraMin: 30 },
+      { data: TERCA, trabalhadoMin: 492, extraMin: 12 },
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.diasEmAberto, 1);
+  assert.equal(r.diasComBatida, 1);
+  assert.equal(r.trabalhadoMin, 492); // o dia aberto não soma 0 — ele não soma
+  assert.equal(r.extrasMin, 12); // os 30 min do dia aberto ficam de fora
+  assert.equal(r.diasDoRelogio, 1);
+});
+
+test("apurarCompetencia: sem dia do relógio, a dobra fica SEM APURAÇÃO — nunca zero", () => {
+  const r = apurarCompetencia([{ data: SEGUNDA, trabalhadoMin: 600 }], JORNADA_PADRAO);
+  assert.equal(r.extrasMin, 60);
+  assert.equal(r.extrasDobroMin, null); // a conta derivada soma tudo numa faixa só
+  assert.equal(r.fonteExtras, "manual");
+});
+
+test("apurarCompetencia: dia à mão sem data legível sai contado, não somado", () => {
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 492, extraMin: 12 }, // o relógio não depende da data
+      { trabalhadoMin: 600 }, // este precisaria do dia da semana, que não existe
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.extrasMin, 12); // só o que o relógio apurou
+  assert.equal(r.diasSemSaldo, 1); // e a tela avisa que a sugestão saiu incompleta
+  assert.equal(r.atrasosMin, null);
+  assert.equal(r.trabalhadoMin, 1092);
 });
 
 test("apurarCompetencia: mês sem batida nenhuma devolve null, não zero hora", () => {
-  const r = apurarCompetencia([], 528);
+  const r = apurarCompetencia([], JORNADA_PADRAO);
   assert.equal(r.diasComBatida, 0);
   assert.equal(r.trabalhadoMin, null);
-});
-
-test("minutosPrevistosPorDia: 44h ÷ 5 dias = 8h48; sem jornada, null", () => {
-  assert.equal(minutosPrevistosPorDia(44), 528);
-  assert.equal(minutosPrevistosPorDia(40), 480);
-  assert.equal(minutosPrevistosPorDia(""), null);
-  assert.equal(minutosPrevistosPorDia(null), null);
-  assert.equal(minutosPrevistosPorDia(0), null);
+  assert.equal(r.extrasMin, null);
+  assert.equal(r.atrasosMin, null);
 });
 
 // ---- o arredondamento passo a passo ----------------------------------------
@@ -159,6 +619,59 @@ test("calcularFechamento: +100% em domingo/feriado sai do valor-hora já arredon
   assert.equal(c.valorHora, 11.19);
   assert.equal(c.valorHoraExtra, 22.38); // 1119 × 2
   assert.equal(c.valorExtras, 100.71); // 2238 × 4,5 = 10071
+});
+
+test("calcularFechamento: as duas faixas somam com os fatores certos, cada uma com seu passo", () => {
+  const c = calcularFechamento({
+    salario: SALARIO,
+    horasExtrasMin: 270, // 4h30 de dia útil
+    horasExtrasDobroMin: 120, // 2h de descanso/feriado
+  });
+  assert.equal(c.valorHora, 11.19);
+  assert.equal(c.valorHoraExtra, 16.79); // 1119 × 1,5
+  assert.equal(c.valorHoraExtraDobro, 22.38); // 1119 × 2
+  assert.equal(c.valorExtras, 75.56); // 16,79 × 4,5
+  assert.equal(c.valorExtrasDobro, 44.76); // 22,38 × 2
+  assert.equal(c.valorExtrasTotal, 120.32);
+  assert.equal(c.valorCalculado, 120.32);
+  // POR QUE AS DUAS NÃO VIRAM UMA: somadas em 6h30 num fator só, a conta daria
+  // R$ 109,14 — onze reais a menos, e ninguém saberia dizer de onde sumiram.
+  assert.equal(calcularFechamento({ salario: SALARIO, horasExtrasMin: 390 }).valorExtras, 109.14);
+});
+
+test("calcularFechamento: mês só de dobra paga só a dobra, e a faixa de 50% fica em zero", () => {
+  const c = calcularFechamento({ salario: SALARIO, horasExtrasDobroMin: 480 });
+  assert.equal(c.valorExtras, 0);
+  assert.equal(c.valorExtrasDobro, 179.04); // 22,38 × 8
+  assert.equal(c.valorCalculado, 179.04);
+  assert.equal(c.fatorDobro, FATOR_HE_DOBRA);
+});
+
+test("calcularFechamento: registro ANTIGO, sem horasExtrasDobroMin, continua valendo", () => {
+  // Registro gravado antes de existirem as duas faixas: a dobra do mês inteiro
+  // foi lançada em horasExtrasMin com o fator 2 carimbado no próprio registro.
+  // O campo novo entra como 0 porque a faixa não existia — não é medição que
+  // faltou, e por isso aqui zero não afirma nada de falso.
+  const antigo = calcularFechamento({ salario: SALARIO, horasExtrasMin: 480, fator: 2 });
+  assert.equal(antigo.horasExtrasDobroMin, 0);
+  assert.equal(antigo.valorExtrasDobro, 0);
+  assert.equal(antigo.valorExtras, 179.04); // 22,38 × 8, como sempre foi
+  assert.equal(antigo.valorCalculado, 179.04);
+  // E o mesmo registro relido com o campo vazio dá exatamente o mesmo número.
+  const relido = calcularFechamento({ salario: SALARIO, horasExtrasMin: 480, fator: 2, horasExtrasDobroMin: "" });
+  assert.equal(relido.valorCalculado, antigo.valorCalculado);
+});
+
+test("calcularFechamento: sem salário, as DUAS faixas ficam pendentes — nenhuma vira R$ 0,00", () => {
+  const c = calcularFechamento({ salario: "", horasExtrasMin: 270, horasExtrasDobroMin: 120 });
+  assert.equal(c.semSalario, true);
+  assert.equal(c.valorExtras, null);
+  assert.equal(c.valorExtrasDobro, null);
+  assert.equal(c.valorExtrasTotal, null);
+  assert.equal(c.valorHoraExtraDobro, null);
+  // As quantidades continuam registradas: o que falta é o preço, não a hora.
+  assert.equal(c.horasExtrasMin, 270);
+  assert.equal(c.horasExtrasDobroMin, 120);
 });
 
 test("calcularFechamento: falta de mensalista desconta 1/30 do salário", () => {
@@ -227,6 +740,19 @@ test("diferencaDoCalculo: mostra o que foi alterado, e ignora ruído abaixo de u
   assert.equal(diferencaDoCalculo("", 75.56), 0);
 });
 
+// ---- de onde veio o número --------------------------------------------------
+
+test("origemDoLancamento: carimba relógio só quando o lançado é o apurado", () => {
+  assert.equal(origemDoLancamento(12, 12), "relogio");
+  assert.equal(origemDoLancamento(30, 12), "manual"); // o RH mudou o número
+  // Sem apuração do relógio, tudo é à mão — inclusive o que foi copiado da
+  // sugestão derivada das batidas, que é conta desta casa e não do relógio.
+  assert.equal(origemDoLancamento(72, null), "manual");
+  assert.equal(origemDoLancamento(0, 0), "relogio"); // zero apurado é zero conferido
+  assert.equal(origemDoLancamento(null, 12), "sem");
+  assert.equal(origemDoLancamento("", null), "sem");
+});
+
 // ---- competência e configuração --------------------------------------------
 
 test("competenciaDe: recorta o texto do dia, sem passar por Date (fuso não entra)", () => {
@@ -243,13 +769,38 @@ test("cfgDoPonto: o que não presta cai no padrão da casa, e 'definida' conta a
   assert.equal(padrao.fatorHoraExtra, FATOR_HE_PADRAO);
   assert.equal(padrao.percentualNoturno, PERCENTUAL_NOTURNO_PADRAO);
   assert.equal(padrao.definida, false);
+  assert.equal(padrao.jornadaDefinida, false);
+  assert.equal(padrao.jornada.semanaMin, 44 * 60);
 
   // Divisor 0 dividiria por zero e espalharia NaN pela coluna de dinheiro.
   const ruim = cfgDoPonto({ ponto: { divisor: 0, fatorHoraExtra: "x" } });
   assert.equal(ruim.divisor, 220);
   assert.equal(ruim.fatorHoraExtra, 1.5);
   assert.equal(ruim.definida, true);
+  // Configuração que existe mas nunca escolheu escala continua no padrão da
+  // casa — e diz isso, em vez de deixar parecer que alguém escolheu 44h.
+  assert.equal(ruim.jornadaDefinida, false);
 
-  const escolhida = cfgDoPonto({ ponto: { divisor: 200, fatorHoraExtra: 2, percentualNoturno: 30 } });
-  assert.deepEqual(escolhida, { divisor: 200, fatorHoraExtra: 2, percentualNoturno: 30, definida: true });
+  const escolhida = cfgDoPonto({
+    ponto: {
+      divisor: 200,
+      fatorHoraExtra: 2,
+      percentualNoturno: 30,
+      jornada: [
+        { dia: 1, turnos: [{ inicio: "08:00", fim: "16:00" }] },
+        { dia: 2, turnos: [{ inicio: "08:00", fim: "16:00" }] },
+        { dia: 3, turnos: [{ inicio: "08:00", fim: "16:00" }] },
+        { dia: 4, turnos: [{ inicio: "08:00", fim: "16:00" }] },
+        { dia: 5, turnos: [{ inicio: "08:00", fim: "16:00" }] },
+      ],
+    },
+  });
+  assert.equal(escolhida.divisor, 200);
+  assert.equal(escolhida.fatorHoraExtra, 2);
+  assert.equal(escolhida.percentualNoturno, 30);
+  assert.equal(escolhida.definida, true);
+  assert.equal(escolhida.jornadaDefinida, true);
+  assert.equal(escolhida.jornada.semanaMin, 40 * 60);
+  assert.equal(minutosPrevistosDoDia(SEXTA, escolhida.jornada), 480);
+  assert.equal(divisorDaJornada(escolhida.jornada), 200); // e o divisor bate
 });
