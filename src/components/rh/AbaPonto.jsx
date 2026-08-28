@@ -22,26 +22,66 @@
 // ----------------------------------------------------------------------------
 // CONTRATO DAS COLEÇÕES (o que esta aba lê e grava)
 //
-// "rh_ponto_dia" — o dia. A ponte já grava em produção:
-//   { id: "pd_<jibbleId>_<AAAA-MM-DD>", jibbleId, pessoaNome, data,
-//     entrada, saida ("HH:MM"), pausaMin, trabalhadoMin (null = EM ABERTO),
-//     origem: "jibble", corrigido: false, batidas: [{hora, tipo}] }
+// "rh_ponto_dia" — o dia. Desde 27/08/2026 a ponte grava em produção o que o
+//   RELÓGIO JÁ APUROU, respeitando a escala de cada pessoa:
+//   { id: "pd_<jibbleId>_<AAAA-MM-DD>", jibbleId, pessoaId (se a tela vinculou),
+//     pessoaNome, data, entrada, saida ("HH:MM"),
+//     pausaMin       — intervalo NÃO pago (o almoço)
+//     pausaPagaMin   — intervalo pago
+//     trabalhadoMin  — o payrollHours: O QUE VAI PARA A FOLHA (null = EM ABERTO)
+//     trackedMin     — tempo de crachá aberto (entrada até saída, pausa dentro)
+//     extraMin       — hora extra de DIA NORMAL, já apurada (+50%)
+//     extraDobroMin  — extra de descanso/feriado/dobra, já apurada (+100%)
+//     emAberto       — entrou e não saiu
+//     origem: "jibble", corrigido: false }
+//   E o dia de AUSÊNCIA, que nasce SEMPRE aqui (o relógio não sabe por que
+//   alguém não veio), com origem "manual" e corrigido: true:
+//     ausencia: { tipo, motivo, documento }
+//       tipo         — "falta" | "atestado" | "justificada" | "ferias" | "folga"
+//       motivo       — texto livre; a palavra de quem estava lá vale mais que
+//                      uma etiqueta
+//       documento    — a referência do atestado, quando houver
+//     Só "falta" desconta (1/30 do salário). Ver TIPOS_AUSENCIA em lib/rh/ponto.js.
+//     Remover a ausência é gravar `ausencia: null` — lançamento errado tem de
+//     ter volta, senão o RH aprende a não lançar.
+//   OS TRÊS NÚMEROS DO DIA NÃO FECHAM POR SUBTRAÇÃO, e a tela nunca os escreve
+//   como se fechassem: 17/08 teve 10h16 de crachá, 1h04 de intervalo e 8h12
+//   para a folha. Quem concilia é a escala, e quem apura a escala é o relógio.
 //   Esta tela ACRESCENTA, ao corrigir ou lançar à mão:
 //     pessoaId          — o id da ficha (a ponte só conhece o jibbleId)
 //     origem: "manual"  — dia que nasceu aqui, não no relógio
 //     corrigido: true   — PROTEGE o dia: a importação seguinte não sobrescreve
-//     relogioEntrada / relogioSaida / relogioPausaMin
-//                       — o que o relógio tinha trazido, carimbado na PRIMEIRA
-//                         correção; é o que deixa saber depois o que veio da
-//                         máquina e o que o RH ajustou.
+//     relogioEntrada / relogioSaida / relogioPausaMin /
+//     relogioTrabalhadoMin / relogioExtraMin / relogioExtraDobroMin
+//                       — o que o relógio tinha trazido E APURADO, carimbado na
+//                         PRIMEIRA correção; é o que deixa saber depois o que é
+//                         da máquina e o que é do RH.
+//   E LIMPA `extraMin`/`extraDobroMin` quando a correção mexe nas batidas: a
+//   apuração do relógio descreve as batidas do relógio. Mudou a batida, aquele
+//   número deixou de descrever o dia — fica guardado no carimbo, e o dia passa
+//   a valer pela conta desta casa.
 //
 // "rh_ponto" — o fechamento de uma pessoa num mês:
 //   { id: "pt_<pessoaId>_<AAAA-MM>", pessoaId, pessoaNome (carimbo),
-//     competencia, horasExtrasMin, faltas (dias), atrasosMin,
-//     adicionalNoturnoMin, valorHoraExtra, valorFaltas, valorCalculado,
-//     valorLancado, obs, fechado, fechadoEm }
+//     competencia, horasExtrasMin, horasExtrasDobroMin, faltas (dias),
+//     atrasosMin, adicionalNoturnoMin, valorHoraExtra, valorFaltas,
+//     valorCalculado, valorLancado, obs, fechado, fechadoEm }
+//   AS DUAS FAIXAS DE EXTRA MORAM EM CAMPOS SEPARADOS: `horasExtrasMin` no
+//   fator escolhido (+50% de dia útil, por padrão) e `horasExtrasDobroMin`
+//   sempre em +100%. Somadas num campo só, a tela teria de adivinhar o fator na
+//   hora de refazer a conta — e adivinhar erra em dinheiro.
+//   Registro ANTIGO não tem `horasExtrasDobroMin`, e continua valendo: entra
+//   como 0, porque a faixa não existia quando ele foi gravado (a dobra daquela
+//   época foi lançada em `horasExtrasMin` com `fatorHoraExtra` 2).
 //   Acrescentados aqui, e todos CARIMBO DOS PARÂMETROS DA CONTA:
-//     salarioBase, divisor, fatorHoraExtra, percentualNoturno, valorNoturno
+//     salarioBase, divisor, fatorHoraExtra, fatorHoraExtraDobro,
+//     percentualNoturno, valorNoturno
+//   Mais o carimbo da PROCEDÊNCIA, que a conta escrita repete para quem lê:
+//     origemExtras / origemExtrasDobro — "relogio" quando o que foi lançado é
+//     exatamente o que o relógio apurou, "manual" quando saiu do dedo de
+//     alguém. É carimbo, e não comparação refeita na leitura: batida corrigida
+//     amanhã mudaria a apuração e a linha de um mês já conferido passaria a
+//     dizer outra coisa.
 //   Por quê: sem eles, reabrir janeiro depois de um aumento (ou depois de o
 //   acordo coletivo mudar o divisor) reescreveria a conta de janeiro com os
 //   números de hoje. O que foi conferido e fechado tem de continuar dizendo a
@@ -63,12 +103,22 @@
 // - Batida sem vínculo NÃO SOME da tela: aparece como "pessoa não vinculada",
 //   com o nome que o relógio mandou, e entra na conta de pendências. Sumir
 //   esconderia trabalho de gente real.
-// - Dia sem batida NÃO é falta e NÃO é zero hora: é "em aberto". Falta é
+// - O QUE O RELÓGIO APUROU MANDA: a sugestão do mês é a SOMA de `extraMin` e
+//   `extraDobroMin` dos dias, e não trabalhado-contra-previsto. Refazer a conta
+//   de um dia que o relógio já apurou (respeitando a escala) cria um segundo
+//   resultado, e o painel passa a divergir do que a própria pessoa vê no
+//   aplicativo do Jibble. A conta derivada só vale para o dia lançado à mão.
+// - Dia sem batida NÃO é falta e NÃO é zero hora: é "sem registro". Falta é
 //   afirmação trabalhista (pode ser feriado, folga ou atestado) e quem afirma é
-//   o RH, no lançamento — por isso o campo Faltas nunca vem preenchido das
-//   batidas.
-// - Sem `horasSemanais` na ficha não há saldo: a tela diz isso, em vez de
-//   mostrar hora extra ou atraso inventados.
+//   o RH, LANÇANDO a ausência no dia. O campo Faltas do fechamento só é
+//   sugerido a partir do que foi lançado como "falta" — nunca deduzido da
+//   ausência de linha, que numa empresa que acabou de ligar o relógio
+//   inventaria desconto na folha de quem estava trabalhando.
+// - O PREVISTO DO DIA SAI DA ESCALA DA CASA, não de uma média. Segunda a
+//   quinta 9h, sexta 8h, fim de semana nenhuma — 44h na semana, que é o mesmo
+//   fato que o divisor 220. A média de 44h ÷ 5 = 8h48 que havia aqui antes
+//   inventava 48 min de atraso toda sexta e cobrava jornada inteira de quem foi
+//   trabalhar no sábado. A escala é configurável (parâmetros do ponto).
 // - Sem salário na ficha não há conta: a linha vira pendência escrita, nunca
 //   R$ 0,00 mudo.
 // - A diferença entre o valor lançado e o calculado é DERIVADA dos dois valores
@@ -79,17 +129,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import {
-  AlarmClock, CalendarClock, CircleAlert, Clock, Download, Link2, Lock, LockOpen,
+  AlarmClock, CalendarClock, CalendarOff, CircleAlert, Clock, Download, Link2, Lock, LockOpen,
   Pencil, Plus, RefreshCw, Settings2, Trash2, Unlink, Wallet,
 } from "lucide-react";
-import { lerCfg, salvarCfg } from "../../services/dados.js";
+import { lerCfg, listar, salvarCfg } from "../../services/dados.js";
 import { importarPeriodo } from "../../services/ponto.js";
 import { dataLonga, moedaCheia, paraNumero, MESES_LONGOS } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import {
-  ADICIONAIS_HE, apurarCompetencia, calcularFechamento, cfgDoPonto, competenciaDe,
-  diferencaDoCalculo, duracaoCampo, duracaoTexto, horasDecimais, minutosDaDuracao,
-  minutosDoDia, minutosEntre, minutosPrevistosPorDia, minutosTrabalhados,
+  ADICIONAIS_HE, apuracaoDoRelogio, apurarCompetencia, atrasoDoDia, ausenciaDoDia,
+  calcularFechamento, cfgDoPonto, competenciaDe, descreverJornada, diferencaDoCalculo,
+  divisorDaJornada, duracaoCampo, duracaoTexto, horasDecimais, jornadaParaCfg,
+  minutosDaDuracao, minutosDoDia, minutosEntre, minutosPrevistosDoMes,
+  minutosTrabalhados, normalizarJornada, origemDoLancamento,
+  FATOR_HE_DOBRA, NOMES_DIA_SEMANA, TIPOS_AUSENCIA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
 } from "../../lib/rh/ponto.js";
 import { SectionTitle, Empty, Modal, Card, StatCard, Segmented } from "../ui.jsx";
 import { anoRuim } from "./uteis.js";
@@ -103,10 +156,21 @@ const SEM_VINCULO = "__sem_vinculo__";
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const txt = (v) => String(v ?? "").trim();
 
+// Número que pode não existir — a mesma régua da lib: "" e null NÃO são 0.
+// Number("") devolve 0, e é assim que "não veio" vira "foi zero" na tela.
+const numOuNulo = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 // Dinheiro que pode não existir. null é "não dá para calcular", e a frase diz
 // isso — R$ 0,00 aqui seria uma afirmação falsa sobre a folha de alguém.
 const dinheiro = (v) => (v === null || v === undefined || v === "" ? "sem valor" : moedaCheia(v));
 const horasOuNada = (min) => duracaoTexto(min) || "sem registro";
+// Na SUGESTÃO, null quer dizer outra coisa: ninguém mediu aquela faixa. Dizer
+// "0h00" ali afirmaria "não houve hora extra" sem ter havido apuração.
+const horasOuSemApuracao = (min) => duracaoTexto(min) || "sem apuração";
 
 function rotuloCompetencia(c) {
   const [ano, mes] = String(c || "").split("-");
@@ -120,6 +184,42 @@ function rotuloFator(f) {
   return `+${Math.round((Number(f) - 1) * 100)}%`;
 }
 
+/**
+ * A ausência do dia em uma frase, para a linha e para a planilha.
+ *
+ * O motivo entra porque é ele que explica: "atestado" diz o que a empresa faz
+ * com o dia, "consulta no ortopedista" diz o que aconteceu com a pessoa. O
+ * documento entra porque é o que se procura na gaveta seis meses depois.
+ */
+function textoDaAusencia(a) {
+  if (!a) return "";
+  return [a.rotulo, a.motivo, a.documento ? `doc. ${a.documento}` : ""].filter(Boolean).join(" · ");
+}
+
+/**
+ * A PONTUALIDADE do dia em uma frase, ou "" quando não há nada a dizer.
+ *
+ * Só fala quando a batida ENCURTOU o dia. Escrever "na hora prevista" em toda
+ * linha encheria o extrato de ruído, e ruído é o que faz parar de ler
+ * justamente a linha que importava.
+ *
+ * Quando fala, diz os DOIS números que a lib separou: o atraso cru e o que a
+ * tolerância do art. 58 § 1º deixa cobrar. Escrever só um esconde metade do
+ * fato — ou a pessoa parece pontual tendo chegado tarde, ou parece devedora de
+ * minutos que a lei manda ignorar.
+ */
+function textoDaPontualidade(p) {
+  if (!p || p.atrasoBrutoMin === 0) return "";
+  const partes = [];
+  if (p.atrasoEntradaMin > 0) partes.push(`entrou ${duracaoTexto(p.atrasoEntradaMin)} depois das ${p.inicioPrevisto}`);
+  if (p.saidaAntesMin > 0) partes.push(`saiu ${duracaoTexto(p.saidaAntesMin)} antes das ${p.fimPrevisto}`);
+  return `${partes.join(" · ")} — ${
+    p.tolerado
+      ? `dentro da tolerância da CLT (${TOLERANCIA_MARCACAO_MIN} min por marcação, ${TOLERANCIA_DIA_MIN} no dia): não desconta`
+      : `${duracaoTexto(p.atrasoMin)} de atraso fora da tolerância`
+  }`;
+}
+
 // Número de dias/minutos que veio de campo de texto. Campo em branco no
 // formulário de lançamento é "não houve" — 0 — e não "não sei": quem preenche
 // está olhando o mês inteiro e decidindo.
@@ -127,6 +227,56 @@ function inteiroDoCampo(v) {
   const n = Number(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
 }
+
+/**
+ * O previsto de UMA linha do editor de escala (dois turnos: manhã e tarde).
+ *
+ * Devolve null quando um par ficou pela metade — entrada sem saída, ou saída
+ * sem entrada. Null é o que TRAVA o Gravar. Zero seria "não se trabalha neste
+ * dia", e gravar isso por causa de um campo esquecido apagaria uma jornada
+ * inteira em silêncio: no mês seguinte a segunda-feira valeria hora extra do
+ * primeiro minuto.
+ */
+function previstoDaLinha(l) {
+  let total = 0;
+  for (const par of [[l?.i1, l?.f1], [l?.i2, l?.f2]]) {
+    const inicio = txt(par[0]);
+    const fim = txt(par[1]);
+    if (!inicio && !fim) continue;
+    const min = minutosEntre(inicio, fim);
+    if (min === null || min <= 0) return null;
+    total += min;
+  }
+  return total;
+}
+
+/** A escala normalizada → as linhas do editor. */
+function linhasDaJornada(jornada) {
+  return normalizarJornada(jornada).dias.map((d) => ({
+    dia: d.dia,
+    i1: d.turnos[0]?.inicio || "",
+    f1: d.turnos[0]?.fim || "",
+    i2: d.turnos[1]?.inicio || "",
+    f2: d.turnos[1]?.fim || "",
+  }));
+}
+
+/** As linhas do editor → a escala do jeito que se grava na configuração. */
+function jornadaDasLinhas(linhas) {
+  return (linhas || []).map((l) => ({
+    dia: l.dia,
+    turnos: [
+      { inicio: txt(l.i1), fim: txt(l.f1) },
+      { inicio: txt(l.i2), fim: txt(l.f2) },
+    ].filter((t) => t.inicio && t.fim),
+  }));
+}
+
+/* O editor da tela faz DOIS turnos por dia, que é a escala da casa. Escala
+   gravada com três (jornada partida em três pedaços, plantão) não cabe aqui — e
+   abrir o editor mesmo assim apagaria o terceiro turno no primeiro Gravar, em
+   silêncio. Quando isso acontece, a tela mostra a escala e não deixa editar. */
+const jornadaCabeNoEditor = (jornada) => normalizarJornada(jornada).dias.every((d) => d.turnos.length <= 2);
 
 /**
  * Um dia, uma apuração.
@@ -149,20 +299,49 @@ function porDiaUnico(dias) {
 }
 
 /**
+ * De onde veio o número da hora extra, em palavras.
+ *
+ * Quem lê a conta precisa saber se aquilo é do Jibble ou do dedo de alguém —
+ * são duas responsabilidades diferentes, e só uma delas se confere no
+ * aplicativo do funcionário.
+ *
+ * Registro gravado ANTES desta versão não tem o carimbo, e nesse caso "lançado
+ * à mão" é a leitura correta e não um chute: antes de 27/08/2026 não existia
+ * apuração do relógio para copiar — tudo que está gravado ali foi digitado.
+ */
+const MARCA_FONTE = {
+  relogio: "apurado pelo relógio",
+  manual: "lançado à mão",
+  misto: "parte do relógio, parte à mão",
+};
+const marcaDaFonte = (origem) => ` (${MARCA_FONTE[origem] || MARCA_FONTE.manual})`;
+
+/**
  * A CONTA ESCRITA PASSO A PASSO.
  *
  * Cada passo é composto dos MESMOS números que a lib devolveu — é isso que faz
  * a conta da tela ser a conta do sistema. Quem conferir na calculadora tem que
  * chegar no mesmo lugar, senão o RH volta para a planilha.
+ *
+ * As duas faixas de hora extra saem em DUAS LINHAS quando as duas existem: são
+ * dois valores-hora diferentes (+50% e +100%) e uma linha só esconderia qual
+ * fator gerou qual parcela.
  */
-function passosDaConta(c) {
+function passosDaConta(c, fonte = {}) {
   if (!c || c.semSalario) return [];
   const passos = [];
   if (c.horasExtrasMin > 0) {
     passos.push(
-      `Hora extra: ${moedaCheia(c.salarioBase)} ÷ ${c.divisor} = ${moedaCheia(c.valorHora)}/h` +
+      `Hora extra ${rotuloFator(c.fator)}${marcaDaFonte(fonte.extras)}: ${moedaCheia(c.salarioBase)} ÷ ${c.divisor} = ${moedaCheia(c.valorHora)}/h` +
         ` · com ${rotuloFator(c.fator)} = ${moedaCheia(c.valorHoraExtra)}/h` +
         ` · × ${duracaoTexto(c.horasExtrasMin)} = ${moedaCheia(c.valorExtras)}`
+    );
+  }
+  if (c.horasExtrasDobroMin > 0) {
+    passos.push(
+      `Hora extra ${rotuloFator(c.fatorDobro)}${marcaDaFonte(fonte.extrasDobro)}: ${moedaCheia(c.salarioBase)} ÷ ${c.divisor} = ${moedaCheia(c.valorHora)}/h` +
+        ` · com ${rotuloFator(c.fatorDobro)} = ${moedaCheia(c.valorHoraExtraDobro)}/h` +
+        ` · × ${duracaoTexto(c.horasExtrasDobroMin)} = ${moedaCheia(c.valorExtrasDobro)}`
     );
   }
   if (c.adicionalNoturnoMin > 0) {
@@ -201,6 +380,43 @@ function salarioDaConta(reg, pessoa) {
   return carimbo;
 }
 
+/**
+ * A PROCEDÊNCIA de cada faixa, do jeito que vai ser carimbada no registro.
+ *
+ * Uma função só, usada pela caixa da conta (enquanto se digita) e pelo Gravar:
+ * se a tela dissesse "apurado pelo relógio" por uma regra e o registro
+ * carimbasse por outra, a conta escrita passaria a mentir sobre si mesma.
+ *
+ * A comparação é contra a parcela que o RELÓGIO apurou — não contra a sugestão
+ * inteira. Num mês misto, o total que o RH lança inclui dias derivados por esta
+ * casa, e chamar isso de "apurado pelo relógio" seria emprestar ao Jibble um
+ * número que não é dele.
+ */
+function fonteDoLancamento(sugestao, extrasMin, extrasDobroMin) {
+  return {
+    extras: origemDoLancamento(extrasMin, sugestao?.extrasRelogioMin ?? null),
+    extrasDobro: origemDoLancamento(extrasDobroMin, sugestao?.extrasDobroMin ?? null),
+  };
+}
+
+/**
+ * O rodapé do cartão de horas extras.
+ *
+ * O número grande é a soma das duas faixas — quantidade de hora, não dinheiro.
+ * O rodapé diz quanto é de cada uma: sem isso o total esconderia qual fator vai
+ * pagar aquelas horas, que é justamente o que este projeto separou.
+ */
+function subDasExtras(kpi) {
+  if (kpi.extrasLancadasMin === null) {
+    if (!kpi.extrasApuradasMin && !kpi.extrasApuradasDobroMin) return "nada lançado ainda";
+    return `batidas apontam ${duracaoTexto(kpi.extrasApuradasMin)} em +50% e ${duracaoTexto(kpi.extrasApuradasDobroMin)} em +100%`;
+  }
+  if (kpi.extrasLancadasDobroMin) {
+    return `${duracaoTexto(kpi.extrasLancadasMin - kpi.extrasLancadasDobroMin)} em +50% · ${duracaoTexto(kpi.extrasLancadasDobroMin)} em +100%`;
+  }
+  return kpi.extrasApuradasMin ? `batidas apontam ${duracaoTexto(kpi.extrasApuradasMin)}` : undefined;
+}
+
 // A frase da diferença (regra 8): valor alterado que se parece com valor
 // calculado é armadilha seis meses depois.
 function fraseDaDiferenca(dif) {
@@ -208,12 +424,88 @@ function fraseDaDiferenca(dif) {
   return `${moedaCheia(Math.abs(dif))} ${dif > 0 ? "acima" : "abaixo"} do calculado`;
 }
 
+/**
+ * OS TRÊS NÚMEROS DO DIA, um ao lado do outro e SEM sinal de conta entre eles:
+ * "10h16 no crachá · 1h04 de intervalo · 8h12 para a folha".
+ *
+ * Eles não fecham por subtração (10h16 − 1h04 dá 9h12, e para a folha foram
+ * 8h12): quem concilia é a ESCALA da pessoa, e quem apura a escala é o
+ * relógio. Escrever "−" entre eles seria mostrar uma conta que o sistema não
+ * faz — e conta que não fecha na calculadora de quem lê é o começo da volta
+ * para a planilha.
+ */
+function fatosDoDia(d, min) {
+  const partes = [];
+  // O crachá: o que o relógio mediu de porta aberta. Para o dia lançado à mão,
+  // o intervalo entre as duas batidas. Sem os dois lados, não se afirma nada.
+  const cracha = numOuNulo(d?.trackedMin) ?? minutosEntre(d?.entrada, d?.saida);
+  if (cracha !== null) partes.push(`${duracaoTexto(cracha)} no crachá`);
+  const pausa = numOuNulo(d?.pausaMin);
+  // Intervalo zero é "sem intervalo", nunca "0h00": 0h00 parece medida.
+  if (pausa !== null) partes.push(pausa > 0 ? `${duracaoTexto(pausa)} de intervalo` : "sem intervalo");
+  const pausaPaga = numOuNulo(d?.pausaPagaMin);
+  if (pausaPaga) partes.push(`${duracaoTexto(pausaPaga)} de intervalo pago`);
+  // Dia sem total é SEM TOTAL. Zero aqui vira desconto na folha de alguém.
+  partes.push(min === null ? "sem total para a folha" : `${duracaoTexto(min)} para a folha`);
+  return partes;
+}
+
+/** A hora extra que o relógio já apurou no dia, em palavras (ou ""). */
+function textoDaExtraApurada(apurado) {
+  if (!apurado) return "";
+  const p = [];
+  if (apurado.extraMin > 0) p.push(`${duracaoTexto(apurado.extraMin)} de extra +50%`);
+  if (apurado.extraDobroMin > 0) p.push(`${duracaoTexto(apurado.extraDobroMin)} de extra +100%`);
+  return p.join(" · ");
+}
+
+/**
+ * O QUE A CORREÇÃO FAZ COM A APURAÇÃO DO RELÓGIO.
+ *
+ * Mora fora dos formulários e é usada pelos DOIS lados — a caixa que a tela
+ * mostra e o registro que o Gravar escreve — porque a conta que a tela mostra
+ * tem de ser a conta que o sistema faz. Duplicar a regra aqui seria a maneira
+ * mais rápida de as duas se separarem no próximo conserto.
+ *
+ * A regra: a apuração do relógio (`trabalhadoMin`, `extraMin`, `extraDobroMin`)
+ * descreve as batidas do relógio. Enquanto a correção não mexer em entrada,
+ * saída ou pausa, ela CONTINUA VALENDO — e continuar valendo importa: o
+ * trabalhado do relógio não é (saída − entrada) − pausa, então recalcular um
+ * dia só porque alguém arrumou a observação trocaria 8h12 por 9h12 em silêncio.
+ * Mexeu na batida, aquele número deixou de descrever o dia: sai do registro
+ * (fica no carimbo `relogio*`) e o dia passa a valer pela conta desta casa.
+ */
+function efeitoDaCorrecao(base, { entrada, saida, pausaMin }) {
+  const apurado = base ? apuracaoDoRelogio(base) : null;
+  const mexeuNasBatidas =
+    !base ||
+    txt(entrada) !== txt(base.entrada) ||
+    txt(saida) !== txt(base.saida) ||
+    pausaMin !== inteiroDoCampo(base.pausaMin);
+  const derivado = minutosDoDia({ entrada, saida, pausaMin });
+  return {
+    apurado,
+    mexeuNasBatidas,
+    mantemApuracao: !!apurado && !mexeuNasBatidas,
+    // O total que VAI SER GRAVADO — o mesmo número que a caixa da tela mostra.
+    trabalhadoMin: base && !mexeuNasBatidas ? numOuNulo(base.trabalhadoMin) : derivado,
+  };
+}
+
 // ---- linhas ----------------------------------------------------------------
 
 function LinhaFechamento({ l, editavel, acoes }) {
-  const { pessoa, reg, conta, apuracao, repetidos, dif, valorFinal, divergente, semSalarioPendente } = l;
-  const passos = passosDaConta(conta);
+  const { pessoa, reg, conta, apuracao, repetidos, dif, valorFinal, divergente, semSalarioPendente, fonte, temSugestao, jornadaEmPalavras } = l;
+  /* A CONTA ESCRITA SÓ EXISTE ONDE EXISTE LANÇAMENTO.
+     Sem registro gravado, `conta` é a projeção das sugestões das batidas — e
+     imprimi-la aqui punha um "Total: R$ 84,00" em dinheiro na MESMA linha que
+     diz "nada lançado neste mês" e "sem valor". Quem lê a tela para montar a
+     folha toma aquele total como devido, e ninguém escreveu aquilo. A sugestão
+     continua logo abaixo, no parágrafo que se chama Sugestão do mês e que diz,
+     em horas, de onde veio. */
+  const passos = reg ? passosDaConta(conta, fonte) : [];
   const travado = !!reg?.fechado;
+  const porTipoAusencia = apuracao.ausencias;
 
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
@@ -229,8 +521,10 @@ function LinhaFechamento({ l, editavel, acoes }) {
           <span className="block truncate text-xs text-slate-400">
             {apuracao.diasComBatida > 0
               ? `${plural(apuracao.diasComBatida, "dia com batida", "dias com batida")} · ${horasOuNada(apuracao.trabalhadoMin)} no mês` +
-                (apuracao.diasEmAberto ? ` · ${plural(apuracao.diasEmAberto, "dia em aberto", "dias em aberto")}` : "")
-              : "sem batida importada neste mês"}
+                (apuracao.diasEmAberto ? ` · ${plural(apuracao.diasEmAberto, "dia sem total", "dias sem total")}` : "")
+              : apuracao.ausenciasTotal > 0
+                ? `sem batida — ${plural(apuracao.ausenciasTotal, "dia explicado", "dias explicados")} por ausência`
+                : "sem batida importada neste mês"}
           </span>
         </span>
 
@@ -242,6 +536,13 @@ function LinhaFechamento({ l, editavel, acoes }) {
               <span className="block tnum">
                 extras {horasOuNada(reg.horasExtrasMin)} ({rotuloFator(conta.fator)})
               </span>
+              {/* A dobra tem linha própria: faixa somada com a outra esconderia
+                  qual fator pagou qual hora. */}
+              {conta.horasExtrasDobroMin > 0 && (
+                <span className="block tnum">
+                  extras {duracaoTexto(conta.horasExtrasDobroMin)} ({rotuloFator(conta.fatorDobro)})
+                </span>
+              )}
               <span className="block tnum">
                 faltas {reg.faltas ? plural(reg.faltas, "dia", "dias") : "nenhuma"} · atrasos {horasOuNada(reg.atrasosMin)}
               </span>
@@ -291,6 +592,41 @@ function LinhaFechamento({ l, editavel, acoes }) {
         )}
       </div>
 
+      {/* AS AUSÊNCIAS, SEPARADAS PELO QUE FAZEM COM O DINHEIRO. Quem soma
+          quatro atestados não pode aparecer na tela como quem teve quatro
+          faltas: a única que desconta é a falta, e é a única em vermelho. */}
+      {apuracao.ausenciasTotal > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+          <CalendarOff size={12} className="text-slate-400" />
+          {TIPOS_AUSENCIA.filter((t) => porTipoAusencia[t.tipo] > 0).map((t) => (
+            <span key={t.tipo} className={clsx(t.chip, "whitespace-nowrap")}>
+              {plural(porTipoAusencia[t.tipo], `dia de ${t.curto}`, `dias de ${t.curto}`)}
+            </span>
+          ))}
+          {apuracao.faltasQueDescontam > 0 ? (
+            <span>
+              {plural(apuracao.faltasQueDescontam, "dia desconta", "dias descontam")} 1/30 · o resto não desconta
+            </span>
+          ) : (
+            <span>nenhuma desconta</span>
+          )}
+        </p>
+      )}
+      {apuracao.ausenciasDesconhecidas > 0 && (
+        <p className="mt-2 text-xs text-warn-700">
+          {plural(apuracao.ausenciasDesconhecidas, "ausência lançada com tipo que esta tela não conhece",
+            "ausências lançadas com tipo que esta tela não conhece")}. Não descontam nada e ficam à vista de
+          propósito — confira em Batidas antes de fechar o mês.
+        </p>
+      )}
+      {apuracao.ausenciasComTrabalho > 0 && (
+        <p className="mt-2 text-xs text-warn-700">
+          {plural(apuracao.ausenciasComTrabalho, "dia tem ausência lançada E hora trabalhada",
+            "dias têm ausência lançada E hora trabalhada")} (atestado da tarde, por exemplo). A hora conta; o dia
+          NÃO entra como falta — descontar 1/30 de quem trabalhou metade do dia cobraria duas vezes.
+        </p>
+      )}
+
       {/* A conta escrita: é ela que faz o número ser conferível na calculadora. */}
       {passos.length > 0 && (
         <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
@@ -313,16 +649,37 @@ function LinhaFechamento({ l, editavel, acoes }) {
         </p>
       )}
 
-      {!reg && !apuracao.semJornada && apuracao.diasComBatida > 0 && (
+      {!reg && temSugestao && (
         <p className="mt-2 text-xs text-slate-500">
-          Sugestão das batidas: extras {horasOuNada(apuracao.extrasMin)} · atrasos {horasOuNada(apuracao.atrasosMin)}
-          {" "}(previsto {duracaoTexto(apuracao.previstoPorDia)}/dia). Faltas não saem das batidas — quem afirma falta é o RH.
+          Sugestão do mês{marcaDaFonte(apuracao.fonteExtras)}: extras +50% {horasOuSemApuracao(apuracao.extrasMin)}
+          {" · "}extras +100% {horasOuSemApuracao(apuracao.extrasDobroMin)} · atrasos{" "}
+          {horasOuSemApuracao(apuracao.atrasosMin)} · faltas{" "}
+          {apuracao.faltasQueDescontam > 0 ? plural(apuracao.faltasQueDescontam, "dia", "dias") : "nenhuma"}
+          {apuracao.diasDerivados > 0 ? ` (previsto pela escala da casa — ${jornadaEmPalavras})` : ""}
+          {". "}
+          Falta só sai do que foi LANÇADO como falta: dia sem batida e sem ausência lançada é sem registro, não
+          falta.
+          {apuracao.diasDerivados === 0 &&
+            " O relógio não devolve atraso: a jornada dele já é a da escala de cada pessoa."}
         </p>
       )}
-      {!reg && apuracao.semJornada && apuracao.diasComBatida > 0 && (
+      {/* Dia lançado à mão sem data legível: a sugestão existe, mas incompleta
+          — e isso se diz, em vez de o número parecer completo. */}
+      {!reg && apuracao.diasSemSaldo > 0 && (
         <p className="mt-2 text-xs text-warn-700">
-          Sem jornada na ficha (horas semanais) não dá para saber o que é hora extra e o que é atraso — a tela não
-          inventa saldo. Preencha as horas semanais na ficha ou lance as horas à mão.
+          {plural(apuracao.diasSemSaldo, "dia lançado à mão ficou", "dias lançados à mão ficaram")} fora da sugestão:
+          sem uma data que a tela consiga ler não dá para saber o dia da semana, e sem o dia da semana não há
+          previsto — o que é hora extra e o que é atraso ficaria no chute. Corrija a data em Batidas.
+        </p>
+      )}
+      {/* Trabalho em dia que a escala não prevê entra como +50% porque é onde a
+          conta derivada sabe pôr. Descanso e feriado se pagam em dobro, e quem
+          decide isso é o RH — a tela lembra em vez de escolher sozinha. */}
+      {!reg && apuracao.diasForaDaEscala > 0 && (
+        <p className="mt-2 text-xs text-warn-700">
+          {plural(apuracao.diasForaDaEscala, "dia lançado à mão caiu", "dias lançados à mão caíram")} em data que a
+          escala não prevê (fim de semana). A hora inteira entrou na faixa de +50%; se for descanso ou feriado, mova
+          para a faixa de +100% no lançamento.
         </p>
       )}
       {repetidos > 0 && (
@@ -337,14 +694,26 @@ function LinhaFechamento({ l, editavel, acoes }) {
 }
 
 function LinhaBatida({ b, editavel, acoes }) {
-  const { d, pessoa, min } = b;
+  const { d, pessoa, min, ausencia, pontualidade } = b;
   const veioDoRelogio = d.origem === "jibble";
   const corrigido = d.corrigido === true;
-  const original =
-    corrigido && (d.relogioEntrada || d.relogioSaida || d.relogioPausaMin !== undefined)
-      ? `relógio: ${d.relogioEntrada || "—"} → ${d.relogioSaida || "—"}` +
-        (d.relogioPausaMin ? ` (pausa ${d.relogioPausaMin} min)` : "")
-      : "";
+  // "Em aberto" é o que o RELÓGIO diz (entrou e não saiu); "sem total" é o que
+  // a tela sabe (não dá para totalizar). São duas coisas, e um dia pode estar
+  // sem total sem estar em aberto — o relógio mudo, por exemplo.
+  const emAberto = d.emAberto === true;
+  const extraApurada = textoDaExtraApurada(apuracaoDoRelogio(d));
+  // O que o relógio tinha trazido E APURADO antes de alguém corrigir.
+  const carimbo = [];
+  if (d.relogioEntrada || d.relogioSaida) carimbo.push(`${d.relogioEntrada || "—"} → ${d.relogioSaida || "—"}`);
+  if (numOuNulo(d.relogioPausaMin)) carimbo.push(`intervalo ${duracaoTexto(d.relogioPausaMin)}`);
+  if (numOuNulo(d.relogioTrabalhadoMin) !== null) {
+    carimbo.push(`${duracaoTexto(d.relogioTrabalhadoMin)} para a folha`);
+  }
+  const extraCarimbada = textoDaExtraApurada(
+    apuracaoDoRelogio({ extraMin: d.relogioExtraMin, extraDobroMin: d.relogioExtraDobroMin })
+  );
+  if (extraCarimbada) carimbo.push(extraCarimbada);
+  const original = corrigido && carimbo.length > 0 ? `relógio: ${carimbo.join(" · ")}` : "";
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
@@ -364,26 +733,58 @@ function LinhaBatida({ b, editavel, acoes }) {
         {d.obs && <span className="block truncate text-xs text-slate-500">{d.obs}</span>}
       </span>
 
-      <span className="shrink-0 text-xs tabular-nums text-slate-600">
+      <span className="min-w-0 shrink-0 basis-72 text-xs tabular-nums text-slate-600">
         <span className="block">
           {d.entrada || "—"} → {d.saida || "—"}
-          {d.pausaMin ? ` · pausa ${d.pausaMin} min` : ""}
         </span>
+        {/* Os três números do dia, sem sinal de conta entre eles: eles não
+            fecham por subtração, quem concilia é a escala. */}
+        <span className="block text-slate-500">{fatosDoDia(d, min).join(" · ")}</span>
+        {extraApurada && <span className="block text-slate-500">{extraApurada}</span>}
+        {/* A pontualidade sai SEPARADA do total do dia: são duas réguas (a
+            marcação contra a escala, e o trabalhado contra o previsto), e
+            somá-las cobraria o mesmo atraso duas vezes. */}
+        {textoDaPontualidade(pontualidade) && (
+          <span className={clsx("block", pontualidade.atrasoMin > 0 ? "text-warn-700" : "text-slate-500")}>
+            {textoDaPontualidade(pontualidade)}
+          </span>
+        )}
+        {ausencia && <span className="block text-slate-500">{textoDaAusencia(ausencia)}</span>}
         {original && <span className="block text-slate-400">{original}</span>}
       </span>
 
-      <span className="w-20 shrink-0 text-right font-display text-sm font-semibold tnum text-slate-900">
-        {/* trabalhadoMin null é dia EM ABERTO, não dia de zero hora. */}
-        {min === null ? <span className="text-xs font-medium text-warn-700">em aberto</span> : duracaoTexto(min)}
+      <span className="w-24 shrink-0 text-right font-display text-sm font-semibold tnum text-slate-900">
+        {/* Sem total NÃO é zero hora: zero aqui vira desconto na folha. E o dia
+            de ausência tem explicação, não lacuna — mostra a explicação. */}
+        {min !== null ? (
+          duracaoTexto(min)
+        ) : ausencia ? (
+          <span className="text-xs font-medium text-slate-500">{ausencia.curto}</span>
+        ) : (
+          <span className="text-xs font-medium text-warn-700">sem total</span>
+        )}
       </span>
 
       <span className="flex shrink-0 items-center gap-1.5">
         <span className={clsx("chip whitespace-nowrap", veioDoRelogio && "chip-brand")}>
           {veioDoRelogio ? "relógio" : "à mão"}
         </span>
+        {/* Chip próprio por tipo, e a COR diz se custa dinheiro: só a falta
+            desconta, e só ela é vermelha. */}
+        {ausencia && <span className={clsx(ausencia.chip, "whitespace-nowrap")}>{ausencia.curto}</span>}
+        {emAberto && <span className="chip-warn whitespace-nowrap">em aberto</span>}
         {corrigido && veioDoRelogio && <span className="chip-warn whitespace-nowrap">corrigido</span>}
         {editavel && (
           <>
+            {/* O caminho curto para explicar o dia vazio, ali onde ele está. */}
+            <button
+              type="button"
+              onClick={() => acoes.ausentar(b)}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              title={ausencia ? "Mudar ou remover a ausência deste dia" : "Lançar falta, atestado ou outra ausência neste dia"}
+            >
+              <CalendarOff size={14} />
+            </button>
             <button
               type="button"
               onClick={() => acoes.corrigir(b)}
@@ -507,17 +908,23 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
 
   // A conta refeita a CADA tecla, com os mesmos números que serão gravados: o
   // RH decide olhando o resultado, não depois de gravar.
+  const extrasMin = minutosDaDuracao(form.horasExtras) ?? 0;
+  const extrasDobroMin = minutosDaDuracao(form.horasExtrasDobro) ?? 0;
   const conta = calcularFechamento({
     salario: form.salario,
     divisor: form.divisor,
     fator: Number(form.fator),
+    fatorDobro: form.fatorDobro,
     percentualNoturno: form.percentualNoturno,
-    horasExtrasMin: minutosDaDuracao(form.horasExtras) ?? 0,
+    horasExtrasMin: extrasMin,
+    horasExtrasDobroMin: extrasDobroMin,
     faltas: inteiroDoCampo(form.faltas),
     atrasosMin: minutosDaDuracao(form.atrasos) ?? 0,
     adicionalNoturnoMin: minutosDaDuracao(form.noturno) ?? 0,
   });
-  const passos = passosDaConta(conta);
+  // A mesma procedência que o Gravar vai carimbar — a conta escrita aqui é a
+  // que fica no registro.
+  const passos = passosDaConta(conta, fonteDoLancamento(form.sugestao, extrasMin, extrasDobroMin));
   const lancado = txt(form.valorLancado) ? paraNumero(form.valorLancado) : null;
   const dif = lancado === null ? 0 : diferencaDoCalculo(lancado, conta.valorCalculado);
 
@@ -525,6 +932,7 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
   // lançamento sairia zerado sem ninguém ver o erro de digitação.
   const ruins = [
     ["horas extras", form.horasExtras],
+    ["horas extras em dobra", form.horasExtrasDobro],
     ["atrasos", form.atrasos],
     ["adicional noturno", form.noturno],
   ].filter(([, v]) => txt(v) && minutosDaDuracao(v) === null);
@@ -546,8 +954,20 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
         {form.sugestao && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-brand-50 px-3.5 py-2.5 text-sm text-slate-700">
             <span>
-              Batidas do mês: extras {horasOuNada(form.sugestao.extrasMin)} · atrasos {horasOuNada(form.sugestao.atrasosMin)}
-              {" "}({plural(form.sugestao.diasComBatida, "dia", "dias")}, previsto {duracaoTexto(form.sugestao.previstoPorDia)}/dia)
+              Batidas do mês{marcaDaFonte(form.sugestao.fonteExtras)}: extras +50%{" "}
+              {horasOuSemApuracao(form.sugestao.extrasMin)} · extras +100%{" "}
+              {horasOuSemApuracao(form.sugestao.extrasDobroMin)} · atrasos{" "}
+              {horasOuSemApuracao(form.sugestao.atrasosMin)} · faltas lançadas{" "}
+              {form.sugestao.faltasQueDescontam > 0
+                ? plural(form.sugestao.faltasQueDescontam, "dia", "dias")
+                : "nenhuma"}{" "}
+              ({plural(form.sugestao.diasComBatida, "dia com batida", "dias com batida")}
+              {form.sugestao.diasDerivados > 0 && form.jornadaEmPalavras
+                ? `, previsto pela escala: ${form.jornadaEmPalavras}`
+                : ""}
+              )
+              {form.sugestao.ausenciasSemDesconto > 0 &&
+                ` · ${plural(form.sugestao.ausenciasSemDesconto, "dia abonado", "dias abonados")} (atestado, justificada, férias ou folga) que NÃO descontam e não entram no campo Faltas.`}
             </span>
             <button
               type="button"
@@ -555,8 +975,21 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
               onClick={() =>
                 setForm({
                   ...form,
-                  horasExtras: duracaoCampo(form.sugestao.extrasMin),
-                  atrasos: duracaoCampo(form.sugestao.atrasosMin),
+                  // Faixa SEM APURAÇÃO não entra: preencher "00:00" apagaria o
+                  // que o RH digitou e ainda afirmaria "não houve" no lugar de
+                  // "ninguém mediu".
+                  ...(form.sugestao.extrasMin !== null
+                    ? { horasExtras: duracaoCampo(form.sugestao.extrasMin) }
+                    : {}),
+                  ...(form.sugestao.extrasDobroMin !== null
+                    ? { horasExtrasDobro: duracaoCampo(form.sugestao.extrasDobroMin) }
+                    : {}),
+                  ...(form.sugestao.atrasosMin !== null ? { atrasos: duracaoCampo(form.sugestao.atrasosMin) } : {}),
+                  // Falta entra porque agora ela é LANÇAMENTO, não dedução:
+                  // copiar aqui é repetir o que o RH já escreveu no dia, e não
+                  // concluir falta da ausência de batida. Só o tipo "falta"
+                  // conta — atestado e companhia ficam de fora, de propósito.
+                  faltas: String(form.sugestao.faltasQueDescontam),
                 })
               }
             >
@@ -585,6 +1018,23 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
                 <option key={a.fator} value={String(a.fator)}>{a.label}</option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Vale para o campo ao lado. A dobra tem campo próprio, sempre +100%.
+            </p>
+          </div>
+          <div>
+            <label className="label" htmlFor="pt-extras-dobra">Horas extras em dobra</label>
+            <input
+              id="pt-extras-dobra"
+              type="text"
+              className="input"
+              placeholder="00:00"
+              value={form.horasExtrasDobro}
+              onChange={setCampo("horasExtrasDobro")}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Descanso, feriado e dobra — sempre +100%. Faixa separada porque o fator é outro.
+            </p>
           </div>
           <div>
             <label className="label" htmlFor="pt-faltas">Faltas (dias)</label>
@@ -597,6 +1047,10 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
               value={form.faltas}
               onChange={setCampo("faltas")}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Só falta INJUSTIFICADA, que desconta 1/30. Atestado, justificada, férias e folga se lançam no dia, em
+              Batidas, e não entram aqui.
+            </p>
           </div>
           <div>
             <label className="label" htmlFor="pt-atrasos">Atrasos</label>
@@ -643,6 +1097,16 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <p className="text-sm font-medium text-bad-700">
             Não entendi a duração de {ruins.map(([nome]) => nome).join(", ")}. Escreva como 02:30 — &quot;2.50&quot; com
             ponto seria 2h30 ou 2,5h, e adivinhar aqui erra em dinheiro.
+          </p>
+        )}
+
+        {/* Aviso, não trava: pode ser proposital (mês inteiro em domingo, com o
+            campo de cima em +100% por herança). Mas o mesmo domingo entrando
+            nas duas faixas paga em dobro o que já era dobra. */}
+        {Number(form.fator) === FATOR_HE_DOBRA && extrasDobroMin > 0 && (
+          <p className="text-sm font-medium text-warn-700">
+            As duas faixas estão em +100%. Se as horas de descanso já estão no campo da dobra, o de cima deveria
+            estar em +50% — do jeito que está, o mesmo domingo pode ser pago duas vezes.
           </p>
         )}
 
@@ -701,7 +1165,46 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
   const bruto = minutosEntre(form.entrada, form.saida);
   const pausa = inteiroDoCampo(form.pausa);
   const pausaDemais = bruto !== null && pausa > bruto;
-  const trabalhado = minutosDoDia({ entrada: form.entrada, saida: form.saida, pausaMin: pausa });
+  // A MESMA função que o Gravar usa: o que esta caixa promete é o que vai ser
+  // gravado, inclusive quando a promessa é "não mexo no que o relógio apurou".
+  const efeito = efeitoDaCorrecao(form.base || null, {
+    entrada: form.entrada,
+    saida: form.saida,
+    pausaMin: pausa,
+  });
+  const trabalhado = efeito.trabalhadoMin;
+  const extraDoRelogio = textoDaExtraApurada(efeito.apurado);
+
+  /* Duas leituras diferentes, e trocá-las mostraria o número errado:
+     - o ORIGINAL do relógio (o carimbo, quando o dia já foi corrigido; os
+       valores de agora, na primeira correção — que é o que o carimbo vai
+       guardar). É o que aparece em "Veio do relógio".
+     - o que AINDA ESTÁ VIVO no registro, que é o que sai dele se esta correção
+       mexer nas batidas. */
+  const jaCarimbado = !!form.base && Object.prototype.hasOwnProperty.call(form.base, "relogioEntrada");
+  const original = jaCarimbado
+    ? {
+        trabalhadoMin: form.base.relogioTrabalhadoMin,
+        extraMin: form.base.relogioExtraMin,
+        extraDobroMin: form.base.relogioExtraDobroMin,
+      }
+    : {
+        trabalhadoMin: form.base?.trabalhadoMin,
+        extraMin: form.base?.extraMin,
+        extraDobroMin: form.base?.extraDobroMin,
+      };
+  const apuradoOriginal = [
+    numOuNulo(original.trabalhadoMin) !== null ? `${duracaoTexto(original.trabalhadoMin)} para a folha` : "",
+    textoDaExtraApurada(apuracaoDoRelogio(original)),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const apuracaoQueSai = [
+    numOuNulo(form.base?.trabalhadoMin) !== null ? `${duracaoTexto(form.base.trabalhadoMin)} para a folha` : "",
+    extraDoRelogio,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Modal
@@ -724,9 +1227,15 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
             </p>
             {form.origem === "jibble" && (
               <p className="mt-0.5 text-xs">
-                Veio do relógio: {form.relogioEntrada || "—"} → {form.relogioSaida || "—"}
-                {form.relogioPausaMin ? ` (pausa ${form.relogioPausaMin} min)` : ""}. A correção fica marcada e a
-                próxima importação não a desfaz.
+                Veio do relógio:{" "}
+                {[
+                  `${form.relogioEntrada || "—"} → ${form.relogioSaida || "—"}`,
+                  numOuNulo(form.relogioPausaMin) ? `intervalo ${duracaoTexto(form.relogioPausaMin)}` : "",
+                  apuradoOriginal,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                . A correção fica marcada e a próxima importação não a desfaz.
               </p>
             )}
             {/* A data identifica o dia no relógio (o id da ponte é
@@ -780,6 +1289,15 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
               A pausa ({pausa} min) é maior que o intervalo entre a entrada e a saída ({duracaoTexto(bruto)}). Confira
               os três campos.
             </p>
+          ) : efeito.mantemApuracao ? (
+            /* Não mexeu na batida: o apurado do relógio CONTINUA VALENDO. Refazer
+               a conta aqui trocaria 8h12 por 9h12 em silêncio — o total do
+               relógio não é (saída − entrada) − intervalo, é a escala apurada. */
+            <p className="tnum text-slate-700">
+              As batidas não mudaram, então continua valendo o apurado do relógio:{" "}
+              <strong>{trabalhado === null ? "sem total" : `${duracaoTexto(trabalhado)} para a folha`}</strong>
+              {extraDoRelogio ? ` · ${extraDoRelogio}` : ""}.
+            </p>
           ) : trabalhado === null ? (
             <p className="text-warn-700">
               Dia <strong>em aberto</strong>: falta a batida de {form.entrada ? "saída" : "entrada"}. Fica registrado
@@ -788,7 +1306,13 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
           ) : (
             <p className="tnum text-slate-700">
               Trabalhado: <strong>{duracaoTexto(trabalhado)}</strong>
-              {bruto !== null && ` (${duracaoTexto(bruto)} entre as batidas − ${pausa} min de pausa)`}
+              {bruto !== null && ` (${duracaoTexto(bruto)} entre as batidas − ${pausa} min de intervalo)`}
+            </p>
+          )}
+          {efeito.apurado && efeito.mexeuNasBatidas && (
+            <p className="mt-1.5 text-xs text-warn-700">
+              As batidas mudaram, então a apuração do relógio ({apuracaoQueSai || "sem total"}) deixa de descrever
+              este dia: ela fica guardada na linha, e daqui em diante vale a conta desta tela.
             </p>
           )}
         </div>
@@ -808,12 +1332,30 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
   );
 }
 
-function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
+/**
+ * POR QUE A PESSOA NÃO ESTAVA AQUI.
+ *
+ * Pedido do Leonardo: "quando falta eu posso colocar falta ou então justificada
+ * por atestado ou outra coisa". O tipo é escolha de lista porque é ele que
+ * decide o dinheiro; o motivo é texto livre porque a palavra de quem estava lá
+ * explica o que etiqueta nenhuma explica.
+ *
+ * A tela DIZ, antes de gravar, o que aquele tipo faz com a folha — só "falta"
+ * desconta 1/30. Lançar um atestado achando que é neutro e descobrir o desconto
+ * no holerite é o erro que faz o RH parar de lançar.
+ */
+function FormAusencia({ form, setForm, ativos, salvando, aoSalvar, aoRemover, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
-  const divisor = inteiroDoCampo(form.divisor);
+  const escolhido = TIPOS_AUSENCIA.find((t) => t.tipo === form.tipo) || null;
+  const temBatida = !!txt(form.entrada) || !!txt(form.saida);
+
   return (
-    <Modal titulo="Parâmetros do ponto" aberto={!!form} aoFechar={aoFechar}>
+    <Modal
+      titulo={form.jaTinha ? "Ausência do dia" : "Lançar ausência"}
+      aberto={!!form}
+      aoFechar={aoFechar}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -821,12 +1363,241 @@ function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
         }}
         className="space-y-4"
       >
+        {form.travado ? (
+          <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-600">
+            <span className="label mb-0.5">Pessoa e dia</span>
+            <p className="font-medium text-slate-900">
+              {form.pessoaNome || "pessoa não vinculada"} — {dataLonga(form.data)}
+            </p>
+            {temBatida && (
+              <p className="mt-0.5 text-xs">
+                Este dia tem batida: {form.entrada || "—"} → {form.saida || "—"}. A batida NÃO é apagada — a hora
+                trabalhada continua contando, e a ausência fica ao lado dela.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="au-pessoa">Pessoa</label>
+              <select id="au-pessoa" className="select" value={form.pessoaId} onChange={setCampo("pessoaId")} required>
+                <option value="">— escolher —</option>
+                {ativos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="au-data">Dia</label>
+              <input id="au-data" type="date" className="input" value={form.data} onChange={setCampo("data")} required />
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="label" htmlFor="au-tipo">O que houve</label>
+          <select id="au-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")} autoFocus>
+            {TIPOS_AUSENCIA.map((t) => (
+              <option key={t.tipo} value={t.tipo}>{t.rotulo}</option>
+            ))}
+          </select>
+          {escolhido && <p className="mt-1 text-xs text-slate-500">{escolhido.ajuda}</p>}
+        </div>
+
+        <div>
+          <label className="label" htmlFor="au-motivo">Motivo</label>
+          <input
+            id="au-motivo"
+            type="text"
+            className="input"
+            placeholder="Consulta no ortopedista, falecimento do avô, não avisou..."
+            value={form.motivo}
+            onChange={setCampo("motivo")}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Texto livre, e de propósito: seis meses depois é esta frase que explica o dia, não a etiqueta.
+          </p>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="au-documento">Documento</label>
+          <input
+            id="au-documento"
+            type="text"
+            className="input"
+            placeholder="Atestado 4471, CID, protocolo..."
+            value={form.documento}
+            onChange={setCampo("documento")}
+          />
+        </div>
+
+        <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm">
+          {escolhido?.desconta ? (
+            <p className="font-medium text-bad-700">
+              Este dia vai contar como FALTA e sugerir desconto de 1/30 do salário no fechamento. O desconto só
+              acontece quando o RH gravar o fechamento — a sugestão não paga nem desconta sozinha.
+            </p>
+          ) : (
+            <p className="text-slate-600">
+              Não desconta. O dia sai do &quot;sem registro&quot; e passa a ter explicação, contado à parte das
+              faltas na linha do fechamento.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {form.jaTinha && (
+            <button
+              type="button"
+              className="btn-outline mr-auto text-bad-700"
+              onClick={aoRemover}
+              disabled={salvando}
+            >
+              <Trash2 size={14} /> Remover a ausência
+            </button>
+          )}
+          <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={salvando || !form.tipo || (!form.travado && (!form.pessoaId || !form.data))}
+          >
+            {salvando ? "Gravando..." : "Gravar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* A escala do dia dentro do formulário de parâmetros: dois turnos, que é o que
+   a casa usa (manhã e tarde). Fica FORA do componente da página como todo o
+   resto — componente declarado dentro remonta a subárvore a cada tecla e o
+   campo perde o foco. */
+const CAMPOS_JORNADA = [
+  { chave: "i1", rotulo: "Entrada da manhã" },
+  { chave: "f1", rotulo: "Saída da manhã" },
+  { chave: "i2", rotulo: "Entrada da tarde" },
+  { chave: "f2", rotulo: "Saída da tarde" },
+];
+
+function LinhaJornada({ linha, onMudar }) {
+  const previsto = previstoDaLinha(linha);
+  const nome = NOMES_DIA_SEMANA[linha.dia];
+  return (
+    <div className="grid grid-cols-[5.5rem_repeat(4,1fr)_4.5rem] items-center gap-1.5">
+      <span className="font-display text-xs font-semibold capitalize text-slate-600">{nome}</span>
+      {CAMPOS_JORNADA.map((c) => (
+        <div key={c.chave}>
+          <label className="sr-only" htmlFor={`jr-${linha.dia}-${c.chave}`}>
+            {c.rotulo} de {nome}
+          </label>
+          <input
+            id={`jr-${linha.dia}-${c.chave}`}
+            type="time"
+            className="input h-9 py-0 text-xs"
+            value={linha[c.chave]}
+            onChange={(e) => onMudar({ ...linha, [c.chave]: e.target.value })}
+          />
+        </div>
+      ))}
+      <span className="text-right text-xs tnum text-slate-500">
+        {/* Par pela metade não vira 0h00: 0h00 pareceria "não se trabalha". */}
+        {previsto === null ? <span className="text-bad-700">?</span> : previsto > 0 ? duracaoTexto(previsto) : "—"}
+      </span>
+    </div>
+  );
+}
+
+function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
+  if (!form) return null;
+  const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+  const divisor = inteiroDoCampo(form.divisor);
+  const incompletas = (form.jornada || []).filter((l) => previstoDaLinha(l) === null);
+  const semanaMin = (form.jornada || []).reduce((s, l) => s + (previstoDaLinha(l) || 0), 0);
+  const divisorDaEscala = semanaMin > 0 ? Math.round((semanaMin / 60) * 5) : null;
+  return (
+    <Modal titulo="Parâmetros do ponto" aberto={!!form} aoFechar={aoFechar} largura="max-w-2xl">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          aoSalvar();
+        }}
+        className="space-y-4"
+      >
+        {/* A ESCALA DA CASA. Fica aqui, e não no código, porque acordo coletivo
+            muda — e jornada cravada no código vira mentira silenciosa no dia em
+            que mudar: o número continua saindo, só que errado, e ninguém tem
+            onde olhar para descobrir. */}
+        <div>
+          <span className="label">Jornada da casa</span>
+          {form.jornadaEditavel ? (
+            <>
+              <div className="grid grid-cols-[5.5rem_repeat(4,1fr)_4.5rem] gap-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <span>Dia</span>
+                <span>Entra</span>
+                <span>Sai</span>
+                <span>Entra</span>
+                <span>Sai</span>
+                <span className="text-right">No dia</span>
+              </div>
+              <div className="space-y-1.5">
+                {form.jornada.map((linha) => (
+                  <LinhaJornada
+                    key={linha.dia}
+                    linha={linha}
+                    onMudar={(nova) =>
+                      setForm({
+                        ...form,
+                        jornada: form.jornada.map((x) => (x.dia === nova.dia ? nova : x)),
+                      })
+                    }
+                  />
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Dia com os quatro campos em branco é dia que não se trabalha. O previsto de cada dia sai daqui — é
+                ele que diz o que é hora extra e o que é atraso no dia lançado à mão.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-warn-700">
+              A escala gravada tem dia com mais de dois turnos, e este editor só faz dois (manhã e tarde). Abrir
+              mesmo assim apagaria o terceiro turno no primeiro Gravar, em silêncio — então a escala fica como
+              está: {descreverJornada(form.jornadaAtual)}.
+            </p>
+          )}
+          {form.jornadaEditavel && incompletas.length > 0 && (
+            <p className="mt-1.5 text-sm font-medium text-bad-700">
+              {plural(incompletas.length, "dia está", "dias estão")} com um turno pela metade (entrada sem saída, ou
+              o contrário): {incompletas.map((l) => NOMES_DIA_SEMANA[l.dia]).join(", ")}. Preencha os dois lados ou
+              apague os dois — gravar assim apagaria a jornada do dia sem ninguém ver.
+            </p>
+          )}
+          {form.jornadaEditavel && incompletas.length === 0 && (
+            <p className="mt-1.5 text-xs tnum text-slate-500">
+              Semana: <strong>{duracaoTexto(semanaMin)}</strong>
+              {divisorDaEscala !== null && ` · sustenta o divisor ${divisorDaEscala}`}
+            </p>
+          )}
+        </div>
+
         <div>
           <label className="label" htmlFor="cf-divisor">Divisor mensal (horas)</label>
-          <input id="cf-divisor" type="number" min="1" step="1" className="input" value={form.divisor} onChange={setCampo("divisor")} autoFocus />
+          <input id="cf-divisor" type="number" min="1" step="1" className="input" value={form.divisor} onChange={setCampo("divisor")} />
           <p className="mt-1 text-xs text-slate-500">
-            220 é o divisor da jornada de 44h por semana. Fica aqui porque acordo coletivo muda.
+            220 é o divisor da jornada de 44h por semana (44 × 5). Fica aqui porque acordo coletivo muda.
           </p>
+          {/* Escala e divisor são o MESMO fato dito de dois jeitos. Vê-los
+              divergir é o único jeito de descobrir que alguém mexeu num e
+              esqueceu o outro — e o divisor é o preço da hora extra. */}
+          {divisorDaEscala !== null && divisor > 0 && divisorDaEscala !== divisor && (
+            <p className="mt-1 text-sm font-medium text-warn-700">
+              A escala acima fecha {duracaoTexto(semanaMin)} por semana, que sustenta o divisor {divisorDaEscala} —
+              e o divisor aqui está {divisor}. Um dos dois está desatualizado, e é o divisor que define o preço da
+              hora extra. Isto é aviso, não trava: pode ser acordo coletivo que separou os dois de propósito.
+            </p>
+          )}
         </div>
         <div>
           <label className="label" htmlFor="cf-fator">Adicional padrão de hora extra</label>
@@ -853,7 +1624,11 @@ function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
         </p>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
-          <button type="submit" className="btn-primary" disabled={salvando || divisor <= 0}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={salvando || divisor <= 0 || (form.jornadaEditavel && incompletas.length > 0)}
+          >
             {salvando ? "Gravando..." : "Gravar"}
           </button>
         </div>
@@ -871,7 +1646,13 @@ const COLUNAS_FECHAMENTO = [
   { chave: "situacao", rotulo: "Situação" },
   { chave: "horasExtras", rotulo: "Horas extras (h)", tipo: "numero" },
   { chave: "adicional", rotulo: "Adicional" },
+  { chave: "horasExtrasDobro", rotulo: "Horas extras +100% (h)", tipo: "numero" },
+  { chave: "origemExtras", rotulo: "De onde veio" },
   { chave: "faltas", rotulo: "Faltas (dias)", tipo: "numero" },
+  // As duas contagens saem SEPARADAS na planilha pelo mesmo motivo que na tela:
+  // uma coluna só faria quem ficou doente somar junto com quem faltou.
+  { chave: "faltasLancadas", rotulo: "Faltas lançadas (dias)", tipo: "numero" },
+  { chave: "ausenciasAbonadas", rotulo: "Ausências abonadas (dias)", tipo: "numero" },
   { chave: "atrasos", rotulo: "Atrasos (h)", tipo: "numero" },
   { chave: "noturno", rotulo: "Ad. noturno (h)", tipo: "numero" },
   { chave: "salarioBase", rotulo: "Salário base", tipo: "dinheiro" },
@@ -879,6 +1660,7 @@ const COLUNAS_FECHAMENTO = [
   { chave: "valorHora", rotulo: "Valor hora", tipo: "dinheiro" },
   { chave: "valorHoraExtra", rotulo: "Valor hora extra", tipo: "dinheiro" },
   { chave: "valorExtras", rotulo: "Horas extras (R$)", tipo: "dinheiro" },
+  { chave: "valorExtrasDobro", rotulo: "Horas extras +100% (R$)", tipo: "dinheiro" },
   { chave: "valorNoturno", rotulo: "Ad. noturno (R$)", tipo: "dinheiro" },
   { chave: "valorFaltas", rotulo: "Descontos (R$)", tipo: "dinheiro" },
   { chave: "valorCalculado", rotulo: "Calculado (R$)", tipo: "dinheiro" },
@@ -895,7 +1677,16 @@ const COLUNAS_BATIDAS = [
   { chave: "entrada", rotulo: "Entrada" },
   { chave: "saida", rotulo: "Saída" },
   { chave: "pausaMin", rotulo: "Pausa (min)", tipo: "numero" },
-  { chave: "trabalhado", rotulo: "Trabalhado (h)", tipo: "numero" },
+  { chave: "cracha", rotulo: "No crachá (h)", tipo: "numero" },
+  { chave: "trabalhado", rotulo: "Para a folha (h)", tipo: "numero" },
+  { chave: "extra", rotulo: "Extra +50% (h)", tipo: "numero" },
+  { chave: "extraDobro", rotulo: "Extra +100% (h)", tipo: "numero" },
+  { chave: "atrasoEntrada", rotulo: "Atraso na entrada (min)", tipo: "numero" },
+  { chave: "atrasoCobravel", rotulo: "Atraso fora da tolerância (min)", tipo: "numero" },
+  { chave: "ausencia", rotulo: "Ausência" },
+  { chave: "ausenciaMotivo", rotulo: "Motivo" },
+  { chave: "ausenciaDocumento", rotulo: "Documento" },
+  { chave: "emAberto", rotulo: "Em aberto" },
   { chave: "origem", rotulo: "Origem" },
   { chave: "corrigido", rotulo: "Corrigido" },
   { chave: "relogio", rotulo: "Veio do relógio" },
@@ -913,6 +1704,7 @@ export default function AbaPonto({
   const [filtroPessoa, setFiltroPessoa] = useState("");
   const [formFechamento, setFormFechamento] = useState(null);
   const [formBatida, setFormBatida] = useState(null);
+  const [formAusencia, setFormAusencia] = useState(null);
   const [formParametros, setFormParametros] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [escolhasVinculo, setEscolhasVinculo] = useState({});
@@ -985,7 +1777,17 @@ export default function AbaPonto({
           (d.pessoaId && porId.get(d.pessoaId)) ||
           (txt(d.jibbleId) && porJibble.get(txt(d.jibbleId))) ||
           null;
-        return { d, pessoa, min: minutosTrabalhados(d) };
+        return {
+          d,
+          pessoa,
+          min: minutosTrabalhados(d),
+          ausencia: ausenciaDoDia(d),
+          // Pontualidade: a batida de entrada contra o começo previsto pela
+          // ESCALA. Null quando não há o que medir (fim de semana, dia sem
+          // entrada) — e null é o que faz a linha não escrever nada, em vez de
+          // dizer "chegou na hora" sem ter medido.
+          pontualidade: atrasoDoDia(d, cfg.jornada),
+        };
       })
       .sort(
         (a, b) =>
@@ -1033,10 +1835,15 @@ export default function AbaPonto({
     }
     daLinha.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
 
+    const jornadaEmPalavras = descreverJornada(cfg.jornada);
+
     const linhas = daLinha.map((pessoa) => {
       const dias = diasPorPessoa.get(pessoa.id) || [];
       const { unicos, repetidos } = porDiaUnico(dias);
-      const apuracao = apurarCompetencia(unicos, minutosPrevistosPorDia(pessoa.horasSemanais));
+      // O previsto do dia sai da ESCALA DA CASA, pelo dia da semana da data —
+      // não mais de 44h ÷ 5. A média inventava 48 min de atraso toda sexta e
+      // cobrava jornada inteira de quem foi trabalhar no sábado.
+      const apuracao = apurarCompetencia(unicos, cfg.jornada);
       const reg = regPorPessoa.get(pessoa.id) || null;
 
       // Registro gravado: manda o CARIMBO dos parâmetros. Sem carimbo (registro
@@ -1046,11 +1853,18 @@ export default function AbaPonto({
             salario: salarioDaConta(reg, pessoa),
             divisor: reg.divisor || cfg.divisor,
             fator: reg.fatorHoraExtra || cfg.fatorHoraExtra,
+            // Registro antigo não carimbou o fator da dobra, e não precisa: a
+            // dobra é a dobra (+100%), não é escolha de acordo coletivo.
+            fatorDobro: reg.fatorHoraExtraDobro || FATOR_HE_DOBRA,
             percentualNoturno:
               reg.percentualNoturno === undefined || reg.percentualNoturno === null
                 ? cfg.percentualNoturno
                 : reg.percentualNoturno,
             horasExtrasMin: reg.horasExtrasMin,
+            // Ausente no registro antigo entra como 0 — a faixa não existia
+            // quando ele foi gravado, e a dobra daquela época está em
+            // horasExtrasMin com o fator carimbado no próprio registro.
+            horasExtrasDobroMin: reg.horasExtrasDobroMin,
             faltas: reg.faltas,
             atrasosMin: reg.atrasosMin,
             adicionalNoturnoMin: reg.adicionalNoturnoMin,
@@ -1061,8 +1875,24 @@ export default function AbaPonto({
             fator: cfg.fatorHoraExtra,
             percentualNoturno: cfg.percentualNoturno,
             horasExtrasMin: apuracao.extrasMin || 0,
+            horasExtrasDobroMin: apuracao.extrasDobroMin || 0,
             atrasosMin: apuracao.atrasosMin || 0,
           });
+
+      // Há o que sugerir quando o relógio apurou alguma faixa, quando dá para
+      // derivar o saldo do dia lançado à mão, ou quando alguém LANÇOU ausência
+      // no mês. Sem nada disso, a linha não mostra sugestão nenhuma — em vez de
+      // mostrar zeros.
+      const temSugestao =
+        apuracao.extrasMin !== null || apuracao.extrasDobroMin !== null || apuracao.ausenciasTotal > 0;
+      // De onde veio o número que a conta escrita repete: do CARIMBO, quando há
+      // registro gravado; da própria apuração, quando a linha ainda é sugestão.
+      const fonte = reg
+        ? { extras: reg.origemExtras, extrasDobro: reg.origemExtrasDobro }
+        : {
+            extras: apuracao.fonteExtras,
+            extrasDobro: apuracao.extrasDobroMin === null ? "manual" : "relogio",
+          };
 
       // Texto ilegível no campo de dinheiro não vira R$ 0,00: sem número válido,
       // vale o calculado, e a divergência aparece na conferência.
@@ -1088,14 +1918,31 @@ export default function AbaPonto({
       // e número que nunca zera deixa de ser lido.
       const semSalarioPendente = conta.semSalario && (!!reg || apuracao.diasComBatida > 0);
 
-      return { pessoa, dias, repetidos, apuracao, reg, conta, dif, valorFinal, divergente, semSalarioPendente };
+      return {
+        pessoa, dias, repetidos, apuracao, reg, conta, dif, valorFinal, divergente, semSalarioPendente,
+        fonte, temSugestao, jornadaEmPalavras,
+      };
     });
 
     const lancadas = linhas.filter((l) => l.reg);
-    const extrasLancadasMin = lancadas.reduce((s, l) => s + (Number(l.reg.horasExtrasMin) || 0), 0);
+    // As duas faixas somadas SÓ para o cartão de horas — quantidade de hora,
+    // não dinheiro. Onde vira R$, elas continuam separadas, cada uma no seu
+    // fator: a soma aqui é leitura, lá seria a conta errada.
+    const extrasLancadasMin = lancadas.reduce(
+      (s, l) => s + (Number(l.reg.horasExtrasMin) || 0) + (Number(l.reg.horasExtrasDobroMin) || 0),
+      0
+    );
+    const extrasLancadasDobroMin = lancadas.reduce((s, l) => s + (Number(l.reg.horasExtrasDobroMin) || 0), 0);
     const extrasApuradasMin = linhas.reduce((s, l) => s + (l.apuracao.extrasMin || 0), 0);
+    const extrasApuradasDobroMin = linhas.reduce((s, l) => s + (l.apuracao.extrasDobroMin || 0), 0);
     const comValor = lancadas.filter((l) => l.valorFinal !== null && l.valorFinal !== undefined);
     const semSalario = linhas.filter((l) => l.semSalarioPendente);
+    // As ausências do mês, somadas com a MESMA separação da linha: o que
+    // desconta de um lado, o que não desconta do outro. Um total só faria a
+    // equipe que ficou doente parecer a equipe que faltou.
+    const faltasMes = linhas.reduce((s, l) => s + l.apuracao.faltasQueDescontam, 0);
+    const abonadasMes = linhas.reduce((s, l) => s + l.apuracao.ausenciasSemDesconto, 0);
+    const ausenciasEstranhas = linhas.reduce((s, l) => s + l.apuracao.ausenciasDesconhecidas, 0);
 
     const anos = new Set([Number(String(hojeISO).slice(0, 4)), Number(String(hojeISO).slice(0, 4)) - 1]);
     for (const d of pontoDia || []) {
@@ -1111,14 +1958,20 @@ export default function AbaPonto({
       batidas,
       linhas,
       semVinculo,
+      jornadaEmPalavras,
       vinculados: pessoas.filter((p) => txt(p.jibbleId)).sort((a, b) => norm(a.nome).localeCompare(norm(b.nome))),
       anos: [...anos].filter(Boolean).sort((a, b) => b - a),
       kpi: {
+        faltasMes,
+        abonadasMes,
+        ausenciasEstranhas,
         lancadas: lancadas.length,
         total: linhas.length,
         semLancamento: linhas.length - lancadas.length,
         extrasLancadasMin: lancadas.length ? extrasLancadasMin : null,
+        extrasLancadasDobroMin: lancadas.length ? extrasLancadasDobroMin : null,
         extrasApuradasMin,
+        extrasApuradasDobroMin,
         totalRS: comValor.length ? comValor.reduce((s, l) => s + l.valorFinal, 0) : null,
         semSalario: semSalario.length,
         pendencias: semSalario.length + semVinculo.length,
@@ -1185,9 +2038,13 @@ export default function AbaPonto({
           ? cfg.percentualNoturno
           : reg.percentualNoturno,
       fator: reg?.fatorHoraExtra || cfg.fatorHoraExtra,
+      fatorDobro: reg?.fatorHoraExtraDobro || FATOR_HE_DOBRA,
       // duracaoCampo(0) devolve "00:00": zero gravado tem que voltar como zero,
       // senão o próximo Gravar apaga o zero em silêncio.
       horasExtras: reg ? duracaoCampo(reg.horasExtrasMin) : "",
+      // Registro antigo não tem a faixa de dobra: duracaoCampo(undefined) dá ""
+      // e o campo abre vazio, que é "não houve" — e não um zero inventado.
+      horasExtrasDobro: reg ? duracaoCampo(reg.horasExtrasDobroMin) : "",
       faltas: reg && reg.faltas !== "" && reg.faltas !== null && reg.faltas !== undefined ? String(reg.faltas) : "",
       atrasos: reg ? duracaoCampo(reg.atrasosMin) : "",
       noturno: reg ? duracaoCampo(reg.adicionalNoturnoMin) : "",
@@ -1198,19 +2055,29 @@ export default function AbaPonto({
           ? String(reg.valorLancado).replace(".", ",")
           : "",
       obs: reg?.obs || "",
-      fechado: !!reg?.fechado,
-      fechadoEm: reg?.fechadoEm || "",
-      sugestao: l.apuracao.diasComBatida > 0 && !l.apuracao.semJornada ? l.apuracao : null,
+      /* `fechado`/`fechadoEm` NÃO entram no formulário de propósito. Eram
+         copiados para cá quando o modal abria e regravados no Gravar — e um
+         retrato de dez minutos atrás REABRIA em silêncio a competência que
+         outra pessoa tinha acabado de fechar, por cima de números já
+         conferidos. Quem fecha e quem reabre são os botões da linha; o Gravar
+         relê o estado de agora e não mexe nesses dois campos. */
+      // A sugestão existe quando o relógio apurou alguma faixa, quando dá para
+      // derivar o dia lançado à mão, ou quando há ausência lançada no mês.
+      sugestao: l.temSugestao ? l.apuracao : null,
+      // A régua da parte derivada, em palavras: previsto sem dono é número que
+      // ninguém confere.
+      jornadaEmPalavras: l.jornadaEmPalavras,
     });
   };
 
-  const gravarFechamento = () => {
+  const gravarFechamento = async () => {
     const f = formFechamento;
     if (!f) return;
     const extras = txt(f.horasExtras) ? minutosDaDuracao(f.horasExtras) : 0;
+    const extrasDobro = txt(f.horasExtrasDobro) ? minutosDaDuracao(f.horasExtrasDobro) : 0;
     const atrasos = txt(f.atrasos) ? minutosDaDuracao(f.atrasos) : 0;
     const noturno = txt(f.noturno) ? minutosDaDuracao(f.noturno) : 0;
-    if (extras === null || atrasos === null || noturno === null) {
+    if (extras === null || extrasDobro === null || atrasos === null || noturno === null) {
       // Nunca gravar 0 no lugar do que não foi entendido: o mês sairia zerado e
       // ninguém veria o erro de digitação.
       return setAviso({
@@ -1219,27 +2086,67 @@ export default function AbaPonto({
       });
     }
     const faltas = inteiroDoCampo(f.faltas);
+    // Id determinístico: um fechamento por pessoa e mês. Sem isso, dois cliques
+    // criavam dois fechamentos do mesmo mês e a folha somava dobrado.
+    const id = f.id || `pt_${f.pessoaId}_${f.competencia}`;
+
+    /* RELER ANTES DE ESCREVER.
+       O modal abriu com um retrato do registro. Se, nesse meio-tempo, outra
+       pessoa fechou a competência, gravar por cima com aquele retrato a
+       REABRIRIA em silêncio — e ainda sobrescreveria números que alguém já
+       tinha conferido e assinado. A porta de gravação substitui o registro
+       inteiro, então `fechado`/`fechadoEm` têm de vir da leitura de AGORA, não
+       do retrato: gravar fechamento não é abrir nem fechar competência.
+       Continua sendo ler-calcular-gravar (duas pessoas no mesmo segundo, a
+       última vence), mas fecha a janela que importa, que é a de minutos. */
+    setSalvando(true);
+    let atual = null;
+    try {
+      atual = (await listar(COL_FECHAMENTO)).find((r) => r.id === id) || null;
+    } catch (e) {
+      return setAviso({
+        tipo: "erro",
+        texto: `Não consegui conferir como está o fechamento antes de gravar (${e.message}). Nada foi alterado — tente de novo.`,
+      });
+    } finally {
+      setSalvando(false);
+    }
+    if (atual?.fechado) {
+      return setAviso({
+        tipo: "erro",
+        texto:
+          `${f.pessoaNome} já foi FECHADO em ${rotuloCompetencia(f.competencia)}` +
+          `${atual.fechadoEm ? ` (em ${dataLonga(atual.fechadoEm)})` : ""} enquanto esta janela estava aberta. ` +
+          "Nada foi gravado. Reabra o fechamento na lista se precisar mudar os números.",
+      });
+    }
+
     const conta = calcularFechamento({
       salario: f.salario,
       divisor: f.divisor,
       fator: Number(f.fator),
+      fatorDobro: f.fatorDobro,
       percentualNoturno: f.percentualNoturno,
       horasExtrasMin: extras,
+      horasExtrasDobroMin: extrasDobro,
       faltas,
       atrasosMin: atrasos,
       adicionalNoturnoMin: noturno,
     });
+    // A MESMA regra que a caixa da conta mostrou enquanto se digitava.
+    const fonte = fonteDoLancamento(f.sugestao, extras, extrasDobro);
 
     return disparar(
       COL_FECHAMENTO,
       {
-        // Id determinístico: um fechamento por pessoa e mês. Sem isso, dois
-        // cliques criavam dois fechamentos do mesmo mês e a folha somava dobrado.
-        id: f.id || `pt_${f.pessoaId}_${f.competencia}`,
+        id,
         pessoaId: f.pessoaId,
         pessoaNome: f.pessoaNome, // carimbo: a linha continua legível depois do desligamento
         competencia: f.competencia,
         horasExtrasMin: extras,
+        // As duas faixas em campos separados: somadas num só, quem for refazer
+        // a conta teria de adivinhar o fator — e adivinhar erra em dinheiro.
+        horasExtrasDobroMin: extrasDobro,
         faltas,
         atrasosMin: atrasos,
         adicionalNoturnoMin: noturno,
@@ -1248,16 +2155,29 @@ export default function AbaPonto({
         salarioBase: conta.semSalario ? "" : conta.salarioBase,
         divisor: conta.divisor,
         fatorHoraExtra: conta.fator,
+        fatorHoraExtraDobro: conta.fatorDobro,
         percentualNoturno: conta.percentualNoturno,
+        // Carimbo da PROCEDÊNCIA: se veio do relógio ou do dedo de alguém. Vai
+        // gravado, e não recalculado na leitura, porque batida corrigida amanhã
+        // mudaria a apuração e a linha de um mês conferido passaria a dizer
+        // outra coisa sobre o que já foi conferido.
+        origemExtras: fonte.extras,
+        origemExtrasDobro: fonte.extrasDobro,
+        // Nome herdado: é o TOTAL em R$ das horas extras — agora as DUAS faixas
+        // somadas, cada uma já multiplicada pelo seu fator.
         // Sem salário, dinheiro vai VAZIO — nunca 0, que afirmaria "nada a receber".
-        valorHoraExtra: conta.valorExtras === null ? "" : conta.valorExtras,
+        valorHoraExtra: conta.valorExtrasTotal === null ? "" : conta.valorExtrasTotal,
         valorNoturno: conta.valorNoturno === null ? "" : conta.valorNoturno,
         valorFaltas: conta.valorFaltas === null ? "" : conta.valorFaltas,
         valorCalculado: conta.valorCalculado === null ? "" : conta.valorCalculado,
         valorLancado: txt(f.valorLancado) ? paraNumero(f.valorLancado) : "",
         obs: txt(f.obs),
-        fechado: !!f.fechado,
-        fechadoEm: f.fechadoEm || "",
+        // Da LEITURA DE AGORA, nunca do retrato do modal. Chegar aqui já quer
+        // dizer que a competência não está fechada; escrever o que se acabou de
+        // ler, em vez de `false` cravado, é o que mantém a regra escrita onde
+        // ela vale — não é este Gravar que decide abrir ou fechar mês.
+        fechado: !!atual?.fechado,
+        fechadoEm: atual?.fechadoEm || "",
       },
       conta.semSalario
         ? `Horas de ${f.pessoaNome} registradas. Sem salário na ficha, o valor fica pendente.`
@@ -1406,10 +2326,32 @@ export default function AbaPonto({
           relogioEntrada: base.entrada || "",
           relogioSaida: base.saida || "",
           relogioPausaMin: base.pausaMin ?? "",
+          // O que o relógio APUROU, não só o que ele mediu: é o número que ia
+          // para a folha antes de alguém mexer. Sem ele, daqui a seis meses
+          // ninguém sabe o que é da máquina e o que é do RH.
+          relogioTrabalhadoMin: base.trabalhadoMin ?? null,
+          relogioExtraMin: base.extraMin ?? null,
+          relogioExtraDobroMin: base.extraDobroMin ?? null,
         }
       : {};
 
-    const trabalhado = minutosDoDia({ entrada: f.entrada, saida: f.saida, pausaMin: pausa });
+    const efeito = efeitoDaCorrecao(base, { entrada: f.entrada, saida: f.saida, pausaMin: pausa });
+    /* A apuração do relógio descreve as batidas DO RELÓGIO. Enquanto elas não
+       mudarem, ela continua no registro — recalcular um dia só porque alguém
+       arrumou a observação trocaria 8h12 por 9h12 em silêncio, já que o
+       trabalhado do relógio não é (saída − entrada) − intervalo.
+       Mexeu na batida, aquele número deixou de descrever o dia: sai daqui (fica
+       no carimbo `relogio*`) e o dia passa a valer pela conta desta casa, sem
+       misturar as duas réguas na soma do mês. */
+    const semApuracaoDoRelogio = {
+      extraMin: null,
+      extraDobroMin: null,
+      pausaPagaMin: null,
+      trackedMin: minutosEntre(f.entrada, f.saida),
+      // "Entrou e não saiu", refeito: a marca do relógio não pode ficar presa
+      // num dia que o RH acabou de fechar.
+      emAberto: !!txt(f.entrada) && !txt(f.saida),
+    };
 
     return disparar(
       COL_DIA,
@@ -1425,8 +2367,9 @@ export default function AbaPonto({
         entrada: txt(f.entrada),
         saida: txt(f.saida),
         pausaMin: pausa,
-        // null é DIA EM ABERTO, e não zero hora — a apuração conta à parte.
-        trabalhadoMin: trabalhado,
+        // null é DIA SEM TOTAL, e não zero hora — a apuração conta à parte.
+        trabalhadoMin: efeito.trabalhadoMin,
+        ...(efeito.mantemApuracao ? {} : semApuracaoDoRelogio),
         origem: base?.origem || "manual",
         // Marca a correção E protege o dia: sem isso, a importação de amanhã
         // apagaria o ajuste de hoje, em silêncio.
@@ -1446,6 +2389,132 @@ export default function AbaPonto({
     apagarReg(COL_DIA, b.d.id, "Batida apagada.");
   };
 
+  // ---- ausências -----------------------------------------------------------
+
+  /* Lançar a ausência do zero: quando NÃO existe linha nenhuma para aquele dia,
+     que é o caso comum — o relógio não grava dia sem movimento, então o dia da
+     falta simplesmente não existe na coleção. */
+  const abrirAusenciaNova = () =>
+    setFormAusencia({
+      base: null,
+      travado: false,
+      jaTinha: false,
+      pessoaId: "",
+      pessoaNome: "",
+      // Nasce no mês que está na tela, não em "hoje": quem está lançando
+      // fevereiro não quer um dia de março.
+      data: competenciaDe(hojeISO) === competencia ? hojeISO : `${competencia}-01`,
+      entrada: "",
+      saida: "",
+      tipo: TIPOS_AUSENCIA[0].tipo,
+      motivo: "",
+      documento: "",
+    });
+
+  /* E o caminho curto, a partir da linha do dia — inclusive do dia que tem
+     batida (atestado da tarde). A pessoa e o dia ficam travados: mudar a data
+     aqui deixaria um dia órfão, do mesmo jeito que na correção da batida. */
+  const abrirAusenciaDoDia = (b) =>
+    setFormAusencia({
+      base: b.d,
+      travado: true,
+      jaTinha: !!b.ausencia,
+      pessoaId: b.pessoa?.id || b.d.pessoaId || "",
+      pessoaNome: b.pessoa?.nome || b.d.pessoaNome || "",
+      data: b.d.data,
+      entrada: b.d.entrada || "",
+      saida: b.d.saida || "",
+      tipo: b.ausencia?.tipo || TIPOS_AUSENCIA[0].tipo,
+      motivo: b.ausencia?.motivo || "",
+      documento: b.ausencia?.documento || "",
+    });
+
+  const gravarAusencia = () => {
+    const f = formAusencia;
+    if (!f) return;
+    const ano = anoRuim(f.data);
+    if (ano) return setAviso({ tipo: "erro", texto: `Confira o ano do dia: ${ano}` });
+    if (!TIPOS_AUSENCIA.some((t) => t.tipo === f.tipo)) {
+      return setAviso({ tipo: "erro", texto: "Escolha o que houve neste dia." });
+    }
+
+    const base = f.base || null;
+    const pessoa = pessoas.find((x) => x.id === f.pessoaId) || null;
+    if (!base && !pessoa) return setAviso({ tipo: "erro", texto: "Escolha a pessoa." });
+
+    if (!base) {
+      // Um dia, um registro. Se já existe linha desse dia, o caminho é lançar a
+      // ausência a partir dela — gravar por cima criaria dois dias.
+      const jaTem = (pontoDia || []).find((d) => {
+        if (d.data !== f.data) return false;
+        if (d.pessoaId && d.pessoaId === pessoa.id) return true;
+        return txt(d.jibbleId) && txt(d.jibbleId) === txt(pessoa.jibbleId);
+      });
+      if (jaTem) {
+        return setAviso({
+          tipo: "erro",
+          texto: `Já existe registro de ${pessoa.nome} em ${dataLonga(f.data)}. Lance a ausência pela linha desse dia, em Batidas.`,
+        });
+      }
+    }
+
+    const jibbleId = txt(pessoa?.jibbleId) || txt(base?.jibbleId);
+    const id = base?.id || (jibbleId ? `pd_${jibbleId}_${f.data}` : `pdm_${pessoa.id}_${f.data}`);
+    const escolhido = TIPOS_AUSENCIA.find((t) => t.tipo === f.tipo);
+
+    /* PRESERVA o que já estava no dia. Zerar entrada/saída aqui apagaria a
+       batida do relógio de quem trabalhou meio dia e depois trouxe atestado —
+       e o que a ausência acrescenta é uma EXPLICAÇÃO, não um apagador. Dia que
+       nasce aqui já vem sem batida nenhuma, e o `...(base || {})` não inventa
+       campo que não existe. */
+    return disparar(
+      COL_DIA,
+      {
+        ...(base || {}),
+        id,
+        pessoaId: pessoa?.id || base?.pessoaId || "",
+        pessoaNome: pessoa?.nome || base?.pessoaNome || "",
+        jibbleId,
+        data: f.data,
+        ausencia: { tipo: f.tipo, motivo: txt(f.motivo), documento: txt(f.documento) },
+        origem: base?.origem || "manual",
+        // PROTEGE o dia: sem isto, a importação de amanhã apagaria a ausência
+        // lançada hoje, em silêncio.
+        corrigido: true,
+      },
+      `${escolhido.rotulo} de ${pessoa?.nome || base?.pessoaNome || "pessoa não vinculada"} em ${dataLonga(f.data)}: ${
+        escolhido.desconta ? "vai contar como falta e sugerir desconto de 1/30." : "não desconta."
+      }`,
+      () => setFormAusencia(null)
+    );
+  };
+
+  const removerAusencia = () => {
+    const f = formAusencia;
+    if (!f?.base) return;
+    if (!window.confirm(`Remover a ausência de ${dataLonga(f.data)}? O dia volta a ser o que as batidas disserem.`)) return;
+    /* O dia volta a ser do RELÓGIO se a única coisa manual nele era a ausência.
+       O sinal de que alguém mexeu nas batidas é o carimbo `relogioEntrada`, que
+       a correção grava na primeira vez. Sem ele, manter `corrigido: true`
+       congelaria o dia contra toda importação futura por causa de um lançamento
+       que acabou de deixar de existir — e congelado em silêncio, que é o pior
+       jeito de congelar. Dia que nasceu à mão continua protegido: não há relógio
+       para onde ele voltar. */
+    const houveCorrecaoDeBatida = Object.prototype.hasOwnProperty.call(f.base, "relogioEntrada");
+    return disparar(
+      COL_DIA,
+      {
+        ...f.base,
+        // `null`, e não a chave removida: a porta grava o registro INTEIRO, e é
+        // o null que faz `ausenciaDoDia` voltar a dizer "não há ausência aqui".
+        ausencia: null,
+        corrigido: f.base.origem === "jibble" ? houveCorrecaoDeBatida : true,
+      },
+      `Ausência de ${dataLonga(f.data)} removida.`,
+      () => setFormAusencia(null)
+    );
+  };
+
   // ---- parâmetros ----------------------------------------------------------
 
   const abrirParametros = () =>
@@ -1453,6 +2522,12 @@ export default function AbaPonto({
       divisor: String(cfg.divisor),
       fatorHoraExtra: cfg.fatorHoraExtra,
       percentualNoturno: String(cfg.percentualNoturno),
+      // A escala vira linhas de dois turnos. Quando a gravada não cabe nisso, o
+      // editor não abre — e o formulário guarda a escala atual para mostrá-la e
+      // regravá-la exatamente como está.
+      jornadaEditavel: jornadaCabeNoEditor(cfg.jornada),
+      jornada: linhasDaJornada(cfg.jornada),
+      jornadaAtual: cfg.jornada,
     });
 
   const gravarParametros = async () => {
@@ -1460,6 +2535,16 @@ export default function AbaPonto({
     if (!f) return;
     const divisor = inteiroDoCampo(f.divisor);
     if (divisor <= 0) return setAviso({ tipo: "erro", texto: "O divisor mensal precisa ser maior que zero." });
+    // Turno pela metade não vira 0h00: gravar assim apagaria a jornada de um dia
+    // inteiro em silêncio, e no mês seguinte aquele dia pagaria hora extra do
+    // primeiro minuto.
+    if (f.jornadaEditavel && f.jornada.some((l) => previstoDaLinha(l) === null)) {
+      return setAviso({
+        tipo: "erro",
+        texto: "Há dia com um turno pela metade (entrada sem saída, ou o contrário). Preencha os dois lados ou apague os dois.",
+      });
+    }
+    const jornada = f.jornadaEditavel ? jornadaDasLinhas(f.jornada) : jornadaParaCfg(f.jornadaAtual);
     setSalvando(true);
     try {
       // A porta de configuração grava o documento INTEIRO. Releio agora, na
@@ -1471,6 +2556,7 @@ export default function AbaPonto({
         divisor,
         fatorHoraExtra: Number(f.fatorHoraExtra) || 1.5,
         percentualNoturno: inteiroDoCampo(f.percentualNoturno),
+        jornada,
       };
       await salvarCfg({ ...(atual || {}), ponto });
       setConfig({ ...(atual || {}), ponto });
@@ -1478,7 +2564,9 @@ export default function AbaPonto({
       setFormParametros(null);
       setAviso({
         tipo: "ok",
-        texto: `Parâmetros gravados: ${ponto.divisor} h/mês, hora extra ${rotuloFator(ponto.fatorHoraExtra)}, noturno ${ponto.percentualNoturno}%.`,
+        texto:
+          `Parâmetros gravados: ${ponto.divisor} h/mês, hora extra ${rotuloFator(ponto.fatorHoraExtra)}, ` +
+          `noturno ${ponto.percentualNoturno}%. Jornada: ${descreverJornada(jornada)}.`,
       });
     } catch (e) {
       setAviso({ tipo: "erro", texto: e.message });
@@ -1501,7 +2589,15 @@ export default function AbaPonto({
           // coisa que se faz com a planilha baixada.
           horasExtras: l.reg ? horasDecimais(l.reg.horasExtrasMin) : "",
           adicional: l.reg ? rotuloFator(l.conta.fator) : "",
+          horasExtrasDobro: l.reg ? horasDecimais(l.conta.horasExtrasDobroMin) : "",
+          // A procedência vai junto: planilha sem ela deixa a coluna de horas
+          // extras sem dono, e depois ninguém sabe o que conferir no Jibble.
+          origemExtras: l.reg ? MARCA_FONTE[l.fonte.extras] || MARCA_FONTE.manual : "",
           faltas: l.reg ? l.conta.faltas : "",
+          // Estas duas NÃO dependem de haver lançamento: são a contagem dos
+          // dias que alguém explicou, e valem por si.
+          faltasLancadas: l.apuracao.faltasQueDescontam,
+          ausenciasAbonadas: l.apuracao.ausenciasSemDesconto,
           atrasos: l.reg ? horasDecimais(l.reg.atrasosMin) : "",
           noturno: l.reg ? horasDecimais(l.reg.adicionalNoturnoMin) : "",
           // Dinheiro em NÚMERO, e vazio quando não há conta — a planilha não
@@ -1516,6 +2612,7 @@ export default function AbaPonto({
           valorHora: l.reg ? (l.conta.valorHora ?? "") : "",
           valorHoraExtra: l.reg ? (l.conta.valorHoraExtra ?? "") : "",
           valorExtras: l.reg ? (l.conta.valorExtras ?? "") : "",
+          valorExtrasDobro: l.reg ? (l.conta.valorExtrasDobro ?? "") : "",
           valorNoturno: l.reg ? (l.conta.valorNoturno ?? "") : "",
           valorFaltas: l.reg ? (l.conta.valorFaltas ?? "") : "",
           valorCalculado: l.reg ? (l.conta.valorCalculado ?? "") : "",
@@ -1525,23 +2622,41 @@ export default function AbaPonto({
           diasEmAberto: l.apuracao.diasEmAberto,
           obs: l.reg?.obs || "",
         }))
-      : batidasVisiveis.map((b) => ({
-          data: b.d.data,
-          pessoa: b.pessoa?.nome || `${b.d.pessoaNome || "sem nome"} (não vinculada)`,
-          entrada: b.d.entrada || "",
-          saida: b.d.saida || "",
-          pausaMin: b.d.pausaMin === "" || b.d.pausaMin === null || b.d.pausaMin === undefined ? "" : Number(b.d.pausaMin),
-          // Dia em aberto sai VAZIO, nunca 0: zero na planilha vira desconto.
-          trabalhado: b.min === null ? "" : horasDecimais(b.min),
-          origem: b.d.origem === "jibble" ? "relógio" : "à mão",
-          corrigido: b.d.corrigido ? "sim" : "não",
-          relogio:
-            b.d.relogioEntrada || b.d.relogioSaida
-              ? `${b.d.relogioEntrada || "—"} → ${b.d.relogioSaida || "—"}`
-              : "",
-          jibbleId: b.d.jibbleId || "",
-          obs: b.d.obs || "",
-        }));
+      : batidasVisiveis.map((b) => {
+          const apurado = apuracaoDoRelogio(b.d);
+          const cracha = numOuNulo(b.d.trackedMin) ?? minutosEntre(b.d.entrada, b.d.saida);
+          return {
+            data: b.d.data,
+            pessoa: b.pessoa?.nome || `${b.d.pessoaNome || "sem nome"} (não vinculada)`,
+            entrada: b.d.entrada || "",
+            saida: b.d.saida || "",
+            pausaMin: numOuNulo(b.d.pausaMin) === null ? "" : Number(b.d.pausaMin),
+            cracha: cracha === null ? "" : horasDecimais(cracha),
+            // Dia sem total sai VAZIO, nunca 0: zero na planilha vira desconto.
+            trabalhado: b.min === null ? "" : horasDecimais(b.min),
+            // Sem apuração do relógio a coluna fica vazia — 0 diria "não houve
+            // hora extra", e o que houve foi ninguém ter apurado.
+            extra: apurado ? horasDecimais(apurado.extraMin) : "",
+            extraDobro: apurado ? horasDecimais(apurado.extraDobroMin) : "",
+            // Sem pontualidade medida a coluna fica VAZIA — 0 diria "chegou na
+            // hora", e o que houve foi não haver o que medir (fim de semana,
+            // dia sem entrada batida).
+            atrasoEntrada: b.pontualidade ? b.pontualidade.atrasoEntradaMin : "",
+            atrasoCobravel: b.pontualidade ? b.pontualidade.atrasoMin : "",
+            ausencia: b.ausencia ? b.ausencia.curto : "",
+            ausenciaMotivo: b.ausencia?.motivo || "",
+            ausenciaDocumento: b.ausencia?.documento || "",
+            emAberto: b.d.emAberto === true ? "sim" : "",
+            origem: b.d.origem === "jibble" ? "relógio" : "à mão",
+            corrigido: b.d.corrigido ? "sim" : "não",
+            relogio:
+              b.d.relogioEntrada || b.d.relogioSaida
+                ? `${b.d.relogioEntrada || "—"} → ${b.d.relogioSaida || "—"}`
+                : "",
+            jibbleId: b.d.jibbleId || "",
+            obs: b.d.obs || "",
+          };
+        });
 
     if (linhas.length === 0) {
       return setAviso({ tipo: "erro", texto: "Não há nada neste recorte para baixar." });
@@ -1586,6 +2701,16 @@ export default function AbaPonto({
                 >
                   <RefreshCw size={16} strokeWidth={2.5} className={importando ? "animate-spin" : undefined} />
                   {importando || "Puxar do relógio"}
+                </button>
+              )}
+              {editavel && visao === "batidas" && (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={abrirAusenciaNova}
+                  title="Falta, atestado, justificada, férias ou folga num dia sem batida"
+                >
+                  <CalendarOff size={16} strokeWidth={2.5} /> Lançar ausência
                 </button>
               )}
               {editavel && visao === "batidas" && (
@@ -1657,6 +2782,28 @@ export default function AbaPonto({
             </button>
           )}
         </p>
+        {/* A ESCALA À VISTA. É dela que sai o previsto de cada dia, e previsto
+            que não se lê na tela vira número sem dono na hora da conferência. */}
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+          <Clock size={13} className="text-slate-400" />
+          <span className="tnum">Jornada: {vm.jornadaEmPalavras}</span>
+          {!cfg.jornadaDefinida && <span className="chip">escala padrão da casa</span>}
+          {cfg.jornada.ignorados > 0 && (
+            <span className="chip-warn">
+              {plural(cfg.jornada.ignorados, "turno gravado não foi entendido", "turnos gravados não foram entendidos")}
+            </span>
+          )}
+          {/* O mês inteiro previsto pela escala: a régua do fechamento, dita em
+              horas antes de alguém somar hora extra em cima dela. */}
+          <span className="tnum text-slate-400">
+            {rotuloCompetencia(competencia)}: {duracaoTexto(minutosPrevistosDoMes(competencia, cfg.jornada))} previstas
+          </span>
+          {divisorDaJornada(cfg.jornada) !== cfg.divisor && (
+            <span className="chip-warn">
+              a escala sustenta o divisor {divisorDaJornada(cfg.jornada)}, e o configurado é {cfg.divisor}
+            </span>
+          )}
+        </p>
       </Card>
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -1680,13 +2827,7 @@ export default function AbaPonto({
           // Nada lançado não é "zero hora extra": é ninguém ter apurado ainda.
           valor={vm.kpi.extrasLancadasMin === null ? "—" : duracaoTexto(vm.kpi.extrasLancadasMin)}
           tom="neutral"
-          sub={
-            vm.kpi.extrasApuradasMin
-              ? `batidas apontam ${duracaoTexto(vm.kpi.extrasApuradasMin)}`
-              : vm.kpi.extrasLancadasMin === null
-                ? "nada lançado ainda"
-                : undefined
-          }
+          sub={subDasExtras(vm.kpi)}
           icone={AlarmClock}
         />
         <StatCard
@@ -1736,11 +2877,33 @@ export default function AbaPonto({
             titulo="Fechamento por pessoa"
             sub="A conta escrita ao lado é a mesma que o sistema faz — dá para conferir na calculadora."
           />
+          {/* AS AUSÊNCIAS DO MÊS, com a mesma separação da linha: um total só
+              faria a equipe que ficou doente somar junto com a que faltou. */}
+          {(vm.kpi.faltasMes > 0 || vm.kpi.abonadasMes > 0 || vm.kpi.ausenciasEstranhas > 0) && (
+            <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+              <CalendarOff size={13} className="text-slate-400" />
+              {vm.kpi.faltasMes > 0 && (
+                <span className="chip-bad">{plural(vm.kpi.faltasMes, "dia de falta", "dias de falta")}</span>
+              )}
+              {vm.kpi.abonadasMes > 0 && (
+                <span className="chip">{plural(vm.kpi.abonadasMes, "dia abonado", "dias abonados")}</span>
+              )}
+              {vm.kpi.ausenciasEstranhas > 0 && (
+                <span className="chip-warn">
+                  {plural(vm.kpi.ausenciasEstranhas, "ausência de tipo desconhecido", "ausências de tipo desconhecido")}
+                </span>
+              )}
+              <span>
+                Só o dia de falta desconta (1/30 do salário), e só quando o RH gravar o fechamento. Dia sem batida e
+                sem ausência lançada é <strong>sem registro</strong> — não é falta.
+              </span>
+            </p>
+          )}
           {/* Nunca mostrar zeros como se fossem apuração. */}
           {semBatidaNoMes && (
             <div className="mb-3 rounded-xl bg-warn-50 px-3.5 py-2.5 text-sm text-warn-700">
-              Nenhuma batida importada para este mês. Você pode lançar as horas à mão no Fechamento, ou importar do
-              relógio na tela de configuração.
+              Nenhuma batida importada para este mês. Você pode puxar do relógio aqui em cima, lançar as horas à
+              mão no Fechamento, ou lançar a ausência de quem não veio.
             </div>
           )}
           {vm.linhas.length === 0 ? (
@@ -1762,7 +2925,7 @@ export default function AbaPonto({
         <Card>
           <SectionTitle
             titulo="Batidas do mês"
-            sub="O extrato dia a dia. Correção fica marcada e o que veio do relógio continua à vista."
+            sub="O extrato dia a dia: o crachá, o intervalo e o que vai para a folha — três números que não fecham por subtração, porque quem apura a escala é o relógio. Correção fica marcada e o que veio dele continua à vista."
             acao={
               <div>
                 <label className="sr-only" htmlFor="pt-filtro">Pessoa</label>
@@ -1783,8 +2946,8 @@ export default function AbaPonto({
           />
           {semBatidaNoMes ? (
             <Empty>
-              Nenhuma batida importada para este mês. Você pode lançar as horas à mão no Fechamento, ou importar do
-              relógio na tela de configuração.
+              Nenhuma batida importada para este mês. Você pode puxar do relógio aqui em cima, lançar as horas à
+              mão no Fechamento, ou lançar a ausência de quem não veio.
             </Empty>
           ) : batidasVisiveis.length === 0 ? (
             <Empty>Nada neste recorte. Escolha outra pessoa no filtro.</Empty>
@@ -1795,7 +2958,7 @@ export default function AbaPonto({
                   key={b.d.id}
                   b={b}
                   editavel={editavel}
-                  acoes={{ corrigir: abrirCorrecao, apagar: apagarBatida }}
+                  acoes={{ corrigir: abrirCorrecao, apagar: apagarBatida, ausentar: abrirAusenciaDoDia }}
                 />
               ))}
             </div>
@@ -1803,8 +2966,10 @@ export default function AbaPonto({
           {batidasVisiveis.length > 0 && (
             <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
               <Clock size={12} />
-              {plural(batidasVisiveis.length, "dia", "dias")} nesta lista. Dia em aberto não é dia de zero hora — pode
-              ser esquecimento de bater, folga ou o relógio fora do ar.
+              {plural(batidasVisiveis.length, "dia", "dias")} nesta lista. Dia sem total não é dia de zero hora — pode
+              ser esquecimento de bater, folga ou o relógio fora do ar. &quot;Em aberto&quot; é o dia que o relógio diz
+              que ainda não terminou. Para explicar um dia — falta, atestado, justificada, férias ou folga — use o
+              lançamento de ausência: só a falta desconta.
             </p>
           )}
         </Card>
@@ -1824,6 +2989,15 @@ export default function AbaPonto({
         salvando={salvando}
         aoSalvar={gravarBatida}
         aoFechar={() => setFormBatida(null)}
+      />
+      <FormAusencia
+        form={formAusencia}
+        setForm={setFormAusencia}
+        ativos={ativos}
+        salvando={salvando}
+        aoSalvar={gravarAusencia}
+        aoRemover={removerAusencia}
+        aoFechar={() => setFormAusencia(null)}
       />
       <FormParametros
         form={formParametros}
