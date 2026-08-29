@@ -144,6 +144,17 @@ const QUADROS = [
 /** A escolha do recorte FICA GUARDADA, como nas outras telas da casa. */
 const K_PREFS = "minaslab.ponto.relatorios";
 
+/**
+ * O FIO QUE SEPARA A COLUNA PRESA — desenhado por sombra, não por borda.
+ *
+ * A tabela é `border-collapse: collapse` (padrão do Tailwind), e ali a borda
+ * pertence à JUNÇÃO de duas células: quando a coluna presa desliza por cima da
+ * vizinha, a borda fica para trás e o fio some ou se duplica no meio da
+ * rolagem. Sombra é pintada com o elemento e viaja junto com ele.
+ */
+const FIO_DIREITA = { boxShadow: "1px 0 0 0 #e2e8f0" };
+const FIO_ESQUERDA = { boxShadow: "-1px 0 0 0 #e2e8f0" };
+
 /** A frase única para ausência de dado. Uma só, para a tela nunca hesitar. */
 const SEM = "sem registro";
 /** Ausência de MEDIÇÃO, que é outra coisa: houve o dia, ninguém apurou a faixa. */
@@ -2777,7 +2788,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                       <tr>
                         <th
                           scope="col"
-                          className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-3 py-2 print:static print:border-r-0"
+                          className="sticky left-0 z-20 bg-slate-50 px-3 py-2 print:static"
+                          style={FIO_DIREITA}
                         >
                           Pessoa
                         </th>
@@ -2793,7 +2805,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                         ))}
                         <th
                           scope="col"
-                          className="sticky right-0 z-20 border-l border-slate-200 bg-slate-50 px-3 py-2 text-right print:static print:border-l-0"
+                          className="sticky right-0 z-20 bg-slate-50 px-3 py-2 text-right print:static"
+                          style={FIO_ESQUERDA}
                         >
                           {vmAno.medida.chave === "pontualidade" ? "Ano" : "Total"}
                         </th>
@@ -2802,7 +2815,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     <tbody className="divide-y divide-slate-100">
                       {vmAno.linhas.map((l) => (
                         <tr key={l.pessoa.id}>
-                          <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-2 print:static print:border-r-0">
+                          <td className="sticky left-0 z-10 bg-white px-3 py-2 print:static" style={FIO_DIREITA}>
                             <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa}>
                               {/* Ela bate ponto e não tem um dia no ano: a linha
                                   já está no FIM da lista, e aqui diz por quê. */}
@@ -2838,7 +2851,10 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                               </td>
                             );
                           })}
-                          <td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-3 py-2 text-right tnum font-semibold print:static print:border-l-0">
+                          <td
+                            className="sticky right-0 z-10 bg-white px-3 py-2 text-right tnum font-semibold print:static"
+                            style={FIO_ESQUERDA}
+                          >
                             {l.total === null ? <Nada>—</Nada> : textoDaMedida(l.total, vmAno.medida.unidade)}
                           </td>
                         </tr>
@@ -2846,7 +2862,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     </tbody>
                     <tfoot className="border-t-2 border-slate-200 bg-slate-50 font-display text-sm font-semibold">
                       <tr>
-                        <td className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-3 py-2 print:static print:border-r-0">
+                        <td className="sticky left-0 z-20 bg-slate-50 px-3 py-2 print:static" style={FIO_DIREITA}>
                           {vmAno.medida.chave === "pontualidade" ? "Da casa" : "Total do mês"}
                         </td>
                         {mesesVisiveis.map((i) => {
@@ -2871,7 +2887,10 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                         })}
                         {/* O TOTAL DO ANO É DO ANO INTEIRO, com meses recolhidos
                             ou não: mês vazio não entra em soma nem em razão. */}
-                        <td className="sticky right-0 z-20 border-l border-slate-200 bg-slate-50 px-3 py-2 text-right tnum print:static print:border-l-0">
+                        <td
+                          className="sticky right-0 z-20 bg-slate-50 px-3 py-2 text-right tnum print:static"
+                          style={FIO_ESQUERDA}
+                        >
                           {vmAno.totalGeral === null ? <Nada>—</Nada> : textoDaMedida(vmAno.totalGeral, vmAno.medida.unidade)}
                         </td>
                       </tr>
