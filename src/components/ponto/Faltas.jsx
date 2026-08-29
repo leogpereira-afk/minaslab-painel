@@ -66,6 +66,21 @@
 //
 // A COMPETÊNCIA é estado desta aba (a casca não guarda o mês), começando em
 // competenciaDe(hojeISO).
+//
+// ----------------------------------------------------------------------------
+// QUEM APARECE NA GRADE (decisões do Léo, 28/08/2026)
+//
+// - QUEM NÃO BATE PONTO SOME. `pessoa.batePonto === false` (campo da ficha,
+//   editado em rh/AbaPessoas.jsx) tira a pessoa daqui inteira: nada de chip,
+//   nada de linha com travessão. Quem não é medido pelo relógio não tem o que
+//   fazer numa tela de ponto, e a linha dela ocupava um mês inteiro de células
+//   sem sentido. AUSENTE OU true = BATE — ficha antiga não tem o campo, e ler
+//   undefined como "não bate" esvaziaria a grade de uma vez, em silêncio.
+// - O RECORTE Ativos | Todos | Desligados nasce em "Ativos" e fica guardado em
+//   localStorage. Os totais e o resumo contam SÓ o recorte à mostra.
+// - E A TELA DIZ QUANTOS FICARAM DE FORA, no rodapé da grade e no resumo:
+//   esconder gente sem dizer quanta faz o desconto sugerido — que é dinheiro —
+//   parecer o desconto da casa inteira.
 
 import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
@@ -78,7 +93,7 @@ import {
   descreverJornada, diaDaSemanaISO, diasDoMes, duracaoTexto, horasDecimais,
   minutosPrevistosDoDia, minutosTrabalhados, NOMES_DIA_SEMANA, TIPOS_AUSENCIA,
 } from "../../lib/rh/ponto.js";
-import { Card, SectionTitle, Empty, Modal } from "../ui.jsx";
+import { Card, SectionTitle, Empty, Modal, Segmented } from "../ui.jsx";
 import PessoaDetalhe from "./PessoaDetalhe.jsx";
 import { anoRuim } from "../rh/uteis.js";
 
@@ -108,6 +123,67 @@ function pluralDoTipo(n, curto) {
 }
 const txt = (v) => String(v ?? "").trim();
 const norm = (s) => String(s || "").toLowerCase();
+
+/* QUEM BATE PONTO — a leitura, num lugar só, e ela NÃO PODE SER INVERTIDA.
+   Quem decide é a FICHA (campo `batePonto`, editado em rh/AbaPessoas.jsx):
+   ausente ou true = bate; só o `false` gravado por alguém tira a pessoa daqui.
+   Ficha antiga não tem o campo, e ler undefined como "não bate" esvaziaria a
+   grade inteira de uma vez, sem erro nenhum — que é o pior jeito de esvaziar. */
+const batePontoDe = (p) => p?.batePonto !== false;
+
+/* O RECORTE DA LISTA. "Ativos" é o padrão: com 13 fichas desligadas de 20, a
+   tela sem recorte é a tela em que ninguém acha ninguém. A escolha FICA
+   GUARDADA, como nas outras telas. */
+const RECORTES = [
+  { valor: "ativos", rotulo: "Ativos" },
+  { valor: "todos", rotulo: "Todos" },
+  { valor: "desligados", rotulo: "Desligados" },
+];
+const K_RECORTE = "minaslab.ponto.faltas.recorte";
+const rotuloDoRecorte = (v) => RECORTES.find((r) => r.valor === v)?.rotulo || "Ativos";
+
+function lerRecorte() {
+  try {
+    const salvo = localStorage.getItem(K_RECORTE);
+    return RECORTES.some((r) => r.valor === salvo) ? salvo : "ativos";
+  } catch {
+    // Sem localStorage a escolha só não persiste.
+    return "ativos";
+  }
+}
+
+/** Desligada é `ativo === false`; ficha antiga sem o campo conta como do quadro. */
+function noRecorte(p, recorte) {
+  if (recorte === "todos") return true;
+  if (recorte === "desligados") return p?.ativo === false;
+  return p?.ativo !== false;
+}
+
+/**
+ * A linha do rodapé: quem a tela deixou de fora, e por quê.
+ *
+ * Recorte que esconde gente sem dizer quanta faz o total parecer o total da
+ * casa — e o desconto sugerido é dinheiro. Uma frase por motivo, curta.
+ */
+function frasesDoFora(fora, recorte) {
+  const out = [];
+  if (fora.semPonto > 0) {
+    out.push(
+      `${plural(fora.semPonto, "pessoa não bate ponto", "pessoas não batem ponto")} (quem diz é a ficha, no RH)` +
+        (fora.semPontoComRegistro > 0
+          ? ` — ${plural(fora.semPontoComRegistro, "delas tem registro neste mês", "delas têm registro neste mês")}, confira a ficha`
+          : "")
+    );
+  }
+  if (fora.recorte > 0) {
+    out.push(
+      recorte === "desligados"
+        ? `${plural(fora.recorte, "pessoa está no quadro", "pessoas estão no quadro")} — veja em “Ativos” ou “Todos”`
+        : `${plural(fora.recorte, "desligada tem registro neste mês", "desligadas têm registro neste mês")} — veja em “Todos”`
+    );
+  }
+  return out;
+}
 
 function rotuloCompetencia(c) {
   const [ano, mes] = String(c || "").split("-");
@@ -607,6 +683,8 @@ export default function Faltas({
 }) {
   const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
   const [busca, setBusca] = useState("");
+  // Ativos | Todos | Desligados — a escolha nasce do que ficou guardado.
+  const [recorte, setRecorte] = useState(lerRecorte);
   const [form, setForm] = useState(null);
   /* QUEM ESTÁ ABERTO NO DETALHE, e qual dia está em foco lá dentro.
      { pessoa, diaFoco } — diaFoco null quando o clique veio de um lugar que não
@@ -626,6 +704,15 @@ export default function Faltas({
   }, []);
 
   const cfg = useMemo(() => cfgDoPonto(config), [config]);
+
+  const mudarRecorte = (valor) => {
+    setRecorte(valor);
+    try {
+      localStorage.setItem(K_RECORTE, valor);
+    } catch {
+      // Sem localStorage a escolha só não persiste.
+    }
+  };
 
   /* Os dias do mês, com o previsto que a ESCALA da casa manda para cada um.
      É daqui que sai "fim de semana (sem jornada)": o 0 do sábado é RESULTADO
@@ -694,9 +781,32 @@ export default function Faltas({
     }
     daGrade.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
 
+    /* O RECORTE À VISTA — e o que ele deixou de fora, contado, nunca calado.
+       QUEM NÃO BATE PONTO SOME (decisão do Léo, 28/08/2026): a linha de quem
+       não é medido pelo relógio ocupava um mês inteiro de células sem sentido,
+       e o lugar dessa informação é a ficha do RH, não esta grade. O motivo vem
+       primeiro que o recorte porque é o permanente: quem não bate ponto não
+       aparece aqui em recorte nenhum. */
+    const foraDoRecorte = [];
+    const semPonto = [];
+    const visiveis = [];
+    for (const p of daGrade) {
+      if (!batePontoDe(p)) semPonto.push(p);
+      else if (!noRecorte(p, recorte)) foraDoRecorte.push(p);
+      else visiveis.push(p);
+    }
+    const temRegistro = (p) => (porPessoa.get(p.id)?.size || 0) > 0;
+    const fora = {
+      semPonto: semPonto.length,
+      // Ficha que diz "não bate" e mês que tem registro dela é contradição, e
+      // o RH tem de ver que ela existe para ir consertar a ficha.
+      semPontoComRegistro: semPonto.filter(temRegistro).length,
+      recorte: foraDoRecorte.length,
+    };
+
     const naGrade = new Set(dias.map((d) => d.iso));
 
-    const linhas = daGrade.map((pessoa) => {
+    const linhas = visiveis.map((pessoa) => {
       const porData = porPessoa.get(pessoa.id) || new Map();
       const admissao = txt(pessoa.admissao);
       const desligadoEm = txt(pessoa.desligadoEm);
@@ -750,6 +860,7 @@ export default function Faltas({
 
     return {
       linhas,
+      fora,
       semVinculoPorDia,
       semVinculo: {
         registros: semVinculoRegistros,
@@ -758,7 +869,7 @@ export default function Faltas({
       },
       anos: [...anos].sort((a, b) => b - a),
     };
-  }, [pessoas, ativos, pontoDia, competencia, dias, cfg, hojeISO]);
+  }, [pessoas, ativos, pontoDia, competencia, dias, cfg, hojeISO, recorte]);
 
   const linhasVisiveis = useMemo(() => {
     const q = norm(busca).trim();
@@ -969,7 +1080,10 @@ export default function Faltas({
     try {
       const arquivo = baixarPlanilha({
         nome: `ponto-ausencias-${competencia}`,
-        titulo: `Ausências — ${rotuloCompetencia(competencia)}`,
+        // O RECORTE VAI NO TÍTULO: a planilha sai da tela e vira anexo de
+        // e-mail — sem ele, quem abrir amanhã lê a lista dos ativos como se
+        // fosse a casa inteira.
+        titulo: `Ausências — ${rotuloCompetencia(competencia)} (${rotuloDoRecorte(recorte)})`,
         colunas: COLUNAS,
         linhas,
       });
@@ -982,6 +1096,8 @@ export default function Faltas({
   // ---- render --------------------------------------------------------------
 
   const [ano, mes] = competencia.split("-");
+  // Quem ficou de fora da grade, em palavras. Vai no rodapé da grade.
+  const frasesFora = frasesDoFora(vm.fora, recorte);
 
   return (
     <>
@@ -1018,6 +1134,13 @@ export default function Faltas({
                 <option key={a} value={String(a)}>{a}</option>
               ))}
             </select>
+          </div>
+          {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
+              é o filtro que mais muda esta tela — 13 das 20 fichas estão
+              desligadas. Quem não bate ponto não entra em recorte nenhum. */}
+          <div>
+            <span className="label">Quadro</span>
+            <Segmented opcoes={RECORTES} valor={recorte} onChange={mudarRecorte} />
           </div>
           <div className="min-w-[12rem] flex-1">
             <label className="label" htmlFor="fl-busca">Pessoa</label>
@@ -1056,7 +1179,15 @@ export default function Faltas({
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         {/* ---- a grade ---- */}
         <Card className="lg:col-span-2">
-          <SectionTitle titulo="O mês, dia a dia" sub={`${plural(linhasVisiveis.length, "pessoa", "pessoas")} · ${plural(dias.length, "dia", "dias")}`} />
+          <SectionTitle
+            titulo="O mês, dia a dia"
+            sub={
+              `${rotuloDoRecorte(recorte)} · ${plural(linhasVisiveis.length, "pessoa", "pessoas")} · ${plural(dias.length, "dia", "dias")}` +
+              // Desligada sem registro no mês não tem linha nenhuma para
+              // desenhar: 31 travessões não são conferência, são ruído.
+              (recorte === "desligados" ? " — só quem tem registro no mês" : "")
+            }
+          />
           {/* O que a grade não consegue desenhar, dito por escrito. Uma grade
               tem uma linha por PESSOA: o registro que não casou com ficha
               nenhuma não tem linha, e sumiria calado — junto com a ausência
@@ -1074,7 +1205,13 @@ export default function Faltas({
           )}
 
           {linhasVisiveis.length === 0 ? (
-            <Empty>{busca ? "Nenhuma pessoa com esse nome." : "Nenhuma pessoa no quadro."}</Empty>
+            <Empty>
+              {busca.trim()
+                ? "Nenhuma pessoa com esse nome neste recorte."
+                : recorte === "desligados"
+                  ? "Nenhuma pessoa desligada com registro neste mês."
+                  : "Nenhuma pessoa no quadro."}
+            </Empty>
           ) : (
             <>
               <div className="max-w-full overflow-x-auto">
@@ -1118,6 +1255,14 @@ export default function Faltas({
               <Legenda />
             </>
           )}
+
+          {/* QUEM FICOU DE FORA, dito em voz baixa mas dito. A grade some com
+              gente de propósito (quem não bate ponto, quem está fora do
+              recorte), e recorte que esconde sem dizer quanto faz o total
+              embaixo parecer o total da casa. */}
+          {frasesFora.length > 0 && (
+            <p className="mt-2 text-xs text-slate-400">Fora desta lista: {frasesFora.join(" · ")}.</p>
+          )}
         </Card>
 
         {/* ---- o resumo do mês, por pessoa ---- */}
@@ -1157,6 +1302,12 @@ export default function Faltas({
             {busca.trim() && (
               <p className="text-warn-700">
                 Filtrando por &ldquo;{busca.trim()}&rdquo;: estes totais são só de quem está na lista.
+              </p>
+            )}
+            {frasesFora.length > 0 && (
+              <p className="text-warn-700">
+                Recorte &ldquo;{rotuloDoRecorte(recorte)}&rdquo;:{" "}
+                {plural(vm.fora.semPonto + vm.fora.recorte, "pessoa está fora", "pessoas estão fora")} desta conta.
               </p>
             )}
             <p className="pt-1 text-slate-400">

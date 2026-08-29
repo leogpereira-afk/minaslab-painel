@@ -154,6 +154,15 @@ function chipCompletude(c) {
   return { chip: tom === "ruim" ? "chip-bad" : "chip-warn", texto: `ficha ${c.pct}%` };
 }
 
+// Quem é cobrado pelo relógio. AUSENTE VALE SIM, e a leitura passa por aqui em
+// todo lugar: a maioria das fichas é anterior ao campo, e ler undefined como
+// "não bate" tiraria o quadro inteiro da cobrança do ponto de uma vez, sem
+// ninguém ter decidido isso. Só o `false` gravado — alguém que desmarcou a
+// caixa — significa que a pessoa não bate ponto.
+function batePontoDe(p) {
+  return p?.batePonto !== false;
+}
+
 /* Barra no topo da ficha: a % com peso e O QUE falta. O número sozinho engana —
    por isso a lista de lacunas vem junto, vermelha quando falta essencial.
    ATENÇÃO: a conta é a de src/lib/rh/completudeCadastro.js, que mede uma LISTA
@@ -218,6 +227,10 @@ function LinhaPessoa({ p, hojeISO, editavel, aoAbrir }) {
   const cc = desligada ? null : chipCompletude(completudeDaFicha(p));
   const exp = desligada ? null : situacaoExperiencia(p, dataLocalDe(hojeISO));
   const chipExp = exp ? fraseExperiencia(exp) : null;
+  // Este não é cobrança, é FATO DO CONTRATO — por isso aparece também em quem
+  // foi desligado (a linha inteira já vem apagada) e usa o chip neutro: quem
+  // não bate ponto não está errado, só não é medido pelo relógio.
+  const semPonto = !batePontoDe(p);
   const Comp = editavel ? "button" : "div";
   return (
     <Comp
@@ -238,10 +251,22 @@ function LinhaPessoa({ p, hojeISO, editavel, aoAbrir }) {
         <span className="block truncate text-xs text-slate-500">
           {[p.cargo || "cargo sem registro", p.setor].filter(Boolean).join(" · ")}
         </span>
-        {(chipExp || cc) && (
+        {(chipExp || cc || semPonto) && (
           <span className="mt-1 flex flex-wrap gap-1">
             {chipExp && <span className={clsx(chipExp.chip, "whitespace-nowrap")}>{chipExp.curta}</span>}
             {cc && <span className={clsx(cc.chip, "whitespace-nowrap")}>{cc.texto}</span>}
+            {semPonto && (
+              <span
+                className="chip whitespace-nowrap"
+                title={
+                  String(p.motivoSemPonto || "").trim()
+                    ? `Não bate ponto: ${String(p.motivoSemPonto).trim()}`
+                    : "Não bate ponto — motivo sem registro na ficha."
+                }
+              >
+                não bate ponto
+              </span>
+            )}
           </span>
         )}
       </span>
@@ -486,7 +511,7 @@ function FormPessoa({
 
           <Secao
             titulo="Contrato"
-            sub="Vínculo, jornada, salário e a quem responde"
+            sub="Vínculo, jornada, salário, ponto e a quem responde"
             aberta={aberta("contrato")}
             aoAlternar={() => aoAlternarSecao("contrato")}
           >
@@ -513,6 +538,51 @@ function FormPessoa({
                   aoMudar={setCampo("jornada")}
                   dica="Escrita como a pessoa cumpre. É daqui que o ponto vai tirar o previsto do dia."
                 />
+              </div>
+              {/* PONTO: quem o relógio cobra. Nasce MARCADO, e a leitura é a
+                  mesma de batePontoDe — ficha antiga não tem o campo, e ausente
+                  vale SIM. Só o `false` gravado daqui tira alguém da cobrança.
+                  Desmarcar abre o motivo AO LADO porque a marca sozinha
+                  envelhece: seis meses depois ninguém lembra se foi acordo,
+                  cargo de confiança ou esquecimento de quem cadastrou. */}
+              <div className="flex flex-wrap items-start gap-x-4 gap-y-3 sm:col-span-2">
+                <div className="flex min-w-0 flex-1 basis-64 items-start gap-2.5 py-1">
+                  <input
+                    id="p-bate-ponto"
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-brand"
+                    checked={form.batePonto !== false}
+                    onChange={(e) =>
+                      /* Os dois gravam juntos: voltar a bater ponto apaga o
+                         motivo. Guardado, ele seria a justificativa de uma regra
+                         que não vale mais — e reapareceria inteiro na próxima
+                         vez que alguém desmarcasse, passando por razão de hoje. */
+                      setForm({
+                        ...form,
+                        batePonto: e.target.checked,
+                        motivoSemPonto: e.target.checked ? "" : form.motivoSemPonto,
+                      })
+                    }
+                  />
+                  <label htmlFor="p-bate-ponto" className="text-sm text-slate-700">
+                    Bate ponto no relógio
+                    <span className="block text-xs text-slate-500">
+                      Desmarque quem não é medido pelo relógio. A lista passa a dizer isso na linha da pessoa.
+                    </span>
+                  </label>
+                </div>
+                {form.batePonto === false && (
+                  <div className="min-w-0 flex-1 basis-64">
+                    <Campo
+                      id="p-motivo-sem-ponto"
+                      rotulo="Por que não bate"
+                      placeholder="ex.: cargo de confiança, acordo, trabalho externo"
+                      valor={form.motivoSemPonto}
+                      aoMudar={setCampo("motivoSemPonto")}
+                      dica="Sem isto escrito, daqui a seis meses ninguém sabe se foi decisão ou esquecimento."
+                    />
+                  </div>
+                )}
               </div>
               <Campo
                 id="p-horas"

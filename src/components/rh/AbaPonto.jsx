@@ -98,11 +98,27 @@
 // DECISÕES QUE NÃO SE DISCUTEM (as regras de dinheiro estão em lib/rh/ponto.js,
 // com o porquê de cada uma; aqui ficam as da TELA)
 //
+// - QUEM NÃO BATE PONTO SOME (decisão do Léo, 28/08/2026). `batePonto === false`
+//   na ficha (campo editado em rh/AbaPessoas.jsx) tira a pessoa desta aba
+//   inteira: da lista, dos cartões, dos totais, da planilha e dos seletores de
+//   lançamento. Quem não é medido pelo relógio não tem fechamento de ponto para
+//   conferir. AUSENTE OU true = BATE — ficha antiga não tem o campo, e ler
+//   undefined como "não bate" esvaziaria a aba de uma vez, em silêncio.
+// - O RECORTE Ativos | Todos | Desligados nasce em "Ativos" e fica guardado em
+//   localStorage. Cartões, totais, planilha e o botão "Fechar competência"
+//   valem SÓ para o recorte à mostra — e todos dizem em qual recorte estão.
+//   Quem ficou de fora é contado numa linha embaixo dos cartões: esconder gente
+//   sem dizer quanta faz o total do mês parecer o total da casa.
 // - ID MANDA, NOME SÓ EXIBE: a batida casa com a ficha por `pessoaId` ou por
 //   `jibbleId`, nunca por nome. Casar por nome cria sósia e some com gente.
 // - Batida sem vínculo NÃO SOME da tela: aparece como "pessoa não vinculada",
 //   com o nome que o relógio mandou, e entra na conta de pendências. Sumir
-//   esconderia trabalho de gente real.
+//   esconderia trabalho de gente real. É a única linha que o recorte não filtra
+//   — ela ainda não é de ninguém.
+// - O PAINEL "Vincular ao relógio" SÓ APARECE QUANDO HÁ ID SEM FICHA. O vínculo
+//   nasce pronto na sincronização; painel sempre aberto oferecia uma tarefa que
+//   não existe, e tarefa que não existe confunde quem abre a tela procurando o
+//   que fazer.
 // - O QUE O RELÓGIO APUROU MANDA: a sugestão do mês é a SOMA de `extraMin` e
 //   `extraDobroMin` dos dias, e não trabalhado-contra-previsto. Refazer a conta
 //   de um dia que o relógio já apurou (respeitando a escala) cria um segundo
@@ -156,6 +172,70 @@ const SEM_VINCULO = "__sem_vinculo__";
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const txt = (v) => String(v ?? "").trim();
+
+/* QUEM BATE PONTO — a leitura, num lugar só, e ela NÃO PODE SER INVERTIDA.
+   Quem decide é a FICHA (campo `batePonto`, editado em rh/AbaPessoas.jsx):
+   ausente ou true = bate; só o `false` gravado por alguém tira a pessoa desta
+   aba. Ficha antiga não tem o campo, e ler undefined como "não bate" tiraria o
+   quadro inteiro da cobrança de uma vez, sem erro nenhum. */
+const batePontoDe = (p) => p?.batePonto !== false;
+
+/* O RECORTE DA LISTA. "Ativos" é o padrão: com 13 fichas desligadas de 20, a
+   lista sem recorte é a lista em que ninguém acha ninguém. A escolha FICA
+   GUARDADA, como nas outras telas. */
+const RECORTES = [
+  { valor: "ativos", rotulo: "Ativos" },
+  { valor: "todos", rotulo: "Todos" },
+  { valor: "desligados", rotulo: "Desligados" },
+];
+const K_RECORTE = "minaslab.rh.ponto.recorte";
+const rotuloDoRecorte = (v) => RECORTES.find((r) => r.valor === v)?.rotulo || "Ativos";
+
+function lerRecorte() {
+  try {
+    const salvo = localStorage.getItem(K_RECORTE);
+    return RECORTES.some((r) => r.valor === salvo) ? salvo : "ativos";
+  } catch {
+    // Sem localStorage a escolha só não persiste.
+    return "ativos";
+  }
+}
+
+/** Desligada é `ativo === false`; ficha antiga sem o campo conta como do quadro. */
+function noRecorte(p, recorte) {
+  if (recorte === "todos") return true;
+  if (recorte === "desligados") return p?.ativo === false;
+  return p?.ativo !== false;
+}
+
+/**
+ * A linha que diz quem a aba deixou de fora, e por quê.
+ *
+ * Cartão e total que contam menos gente do que a casa tem, sem dizer quanto,
+ * é número que ninguém confere — e aqui os números viram folha de pagamento.
+ */
+function frasesDoFora(fora, recorte) {
+  const out = [];
+  if (fora.semPonto > 0) {
+    out.push(
+      `${plural(fora.semPonto, "pessoa não bate ponto", "pessoas não batem ponto")} (quem diz é a ficha, no RH)` +
+        (fora.semPontoComRegistro > 0
+          ? ` — ${plural(fora.semPontoComRegistro, "delas tem movimento neste mês", "delas têm movimento neste mês")}, confira a ficha`
+          : "")
+    );
+  }
+  if (fora.recorte > 0) {
+    out.push(
+      recorte === "desligados"
+        ? `${plural(fora.recorte, "pessoa está no quadro", "pessoas estão no quadro")} — veja em “Ativos” ou “Todos”`
+        : `${plural(fora.recorte, "pessoa desligada", "pessoas desligadas")} — veja em “Todos”`
+    );
+  }
+  if (fora.batidas > 0) {
+    out.push(`${plural(fora.batidas, "dia de batida", "dias de batida")} delas fora da lista`);
+  }
+  return out;
+}
 
 // Número que pode não existir — a mesma régua da lib: "" e null NÃO são 0.
 // Number("") devolve 0, e é assim que "não veio" vira "foi zero" na tela.
@@ -861,7 +941,12 @@ function LinhaBatida({ b, editavel, acoes }) {
 // ---- vínculo pessoa ↔ relógio ---------------------------------------------
 
 function PainelVinculo({ semVinculo, vinculados, ativos, editavel, escolhas, setEscolhas, acoes }) {
-  if (semVinculo.length === 0 && vinculados.length === 0) return null;
+  /* SÓ APARECE QUANDO HÁ TRABALHO A FAZER. O vínculo nasce pronto na
+     sincronização com o Jibble: sem ninguém sem ficha, este painel era uma
+     tarefa oferecida que não existe — e tarefa que não existe confunde quem
+     abre a tela procurando o que fazer. A lista de "já vinculados" (com o
+     desvincular) vem junto com a pendência, que é quando ela serve. */
+  if (semVinculo.length === 0) return null;
   return (
     <Card className="mb-4">
       <SectionTitle
@@ -869,56 +954,54 @@ function PainelVinculo({ semVinculo, vinculados, ativos, editavel, escolhas, set
         sub="A batida chega com o id do Jibble; a ficha é escolhida por id, nunca por nome. Sem vínculo, o dia aparece como 'pessoa não vinculada' — e continua aparecendo."
       />
 
-      {semVinculo.length === 0 ? (
-        <p className="mb-3 text-sm text-ok-700">Todo id do relógio deste mês já tem ficha.</p>
-      ) : (
-        <div className="mb-3 space-y-2">
-          {semVinculo.map((s) => (
-            <div
-              key={s.jibbleId || "sem-id"}
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
-              style={{ borderColor: "var(--hairline)" }}
-            >
-              <span className="min-w-0 flex-1 basis-52">
-                <span className="block truncate font-display text-sm font-medium text-slate-900">
-                  {s.nomeNoRelogio || "sem nome no relógio"}
-                </span>
-                <span className="block truncate text-xs text-slate-500">
-                  {s.jibbleId ? `relógio ${s.jibbleId}` : "a batida veio sem id do relógio — não dá para vincular"}
-                  {" · "}
-                  {plural(s.dias, "dia", "dias")} neste mês
-                </span>
+      {/* Sem o ramo "já está tudo vinculado": ele não tem mais como aparecer —
+          o painel inteiro só existe quando há id sem ficha. */}
+      <div className="mb-3 space-y-2">
+        {semVinculo.map((s) => (
+          <div
+            key={s.jibbleId || "sem-id"}
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
+            style={{ borderColor: "var(--hairline)" }}
+          >
+            <span className="min-w-0 flex-1 basis-52">
+              <span className="block truncate font-display text-sm font-medium text-slate-900">
+                {s.nomeNoRelogio || "sem nome no relógio"}
               </span>
-              {editavel && s.jibbleId && (
-                <span className="flex shrink-0 flex-wrap items-center gap-2">
-                  <label className="sr-only" htmlFor={`vinc-${s.jibbleId}`}>
-                    Ficha de {s.nomeNoRelogio || s.jibbleId}
-                  </label>
-                  <select
-                    id={`vinc-${s.jibbleId}`}
-                    className="select h-9 w-56 py-0 text-xs"
-                    value={escolhas[s.jibbleId] || ""}
-                    onChange={(e) => setEscolhas({ ...escolhas, [s.jibbleId]: e.target.value })}
-                  >
-                    <option value="">— escolher a pessoa —</option>
-                    {ativos.map((p) => (
-                      <option key={p.id} value={p.id}>{p.nome}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn-primary px-3 py-1.5 text-xs"
-                    disabled={!escolhas[s.jibbleId]}
-                    onClick={() => acoes.vincular(s.jibbleId, escolhas[s.jibbleId])}
-                  >
-                    <Link2 size={13} /> Vincular
-                  </button>
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              <span className="block truncate text-xs text-slate-500">
+                {s.jibbleId ? `relógio ${s.jibbleId}` : "a batida veio sem id do relógio — não dá para vincular"}
+                {" · "}
+                {plural(s.dias, "dia", "dias")} neste mês
+              </span>
+            </span>
+            {editavel && s.jibbleId && (
+              <span className="flex shrink-0 flex-wrap items-center gap-2">
+                <label className="sr-only" htmlFor={`vinc-${s.jibbleId}`}>
+                  Ficha de {s.nomeNoRelogio || s.jibbleId}
+                </label>
+                <select
+                  id={`vinc-${s.jibbleId}`}
+                  className="select h-9 w-56 py-0 text-xs"
+                  value={escolhas[s.jibbleId] || ""}
+                  onChange={(e) => setEscolhas({ ...escolhas, [s.jibbleId]: e.target.value })}
+                >
+                  <option value="">— escolher a pessoa —</option>
+                  {ativos.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nome}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-primary px-3 py-1.5 text-xs"
+                  disabled={!escolhas[s.jibbleId]}
+                  onClick={() => acoes.vincular(s.jibbleId, escolhas[s.jibbleId])}
+                >
+                  <Link2 size={13} /> Vincular
+                </button>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
 
       {vinculados.length > 0 && (
         <p className="text-xs text-slate-500">
@@ -1747,6 +1830,8 @@ export default function AbaPonto({
 }) {
   const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
   const [visao, setVisao] = useState("fechamento");
+  // Ativos | Todos | Desligados — a escolha nasce do que ficou guardado.
+  const [recorte, setRecorte] = useState(lerRecorte);
   const [filtroPessoa, setFiltroPessoa] = useState("");
   const [formFechamento, setFormFechamento] = useState(null);
   const [formBatida, setFormBatida] = useState(null);
@@ -1810,6 +1895,25 @@ export default function AbaPonto({
   }, [carregarCfg]);
 
   const cfg = useMemo(() => cfgDoPonto(config), [config]);
+
+  const mudarRecorte = (valor) => {
+    setRecorte(valor);
+    /* O filtro por pessoa some junto: trocar o recorte pode tirar da lista
+       justamente quem estava filtrado, e um filtro apontando para quem não está
+       mais à vista deixa a tela vazia sem dizer por quê. */
+    setFiltroPessoa("");
+    try {
+      localStorage.setItem(K_RECORTE, valor);
+    } catch {
+      // Sem localStorage a escolha só não persiste.
+    }
+  };
+
+  /* QUEM O PONTO ALCANÇA. Sai do quadro de hoje menos quem a ficha diz que não
+     bate ponto — é esta lista que os seletores de pessoa oferecem, aqui e nos
+     lançamentos: oferecer para lançar batida de quem não é medido pelo relógio
+     é convidar o erro a entrar pela porta da frente. */
+  const ativosDoPonto = useMemo(() => ativos.filter(batePontoDe), [ativos]);
 
   const vm = useMemo(() => {
     const norm = (s) => String(s || "").toLowerCase();
@@ -1887,9 +1991,40 @@ export default function AbaPonto({
     }
     daLinha.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
 
+    /* O RECORTE À VISTA — e o que ele deixou de fora, contado, nunca calado.
+       QUEM NÃO BATE PONTO SOME (decisão do Léo, 28/08/2026): quem não é medido
+       pelo relógio não tem fechamento de ponto para conferir, e a linha dela
+       só sujava a lista. O motivo vem antes do recorte porque é o permanente:
+       quem não bate ponto não aparece aqui em recorte nenhum. */
+    const foraDoRecorte = [];
+    const semPonto = [];
+    const visiveis = [];
+    for (const p of daLinha) {
+      if (!batePontoDe(p)) semPonto.push(p);
+      else if (!noRecorte(p, recorte)) foraDoRecorte.push(p);
+      else visiveis.push(p);
+    }
+    const idsVisiveis = new Set(visiveis.map((p) => p.id));
+    // Movimento no mês = batida importada ou fechamento lançado. Ficha que diz
+    // "não bate ponto" e mês que tem movimento dela é contradição, e o RH tem
+    // de ver que ela existe para ir consertar a ficha.
+    const temMovimento = (p) => (diasPorPessoa.get(p.id)?.length || 0) > 0 || regPorPessoa.has(p.id);
+
+    /* AS BATIDAS SEGUEM AS PESSOAS. Some quem some: a batida de quem saiu do
+       recorte sai da lista junto. A SEM VÍNCULO FICA — ela não é de ninguém
+       ainda, é pendência, e sumir com ela esconderia trabalho de gente real. */
+    const batidasNoRecorte = batidas.filter((b) => !b.pessoa || idsVisiveis.has(b.pessoa.id));
+
+    const fora = {
+      semPonto: semPonto.length,
+      semPontoComRegistro: semPonto.filter(temMovimento).length,
+      recorte: foraDoRecorte.length,
+      batidas: batidas.length - batidasNoRecorte.length,
+    };
+
     const jornadaEmPalavras = descreverJornada(cfg.jornada);
 
-    const linhas = daLinha.map((pessoa) => {
+    const linhas = visiveis.map((pessoa) => {
       const dias = diasPorPessoa.get(pessoa.id) || [];
       const { unicos, repetidos } = porDiaUnico(dias);
       // O previsto do dia sai da ESCALA DA CASA, pelo dia da semana da data —
@@ -2007,10 +2142,21 @@ export default function AbaPonto({
     }
 
     return {
-      batidas,
+      batidas: batidasNoRecorte,
+      // O mês INTEIRO, para "nenhuma batida importada" continuar querendo dizer
+      // isso. Contado no recorte, ele viraria "ninguém bateu ponto em agosto"
+      // por causa de um filtro de tela — e isso é afirmação falsa.
+      batidasNoMes: batidas.length,
       linhas,
+      fora,
+      // As fichas de verdade que estão à mostra (sem os "ficha não encontrada"),
+      // para os seletores de pessoa oferecerem o mesmo recorte da lista.
+      pessoasVisiveis: visiveis.filter((p) => !p.ausente),
       semVinculo,
       jornadaEmPalavras,
+      // Aqui entra TODO MUNDO que tem crachá no relógio, inclusive quem a ficha
+      // diz que não bate ponto: este é o único lugar de DESVINCULAR, e esconder
+      // o vínculo errado seria esconder justamente o que precisa de conserto.
       vinculados: pessoas.filter((p) => txt(p.jibbleId)).sort((a, b) => norm(a.nome).localeCompare(norm(b.nome))),
       anos: [...anos].filter(Boolean).sort((a, b) => b - a),
       kpi: {
@@ -2030,7 +2176,7 @@ export default function AbaPonto({
         fechadas: lancadas.filter((l) => l.reg.fechado).length,
       },
     };
-  }, [pessoas, ativos, ponto, pontoDia, competencia, cfg, hojeISO]);
+  }, [pessoas, ativos, ponto, pontoDia, competencia, cfg, hojeISO, recorte]);
 
   // O recorte visível da aba Batidas — é ele que a planilha leva.
   const batidasVisiveis = useMemo(() => {
@@ -2258,16 +2404,20 @@ export default function AbaPonto({
   };
 
   const fecharCompetencia = async () => {
+    /* FECHA O QUE ESTÁ À VISTA, e diz isso. A lista é um recorte (Ativos, por
+       padrão), então "fechar a competência" fecha os lançamentos DESTA lista —
+       botão que parece fechar o mês inteiro e fecha metade dele é o tipo de
+       coisa que só se descobre na folha. */
     const abertos = vm.linhas.filter((l) => l.reg && !l.reg.fechado);
     if (abertos.length === 0) {
       return setAviso({
         tipo: "erro",
-        texto: "Não há lançamento aberto neste mês para fechar. Lance as horas primeiro.",
+        texto: `Não há lançamento aberto nesta lista (${rotuloDoRecorte(recorte)}) para fechar. Lance as horas primeiro.`,
       });
     }
     if (
       !window.confirm(
-        `Fechar ${plural(abertos.length, "lançamento", "lançamentos")} de ${rotuloCompetencia(competencia)}? A edição fica travada até alguém reabrir.`
+        `Fechar ${plural(abertos.length, "lançamento", "lançamentos")} de ${rotuloCompetencia(competencia)}? São os desta lista (${rotuloDoRecorte(recorte)}). A edição fica travada até alguém reabrir.`
       )
     ) {
       return;
@@ -2716,7 +2866,10 @@ export default function AbaPonto({
     try {
       const arquivo = baixarPlanilha({
         nome: ehFechamento ? `ponto-fechamento-${competencia}` : `ponto-batidas-${competencia}`,
-        titulo: `${ehFechamento ? "Fechamento do ponto" : "Batidas"} — ${rotuloCompetencia(competencia)}`,
+        // O RECORTE VAI NO TÍTULO: a planilha sai da tela e vira anexo de
+        // e-mail — sem ele, quem abrir amanhã lê a lista dos ativos como se
+        // fosse a casa inteira.
+        titulo: `${ehFechamento ? "Fechamento do ponto" : "Batidas"} — ${rotuloCompetencia(competencia)} (${rotuloDoRecorte(recorte)})`,
         colunas: ehFechamento ? COLUNAS_FECHAMENTO : COLUNAS_BATIDAS,
         linhas,
       });
@@ -2729,7 +2882,10 @@ export default function AbaPonto({
   // ---- render --------------------------------------------------------------
 
   const [ano, mes] = competencia.split("-");
-  const semBatidaNoMes = vm.batidas.length === 0;
+  // "Nenhuma batida importada" é afirmação sobre o MÊS, não sobre o recorte.
+  const semBatidaNoMes = vm.batidasNoMes === 0;
+  // Quem ficou de fora desta aba, em palavras. Vai embaixo dos cartões.
+  const frasesFora = frasesDoFora(vm.fora, recorte);
 
   return (
     <>
@@ -2806,7 +2962,15 @@ export default function AbaPonto({
               ))}
             </select>
           </div>
+          {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
+              é o filtro que mais muda esta aba — 13 das 20 fichas estão
+              desligadas. Quem não bate ponto não entra em recorte nenhum. */}
+          <div>
+            <span className="label">Quadro</span>
+            <Segmented opcoes={RECORTES} valor={recorte} onChange={mudarRecorte} />
+          </div>
           <div className="ml-auto">
+            <span className="label">Visão</span>
             <Segmented
               opcoes={[
                 { valor: "fechamento", rotulo: "Fechamento" },
@@ -2913,10 +3077,19 @@ export default function AbaPonto({
         />
       </div>
 
+      {/* QUEM FICOU DE FORA, dito em voz baixa mas dito. Os cartões acima
+          contam só o recorte à mostra, e cartão que conta menos gente do que a
+          casa tem, sem dizer quanto, é cartão em que ninguém confere nada. */}
+      {frasesFora.length > 0 && (
+        <p className="-mt-2 mb-4 text-xs text-slate-400">
+          Fora desta lista ({rotuloDoRecorte(recorte)}): {frasesFora.join(" · ")}.
+        </p>
+      )}
+
       <PainelVinculo
         semVinculo={vm.semVinculo}
         vinculados={vm.vinculados}
-        ativos={ativos}
+        ativos={ativosDoPonto}
         editavel={editavel}
         escolhas={escolhasVinculo}
         setEscolhas={setEscolhasVinculo}
@@ -2959,7 +3132,11 @@ export default function AbaPonto({
             </div>
           )}
           {vm.linhas.length === 0 ? (
-            <Empty>Ninguém no quadro ainda — o fechamento do ponto nasce das pessoas ativas.</Empty>
+            <Empty>
+              {recorte === "desligados"
+                ? "Nenhuma pessoa desligada com batida ou lançamento neste mês."
+                : "Ninguém no quadro ainda — o fechamento do ponto nasce das pessoas que batem ponto."}
+            </Empty>
           ) : (
             <div className="space-y-2">
               {vm.linhas.map((l) => (
@@ -2987,9 +3164,12 @@ export default function AbaPonto({
                   value={filtroPessoa}
                   onChange={(e) => setFiltroPessoa(e.target.value)}
                 >
-                  <option value="">Todas as pessoas</option>
+                  {/* "Todas" é todas as DESTA LISTA, e o filtro só oferece
+                      quem está nela: nome que filtra para uma lista vazia é
+                      pergunta sem resposta possível. */}
+                  <option value="">Todas as pessoas da lista</option>
                   {vm.semVinculo.length > 0 && <option value={SEM_VINCULO}>Pessoa não vinculada</option>}
-                  {ativos.map((p) => (
+                  {vm.pessoasVisiveis.map((p) => (
                     <option key={p.id} value={p.id}>{p.nome}</option>
                   ))}
                 </select>
@@ -3002,7 +3182,10 @@ export default function AbaPonto({
               mão no Fechamento, ou lançar a ausência de quem não veio.
             </Empty>
           ) : batidasVisiveis.length === 0 ? (
-            <Empty>Nada neste recorte. Escolha outra pessoa no filtro.</Empty>
+            <Empty>
+              O mês tem batida, mas nenhuma neste recorte ({rotuloDoRecorte(recorte)}). Troque o quadro lá em cima ou
+              escolha outra pessoa no filtro.
+            </Empty>
           ) : (
             <div className="space-y-2">
               {batidasVisiveis.map((b) => (
@@ -3034,10 +3217,12 @@ export default function AbaPonto({
         aoSalvar={gravarFechamento}
         aoFechar={() => setFormFechamento(null)}
       />
+      {/* Os seletores dos lançamentos oferecem quem o ponto alcança — nunca
+          quem a ficha diz que não bate ponto. */}
       <FormBatida
         form={formBatida}
         setForm={setFormBatida}
-        ativos={ativos}
+        ativos={ativosDoPonto}
         salvando={salvando}
         aoSalvar={gravarBatida}
         aoFechar={() => setFormBatida(null)}
@@ -3045,7 +3230,7 @@ export default function AbaPonto({
       <FormAusencia
         form={formAusencia}
         setForm={setFormAusencia}
-        ativos={ativos}
+        ativos={ativosDoPonto}
         salvando={salvando}
         aoSalvar={gravarAusencia}
         aoRemover={removerAusencia}
