@@ -477,9 +477,16 @@ export default function RH() {
      dois anos vai perguntar POR QUE a pessoa saiu, e essa resposta só existe se
      for gravada no ato. A confirmação é o próprio modal (com o botão dizendo
      "Desligar"), por isso não há window.confirm aqui. */
-  const desligarPessoa = async (motivo, dataISO) => {
-    const p = dados.pessoas.find((x) => x.id === formPessoa?.id);
-    if (!p) return false;
+  /* Recebe a PESSOA. Antes lia formPessoa (o rascunho do formulário), e a
+     ficha não abre formulário: o botão Desligar da ficha não gravava nada e
+     ainda ficava mudo — o modal seguia aberto sem uma palavra. Falha silenciosa
+     é pior que erro na tela. */
+  const desligarPessoa = async (motivo, dataISO, pessoa) => {
+    const p = pessoa || dados.pessoas.find((x) => x.id === formPessoa?.id);
+    if (!p) {
+      setAviso({ tipo: "erro", texto: "Não achei a pessoa para desligar. Recarregue a tela e tente de novo." });
+      return false;
+    }
     const dia = dataISO || hojeISO;
     const ano = anoRuim(dia);
     if (ano) {
@@ -520,9 +527,12 @@ export default function RH() {
   // Efetivar decide o contrato de experiência: grava a DATA da decisão — no
   // registro do servidor, como o desligar (rascunho não pega carona). Com a
   // data gravada, situacaoExperiencia devolve null e o aviso sai sozinho.
-  const efetivarPessoa = () => {
-    const p = dados.pessoas.find((x) => x.id === formPessoa?.id);
-    if (!p) return;
+  const efetivarPessoa = (pessoa) => {
+    const p = pessoa || dados.pessoas.find((x) => x.id === formPessoa?.id);
+    if (!p) {
+      setAviso({ tipo: "erro", texto: "Não achei a pessoa para efetivar. Recarregue a tela e tente de novo." });
+      return;
+    }
     if (!window.confirm(`Efetivar ${p.nome}? A decisão da experiência fica registrada com a data de hoje.`)) return;
     gravarRegistro(
       "rh_pessoas", { ...p, experienciaDecididaEm: hojeISO },

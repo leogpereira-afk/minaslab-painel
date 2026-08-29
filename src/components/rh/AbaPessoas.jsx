@@ -890,7 +890,9 @@ export default function AbaPessoas({
   const confirmarDesligamento = async () => {
     const ano = anoRuim(desligando.data);
     if (ano) return setAviso({ tipo: "erro", texto: `Confira o ano da data do desligamento: ${ano}` });
-    const ok = await aoDesligar(desligando.motivo, desligando.data);
+    // A PESSOA VAI JUNTO: `desligando` já a carrega, e é ela que a casca precisa
+    // (ler o rascunho do formulário deixava o botão da ficha inerte e mudo).
+    const ok = await aoDesligar(desligando.motivo, desligando.data, desligando);
     // Só fecha se o servidor confirmou: modal que some depois de um erro faz a
     // pessoa achar que deu certo.
     if (ok) setDesligando(null);
@@ -994,7 +996,7 @@ export default function AbaPessoas({
           aoAnterior={iFicha > 0 ? () => setFichaId(navegaveis[iFicha - 1].id) : null}
           aoProximo={iFicha >= 0 && iFicha < navegaveis.length - 1 ? () => setFichaId(navegaveis[iFicha + 1].id) : null}
           aoEditar={() => aoAbrir(pessoaFicha)}
-          aoDesligar={() => setDesligando(pessoaFicha)}
+          aoDesligar={() => setDesligando({ ...pessoaFicha, data: hojeISO, motivo: "" })}
           aoEfetivar={() => aoEfetivar(pessoaFicha)}
           aoIrParaAba={aoIrParaAba}
           aoRegistrarAcontecimento={() =>
@@ -1071,7 +1073,7 @@ export default function AbaPessoas({
         editavel={editavel}
         aoSalvar={aoGravar}
         aoFechar={aoFechar}
-        aoAbrirDesligamento={() => setDesligando({ nome: form.nome, data: hojeISO, motivo: "" })}
+        aoAbrirDesligamento={() => setDesligando({ ...form, data: hojeISO, motivo: "" })}
         aoReativar={aoReativar}
         aoEfetivar={aoEfetivar}
         aoRegistrarAcontecimento={() =>
