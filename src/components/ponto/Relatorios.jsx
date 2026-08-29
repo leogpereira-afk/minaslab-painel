@@ -1385,14 +1385,26 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
   return (
     <Modal titulo={pessoa.nome} aberto aoFechar={aoFechar} largura="max-w-3xl">
       <p className="-mt-2 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-        <span className={pessoa.ativo === false ? "chip" : "chip-ok"}>
+        <span
+          className={pessoa.ativo === false ? "chip" : "chip-ok"}
+          title={`Crachá do relógio: ${txt(pessoa.jibbleId) || "sem crachá vinculado"}`}
+        >
           {pessoa.ativo === false ? "fora do quadro" : "no quadro"}
         </span>
         {txt(pessoa.cargo) && <span>{txt(pessoa.cargo)}</span>}
         {txt(pessoa.setor) && <span>· {txt(pessoa.setor)}</span>}
-        {txt(pessoa.apelido) && <span>· chamada de {txt(pessoa.apelido)}</span>}
+        {/* O apelido só entra quando DIFERE do nome. Antes saía sempre, e a
+            linha virava "VICTORIA MARIA BRETAS DE BRITO · chamada de VICTORIA
+            MARIA BRETAS DE BRITO" — o nome inteiro duas vezes, empurrando para
+            fora o que informa. */}
+        {txt(pessoa.apelido) && txt(pessoa.apelido) !== txt(pessoa.nome) && (
+          <span>· chamada de {txt(pessoa.apelido)}</span>
+        )}
         {ehData(pessoa.admissao) && <span className="tnum">· admissão em {dataLonga(pessoa.admissao)}</span>}
-        <span>· crachá do relógio: {txt(pessoa.jibbleId) || "sem crachá vinculado"}</span>
+        {/* O crachá do relógio é um uuid: não é informação de gente, e ocupava
+            uma linha inteira do cabeçalho. Vira o title do chip — quem precisa
+            conferir o vínculo passa o mouse; quem quer saber quem é a pessoa
+            não tropeça nele. */}
       </p>
 
       {/* ---- O DIA EM FOCO ---- */}
@@ -1533,6 +1545,7 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
                 const mm = minutosTrabalhados(dd);
                 const aus = ausenciaDoDia(dd);
                 const s = diaDaSemanaISO(dd.data);
+                const previstoDoDia = minutosPrevistosDoDia(dd.data, jornada);
                 return (
                   <li key={dd.data}>
                     <button
@@ -1550,7 +1563,40 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
                       <span className="tnum w-28 shrink-0">
                         {txt(dd.entrada) || "—"} às {txt(dd.saida) || "—"}
                       </span>
-                      <span className="tnum w-16 shrink-0 font-medium">{mm === null ? "—" : duracaoTexto(mm)}</span>
+                      {/* A BARRA MEDE O DIA CONTRA O PREVISTO DAQUELE DIA DA
+                          SEMANA, não contra o maior dia do mês: a régua que
+                          interessa é a escala (9h de segunda a quinta, 8h na
+                          sexta). Assim uma sexta cheia aparece cheia, em vez de
+                          parecer um dia fraco ao lado das quintas.
+                          O que passa do previsto vira um fio na cor de extra —
+                          a hora a mais não pode desaparecer dentro da barra. */}
+                      <span
+                        className="hidden h-2.5 w-24 shrink-0 overflow-hidden rounded-full bg-slate-100 sm:flex"
+                        title={
+                          mm === null || !previstoDoDia
+                            ? undefined
+                            : `${duracaoTexto(mm)} de ${duracaoTexto(previstoDoDia)} previstos`
+                        }
+                        aria-hidden="true"
+                      >
+                        {mm !== null && previstoDoDia > 0 && (
+                          <>
+                            <span
+                              className="block h-full rounded-full bg-brand-300"
+                              style={{ width: `${Math.min(100, Math.max(3, (mm / previstoDoDia) * 100))}%` }}
+                            />
+                            {mm > previstoDoDia && (
+                              <span
+                                className="block h-full bg-warn-500"
+                                style={{ width: `${Math.min(30, ((mm - previstoDoDia) / previstoDoDia) * 100)}%` }}
+                              />
+                            )}
+                          </>
+                        )}
+                      </span>
+                      <span className="tnum w-16 shrink-0 text-right font-medium text-slate-800">
+                        {mm === null ? "—" : duracaoTexto(mm)}
+                      </span>
                       {aus ? (
                         <span className={aus.chip}>{aus.rotulo}</span>
                       ) : pp ? (
