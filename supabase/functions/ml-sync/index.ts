@@ -324,6 +324,52 @@ Deno.serve(async (req) => {
         return resp({ itens: data, proximo: ultimo?.atualizado_em ?? null, proximoId: ultimo?.id ?? null });
       }
 
+      /* VÁRIAS COLEÇÕES NUMA CHAMADA — o conserto da lentidão, medido antes
+         de escrito: cada ida e volta ao servidor custa ~0,2s daqui do Brasil, e
+         rh_ponto_dia sozinha eram 3 páginas SEQUENCIAIS (~2,1s). Abrir o Ponto
+         somava 6+ chamadas. Aqui o banco é vizinho da função: varrer tudo do
+         lado de cá custa milissegundos, e a tela paga UMA viagem.
+         O que a porta recusa, ela DEVOLVE em `recusadas` — filtro silencioso é
+         concessão que nunca aconteceu, e a tela precisa saber o que não veio. */
+      case "listarVarias": {
+        const pedidas = Array.isArray(body.colecoes) ? body.colecoes.map(String) : [];
+        if (!pedidas.length || pedidas.length > 20) {
+          return resp({ erro: "Informe de 1 a 20 coleções." }, 400);
+        }
+        const colecoes: Record<string, unknown[]> = {};
+        const recusadas: string[] = [];
+        for (const nome of pedidas) {
+          if (ehColecaoRH(nome) && !ehDirecao) { recusadas.push(nome); continue; }
+          const itens: unknown[] = [];
+          let desde = "1970-01-01";
+          let desdeId = "";
+          for (;;) {
+            let q = sb.from(T_REG)
+              .select("id, registro, apagado, atualizado_em")
+              .eq("colecao", nome)
+              .order("atualizado_em", { ascending: true })
+              .order("id", { ascending: true })
+              .limit(1000);
+            // Mesmo cursor composto do list: registro que divide o instante
+            // com a fronteira da página não pode sumir calado.
+            q = desdeId
+              ? q.or(`atualizado_em.gt.${desde},and(atualizado_em.eq.${desde},id.gt.${desdeId})`)
+              : q.gt("atualizado_em", desde);
+            const { data, error } = await q;
+            if (error) throw error;
+            for (const l of data ?? []) {
+              if (!l.apagado) itens.push(l.registro);
+            }
+            if (!data || data.length < 1000) break;
+            desde = String(data[data.length - 1].atualizado_em);
+            desdeId = String(data[data.length - 1].id);
+          }
+          colecoes[nome] = itens;
+        }
+        const { data: revLinha } = await sb.from(T_META).select("valor").eq("chave", "rev").maybeSingle();
+        return resp({ colecoes, recusadas, rev: revLinha?.valor ?? { rev: 0, porColecao: {} } });
+      }
+
       case "get": {
         const colecao = String(body.colecao ?? "");
         if (ehColecaoRH(colecao) && !ehDirecao) {
