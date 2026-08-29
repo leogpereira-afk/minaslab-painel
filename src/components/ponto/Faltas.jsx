@@ -94,6 +94,10 @@ import {
   minutosPrevistosDoDia, minutosTrabalhados, NOMES_DIA_SEMANA, TIPOS_AUSENCIA,
 } from "../../lib/rh/ponto.js";
 import { Card, SectionTitle, Empty, Modal, Segmented } from "../ui.jsx";
+/* O VOCABULÁRIO DA LISTA DE TRABALHO, um só para o módulo inteiro. Copiar o
+   desenho em cada tela é o que faz duas telas do mesmo sistema parecerem dois
+   sistemas — ver o cabeçalho de components/lista.jsx. */
+import { Explicacao, LinhaRanking, Pilulas, Secao } from "../lista.jsx";
 import PessoaDetalhe from "./PessoaDetalhe.jsx";
 import { anoRuim } from "../rh/uteis.js";
 
@@ -150,6 +154,45 @@ function lerRecorte() {
     // Sem localStorage a escolha só não persiste.
     return "ativos";
   }
+}
+
+/* QUAIS SEÇÕES FICAM ABERTAS, guardado no aparelho — a escolha é de quem
+   trabalha na tela, não da tela. As duas nascem abertas: quem chega e vê tudo
+   fechado não sabe o que a tela tem. */
+const K_SECOES = "minaslab.ponto.faltas.secoes";
+const SECOES_PADRAO = ["ranking", "lancamentos"];
+
+function lerSecoes() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(K_SECOES) || "null");
+    return Array.isArray(salvo) ? salvo : SECOES_PADRAO;
+  } catch {
+    // Sem localStorage (ou JSON estragado) vale o padrão.
+    return SECOES_PADRAO;
+  }
+}
+
+/* AS DUAS COLUNAS CINZA DO RANKING: os dois primeiros tipos que NÃO DESCONTAM,
+   na ordem do motor — hoje atestado e falta justificada. A lista não se escreve
+   aqui (é a regra 2 do cabeçalho): se o motor ganhar um tipo novo, ou trocar a
+   ordem, as colunas e a legenda vão junto, sem ninguém ter de lembrar. */
+const ABONADAS_DO_RANKING = TIPOS_AUSENCIA.filter((t) => !t.desconta).slice(0, 2);
+
+/* O apoio vai como NÚMERO SOZINHO: a coluna tem 4rem e "2 faltas justificadas"
+   não cabe — e truncar o substantivo ("2 faltas justif…") é pior que não
+   escrevê-lo. Quem diz o que o número conta é o `title` da célula e a faixa de
+   explicação, que nomeia as duas colunas na mesma ordem.
+   ZERO AQUI É CONTAGEM, não ausência de medida: o mês foi olhado e não houve
+   nenhum. Trocá-lo por travessão diria "ninguém apurou", que é outra coisa. */
+function apoiosDoRanking(apuracao) {
+  return ABONADAS_DO_RANKING.map((t) => {
+    const n = Number(apuracao.ausencias?.[t.tipo]) || 0;
+    return (
+      <span key={t.tipo} title={pluralDoTipo(n, t.curto)}>
+        {n}
+      </span>
+    );
+  });
 }
 
 /** Desligada é `ativo === false`; ficha antiga sem o campo conta como do quadro. */
@@ -694,6 +737,8 @@ export default function Faltas({
   // mesmo que "não existe": até lá a escala é a padrão da casa, e a tela diz.
   const [config, setConfig] = useState(null);
   const [cfgFalhou, setCfgFalhou] = useState(false);
+  // Quais seções estão abertas — a escolha volta do aparelho.
+  const [secoes, setSecoes] = useState(lerSecoes);
 
   useEffect(() => {
     let vivo = true;
@@ -704,6 +749,17 @@ export default function Faltas({
   }, []);
 
   const cfg = useMemo(() => cfgDoPonto(config), [config]);
+
+  const alternarSecao = (id) =>
+    setSecoes((atual) => {
+      const nova = atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id];
+      try {
+        localStorage.setItem(K_SECOES, JSON.stringify(nova));
+      } catch {
+        // Sem localStorage a escolha só não persiste.
+      }
+      return nova;
+    });
 
   const mudarRecorte = (valor) => {
     setRecorte(valor);
@@ -925,6 +981,28 @@ export default function Faltas({
     return { faltas, abonadas, desconhecidas, semSalario, desconto: temDesconto ? centavos / 100 : null };
   }, [linhasVisiveis]);
 
+  /* QUEM MAIS FALTOU — a lista de OLHAR, que a grade embaixo não dá: a grade é
+     boa para lançar (um quadradinho por dia) e ruim para comparar pessoas.
+     SÓ ENTRA QUEM TEM FALTA QUE DESCONTA. Linha de zero não é informação, e uma
+     lista com vinte zeros e três números faz os três desaparecerem — a mesma
+     razão pela qual esta tela não deduz falta de dia sem batida.
+     Segue o mesmo recorte da grade e da busca: ranking que soma um conjunto e
+     mostra outro é ranking que ninguém consegue conferir. */
+  const ranking = useMemo(
+    () =>
+      linhasVisiveis
+        .filter((l) => l.apuracao.faltasQueDescontam > 0)
+        .sort(
+          (a, b) =>
+            b.apuracao.faltasQueDescontam - a.apuracao.faltasQueDescontam ||
+            norm(a.pessoa.nome).localeCompare(norm(b.pessoa.nome))
+        ),
+    [linhasVisiveis]
+  );
+  // O teto da barra é o MAIOR DESTA LISTA: a barra compara as pessoas do
+  // recorte entre si, não com um mês qualquer do passado.
+  const tetoRanking = ranking.reduce((m, l) => Math.max(m, l.apuracao.faltasQueDescontam), 0);
+
   // ---- lançamento ----------------------------------------------------------
 
   const abrirCelula = (linha, celula) => {
@@ -1098,6 +1176,8 @@ export default function Faltas({
   const [ano, mes] = competencia.split("-");
   // Quem ficou de fora da grade, em palavras. Vai no rodapé da grade.
   const frasesFora = frasesDoFora(vm.fora, recorte);
+  const abertaRanking = secoes.includes("ranking");
+  const abertaLancamentos = secoes.includes("lancamentos");
 
   return (
     <>
@@ -1127,13 +1207,13 @@ export default function Faltas({
               ))}
             </select>
           </div>
+          {/* O ANO EM PÍLULAS, não em lista suspensa: são dois ou três anos, e
+              lista suspensa esconde justamente o quanto de história existe. Os
+              anos vêm do que TEM DADO (mais o de hoje) — lista cravada
+              envelhece virando o ano. */}
           <div>
-            <label className="label" htmlFor="fl-ano">Ano</label>
-            <select id="fl-ano" className="select w-28" value={ano} onChange={(e) => setCompetencia(`${e.target.value}-${mes}`)}>
-              {vm.anos.map((a) => (
-                <option key={a} value={String(a)}>{a}</option>
-              ))}
-            </select>
+            <span className="label">Ano</span>
+            <Pilulas opcoes={vm.anos} valor={ano} aoEscolher={(a) => setCompetencia(`${a}-${mes}`)} />
           </div>
           {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
               é o filtro que mais muda esta tela — 13 das 20 fichas estão
@@ -1175,6 +1255,78 @@ export default function Faltas({
           <p className="mt-1 text-xs text-slate-400">Seu acesso é de leitura: dá para conferir e baixar, não para lançar.</p>
         )}
       </Card>
+
+      {/* ---- quem mais faltou: a lista de OLHAR ----
+          Vem ANTES da grade de propósito. A grade é a ferramenta de LANÇAR — um
+          quadradinho por pessoa por dia — e ninguém compara pessoas varrendo 31
+          colunas. A pergunta que se faz ao abrir esta tela ("quem está
+          faltando?") merece ser respondida na primeira linha. */}
+      <div className="mb-4">
+        <Secao
+          titulo="Quem mais faltou"
+          sub={
+            ranking.length === 0
+              ? `nenhuma falta neste recorte (${rotuloDoRecorte(recorte)})`
+              : `${plural(ranking.length, "pessoa com falta", "pessoas com falta")} em ${rotuloCompetencia(
+                  competencia
+                )} · ${rotuloDoRecorte(recorte)}${busca.trim() ? ` · filtrando por “${busca.trim()}”` : ""}`
+          }
+          aberta={abertaRanking}
+          aoAlternar={() => alternarSecao("ranking")}
+        >
+          {ranking.length === 0 ? (
+            /* LISTA DE ZEROS É RUÍDO: sem falta lançada não há ranking nenhum,
+               e a frase diz o que houve. Ela também diz o que NÃO houve: mês
+               sem falta lançada não é mês sem falta — é mês em que ninguém
+               lançou, e as duas coisas se parecem demais para ficarem caladas. */
+            <p className="text-sm text-slate-500">
+              Nenhuma falta lançada em {rotuloCompetencia(competencia)}
+              {busca.trim() ? ` para “${busca.trim()}”` : ""}. Isso não quer dizer que ninguém faltou: quer dizer
+              que ninguém lançou.
+            </p>
+          ) : (
+            <>
+              <Explicacao>
+                O número forte é a <strong>falta que desconta</strong> — só ela tira 1/30 do salário, e só quando
+                alguém lançar em Fechamento. As duas colunas cinza contam, nesta ordem,{" "}
+                {ABONADAS_DO_RANKING.map((t) => t.curto).join(" e ")}: essas não descontam. A barra compara as
+                pessoas desta lista entre si. <strong>Toque numa pessoa</strong> para ver o mês dela dia a dia.
+              </Explicacao>
+              <div className="space-y-0.5">
+                {ranking.map((l) => (
+                  /* UM SINAL DE ESTADO POR LINHA, e ele não é "faltou": toda
+                     linha desta lista tem falta, e pintar todas de vermelho
+                     seria pintar nenhuma. O que muda de linha para linha é a
+                     PENDÊNCIA — sem salário na ficha, o desconto não tem como
+                     ser calculado. */
+                  <LinhaRanking
+                    key={l.pessoa.id}
+                    // No recorte "Todos" a lista mistura quem está e quem saiu.
+                    nome={l.pessoa.ativo === false ? `${l.pessoa.nome} (desligado)` : l.pessoa.nome}
+                    valor={plural(l.apuracao.faltasQueDescontam, "falta", "faltas")}
+                    apoios={apoiosDoRanking(l.apuracao)}
+                    medida={l.apuracao.faltasQueDescontam}
+                    teto={tetoRanking}
+                    tom={l.conta.semSalario ? "warn" : "brand"}
+                    aberta={detalhe?.pessoa?.id === l.pessoa.id}
+                    aoAbrir={() => setDetalhe({ pessoa: l.pessoa, diaFoco: null })}
+                  />
+                ))}
+              </div>
+              {totais.semSalario > 0 && (
+                <p className="text-xs text-warn-700">
+                  {plural(
+                    totais.semSalario,
+                    "pessoa desta lista está sem salário na ficha",
+                    "pessoas desta lista estão sem salário na ficha"
+                  )}{" "}
+                  — a falta está contada, o desconto não tem como ser calculado.
+                </p>
+              )}
+            </>
+          )}
+        </Secao>
+      </div>
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         {/* ---- a grade ---- */}
@@ -1332,11 +1484,18 @@ export default function Faltas({
       </div>
 
       {/* ---- os lançamentos, um por linha ---- */}
-      <Card>
-        <SectionTitle
-          titulo="Lançamentos do mês"
-          sub="Motivo e documento por extenso — na grade eles só existem no rótulo do quadradinho, que não sai no papel."
-        />
+      <Secao
+        titulo="Lançamentos do mês"
+        sub={`${plural(lancamentos.length, "ausência lançada", "ausências lançadas")} em ${rotuloCompetencia(
+          competencia
+        )} · ${rotuloDoRecorte(recorte)}`}
+        aberta={abertaLancamentos}
+        aoAlternar={() => alternarSecao("lancamentos")}
+      >
+        <Explicacao>
+          Motivo e documento por extenso: na grade eles só existem no rótulo do quadradinho, e rótulo não sai no
+          papel nem no PDF. Só a <strong>falta</strong> desconta — as outras explicam o dia sem tirar nada da folha.
+        </Explicacao>
         {lancamentos.length === 0 ? (
           <Empty>
             Nenhuma ausência lançada em {rotuloCompetencia(competencia)}
@@ -1409,7 +1568,7 @@ export default function Faltas({
             </table>
           </div>
         )}
-      </Card>
+      </Secao>
 
       <ModalAusencia
         form={form}
