@@ -61,6 +61,12 @@ const VAZIO_PESSOA = {
   // Contrato
   matricula: "", tipoContrato: "", jornada: "", horasSemanais: "", setor: "",
   gestorId: "", gestorNome: "",
+  // Ponto: PADRÃO SIM. Ficha antiga não tem o campo, e em TODA leitura ausente
+  // vale true — quem já estava no quadro bate ponto até alguém dizer o
+  // contrário. Ler ausente como false tiraria o quadro inteiro da cobrança do
+  // relógio numa virada só, sem ninguém ter decidido isso. O motivo anda junto:
+  // seis meses depois ninguém lembra se foi acordo, cargo ou esquecimento.
+  batePonto: true, motivoSemPonto: "",
   // Banco
   banco: "", agencia: "", conta: "", chavePix: "",
   // Formação

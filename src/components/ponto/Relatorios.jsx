@@ -57,6 +57,27 @@
 //    achando que o dia de ontem já entrou. O bloco `.apenas-impressao` diz as
 //    quatro coisas.
 //
+// 8. QUEM NÃO BATE PONTO NÃO APARECE AQUI (decisão do Leonardo, 28/08/2026).
+//    Não é chip, não é seção separada, não é linha de travessões: some da
+//    lista, dos cartões do alto e de todo total. Quem não é medido pelo relógio
+//    não tem o que fazer numa tela de ponto — o lugar dessa informação é a
+//    ficha do RH, onde mora a marca (`batePonto`) e o motivo.
+//    A REGRA DE LEITURA NÃO PODE SER INVERTIDA: `batePonto === false` é NÃO
+//    BATE; ausente ou true é BATE. Ficha antiga não tem o campo, e tratar
+//    `undefined` como false esvaziaria o relatório inteiro de uma vez, calado.
+//    MAS O NÚMERO NÃO SOME: uma linha no rodapé diz quantas ficaram de fora.
+//    "Não está aqui" não pode virar "não existe".
+//
+// 9. ATIVOS É O PADRÃO, E O TOTAL SÓ SOMA O QUE ESTÁ À MOSTRA. Pedido do
+//    Leonardo: "não precisa aparecer os inativos junto". São 7 pessoas no
+//    quadro e 13 desligadas — misturadas, a lista tripla de tamanho e o olho
+//    perde as sete que importam. O Segmented Ativos/Todos/Desligados vale para
+//    as quatro visões, a escolha fica guardada, e os totais, os cartões e a
+//    planilha saem do MESMO recorte da lista. Rodapé que não bate com a lista
+//    acima é o defeito clássico de quem recorta a tela e esquece a soma.
+//    Desligada entra pelo dia trabalhado, não pela ficha: quem saiu em abril
+//    aparece no relatório de março e não aparece no de maio.
+//
 // ============================================================================
 // CONTRATO — props que esta aba recebe da casca (pages/Ponto.jsx)
 // ----------------------------------------------------------------------------
@@ -107,6 +128,22 @@ const VISOES = [
   { valor: "comparar", rotulo: "Comparar" },
 ];
 
+/**
+ * O RECORTE DE QUADRO — vale para as quatro visões ao mesmo tempo.
+ *
+ * "Ativos" é o padrão porque é a pergunta de todo dia ("como está a minha
+ * equipe?"). "Todos" e "Desligados" existem para o mês fechado e para a
+ * rescisão, que é quando se olha para trás.
+ */
+const QUADROS = [
+  { valor: "ativos", rotulo: "Ativos" },
+  { valor: "todos", rotulo: "Todos" },
+  { valor: "desligados", rotulo: "Desligados" },
+];
+
+/** A escolha do recorte FICA GUARDADA, como nas outras telas da casa. */
+const K_PREFS = "minaslab.ponto.relatorios";
+
 /** A frase única para ausência de dado. Uma só, para a tela nunca hesitar. */
 const SEM = "sem registro";
 /** Ausência de MEDIÇÃO, que é outra coisa: houve o dia, ninguém apurou a faixa. */
@@ -114,10 +151,59 @@ const SEM_APURACAO = "sem apuração";
 
 const TODAS = "__todas__";
 
+/** Ausência de dado no recorte inteiro — a frase que manda a linha para o fim. */
+const SEM_PERIODO = "sem registro no período";
+
 const txt = (v) => String(v ?? "").trim();
 const norm = (s) => String(s || "").toLowerCase();
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const ehData = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ""));
+const primeiroNome = (nome) => txt(nome).split(/\s+/)[0] || txt(nome) || "esta pessoa";
+
+/**
+ * BATE PONTO? A MESMA LEITURA DA FICHA (rh/AbaPessoas.jsx), e ela não pode ser
+ * invertida: ausente ou `true` BATE; só o `false` gravado tira alguém daqui.
+ * Ficha antiga não tem o campo — ler `undefined` como "não bate" apagaria o
+ * relatório inteiro de uma vez, sem erro nenhum na tela.
+ */
+const batePontoDe = (p) => p?.batePonto !== false;
+
+/** Está no quadro? Mesma régua da casca (pages/Ponto.jsx): só o false desliga. */
+const estaAtiva = (p) => p?.ativo !== false;
+
+const cabeNoQuadro = (p, quadro) => {
+  if (quadro === "ativos") return estaAtiva(p);
+  if (quadro === "desligados") return !estaAtiva(p);
+  return true;
+};
+
+/** A frase de quem ficou de fora do quadro escolhido, na voz do quadro. */
+function foraDoQuadroEmPalavras(quadro, n) {
+  if (quadro === "desligados") return `${plural(n, "pessoa do quadro", "pessoas do quadro")} fora deste recorte`;
+  return `${plural(n, "pessoa desligada", "pessoas desligadas")} fora deste recorte`;
+}
+
+/** O que a tela lembra entre uma visita e outra. Sem localStorage, vale o padrão. */
+function lerPrefs() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(K_PREFS) || "null");
+    return {
+      quadro: QUADROS.some((q) => q.valor === salvo?.quadro) ? salvo.quadro : "ativos",
+      mesesTodos: salvo?.mesesTodos === true,
+    };
+  } catch {
+    // Sem localStorage (ou JSON estragado) vale o padrão: só o quadro de hoje.
+    return { quadro: "ativos", mesesTodos: false };
+  }
+}
+
+function gravarPrefs(prefs) {
+  try {
+    localStorage.setItem(K_PREFS, JSON.stringify(prefs));
+  } catch {
+    /* sem localStorage a escolha só não persiste */
+  }
+}
 
 /**
  * Número que pode não existir — a mesma régua da lib: "" e null NÃO são 0.
@@ -326,20 +412,61 @@ function diasNoPeriodo(grupo, de, ate) {
 }
 
 /**
- * Quem entra no relatório de um período: o QUADRO DE HOJE mais quem teve dia
- * no período. Desligada no dia 15 trabalhou até o dia 15 — some da lista e some
- * do relatório, e o mês fecha sem ela.
+ * Quem PODE entrar no relatório de um período: o QUADRO DE HOJE mais quem teve
+ * dia no período. Desligada no dia 15 trabalhou até o dia 15 — o mês dela sai
+ * inteiro, e o mês seguinte fecha sem ela.
+ *
+ * A DESLIGADA ENTRA PELO DIA, NÃO PELA FICHA: quem saiu e não tem dia no
+ * recorte não aparece nem no recorte "Desligados". Treze linhas de travessão
+ * não informam nada — é a mesma sujeira que o dono mandou tirar da tela.
+ * A ATIVA ENTRA SEMPRE, mesmo sem um dia sequer: ali a ausência É a notícia
+ * (relógio não trouxe, ninguém lançou), e ela vai para o FIM da lista dizendo
+ * "sem registro no período".
  */
-function pessoasDoPeriodo(ativos, indice, de, ate) {
-  const lista = [...(ativos || [])];
-  const jaTem = new Set(lista.map((p) => p.id));
+function candidatasDoPeriodo(ativos, indice, de, ate) {
+  const mapa = new Map((ativos || []).map((p) => [p.id, p]));
   for (const [id, grupo] of indice.porPessoa) {
-    if (jaTem.has(id)) continue;
+    if (mapa.has(id)) continue;
     if (diasNoPeriodo(grupo, de, ate).length === 0) continue;
-    jaTem.add(id);
-    lista.push(grupo.pessoa);
+    mapa.set(id, grupo.pessoa);
   }
-  return lista.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  return [...mapa.values()];
+}
+
+/**
+ * O RECORTE, APLICADO UMA VEZ SÓ — e contando o que tirou.
+ *
+ * Duas peneiras, nesta ordem: o quadro (ativos/todos/desligados) e o relógio
+ * (quem não bate ponto não aparece em tela de ponto). A ordem importa para a
+ * CONTA: a desligada que também não bate ponto é contada uma vez, no motivo que
+ * a tirou primeiro — somar os dois números daria mais gente fora do que existe.
+ *
+ * Devolve os dois números junto com a lista porque eles saem juntos na tela:
+ * lista sem a linha do que ficou de fora transforma "não está aqui" em "não
+ * existe", que é exatamente o que um relatório de ponto não pode fazer.
+ */
+function recortarPessoas(candidatas, quadro) {
+  const lista = [];
+  let foraDoQuadro = 0;
+  let semPonto = 0;
+  for (const p of candidatas) {
+    if (!cabeNoQuadro(p, quadro)) {
+      foraDoQuadro += 1;
+      continue;
+    }
+    if (!batePontoDe(p)) {
+      semPonto += 1;
+      continue;
+    }
+    lista.push(p);
+  }
+  lista.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  return { lista, foraDoQuadro, semPonto };
+}
+
+/** As duas peneiras num passo só, para as quatro visões não divergirem. */
+function pessoasDoPeriodo(ativos, indice, de, ate, quadro) {
+  return recortarPessoas(candidatasDoPeriodo(ativos, indice, de, ate), quadro);
 }
 
 // ============================================================================
@@ -736,21 +863,84 @@ function situacaoDoDia({ dia, ausencia, emAberto, previstoMin }) {
  *
  * SEM `.btn-*` DE PROPÓSITO: as classes de botão somem na impressão (ver
  * index.css, "Controle não é dado"), e um relatório de ponto impresso sem os
- * nomes é papel inútil. Este imprime como o texto preto que já era, e na tela
- * se comporta como link: sublinha no hover e o foco do teclado aparece pela
- * regra global de :focus-visible.
+ * nomes é papel inútil. No papel ele volta a ser texto preto sem sublinhado
+ * (`print:`), porque link impresso não leva a lugar nenhum.
+ *
+ * CARA DE LINK SEMPRE, NÃO SÓ NO HOVER (conserto de 28/08/2026). Antes o nome
+ * era texto cinza-escuro e só se revelava clicável sob o cursor: quem lia a
+ * lista via 20 nomes mortos e um sublinhado que aparecia por acidente. Descobrir
+ * a porta dependia de passar o mouse por cima dela. Agora o nome nasce na cor da
+ * marca com sublinhado PONTILHADO — discreto o bastante para não virar uma
+ * escada de links berrando na tabela, explícito o bastante para se ler como
+ * clicável — e o pontilhado vira cheio no hover e no foco do teclado.
+ *
+ * O TÍTULO É CURTO ("ver o ponto de Ana") porque o balão do navegador aparece
+ * embaixo do cursor: o texto longo de antes tapava a linha seguinte da tabela,
+ * justamente a de Total.
  */
 function NomeDaPessoa({ pessoa, aoAbrir, children }) {
   return (
     <button
       type="button"
       onClick={() => aoAbrir(pessoa)}
-      className="block max-w-full text-left font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline"
-      title={`Abrir o detalhe de ${pessoa.nome}`}
+      className="group block max-w-full text-left"
+      title={`ver o ponto de ${primeiroNome(pessoa.nome)}`}
     >
-      {pessoa.nome}
+      {/* O SUBLINHADO É SÓ DO NOME. Se ele morasse no <button>, escorreria para
+          a frase de baixo ("sem registro no período") — e decoração de texto
+          herdada não se desliga no filho. */}
+      <span className="font-medium text-brand-700 underline decoration-brand-600/60 decoration-dotted underline-offset-2 group-hover:text-brand-800 group-hover:decoration-solid group-focus-visible:decoration-solid print:text-black print:no-underline">
+        {pessoa.nome}
+      </span>
       {children}
     </button>
+  );
+}
+
+/**
+ * TABELA VAZIA DIZ POR QUE ESTÁ VAZIA — e as duas razões são diferentes.
+ *
+ * Com uma pessoa no filtro, vazio quer dizer que ELA não tem dia no período (a
+ * lista de nomes já só oferece quem cabe no recorte). Sem pessoa escolhida,
+ * vazio quer dizer que o RECORTE DE QUADRO não tem ninguém ali — e aí o
+ * caminho é trocar o recorte, não procurar dado que não falta.
+ */
+function ListaVazia({ quadro, pessoa, onde }) {
+  const rotulo = QUADROS.find((q) => q.valor === quadro)?.rotulo || quadro;
+  if (pessoa) {
+    return (
+      <>
+        {pessoa.nome} não tem nenhum dia {onde}. Troque a pessoa ou o período — o recorte de quadro está em “{rotulo}”.
+      </>
+    );
+  }
+  return (
+    <>
+      Ninguém no recorte “{rotulo}” {onde}.
+      {quadro !== "todos" && " Experimente o recorte Todos."}
+    </>
+  );
+}
+
+/**
+ * A LINHA DO QUE FICOU DE FORA — o preço de recortar, dito em voz alta.
+ *
+ * Vai EMBAIXO da tabela, em letra pequena, e vai TAMBÉM PARA O PAPEL (nada de
+ * `sem-impressao`): a folha que circula pela mesa dos outros é justamente onde
+ * a lista curta é lida como a casa inteira.
+ */
+function ForaDoRelatorio({ quadro, foraDoQuadro, semPonto }) {
+  if (!foraDoQuadro && !semPonto) return null;
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+      {semPonto > 0 && (
+        <span>
+          {plural(semPonto, "pessoa não bate ponto e não entra", "pessoas não batem ponto e não entram")} neste
+          relatório — a marca está na ficha do RH.
+        </span>
+      )}
+      {foraDoQuadro > 0 && <span>{foraDoQuadroEmPalavras(quadro, foraDoQuadro)}.</span>}
+    </p>
   );
 }
 
@@ -1228,6 +1418,20 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const [visao, setVisao] = useState("dia");
   const [filtroPessoa, setFiltroPessoa] = useState(TODAS);
 
+  /* O QUADRO ESCOLHIDO vale para as quatro visões e FICA GUARDADO. Quem abre a
+     tela toda manhã para olhar a equipe não pode reencontrar as treze
+     desligadas a cada visita. `mesesTodos` mora na mesma preferência: é a
+     mesma decisão de "quanto eu quero ver". */
+  const [prefs, setPrefs] = useState(lerPrefs);
+  const { quadro, mesesTodos } = prefs;
+  // Grava FORA do atualizador de estado: escrever em disco lá dentro faz o
+  // React do modo estrito gravar duas vezes a mesma coisa.
+  const salvar = (mudanca) => {
+    const nova = { ...prefs, ...mudanca };
+    setPrefs(nova);
+    gravarPrefs(nova);
+  };
+
   // Cada visão tem o SEU recorte, e ele não se mistura: trocar de aba e voltar
   // devolve o dia que a pessoa estava olhando.
   const [dia, setDia] = useState(hojeISO);
@@ -1281,24 +1485,45 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const indice = useMemo(() => montarIndice(pessoas, pontoDia), [pessoas, pontoDia]);
   const importadoEm = useMemo(() => ultimaImportacao(pontoDia), [pontoDia]);
 
-  // Quem pode ser escolhido no filtro: o quadro mais quem tem dia gravado em
-  // qualquer época (o relatório de março precisa de quem saiu em abril).
+  /* Quem pode ser escolhido no filtro: o quadro mais quem tem dia gravado em
+     qualquer época (o relatório de março precisa de quem saiu em abril) — e
+     passado pelas MESMAS duas peneiras da lista. O seletor tem de oferecer
+     exatamente quem a tabela mostra: nome que se escolhe e devolve tabela vazia
+     é armadilha, e nome de quem não bate ponto não tem resposta nenhuma aqui. */
   const pessoasDoFiltro = useMemo(() => {
-    const lista = [...(ativos || [])];
-    const jaTem = new Set(lista.map((p) => p.id));
+    const mapa = new Map((ativos || []).map((p) => [p.id, p]));
     for (const [id, grupo] of indice.porPessoa) {
-      if (jaTem.has(id)) continue;
-      jaTem.add(id);
-      lista.push(grupo.pessoa);
+      if (!mapa.has(id)) mapa.set(id, grupo.pessoa);
     }
-    return lista.sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
-  }, [ativos, indice]);
+    return recortarPessoas([...mapa.values()], quadro).lista;
+  }, [ativos, indice, quadro]);
 
+  /* A ESCOLHIDA SÓ VALE SE ELA ESTÁ NA LISTA. Trocar o recorte (ou o servidor
+     desligar alguém) pode tirar do ar a pessoa selecionada; sem esta linha o
+     <select> ficaria mostrando um valor que não existe entre as opções — em
+     branco, afirmando um recorte que a tabela não está usando. */
   const pessoaEscolhida = filtroPessoa === TODAS ? null : pessoasDoFiltro.find((p) => p.id === filtroPessoa) || null;
-  // A frase do recorte é a MESMA na tela, no papel e no nome da planilha —
-  // "todas" inclui quem saiu e teve dia no período, e não só o quadro de hoje.
-  const recorteDePessoa = pessoaEscolhida ? pessoaEscolhida.nome : "todas as pessoas com registro";
-  const soAEscolhida = (lista) => (pessoaEscolhida ? lista.filter((p) => p.id === pessoaEscolhida.id) : lista);
+  const valorDoFiltroPessoa = pessoaEscolhida ? pessoaEscolhida.id : TODAS;
+  /* A frase do recorte é a MESMA na tela, no papel e no nome da planilha. Ela
+     DIZ O QUADRO ESCOLHIDO com todas as letras: uma folha que sai com sete
+     linhas onde a casa tem vinte pessoas precisa explicar a diferença no
+     próprio papel, senão alguém soma sete e acha que somou a casa. */
+  const quadroEmPalavras =
+    quadro === "ativos"
+      ? "só quem está no quadro"
+      : quadro === "desligados"
+        ? "só quem foi desligado"
+        : "quadro e desligados";
+  const recorteDePessoa = pessoaEscolhida
+    ? pessoaEscolhida.nome
+    : `${quadroEmPalavras} · só quem bate ponto`;
+  /* O filtro de UMA pessoa vem DEPOIS do recorte, e não mexe nas contagens do
+     que ficou de fora: quem não bate ponto continua fora do relatório mesmo
+     quando se olha uma pessoa só, e a linha do rodapé continua dizendo isso. */
+  const soAEscolhida = (recortado) => ({
+    ...recortado,
+    lista: pessoaEscolhida ? recortado.lista.filter((p) => p.id === pessoaEscolhida.id) : recortado.lista,
+  });
 
   const anosDisponiveis = useMemo(() => {
     const set = new Set([Number(String(hojeISO).slice(0, 4))]);
@@ -1374,7 +1599,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
     const valida = ehData(dia);
     const semana = valida ? diaDaSemanaISO(dia) : null;
     const previsto = valida ? minutosPrevistosDoDia(dia, cfg.jornada) : null;
-    const linhas = soAEscolhida(pessoasDoPeriodo(ativos, indice, dia, dia)).map((pessoa) => {
+    const recortado = soAEscolhida(pessoasDoPeriodo(ativos, indice, dia, dia, quadro));
+    const linhas = recortado.lista.map((pessoa) => {
       const grupo = indice.porPessoa.get(pessoa.id);
       const d = grupo ? grupo.dias.get(dia) || null : null;
       const min = d ? minutosTrabalhados(d) : null;
@@ -1437,10 +1663,15 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       inicio: valida ? inicioPrevistoDoDia(dia, cfg.jornada) : null,
       fim: valida ? fimPrevistoDoDia(dia, cfg.jornada) : null,
       linhas,
+      // Os cartões do alto contam A MESMA LISTA da tabela: KPI que soma um
+      // conjunto e tabela que mostra outro é o jeito mais rápido de o número
+      // do topo desmentir a lista de baixo sem ninguém saber qual está certo.
       kpi: { presentes, atrasados, pontuais, faltas, abonadas, emAberto, semRegistro, total: linhas.length },
+      foraDoQuadro: recortado.foraDoQuadro,
+      semPonto: recortado.semPonto,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dia, cfg.jornada, ativos, indice, pessoaEscolhida]);
+  }, [dia, cfg.jornada, ativos, indice, pessoaEscolhida, quadro]);
 
   // ==========================================================================
   // VISÃO MÊS
@@ -1453,7 +1684,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       if (r.competencia === competencia && !regsDoMes.has(r.pessoaId)) regsDoMes.set(r.pessoaId, r);
     }
 
-    const linhas = soAEscolhida(pessoasDoPeriodo(ativos, indice, de, ate)).map((pessoa) => {
+    const recortado = soAEscolhida(pessoasDoPeriodo(ativos, indice, de, ate, quadro));
+    const linhas = recortado.lista.map((pessoa) => {
       const dias = diasNoPeriodo(indice.porPessoa.get(pessoa.id), de, ate);
       const reg = regsDoMes.get(pessoa.id) || null;
       return {
@@ -1470,6 +1702,12 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
     const ags = linhas.map((l) => l.ag);
     const ordenadas = [...linhas].sort((a, b) => {
       const dir = ordem.dir === "asc" ? 1 : -1;
+      /* QUEM NÃO TEM UM DIA SEQUER VAI PARA O FIM, em qualquer ordenação e nas
+         duas direções — inclusive na alfabética, que era por onde a linha de
+         travessões se enfiava no meio da lista parecendo defeito da tabela. */
+      const semA = a.ag.diasComRegistro === 0;
+      const semB = b.ag.diasComRegistro === 0;
+      if (semA !== semB) return semA ? 1 : -1;
       if (ordem.chave === "nome") return dir * norm(a.nome).localeCompare(norm(b.nome));
       const col = COLUNAS_MES.find((c) => c.chave === ordem.chave);
       if (!col) return norm(a.nome).localeCompare(norm(b.nome));
@@ -1501,9 +1739,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         emAberto: ags.reduce((s, a) => s + (a.diasEmAberto ?? 0), 0),
         estranhas: ags.reduce((s, a) => s + (a.ausenciasDesconhecidas ?? 0), 0),
       },
+      foraDoQuadro: recortado.foraDoQuadro,
+      semPonto: recortado.semPonto,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competencia, ponto, ativos, indice, cfg.jornada, ordem, pessoaEscolhida]);
+  }, [competencia, ponto, ativos, indice, cfg.jornada, ordem, pessoaEscolhida, quadro]);
 
   // ==========================================================================
   // VISÃO ANO
@@ -1514,7 +1754,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
     const ate = `${ano}-12-31`;
     const meses = MESES.map((_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`);
 
-    const linhas = soAEscolhida(pessoasDoPeriodo(ativos, indice, de, ate)).map((pessoa) => {
+    const recortado = soAEscolhida(pessoasDoPeriodo(ativos, indice, de, ate, quadro));
+    const linhas = recortado.lista.map((pessoa) => {
       const grupo = indice.porPessoa.get(pessoa.id);
       const porMes = meses.map((c) => agregar(diasNoPeriodo(grupo, primeiroDiaDoMes(c), ultimoDiaDoMes(c)), cfg.jornada));
       return {
@@ -1522,23 +1763,65 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         nome: pessoa.nome,
         porMes,
         valores: porMes.map((a) => medida.valor(a)),
+        diasNoAno: porMes.reduce((s, a) => s + a.diasComRegistro, 0),
         // O total do ano na régua da medida: soma para o que soma, razão
         // juntada para a pontualidade.
         total: totalDaMedida(medida, porMes),
       };
     });
 
+    /* QUEM BATE PONTO E NÃO TEM UM DIA NO ANO VAI PARA O FIM. No papel que o
+       dono mandou, uma linha de doze travessões estava encravada no meio da
+       lista e lia-se como defeito da tabela, não como o que é: uma pessoa sem
+       nada importado. No fim, com a frase ao lado, ela vira notícia. */
+    linhas.sort((a, b) => {
+      const semA = a.diasNoAno === 0;
+      const semB = b.diasNoAno === 0;
+      if (semA !== semB) return semA ? 1 : -1;
+      return norm(a.nome).localeCompare(norm(b.nome));
+    });
+
+    /* OS MESES QUE TÊM ALGUMA COISA. O critério é DIA REGISTRADO, não o valor
+       da medida escolhida: assim as colunas não pulam quando se troca o número
+       da tabela (e um mês inteiro de trabalho sem extra apurada continua
+       visível, porque ali há o que conferir).
+       Recolher mês vazio NÃO MUDA NENHUM TOTAL — mês sem dia não soma nada e
+       não entra em nenhum denominador —, e é por isso que dá para recolher. */
+    const mesesComRegistro = meses.map((_, i) => i).filter((i) => linhas.some((l) => l.porMes[i].diasComRegistro > 0));
+    const vazios = meses.length - mesesComRegistro.length;
+
     return {
       medida,
       meses,
       linhas,
+      mesesComRegistro,
+      vazios,
       // O rodapé é o total DO MÊS entre todas as pessoas — a linha da tendência
       // da casa, que é para o que a visão de ano existe.
       totalPorMes: meses.map((_, i) => totalDaMedida(medida, linhas.map((l) => l.porMes[i]))),
       totalGeral: totalDaMedida(medida, linhas.flatMap((l) => l.porMes)),
+      foraDoQuadro: recortado.foraDoQuadro,
+      semPonto: recortado.semPonto,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ano, medidaAno, ativos, indice, cfg.jornada, pessoaEscolhida]);
+  }, [ano, medidaAno, ativos, indice, cfg.jornada, pessoaEscolhida, quadro]);
+
+  /* AS COLUNAS QUE A TABELA DO ANO DESENHA. Sem nenhum mês com registro (ano
+     que ainda não começou a ser importado) valem os doze: tabela sem coluna
+     nenhuma não é mais legível, é mais vazia. */
+  const mesesVisiveis = useMemo(() => {
+    if (mesesTodos || vmAno.mesesComRegistro.length === 0) return vmAno.meses.map((_, i) => i);
+    return vmAno.mesesComRegistro;
+  }, [mesesTodos, vmAno.mesesComRegistro, vmAno.meses]);
+
+  /* A COLUNA DO MÊS ENCOLHE QUANDO HÁ MUITAS. Com doze meses abertos, o espaço
+     que sobra para cada um é pouco e é o TOTAL que paga a conta — foi ele que
+     apareceu cortado na borda direita do papel que o dono mandou. Com poucos
+     meses, a coluna respira. A largura mínima é calculada, não chutada num
+     `min-w-[1080px]` fixo: número fixo sobra quando há dois meses e falta
+     quando há doze. */
+  const mesEstreito = mesesVisiveis.length > 6;
+  const larguraDaTabelaDoAno = 200 + mesesVisiveis.length * (mesEstreito ? 66 : 92) + 116;
 
   // ==========================================================================
   // VISÃO COMPARAR
@@ -1555,17 +1838,35 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
     const escalaA = diasDeEscala(aDe, aAte, cfg.jornada);
     const escalaB = diasDeEscala(bDe, bAte, cfg.jornada);
 
-    const nomes = new Map();
-    for (const p of soAEscolhida(pessoasDoPeriodo(ativos, indice, aDe, aAte))) nomes.set(p.id, p);
-    for (const p of soAEscolhida(pessoasDoPeriodo(ativos, indice, bDe, bAte))) nomes.set(p.id, p);
+    /* OS DOIS PERÍODOS SE JUNTAM ANTES DE RECORTAR — e o recorte roda UMA vez
+       sobre a união. Recortar duas vezes contaria duas vezes quem ficou de
+       fora, e o rodapé diria "26 pessoas desligadas" onde existem 13. */
+    const candidatas = new Map();
+    for (const p of candidatasDoPeriodo(ativos, indice, aDe, aAte)) candidatas.set(p.id, p);
+    for (const p of candidatasDoPeriodo(ativos, indice, bDe, bAte)) candidatas.set(p.id, p);
+    const recortado = soAEscolhida(recortarPessoas([...candidatas.values()], quadro));
 
-    const linhas = [...nomes.values()]
-      .sort((x, y) => norm(x.nome).localeCompare(norm(y.nome)))
+    const linhas = recortado.lista
       .map((pessoa) => {
         const grupo = indice.porPessoa.get(pessoa.id);
         const agA = agregar(diasNoPeriodo(grupo, aDe, aAte), cfg.jornada);
         const agB = agregar(diasNoPeriodo(grupo, bDe, bAte), cfg.jornada);
-        return { pessoa, nome: pessoa.nome, agA, agB, valorA: medida.valor(agA), valorB: medida.valor(agB) };
+        return {
+          pessoa,
+          nome: pessoa.nome,
+          agA,
+          agB,
+          // Sem um dia sequer NOS DOIS períodos não há o que comparar: a linha
+          // vai para o fim dizendo isso, em vez de ficar no meio da lista com
+          // dois travessões e uma diferença que não existe.
+          semNenhumDia: agA.diasComRegistro === 0 && agB.diasComRegistro === 0,
+          valorA: medida.valor(agA),
+          valorB: medida.valor(agB),
+        };
+      })
+      .sort((x, y) => {
+        if (x.semNenhumDia !== y.semNenhumDia) return x.semNenhumDia ? 1 : -1;
+        return norm(x.nome).localeCompare(norm(y.nome));
       });
 
     return {
@@ -1582,9 +1883,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       linhas,
       totalA: totalDaMedida(medida, linhas.map((l) => l.agA)),
       totalB: totalDaMedida(medida, linhas.map((l) => l.agB)),
+      foraDoQuadro: recortado.foraDoQuadro,
+      semPonto: recortado.semPonto,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodos, medidaComp, ativos, indice, cfg.jornada, pessoaEscolhida]);
+  }, [periodos, medidaComp, ativos, indice, cfg.jornada, pessoaEscolhida, quadro]);
 
   // ==========================================================================
   // O RECORTE EM UMA FRASE — a mesma para o papel, para a planilha e para a tela
@@ -1751,6 +2054,23 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const ordenarPor = (chave) =>
     setOrdem((o) => (o.chave === chave ? { chave, dir: o.dir === "asc" ? "desc" : "asc" } : { chave, dir: "asc" }));
 
+  /* TROCAR O QUADRO PODE TIRAR DO AR A PESSOA ESCOLHIDA. Sair de "Todos" com
+     uma desligada no filtro deixaria o seletor apontando para quem o novo
+     quadro não mostra, e a tabela sairia vazia sem dizer por quê. Aqui a
+     escolha volta para "todas", explicitamente — e o aviso conta o que houve,
+     porque filtro que muda sozinho e calado é filtro em que não se confia. */
+  const trocarQuadro = (valor) => {
+    salvar({ quadro: valor });
+    if (pessoaEscolhida && !cabeNoQuadro(pessoaEscolhida, valor)) {
+      const nome = pessoaEscolhida.nome;
+      setFiltroPessoa(TODAS);
+      setAviso({
+        tipo: "ok",
+        texto: `${nome} não entra no recorte “${QUADROS.find((q) => q.valor === valor)?.rotulo}” — o filtro voltou para todas as pessoas.`,
+      });
+    }
+  };
+
   /* A FICHA DO PAINEL SAI DA LISTA VIVA, e o estado só guarda o id: copiar a
      ficha para dentro do estado faria o painel continuar mostrando o cargo
      antigo depois de o servidor trazer o novo. Quem foi desligada continua
@@ -1767,6 +2087,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   // ==========================================================================
   // TELA
   // ==========================================================================
+  /* "NÃO HÁ NINGUÉM" É SÓ QUANDO NÃO HÁ MESMO. Depois do recorte, uma lista
+     vazia pode ser escolha (nenhum desligado, ninguém que bata ponto) e não
+     ausência de cadastro — e mandar cadastrar no RH quem já está cadastrado é
+     mandar procurar defeito onde não tem. As duas frases são diferentes. */
+  const semNinguemNaCasa = (pessoas || []).length === 0 && indice.porPessoa.size === 0;
   const semNinguem = pessoasDoFiltro.length === 0;
 
   return (
@@ -1795,8 +2120,17 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
           }
         />
 
-        <div className="sem-impressao mb-3 max-w-full overflow-x-auto pb-1">
+        <div className="sem-impressao mb-3 flex max-w-full flex-wrap items-center gap-3 overflow-x-auto pb-1">
           <Segmented opcoes={VISOES} valor={visao} onChange={setVisao} />
+          {/* O QUADRO VALE PARA AS QUATRO VISÕES, e por isso ele fica aqui em
+              cima, ao lado delas — e não escondido entre os campos de data de
+              uma visão só. Sete pessoas no quadro contra treze desligadas: sem
+              este botão, toda lista da tela sai com o triplo de linhas do que a
+              pergunta pedia. */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Quadro</span>
+            <Segmented opcoes={QUADROS} valor={quadro} onChange={(v) => trocarQuadro(v)} />
+          </div>
         </div>
 
         {/* OS CONTROLES DO RECORTE. Todos em `sem-impressao`: no papel um
@@ -1936,10 +2270,13 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
             <select
               id="rel-pessoa"
               className="select w-60"
-              value={filtroPessoa}
+              value={valorDoFiltroPessoa}
               onChange={(e) => setFiltroPessoa(e.target.value)}
             >
-              <option value={TODAS}>Todas as pessoas</option>
+              {/* "Todas" é todas AS DESTE RECORTE, e a palavra diz qual: um
+                  seletor escrito "todas as pessoas" sobre uma lista de sete
+                  onde a casa tem vinte é uma promessa que a tabela não cumpre. */}
+              <option value={TODAS}>Todas as pessoas ({pessoasDoFiltro.length})</option>
               {pessoasDoFiltro.map((p) => (
                 <option key={p.id} value={p.id}>{p.nome}</option>
               ))}
@@ -1999,8 +2336,18 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       {semNinguem ? (
         <Card>
           <Empty>
-            Não há ninguém no quadro nem dia importado. Cadastre as pessoas no RH e traga as batidas na aba “Pessoas do
-            relógio”.
+            {semNinguemNaCasa ? (
+              <>
+                Não há ninguém no quadro nem dia importado. Cadastre as pessoas no RH e traga as batidas na aba
+                “Pessoas do relógio”.
+              </>
+            ) : (
+              <>
+                Ninguém no recorte “{QUADROS.find((q) => q.valor === quadro)?.rotulo}” que bata ponto no relógio. As
+                pessoas existem — troque o recorte aqui em cima, ou confira na ficha do RH quem está marcado como quem
+                não bate ponto.
+              </>
+            )}
           </Empty>
         </Card>
       ) : (
@@ -2076,7 +2423,9 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                 />
                 <Pendencias indice={indice} />
                 {vmDia.linhas.length === 0 ? (
-                  <Empty>Ninguém no quadro para este dia.</Empty>
+                  <Empty>
+                    <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="neste dia" />
+                  </Empty>
                 ) : (
                   <div className="max-w-full overflow-x-auto">
                     <table className="w-full min-w-[1120px] text-left text-sm">
@@ -2197,6 +2546,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     </table>
                   </div>
                 )}
+                <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmDia.foraDoQuadro} semPonto={vmDia.semPonto} />
               </Card>
             </>
           )}
@@ -2282,7 +2632,9 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   </p>
                 )}
                 {vmMes.linhas.length === 0 ? (
-                  <Empty>Ninguém com registro neste mês.</Empty>
+                  <Empty>
+                    <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="neste mês" />
+                  </Empty>
                 ) : (
                   <div className="max-w-full overflow-x-auto">
                     <table className="w-full min-w-[1120px] text-left text-sm">
@@ -2304,8 +2656,13 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                           <tr key={l.pessoa.id} className="align-top">
                             <td className="px-3 py-2">
                               <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa}>
+                                {/* A MESMA FRASE DAS OUTRAS VISÕES, e a linha
+                                    já desceu para o fim da tabela: nome com uma
+                                    fileira de travessões no meio da lista lê-se
+                                    como tabela quebrada, não como pessoa sem
+                                    dia importado. */}
                                 {l.ag.diasComRegistro === 0 && (
-                                  <span className="block text-xs text-slate-400">sem nenhum dia neste mês</span>
+                                  <span className="block text-xs font-normal text-slate-400">{SEM_PERIODO}</span>
                                 )}
                               </NomeDaPessoa>
                             </td>
@@ -2359,6 +2716,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     </table>
                   </div>
                 )}
+                <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmMes.foraDoQuadro} semPonto={vmMes.semPonto} />
               </Card>
             </>
           )}
@@ -2370,7 +2728,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
             <Card>
               <SectionTitle
                 titulo={`${vmAno.medida.rotulo} — ${ano}`}
-                sub={`${vmAno.medida.ajuda} Esta visão é a TENDÊNCIA: doze colunas, uma por mês.`}
+                sub={`${vmAno.medida.ajuda} Esta visão é a TENDÊNCIA: uma coluna por mês, com o nome e o total presos nas pontas da tabela. A planilha sai sempre com os doze meses.`}
               />
               <Pendencias indice={indice} />
               <p className="mb-3 text-xs text-slate-500">
@@ -2379,18 +2737,64 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                 {vmAno.medida.chave === "pontualidade" &&
                   " A linha de total é a razão dos dias juntados (pontuais ÷ medidos), nunca a média das porcentagens — quem trabalhou 2 dias não pode pesar como quem trabalhou 22."}
               </p>
+
+              {/* OS MESES VAZIOS FICAM RECOLHIDOS, E A FRASE VAI PARA O PAPEL.
+                  O botão some na impressão (`.btn-ghost`), a frase não: folha
+                  com sete colunas de mês precisa dizer que as outras cinco
+                  existem e estão vazias, senão o ano lido no papel é outro. */}
+              {vmAno.vazios > 0 && vmAno.mesesComRegistro.length > 0 && (
+                <p className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>
+                    {mesesTodos
+                      ? `Os 12 meses estão à mostra — ${plural(vmAno.vazios, "mês não tem", "meses não têm")} nenhum registro neste recorte.`
+                      : `${plural(vmAno.vazios, "mês sem nenhum registro está recolhido", "meses sem nenhum registro estão recolhidos")} — mês vazio não soma nada, então nenhum total muda por isso.`}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost !px-2 !py-1 text-xs"
+                    onClick={() => salvar({ mesesTodos: !mesesTodos })}
+                  >
+                    {mesesTodos ? "esconder os meses sem registro" : "mostrar os 12 meses"}
+                  </button>
+                </p>
+              )}
+
               {vmAno.linhas.length === 0 ? (
-                <Empty>Ninguém com registro neste ano.</Empty>
+                <Empty>
+                  <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="neste ano" />
+                </Empty>
               ) : (
                 <div className="max-w-full overflow-x-auto">
-                  <table className="w-full min-w-[1080px] text-left text-sm">
+                  {/* AS DUAS PONTAS FICAM PRESAS (`sticky`): o nome à esquerda e
+                      o TOTAL à direita. Na folha que o dono mandou, o total —
+                      justamente o número que resume a linha — aparecia cortado
+                      na borda, e rolar para o lado para vê-lo fazia o nome
+                      sumir do outro lado. Impresso não há rolagem, e sticky no
+                      papel só atrapalha: `print:static` devolve a coluna ao
+                      lugar dela. */}
+                  <table className="w-full text-left text-sm" style={{ minWidth: `${larguraDaTabelaDoAno}px` }}>
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                       <tr>
-                        <th scope="col" className="px-3 py-2">Pessoa</th>
-                        {MESES.map((m) => (
-                          <th key={m} scope="col" className="px-2 py-2 text-right">{m}</th>
+                        <th
+                          scope="col"
+                          className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-3 py-2 print:static print:border-r-0"
+                        >
+                          Pessoa
+                        </th>
+                        {mesesVisiveis.map((i) => (
+                          <th
+                            key={vmAno.meses[i]}
+                            scope="col"
+                            className={clsx("py-2 text-right", mesEstreito ? "px-1.5" : "px-3")}
+                            title={`${MESES_LONGOS[i]} de ${ano}`}
+                          >
+                            {MESES[i]}
+                          </th>
                         ))}
-                        <th scope="col" className="px-3 py-2 text-right">
+                        <th
+                          scope="col"
+                          className="sticky right-0 z-20 border-l border-slate-200 bg-slate-50 px-3 py-2 text-right print:static print:border-l-0"
+                        >
                           {vmAno.medida.chave === "pontualidade" ? "Ano" : "Total"}
                         </th>
                       </tr>
@@ -2398,31 +2802,43 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     <tbody className="divide-y divide-slate-100">
                       {vmAno.linhas.map((l) => (
                         <tr key={l.pessoa.id}>
-                          <td className="px-3 py-2">
-                            <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa} />
+                          <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-2 print:static print:border-r-0">
+                            <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa}>
+                              {/* Ela bate ponto e não tem um dia no ano: a linha
+                                  já está no FIM da lista, e aqui diz por quê. */}
+                              {l.diasNoAno === 0 && (
+                                <span className="block text-xs font-normal text-slate-400">{SEM_PERIODO}</span>
+                              )}
+                            </NomeDaPessoa>
                           </td>
                           {/* CLICAR EM MARÇO ABRE MARÇO. A célula do mês leva à visão
                               Mês já no mês clicado e já com esta pessoa no filtro —
                               sem isso, para ver março a pessoa troca de visão e
                               reencontra o recorte na mão. Célula vazia também abre: o
                               mês sem registro é justamente o que se quer conferir. */}
-                          {l.valores.map((v, i) => (
-                            <td key={vmAno.meses[i]} className="px-2 py-2 text-right tnum">
-                              <button
-                                type="button"
-                                onClick={() => irParaMes(vmAno.meses[i], l.pessoa)}
-                                className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
-                                title={
-                                  v === null || v === undefined
-                                    ? `${MESES_LONGOS[i]}: sem registro — abrir o mês de ${l.nome}`
-                                    : `${MESES_LONGOS[i]}: ${textoDaMedida(v, vmAno.medida.unidade)} — abrir o mês de ${l.nome}`
-                                }
+                          {mesesVisiveis.map((i) => {
+                            const v = l.valores[i];
+                            return (
+                              <td
+                                key={vmAno.meses[i]}
+                                className={clsx("py-2 text-right tnum", mesEstreito ? "px-1.5" : "px-3")}
                               >
-                                {v === null || v === undefined ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
-                              </button>
-                            </td>
-                          ))}
-                          <td className="px-3 py-2 text-right tnum font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => irParaMes(vmAno.meses[i], l.pessoa)}
+                                  className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
+                                  title={
+                                    v === null || v === undefined
+                                      ? `${MESES_LONGOS[i]}: sem registro — abrir o mês de ${primeiroNome(l.nome)}`
+                                      : `${MESES_LONGOS[i]}: ${textoDaMedida(v, vmAno.medida.unidade)} — abrir o mês de ${primeiroNome(l.nome)}`
+                                  }
+                                >
+                                  {v === null || v === undefined ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-3 py-2 text-right tnum font-semibold print:static print:border-l-0">
                             {l.total === null ? <Nada>—</Nada> : textoDaMedida(l.total, vmAno.medida.unidade)}
                           </td>
                         </tr>
@@ -2430,24 +2846,32 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     </tbody>
                     <tfoot className="border-t-2 border-slate-200 bg-slate-50 font-display text-sm font-semibold">
                       <tr>
-                        <td className="px-3 py-2">
+                        <td className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-3 py-2 print:static print:border-r-0">
                           {vmAno.medida.chave === "pontualidade" ? "Da casa" : "Total do mês"}
                         </td>
-                        {vmAno.totalPorMes.map((v, i) => (
-                          <td key={vmAno.meses[i]} className="px-2 py-2 text-right tnum">
-                            {/* O rodapé é o total da casa: abre o mês SEM mexer no
-                                filtro de pessoa, que é o recorte que ele soma. */}
-                            <button
-                              type="button"
-                              onClick={() => irParaMes(vmAno.meses[i], null)}
-                              className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
-                              title={`Abrir ${MESES_LONGOS[i]} de ${ano} na visão Mês`}
+                        {mesesVisiveis.map((i) => {
+                          const v = vmAno.totalPorMes[i];
+                          return (
+                            <td
+                              key={vmAno.meses[i]}
+                              className={clsx("py-2 text-right tnum", mesEstreito ? "px-1.5" : "px-3")}
                             >
-                              {v === null ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
-                            </button>
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-right tnum">
+                              {/* O rodapé é o total da casa: abre o mês SEM mexer no
+                                  filtro de pessoa, que é o recorte que ele soma. */}
+                              <button
+                                type="button"
+                                onClick={() => irParaMes(vmAno.meses[i], null)}
+                                className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
+                                title={`abrir ${MESES_LONGOS[i]} de ${ano}`}
+                              >
+                                {v === null ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                              </button>
+                            </td>
+                          );
+                        })}
+                        {/* O TOTAL DO ANO É DO ANO INTEIRO, com meses recolhidos
+                            ou não: mês vazio não entra em soma nem em razão. */}
+                        <td className="sticky right-0 z-20 border-l border-slate-200 bg-slate-50 px-3 py-2 text-right tnum print:static print:border-l-0">
                           {vmAno.totalGeral === null ? <Nada>—</Nada> : textoDaMedida(vmAno.totalGeral, vmAno.medida.unidade)}
                         </td>
                       </tr>
@@ -2455,6 +2879,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   </table>
                 </div>
               )}
+              <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmAno.foraDoQuadro} semPonto={vmAno.semPonto} />
             </Card>
           )}
 
@@ -2494,7 +2919,9 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     )}
                   </p>
                   {vmComp.linhas.length === 0 ? (
-                    <Empty>Ninguém com registro em nenhum dos dois períodos.</Empty>
+                    <Empty>
+                      <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="nos dois períodos" />
+                    </Empty>
                   ) : (
                     <div className="max-w-full overflow-x-auto">
                       <table className="w-full min-w-[1040px] text-left text-sm">
@@ -2524,7 +2951,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                             return (
                               <tr key={l.pessoa.id} className="align-top">
                                 <td className="px-3 py-2">
-                                  <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa} />
+                                  <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa}>
+                                    {l.semNenhumDia && (
+                                      <span className="block text-xs font-normal text-slate-400">{SEM_PERIODO}</span>
+                                    )}
+                                  </NomeDaPessoa>
                                 </td>
                                 <td className="px-3 py-2 text-right tnum">
                                   {l.valorA === null ? <Nada /> : textoDaMedida(l.valorA, vmComp.medida.unidade)}
@@ -2576,6 +3007,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                       </table>
                     </div>
                   )}
+                  <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmComp.foraDoQuadro} semPonto={vmComp.semPonto} />
                 </>
               )}
             </Card>
