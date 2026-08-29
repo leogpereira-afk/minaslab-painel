@@ -38,7 +38,7 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, Pencil, UserMinus, AlertTriangle,
   CheckCircle2, CalendarDays, Stethoscope, History, IdCard, LayoutGrid, Plus,
 } from "lucide-react";
-import { dataLonga, moedaCheia } from "../../lib/format.js";
+import { dataLonga, moedaCheia, diasEntre } from "../../lib/format.js";
 import { situacaoFerias, situacaoExperiencia, inicioDoHistorico } from "../../lib/rh/clt.js";
 import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadastro.js";
 import { radarExames, tempoDeCasa, chipVenc } from "./uteis.js";
@@ -134,12 +134,23 @@ export default function FichaPessoa({
     // O CORTE do histórico: sem ele a ficha afirma "vencida" sobre período que
     // o sistema nunca teve como conferir.
     const desde = inicioDoHistorico(todasFerias);
+    /* SEM NENHUMA FÉRIAS LANÇADA NA CASA, o corte é null e situacaoFerias cai na
+       conta CRUA: quem tem 2 anos de casa aparece com "VENCIDAS há 1.500 dias —
+       pagamento em dobro" por período que o sistema nunca observou. É o alarme
+       falso que a Impresilk mediu (12 de 32 pessoas) e que o corte existe para
+       matar. Enquanto a base não tiver histórico, a ficha NÃO acusa vencimento:
+       diz que não tem como afirmar. */
+    const semHistoricoNaCasa = desde === null;
     const sf = situacaoFerias(pessoa, ferias, hoje, desde);
     const exp = situacaoExperiencia(pessoa, hoje);
-    const radar = radarExames(exames, [pessoa], hojeISO).filter((r) => r.pessoaId === pessoa.id);
+    /* radarExames devolve um OBJETO { vigentes, emRisco, ... }, não um array —
+       chamar .filter direto quebrava a ficha em TODO clique, e o erro acontece
+       dentro do render (não há ErrorBoundary): a tela do RH sumia. */
+    const radar = (radarExames(exames, [pessoa], hojeISO).vigentes || [])
+      .filter((r) => r.pessoaId === pessoa.id);
 
     const avisos = [];
-    if (sf?.situacao === "vencida") {
+    if (sf?.situacao === "vencida" && !semHistoricoNaCasa) {
       avisos.push({
         tom: "bad",
         texto: `Férias VENCIDAS há ${Math.abs(sf.diasParaLimite)} dias — por lei o pagamento é em dobro (CLT art. 137). Limite era ${dataLonga(sf.limiteConcessao?.toISOString?.().slice(0, 10) ?? "")}.`,
@@ -172,19 +183,29 @@ export default function FichaPessoa({
         acao: editavel ? "Conferir" : null, aoAgir: aoEditar,
       });
     }
-    const vencAbertos = vencimentos.filter((v) => ehData(v.vence));
-    for (const v of vencAbertos) {
-      const cv = chipVenc(v.dias);
-      if (cv?.tom === "bad" || cv?.tom === "warn") {
-        avisos.push({ tom: cv.tom, texto: `${v.tipo || "Vencimento"}: ${cv.texto}.`, acao: null });
+    /* O PRAZO É CALCULADO AQUI. Os registros chegam CRUS da casca — o campo
+       `dias` só existe no vm da tela de Vencimentos, e ler v.dias daqui dava
+       undefined: chipVenc caía no ramo final e escrevia "em undefined dias",
+       enquanto a condição nunca era verdadeira e NENHUM aviso de vencimento
+       aparecia. E o que chipVenc devolve é { texto, chip } — não `tom`. */
+    for (const v of vencimentos) {
+      if (!ehData(v.vence)) continue;
+      const dias = diasEntre(hojeISO, v.vence);
+      const cv = chipVenc(dias);
+      if (dias < 0 || dias <= 60) {
+        avisos.push({
+          tom: dias < 0 ? "bad" : "warn",
+          texto: `${txt(v.tipo) || "Vencimento"}${txt(v.descricao) ? ` (${txt(v.descricao)})` : ""}: ${cv.texto}.`,
+          acao: null,
+        });
       }
     }
 
-    return { comp, sf, exp, radar, avisos };
+    return { comp, sf, exp, radar, avisos, semHistoricoNaCasa };
   }, [pessoa, ferias, todasFerias, exames, vencimentos, hojeISO, editavel, aoIrParaAba, aoEditar, aoEfetivar]);
 
   if (!pessoa || !vm) return null;
-  const { comp, sf, avisos } = vm;
+  const { comp, sf, avisos, semHistoricoNaCasa } = vm;
   const tomComp = tomDaCompletude(comp);
   const desligado = pessoa.ativo === false;
 
@@ -221,7 +242,19 @@ export default function FichaPessoa({
               {txt(pessoa.setor) && ` · ${txt(pessoa.setor)}`}
             </p>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
-              {ehData(pessoa.admissao) && <span>{tempoDeCasa(pessoa.admissao, hojeISO)} de casa</span>}
+              {/* tempoDeCasa já devolve a frase COM "de casa" — repetir dava
+                  "3 anos e 2 meses de casa de casa". E para quem saiu o relógio
+                  PARA no desligamento: contar até hoje faria o número crescer
+                  todo dia e contradizer a linha seguinte. */}
+              {ehData(pessoa.admissao) && (
+                <span>
+                  {tempoDeCasa(
+                    pessoa.admissao,
+                    desligado && ehData(pessoa.desligadoEm) ? pessoa.desligadoEm : hojeISO
+                  )}
+                  {desligado ? " até o desligamento" : ""}
+                </span>
+              )}
               {ehData(pessoa.admissao) && <span className="tnum">· admissão em {dataLonga(pessoa.admissao)}</span>}
               {/* O selo fica COLADO na data, não no rodapé da tela: quem lê a
                   data precisa saber, ali, que ela é sugestão do relógio. */}
@@ -323,12 +356,14 @@ export default function FichaPessoa({
                     ? "Ainda não completou 12 meses de casa — o primeiro período aquisitivo está correndo."
                     : "Sem data de admissão na ficha: não dá para contar período aquisitivo."}
                 </p>
-              ) : sf.situacao === "sem-registro" ? (
+              ) : sf.situacao === "sem-registro" || semHistoricoNaCasa ? (
                 /* "Não sei" dito com todas as letras. Afirmar vencida sobre
                    período anterior ao histórico foi o alarme falso que a
                    Impresilk mediu em 12 de 32 pessoas. */
                 <p className="text-sm text-slate-500">
-                  Período anterior ao histórico deste sistema — não dá para afirmar se foi gozado.
+                  {semHistoricoNaCasa
+                    ? "Ainda não há férias lançadas neste sistema — sem histórico, não dá para afirmar se os períodos foram gozados."
+                    : "Período anterior ao histórico deste sistema — não dá para afirmar se foi gozado."}
                 </p>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
