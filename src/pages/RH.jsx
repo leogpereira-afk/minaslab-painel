@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope, Clock } from "lucide-react";
-import { listar, salvar, apagar } from "../services/dados.js";
+import { salvar, apagar, carregarColecoes } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataCurta, dataLonga, diaLocalISO, diasEntre, paraNumero } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
@@ -150,12 +150,9 @@ export default function RH() {
 
   const recarregar = useCallback(() => {
     setHojeISO(ymdLocal(new Date()));
-    Promise.all([
-      listar("rh_pessoas"), listar("rh_ferias"), listar("rh_vencimentos"), listar("rh_feedbacks"),
-      listar("rh_exames"), listar("rh_historico"),
-    ])
-      .then(([pessoas, ferias, vencimentos, feedbacks, exames, historico]) => {
-        setDados({ pessoas, ferias, vencimentos, feedbacks, exames, historico });
+    carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
+      .then((r) => {
+        setDados({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico });
         setErro(null);
       })
       .catch((e) => {

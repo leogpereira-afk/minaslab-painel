@@ -59,7 +59,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef} from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Printer, RefreshCw, Users } from "lucide-react";
-import { listar, salvar, apagar } from "../services/dados.js";
+import { salvar, apagar, carregarColecoes } from "../services/dados.js";
 import { estadoDoRelogio, sincronizarPeriodo } from "../services/ponto.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataLonga, MESES_LONGOS } from "../lib/format.js";
@@ -465,9 +465,11 @@ export default function Ponto() {
 
   const recarregar = useCallback(() => {
     setHojeISO(ymdLocal(new Date()));
-    Promise.all([listar("rh_pessoas"), listar("rh_ponto"), listar("rh_ponto_dia")])
-      .then(([pessoas, ponto, pontoDia]) => {
-        setDados({ pessoas, ponto, pontoDia });
+    // carregarColecoes: uma viagem só, e só baixa o que MUDOU desde a última
+    // carga (o rev do servidor decide). Voltar à aba sem novidade custa 0,2s.
+    carregarColecoes(["rh_pessoas", "rh_ponto", "rh_ponto_dia"])
+      .then((r) => {
+        setDados({ pessoas: r.rh_pessoas, ponto: r.rh_ponto, pontoDia: r.rh_ponto_dia });
         setErro(null);
       })
       .catch((e) => {
