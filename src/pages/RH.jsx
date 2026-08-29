@@ -733,6 +733,11 @@ export default function RH() {
           aoDesligar={desligarPessoa}
           aoReativar={reativarPessoa}
           aoEfetivar={efetivarPessoa}
+          ferias={dados.ferias}
+          exames={dados.exames}
+          vencimentos={dados.vencimentos}
+          feedbacks={dados.feedbacks}
+          aoIrParaAba={setAba}
           gravar={gravarRegistro}
           apagarReg={apagarRegistro}
           setAviso={setAviso}
