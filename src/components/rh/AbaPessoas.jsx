@@ -37,6 +37,7 @@ import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadas
 import { situacaoExperiencia } from "../../lib/rh/clt.js";
 import { SectionTitle, Empty, Modal, Card } from "../ui.jsx";
 import { anoRuim, tempoDeCasa } from "./uteis.js";
+import FichaPessoa from "./FichaPessoa.jsx";
 
 // "Hoje" circula como "AAAA-MM-DD"; a lib da CLT quer Date. Meia-noite LOCAL:
 // new Date("AAAA-MM-DD") seria meia-noite UTC e o dia voltaria um no Brasil.
@@ -850,10 +851,15 @@ function FormAcontecimento({ item, setItem, salvando, aoSalvar, aoFechar }) {
 
 export default function AbaPessoas({
   ativos, desligados, visiveis, historico, hojeISO, editavel,
+  ferias = [], exames = [], vencimentos = [], feedbacks = [], aoIrParaAba,
   busca, setBusca, verDesligados, setVerDesligados,
   form, setForm, salvando, aoAbrir, aoGravar, aoFechar, aoDesligar, aoReativar, aoEfetivar,
   gravar, apagarReg, setAviso,
 }) {
+  /* A FICHA ABRE NO LUGAR DA LISTA — navegação, não janela flutuante. É o
+     desenho da Impresilk: quem abre uma pessoa está indo até ela, e o
+     Anterior/Próximo anda na MESMA ordem que a tela mostra. */
+  const [fichaId, setFichaId] = useState(null);
   const [secoes, setSecoes] = useState(lerSecoes);
   const [desligando, setDesligando] = useState(null);
   const [acontecimento, setAcontecimento] = useState(null);
@@ -959,8 +965,43 @@ export default function AbaPessoas({
     }
   };
 
+  /* A ORDEM DA NAVEGAÇÃO É A ORDEM DA TELA. Anterior/Próximo andam sobre a
+     lista VISÍVEL (com busca e filtro aplicados) mais os desligados quando
+     estão à mostra — navegar por uma lista que a pessoa não está vendo pula
+     gente e abre a errada. */
+  const navegaveis = verDesligados ? [...visiveis, ...desligados] : visiveis;
+  const iFicha = fichaId ? navegaveis.findIndex((p) => p.id === fichaId) : -1;
+  const pessoaFicha = iFicha >= 0 ? navegaveis[iFicha] : null;
+  const daPessoa = (lista) => (lista || []).filter((r) => r.pessoaId === fichaId);
+
   return (
     <>
+      {/* A ficha ocupa o LUGAR da lista (navegação, não janela flutuante), e os
+          modais continuam montados abaixo: editar, desligar e registrar
+          acontecimento são as ações que a própria ficha oferece. */}
+      {pessoaFicha ? (
+        <FichaPessoa
+          pessoa={pessoaFicha}
+          ferias={daPessoa(ferias)}
+          todasFerias={ferias}
+          exames={daPessoa(exames)}
+          vencimentos={daPessoa(vencimentos)}
+          feedbacks={daPessoa(feedbacks)}
+          historico={daPessoa(historico)}
+          hojeISO={hojeISO}
+          editavel={editavel}
+          aoVoltar={() => setFichaId(null)}
+          aoAnterior={iFicha > 0 ? () => setFichaId(navegaveis[iFicha - 1].id) : null}
+          aoProximo={iFicha >= 0 && iFicha < navegaveis.length - 1 ? () => setFichaId(navegaveis[iFicha + 1].id) : null}
+          aoEditar={() => aoAbrir(pessoaFicha)}
+          aoDesligar={() => setDesligando(pessoaFicha)}
+          aoEfetivar={() => aoEfetivar(pessoaFicha)}
+          aoIrParaAba={aoIrParaAba}
+          aoRegistrarAcontecimento={() =>
+            setAcontecimento({ pessoaId: pessoaFicha.id, pessoaNome: pessoaFicha.nome, data: hojeISO, tipo: "elogio", titulo: "", detalhe: "" })
+          }
+        />
+      ) : (
       <Card>
         <SectionTitle
           titulo="Quadro"
@@ -988,7 +1029,7 @@ export default function AbaPessoas({
         )}
         <div className="space-y-2">
           {visiveis.map((p) => (
-            <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => aoAbrir(p)} />
+            <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => setFichaId(p.id)} />
           ))}
         </div>
 
@@ -1007,11 +1048,12 @@ export default function AbaPessoas({
         {verDesligados && desligados.length > 0 && (
           <div className="mt-3 space-y-2">
             {desligados.map((p) => (
-              <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => aoAbrir(p)} />
+              <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => setFichaId(p.id)} />
             ))}
           </div>
         )}
       </Card>
+      )}
 
       {/* Um modal por vez, de propósito: dois <form> aninhados são HTML inválido
           e o Escape fecharia os dois de uma vez, jogando fora o rascunho da
