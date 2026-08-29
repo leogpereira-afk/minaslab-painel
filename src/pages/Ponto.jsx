@@ -450,7 +450,10 @@ export default function Ponto() {
   const [dados, setDados] = useState(null); // { pessoas, ponto, pontoDia }
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
-  const [aba, setAba] = useState("ponto");
+  /* ABRE NOS RELATÓRIOS (pedido do Léo, 28/08/2026). Quem abre o Ponto quer
+     saber COMO ESTÁ — quem chegou no horário, quanto rendeu o mês —, não
+     lançar. O lançamento é a exceção do dia; o olhar é a regra. */
+  const [aba, setAba] = useState("relatorios");
   const [salvando, setSalvando] = useState(false);
   // "Hoje" é ESTADO, nunca uma constante do módulo: esta tela fica aberta de um
   // dia para o outro na sala da direção, e um dia congelado faz a folha do mês

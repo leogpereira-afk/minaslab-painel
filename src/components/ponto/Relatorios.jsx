@@ -82,19 +82,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import {
-  AlarmClock, ArrowDownRight, ArrowUpRight, CalendarDays, CalendarOff, ChevronDown, ChevronUp,
+  AlarmClock, ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, ChevronDown, ChevronUp,
   CircleAlert, Clock, Download, Minus, Percent, Printer, Settings2, Users,
 } from "lucide-react";
 import { lerCfg } from "../../services/dados.js";
-import { dataLonga, diasEntre, ymdLocal, MESES, MESES_LONGOS } from "../../lib/format.js";
+import { dataCurta, dataLonga, diasEntre, ymdLocal, MESES, MESES_LONGOS } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import {
   apuracaoDoRelogio, apurarCompetencia, atrasoDoDia, ausenciaDoDia, cfgDoPonto, competenciaDe,
-  descreverJornada, diaDaSemanaISO, diasDoMes, divisorDaJornada, duracaoTexto, fimPrevistoDoDia,
+  descreverJornada, diaDaSemanaISO, diasDoMes, divisorDaJornada, duracaoTexto, ehCompetencia, fimPrevistoDoDia,
   horasDecimais, inicioPrevistoDoDia, minutosPrevistosDoDia, minutosPrevistosDoMes,
   minutosTrabalhados, NOMES_DIA_SEMANA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
 } from "../../lib/rh/ponto.js";
-import { Card, Empty, SectionTitle, Segmented, StatCard } from "../ui.jsx";
+import { Card, Empty, Modal, SectionTitle, Segmented, StatCard } from "../ui.jsx";
 
 // ============================================================================
 // PALAVRAS E NÚMEROS — o vocabulário que as quatro visões dividem
@@ -682,6 +682,447 @@ function Pendencias({ indice }) {
   );
 }
 
+// ============================================================================
+// O NOME É PORTA — as peças do detalhe da pessoa
+// ----------------------------------------------------------------------------
+// Diagnóstico do dia 28/08/2026: nas três telas do Ponto o nome da pessoa
+// aparecia 72 vezes e NENHUMA era clicável. Lia-se "ANA CLAUDIA · 08:03" e não
+// havia para onde ir — nem para o dia dela, nem para o mês, nem para a ficha.
+// Cada linha era um beco sem saída. Daqui para baixo mora o que desfaz isso.
+// ============================================================================
+
+/**
+ * "HH:MM" → minutos desde a meia-noite. Vazio e lixo viram null, NUNCA 0:
+ * 0 aqui é meia-noite, e uma batida que não existe desenhada às 00:00 põe a
+ * pessoa no começo da barra como se ela tivesse dormido na fábrica.
+ */
+function minutosDoRelogioLocal(hhmm) {
+  const m = /^(\d{1,2}):([0-5]\d)$/.exec(txt(hhmm));
+  if (!m) return null;
+  const h = Number(m[1]);
+  if (h > 23) return null;
+  return h * 60 + Number(m[2]);
+}
+
+/** Diferença em palavra curta e com sinal: "+3 min", "−1h05", "0 min". */
+function minutosComSinal(min) {
+  const n = Math.round(numOuNulo(min) ?? 0);
+  const abs = Math.abs(n);
+  const corpo = abs < 60 ? `${abs} min` : duracaoTexto(abs);
+  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${corpo}`;
+}
+
+/**
+ * A SITUAÇÃO DO DIA EM UMA PALAVRA, na ordem em que ela manda: dia em aberto é
+ * pendência mesmo com ausência lançada; ausência explica o dia sem batida; sem
+ * nenhum dos dois, ou a escala não prevê trabalho, ou ninguém registrou nada —
+ * e essas duas não são a mesma coisa.
+ *
+ * Mora FORA da tabela porque a mesma frase sai em dois lugares (a linha do Dia
+ * e o painel da pessoa). Duas cópias desta escada divergem no primeiro conserto
+ * feito só de um lado, e aí a mesma pessoa fica "presente" numa tela e "sem
+ * registro" na outra.
+ */
+function situacaoDoDia({ dia, ausencia, emAberto, previstoMin }) {
+  if (emAberto) return { situacao: "em aberto (entrou e não saiu)", chip: "chip-warn" };
+  if (ausencia) return { situacao: ausencia.rotulo, chip: ausencia.chip };
+  if (dia) return { situacao: "presente", chip: "chip-ok" };
+  if (previstoMin === 0) return { situacao: "a escala não prevê trabalho", chip: "chip" };
+  return { situacao: SEM, chip: "chip-warn" };
+}
+
+/**
+ * O NOME DA PESSOA COMO BOTÃO — a porta para o painel de detalhe.
+ *
+ * SEM `.btn-*` DE PROPÓSITO: as classes de botão somem na impressão (ver
+ * index.css, "Controle não é dado"), e um relatório de ponto impresso sem os
+ * nomes é papel inútil. Este imprime como o texto preto que já era, e na tela
+ * se comporta como link: sublinha no hover e o foco do teclado aparece pela
+ * regra global de :focus-visible.
+ */
+function NomeDaPessoa({ pessoa, aoAbrir, children }) {
+  return (
+    <button
+      type="button"
+      onClick={() => aoAbrir(pessoa)}
+      className="block max-w-full text-left font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline"
+      title={`Abrir o detalhe de ${pessoa.nome}`}
+    >
+      {pessoa.nome}
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A ENTRADA: a hora e, EMBAIXO, o que ela quer dizer.
+ *
+ * Pedido do Leonardo (28/08/2026): "mostrar certinho quando entrou". "08:03"
+ * sozinho não responde nada — 08:03 é chegar no horário num turno que começa
+ * 08:00 e é meia hora de atraso no que começa 07:30. Por isso a comparação vem
+ * colada na hora.
+ *
+ * E VEM COM A PALAVRA, não só com a cor: a folha impressa sai em cinza (o verde
+ * e o vermelho viram o mesmo tom), e quem não distingue as duas cores lê a
+ * mesma coisa nos dois casos. A cor apressa a leitura de quem enxerga; a
+ * palavra é quem informa.
+ *
+ * "+3 min" NÃO É ATRASO por si só: até 5 min por marcação e 10 no dia a CLT não
+ * deixa cobrar (art. 58 § 1º). Por isso a frase separa os três estados —
+ * "antes do previsto", "dentro da tolerância" e "atraso" —, que é a mesma régua
+ * da coluna Atraso ao lado.
+ */
+function EntradaComparada({ dia, p }) {
+  const hora = txt(dia?.entrada);
+  if (!hora) return <Nada>{dia ? "não bateu a entrada" : SEM}</Nada>;
+  if (!p) {
+    return (
+      <div className="leading-tight">
+        <span className="tnum font-medium text-slate-800">{hora}</span>
+        <span className="block text-xs text-slate-500">sem previsto para comparar</span>
+      </div>
+    );
+  }
+  const d = p.atrasoEntradaMin;
+  const palavra =
+    d === 0
+      ? "no horário"
+      : d < 0
+        ? `${minutosComSinal(d)} · antes do previsto`
+        : p.pontual
+          ? `${minutosComSinal(d)} · dentro da tolerância`
+          : `${minutosComSinal(d)} · atraso`;
+  const tom = d > 0 ? (p.pontual ? "text-warn-700" : "text-bad-700") : "text-ok-700";
+  return (
+    <div className="leading-tight">
+      <span className="tnum font-medium text-slate-800">{hora}</span>
+      <span className={clsx("block text-xs tnum", tom)} title={`A escala começa às ${p.inicioPrevisto}`}>
+        {palavra}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A MINI LINHA DO TEMPO DO DIA — 90 pixels que respondem "como foi o dia".
+ *
+ * Em cinza, a janela que a escala previu; em cor, o pedaço que foi batido de
+ * verdade. Quem entrou depois começa a barra mais à direita, quem saiu antes
+ * termina mais à esquerda, quem esticou passa da faixa cinza. É o que faz a
+ * tela responder de relance, sem ler número por número — e nenhum número some
+ * por causa dela: as colunas ao lado continuam escrevendo tudo.
+ *
+ * SAI DA IMPRESSÃO (a classe fica na célula, não aqui): no papel em cinza as
+ * três cores viram um traço só, e traço que não distingue nada ocupando uma
+ * coluna é pior que coluna nenhuma.
+ */
+function LinhaDoTempoDoDia({ dia, inicioPrevisto, fimPrevisto, p, emAberto }) {
+  const ini = minutosDoRelogioLocal(inicioPrevisto);
+  const fim = minutosDoRelogioLocal(fimPrevisto);
+  const entrada = minutosDoRelogioLocal(dia?.entrada);
+  const saida = minutosDoRelogioLocal(dia?.saida);
+
+  // Sem escala não há régua — e barra sem régua é desenho bonito que afirma
+  // coisa nenhuma. Sem entrada batida não há o que desenhar.
+  if (ini === null || fim === null || fim <= ini) return <Nada>fora da escala</Nada>;
+  if (entrada === null) return <Nada>{dia ? "sem entrada batida" : SEM}</Nada>;
+
+  const MARGEM = 60; // uma hora de folga de cada lado, para o que estourou caber
+  const de = Math.min(ini, entrada) - MARGEM;
+  const ate = Math.max(fim, saida === null ? fim : saida) + MARGEM;
+  const largura = ate - de;
+  const pos = (m) => Math.max(0, Math.min(100, ((m - de) / largura) * 100));
+
+  const cor = emAberto ? "bg-warn-500" : p && !p.pontual ? "bg-bad-500" : "bg-brand-500";
+  const legenda =
+    `Previsto ${inicioPrevisto} às ${fimPrevisto} · batido ${dia.entrada}` +
+    (saida === null ? " e sem saída" : ` às ${dia.saida}`);
+
+  return (
+    <div className="leading-none">
+      <div className="relative h-2.5 w-[90px] rounded-full bg-slate-100" title={legenda}>
+        <div
+          className="absolute inset-y-0 rounded-full bg-slate-200"
+          style={{ left: `${pos(ini)}%`, width: `${pos(fim) - pos(ini)}%` }}
+        />
+        {saida === null ? (
+          <div className={clsx("absolute inset-y-0 w-1 rounded-full", cor)} style={{ left: `${pos(entrada)}%` }} />
+        ) : (
+          <div
+            className={clsx("absolute inset-y-0 rounded-full", cor)}
+            style={{ left: `${pos(entrada)}%`, width: `${Math.max(2, pos(saida) - pos(entrada))}%` }}
+          />
+        )}
+      </div>
+      {/* A barra é atalho para o olho; para quem lê por leitor de tela a frase
+          inteira continua existindo. */}
+      <span className="sr-only">{legenda}</span>
+    </div>
+  );
+}
+
+/** Rótulo em cima, valor embaixo — o par que o painel repete. */
+function Campo({ rotulo, children }) {
+  return (
+    <div>
+      <p className="font-display text-xs font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
+      <div className="text-sm text-slate-800">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A saída contra o fim previsto, em palavra. Null quando falta um dos dois —
+ * "saiu no horário" sem saber o horário é elogio inventado.
+ */
+function saidaEmPalavras(p) {
+  const n = p ? numOuNulo(p.saidaAntesMin) : null;
+  if (n === null) return null;
+  if (n === 0) return { texto: `no horário (${p.fimPrevisto})`, tom: "text-ok-700" };
+  if (n > 0) return { texto: `${minutosComSinal(-n)} · saiu antes das ${p.fimPrevisto}`, tom: "text-warn-700" };
+  return { texto: `${minutosComSinal(-n)} · ficou além das ${p.fimPrevisto}`, tom: "text-slate-600" };
+}
+
+/**
+ * O PAINEL DA PESSOA — o que a linha da tabela não cabia dizer.
+ *
+ * Abre pelo nome, em qualquer uma das quatro visões, e responde as duas
+ * perguntas que vinham logo depois do nome e não tinham resposta em lugar
+ * nenhum: COMO FOI ESTE DIA (a que horas entrou, contra o que a escala previa,
+ * o que rendeu, o que ficou pendente) e COMO ESTÁ O MÊS DELA (o mês inteiro
+ * somado e o dia a dia, clicável).
+ *
+ * O DIA EM FOCO É ESCOLHIDO POR QUEM ABRE, e isso é decisão: na visão Dia é o
+ * dia que está na tela; nas outras é o PRIMEIRO DIA COM REGISTRO do recorte.
+ * Abrir sempre no dia 1º mostraria uma ficha vazia para quem só tem batida a
+ * partir do dia 12 — e ficha vazia lida como "não trabalhou".
+ *
+ * ESTE PAINEL NÃO GRAVA NADA, como o resto da aba. Ele leva para onde se grava:
+ * o botão do rodapé abre o dia na visão Dia, e o do mês abre a visão Mês.
+ */
+function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDia, aoVerNoDia, aoVerNoMes }) {
+  const competencia = competenciaDe(diaFoco);
+  const de = primeiroDiaDoMes(competencia);
+  const ate = ultimoDiaDoMes(competencia);
+  const diasDaPessoa = diasNoPeriodo(grupo, de, ate);
+  const ag = agregar(diasDaPessoa, jornada);
+  const previstoMes = minutosPrevistosDoMes(competencia, jornada);
+  const semMedicaoNoMes = ag.diasComRegistro === 0;
+
+  const d = grupo ? grupo.dias.get(diaFoco) || null : null;
+  const p = d ? atrasoDoDia(d, jornada) : null;
+  const ausencia = d ? ausenciaDoDia(d) : null;
+  const min = d ? minutosTrabalhados(d) : null;
+  const apurado = d ? apuracaoDoRelogio(d) : null;
+  const emAberto = !!d && min === null;
+  const previstoDia = minutosPrevistosDoDia(diaFoco, jornada);
+  const inicioPrev = inicioPrevistoDoDia(diaFoco, jornada);
+  const fimPrev = fimPrevistoDoDia(diaFoco, jornada);
+  const semana = diaDaSemanaISO(diaFoco);
+  const sit = situacaoDoDia({ dia: d, ausencia, emAberto, previstoMin: previstoDia });
+  const saida = saidaEmPalavras(p);
+
+  return (
+    <Modal titulo={pessoa.nome} aberto aoFechar={aoFechar} largura="max-w-3xl">
+      <p className="-mt-2 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+        <span className={pessoa.ativo === false ? "chip" : "chip-ok"}>
+          {pessoa.ativo === false ? "fora do quadro" : "no quadro"}
+        </span>
+        {txt(pessoa.cargo) && <span>{txt(pessoa.cargo)}</span>}
+        {txt(pessoa.setor) && <span>· {txt(pessoa.setor)}</span>}
+        {txt(pessoa.apelido) && <span>· chamada de {txt(pessoa.apelido)}</span>}
+        {ehData(pessoa.admissao) && <span className="tnum">· admissão em {dataLonga(pessoa.admissao)}</span>}
+        <span>· crachá do relógio: {txt(pessoa.jibbleId) || "sem crachá vinculado"}</span>
+      </p>
+
+      {/* ---- O DIA EM FOCO ---- */}
+      <div className="rounded-xl border border-slate-200 p-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h4 className="font-display text-sm font-semibold text-slate-900">
+            {dataLonga(diaFoco)}
+            {semana === null ? "" : ` · ${NOMES_DIA_SEMANA[semana]}`}
+          </h4>
+          <p className="text-xs text-slate-500 tnum">
+            {previstoDia === null
+              ? "esta data não existe no calendário"
+              : previstoDia === 0
+                ? "a escala não prevê trabalho neste dia — nada aqui é atraso"
+                : `previsto ${inicioPrev} às ${fimPrev} (${duracaoTexto(previstoDia)})`}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Campo rotulo="Entrada">
+            <EntradaComparada dia={d} p={p} />
+          </Campo>
+          <Campo rotulo="Saída">
+            {txt(d?.saida) ? (
+              <div className="leading-tight">
+                <span className="tnum font-medium text-slate-800">{txt(d.saida)}</span>
+                {saida && <span className={clsx("block text-xs tnum", saida.tom)}>{saida.texto}</span>}
+              </div>
+            ) : (
+              <Nada>{emAberto ? "não bateu a saída" : SEM}</Nada>
+            )}
+          </Campo>
+          <Campo rotulo="Intervalo">
+            {numOuNulo(d?.pausaMin) === null ? <Nada /> : <span className="tnum">{duracaoTexto(d.pausaMin)}</span>}
+          </Campo>
+          <Campo rotulo="Horas da folha">
+            {min === null ? (
+              <Nada>{emAberto ? "dia em aberto" : SEM}</Nada>
+            ) : (
+              <span className="tnum font-medium">{duracaoTexto(min)}</span>
+            )}
+          </Campo>
+          <Campo rotulo="Extra +50%">
+            {!d ? <Nada /> : apurado ? <span className="tnum">{duracaoTexto(apurado.extraMin)}</span> : <Nada>{SEM_APURACAO}</Nada>}
+          </Campo>
+          <Campo rotulo="Extra +100%">
+            {!d ? (
+              <Nada />
+            ) : apurado ? (
+              <span className="tnum">{duracaoTexto(apurado.extraDobroMin)}</span>
+            ) : (
+              <Nada>{SEM_APURACAO}</Nada>
+            )}
+          </Campo>
+          <Campo rotulo="Atraso na chegada">
+            {!p ? (
+              <Nada>{previstoDia === 0 ? "fora da escala" : "sem entrada batida"}</Nada>
+            ) : p.pontual ? (
+              <span className="text-ok-700">no horário</span>
+            ) : (
+              <span className="tnum font-semibold text-bad-700">{duracaoTexto(p.atrasoMin)}</span>
+            )}
+          </Campo>
+          <Campo rotulo="Como foi o dia">
+            <LinhaDoTempoDoDia dia={d} inicioPrevisto={inicioPrev} fimPrevisto={fimPrev} p={p} emAberto={emAberto} />
+          </Campo>
+        </div>
+
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+          <span className={sit.chip}>{sit.situacao}</span>
+          {ausencia?.motivo && <span>{ausencia.motivo}</span>}
+          {ausencia?.documento && <span>· documento: {ausencia.documento}</span>}
+          {d?.origem === "manual" && <span className="chip">lançado à mão</span>}
+          {d?.corrigido === true && <span className="chip">corrigido depois da importação</span>}
+        </p>
+      </div>
+
+      {/* ---- O MÊS DELA ---- */}
+      <div className="mt-4 rounded-xl border border-slate-200 p-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h4 className="font-display text-sm font-semibold text-slate-900">{rotuloCompetencia(competencia)}</h4>
+          <button
+            type="button"
+            onClick={() => aoVerNoMes(competencia)}
+            className="inline-flex items-center gap-1 text-xs text-brand-700 underline-offset-2 hover:underline"
+          >
+            ver o mês inteiro na visão Mês <ArrowRight size={12} strokeWidth={2.6} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Campo rotulo="Horas da folha">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum font-medium">{horasOuNada(ag.trabalhadoMin)}</span>}
+          </Campo>
+          <Campo rotulo="Previsto no mês">
+            <span className="tnum">{horasOuNada(previstoMes)}</span>
+          </Campo>
+          <Campo rotulo="Pontualidade">
+            {ag.pontualidadePct === null ? (
+              <Nada />
+            ) : (
+              <span className="tnum">
+                {Math.round(ag.pontualidadePct)}%{" "}
+                <span className="text-xs text-slate-500">
+                  ({ag.diasPontuais}/{ag.diasMedidos} dias medidos)
+                </span>
+              </span>
+            )}
+          </Campo>
+          <Campo rotulo="Atrasos na chegada">
+            {ag.atrasoChegadaMin === null ? <Nada /> : <span className="tnum">{duracaoTexto(ag.atrasoChegadaMin)}</span>}
+          </Campo>
+          <Campo rotulo="Extra +50%">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasMin)}</span>}
+          </Campo>
+          <Campo rotulo="Extra +100%">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasDobroMin)}</span>}
+          </Campo>
+          <Campo rotulo="Faltas que descontam">
+            {ag.faltasQueDescontam === null ? <Nada /> : <span className="tnum">{ag.faltasQueDescontam}</span>}
+          </Campo>
+          <Campo rotulo="Ausências justificadas">
+            {ag.ausenciasSemDesconto === null ? <Nada /> : <span className="tnum">{ag.ausenciasSemDesconto}</span>}
+          </Campo>
+        </div>
+
+        {/* O DIA A DIA, e cada linha é clicável: é daqui que se chega ao dia. */}
+        {diasDaPessoa.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">
+            Nenhum dia registrado neste mês para {pessoa.nome} — e isso não é zero hora trabalhada: é o relógio não ter
+            trazido dia nenhum.
+          </p>
+        ) : (
+          <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-100">
+            <ul className="divide-y divide-slate-100">
+              {diasDaPessoa.map((dd) => {
+                const pp = atrasoDoDia(dd, jornada);
+                const mm = minutosTrabalhados(dd);
+                const aus = ausenciaDoDia(dd);
+                const s = diaDaSemanaISO(dd.data);
+                return (
+                  <li key={dd.data}>
+                    <button
+                      type="button"
+                      onClick={() => aoEscolherDia(dd.data)}
+                      aria-current={dd.data === diaFoco ? "true" : undefined}
+                      className={clsx(
+                        "flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 text-left text-sm hover:bg-brand-50",
+                        dd.data === diaFoco && "bg-brand-50"
+                      )}
+                    >
+                      <span className="tnum w-24 shrink-0 text-slate-500">
+                        {dataCurta(dd.data)} {s === null ? "" : NOMES_DIA_SEMANA[s].slice(0, 3)}
+                      </span>
+                      <span className="tnum w-28 shrink-0">
+                        {txt(dd.entrada) || "—"} às {txt(dd.saida) || "—"}
+                      </span>
+                      <span className="tnum w-16 shrink-0 font-medium">{mm === null ? "—" : duracaoTexto(mm)}</span>
+                      {aus ? (
+                        <span className={aus.chip}>{aus.rotulo}</span>
+                      ) : pp ? (
+                        pp.pontual ? (
+                          <span className="chip-ok">no horário</span>
+                        ) : (
+                          <span className="chip-bad">atraso de {duracaoTexto(pp.atrasoMin)}</span>
+                        )
+                      ) : (
+                        <span className="chip">sem medida de chegada</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        <button type="button" className="btn-outline" onClick={() => aoVerNoDia(diaFoco)}>
+          <CalendarDays size={16} strokeWidth={2.5} /> Ver {dataLonga(diaFoco)} na visão Dia
+        </button>
+        <button type="button" className="btn-outline" onClick={aoFechar}>
+          Fechar
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ---- as colunas do MÊS -----------------------------------------------------
 
 /**
@@ -796,6 +1237,13 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const [medidaComp, setMedidaComp] = useState("horas");
   const [ordem, setOrdem] = useState({ chave: "nome", dir: "asc" });
 
+  /* QUEM ESTÁ ABERTO, E EM QUE DIA. O nome clicado em qualquer visão abre o
+     painel da pessoa; o dia em foco viaja junto porque "detalhe da pessoa" sem
+     dia não existe — a mesma pessoa é pontual num dia e chega tarde no outro.
+     Guarda o ID, nunca a ficha inteira: ficha copiada para dentro do estado
+     envelhece calada quando o servidor traz outra. */
+  const [detalhe, setDetalhe] = useState(null); // { pessoaId, dia }
+
   // Os dois períodos da comparação: o mês corrente até hoje, contra o MESMO
   // PEDAÇO do mês passado. Começar com dois períodos de tamanhos iguais é o
   // padrão honesto — quem quiser comparar 30 dias com 15 muda as datas e a tela
@@ -866,6 +1314,60 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   }, [pontoDia, ponto, hojeISO]);
 
   // ==========================================================================
+  // ABRIR A PESSOA, E NAVEGAR ENTRE AS VISÕES
+  // --------------------------------------------------------------------------
+  // O NOME É PORTA (28/08/2026). Cada visão sabe qual dia entregar ao painel:
+  // na visão Dia é o dia que está na tela; nas outras é o PRIMEIRO DIA COM
+  // REGISTRO do recorte — abrir sempre no dia 1º mostraria ficha vazia para
+  // quem só tem batida a partir do 12, e ficha vazia lê como "não trabalhou".
+  // Sem nenhum dia no recorte, vale o começo do recorte, e o painel escreve com
+  // todas as letras que ali não há registro.
+  // ==========================================================================
+  const primeiroDiaComRegistro = (pessoaId, de, ate) => {
+    const dias = diasNoPeriodo(indice.porPessoa.get(pessoaId), de, ate);
+    return dias.length > 0 ? dias[0].data : null;
+  };
+
+  const diaDeFocoPara = (pessoa) => {
+    if (visao === "dia") return ehData(dia) ? dia : hojeISO;
+    if (visao === "mes") {
+      const de = primeiroDiaDoMes(competencia);
+      return primeiroDiaComRegistro(pessoa.id, de, ultimoDiaDoMes(competencia)) || de;
+    }
+    if (visao === "ano") {
+      const de = `${ano}-01-01`;
+      return primeiroDiaComRegistro(pessoa.id, de, `${ano}-12-31`) || de;
+    }
+    // Na comparação o período NOVO manda: é o que a pessoa está olhando agora.
+    const { aDe, aAte, bDe, bAte } = periodos;
+    const noNovo = ehData(bDe) && ehData(bAte) ? primeiroDiaComRegistro(pessoa.id, bDe, bAte) : null;
+    const noAnterior = ehData(aDe) && ehData(aAte) ? primeiroDiaComRegistro(pessoa.id, aDe, aAte) : null;
+    return noNovo || noAnterior || (ehData(bDe) ? bDe : hojeISO);
+  };
+
+  const abrirPessoa = (pessoa) => setDetalhe({ pessoaId: pessoa.id, dia: diaDeFocoPara(pessoa) });
+
+  /* CLICAR NUM NÚMERO LEVA À VISÃO DELE, JÁ FILTRADA. Sem isto, para ver março
+     a pessoa troca de visão e reencontra o filtro na mão — e é justamente aí
+     que se olha o mês errado sem perceber. */
+  const irParaDia = (data) => {
+    if (!ehData(data)) return;
+    setDia(data);
+    setVisao("dia");
+    setDetalhe(null);
+  };
+
+  const irParaMes = (comp, pessoa) => {
+    if (!ehCompetencia(comp)) return;
+    setCompetencia(comp);
+    // Clicou na célula DE ALGUÉM: o mês abre com essa pessoa no filtro. Clicou
+    // no rodapé (o total da casa), o filtro fica como estava.
+    if (pessoa) setFiltroPessoa(pessoa.id);
+    setVisao("mes");
+    setDetalhe(null);
+  };
+
+  // ==========================================================================
   // VISÃO DIA
   // ==========================================================================
   const vmDia = useMemo(() => {
@@ -882,30 +1384,42 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       const emAberto = !!d && min === null;
       const temEntrada = !!txt(d?.entrada);
 
-      // A SITUAÇÃO EM UMA PALAVRA, na ordem em que ela manda: dia em aberto é
-      // pendência mesmo com ausência lançada; ausência explica o dia sem
-      // batida; sem nenhum dos dois, ou a escala não prevê trabalho, ou
-      // ninguém registrou nada — e essas duas não são a mesma coisa.
-      let situacao;
-      let chipSituacao = "chip";
-      if (emAberto) {
-        situacao = "em aberto (entrou e não saiu)";
-        chipSituacao = "chip-warn";
-      } else if (ausencia) {
-        situacao = ausencia.rotulo;
-        chipSituacao = ausencia.chip;
-      } else if (d) {
-        situacao = "presente";
-        chipSituacao = "chip-ok";
-      } else if (previsto === 0) {
-        situacao = "a escala não prevê trabalho";
-        chipSituacao = "chip";
-      } else {
-        situacao = SEM;
-        chipSituacao = "chip-warn";
-      }
+      // A situação em uma palavra sai de `situacaoDoDia`, lá em cima: é a MESMA
+      // escada que o painel da pessoa usa. Duas cópias divergiriam no primeiro
+      // conserto feito só de um lado.
+      const sit = situacaoDoDia({ dia: d, ausencia, emAberto, previstoMin: previsto });
 
-      return { pessoa, d, min, apurado, ausencia, p, emAberto, temEntrada, situacao, chipSituacao };
+      return {
+        pessoa,
+        d,
+        min,
+        apurado,
+        ausencia,
+        p,
+        emAberto,
+        temEntrada,
+        situacao: sit.situacao,
+        chipSituacao: sit.chip,
+      };
+    });
+
+    /* A ORDEM DIZ O QUE OLHAR PRIMEIRO, e por isso ela não é alfabética.
+       Ordem alfabética enterra o atraso no meio da lista: quem abre esta tela
+       de manhã quer saber quem chegou depois, não quem começa com A. Então:
+       atrasados (do maior atraso para o menor), depois quem chegou no horário,
+       depois quem tem dia mas não dá para medir a chegada (fim de semana,
+       ausência lançada), e no fim quem não tem registro nenhum.
+
+       SEM REGISTRO VAI SEMPRE PARA O ÚLTIMO BALDE — "não medi" não pode
+       encabeçar um ranking nem de melhores nem de piores. É a mesma regra da
+       ordenação do Mês. */
+    const balde = (l) => (l.p && !l.p.pontual ? 0 : l.p ? 1 : l.d ? 2 : 3);
+    linhas.sort((a, b) => {
+      const ba = balde(a);
+      const bb = balde(b);
+      if (ba !== bb) return ba - bb;
+      if (ba === 0 && b.p.atrasoMin !== a.p.atrasoMin) return b.p.atrasoMin - a.p.atrasoMin;
+      return norm(a.pessoa.nome).localeCompare(norm(b.pessoa.nome));
     });
 
     const presentes = linhas.filter((l) => l.temEntrada).length;
@@ -1237,6 +1751,19 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const ordenarPor = (chave) =>
     setOrdem((o) => (o.chave === chave ? { chave, dir: o.dir === "asc" ? "desc" : "asc" } : { chave, dir: "asc" }));
 
+  /* A FICHA DO PAINEL SAI DA LISTA VIVA, e o estado só guarda o id: copiar a
+     ficha para dentro do estado faria o painel continuar mostrando o cargo
+     antigo depois de o servidor trazer o novo. Quem foi desligada continua
+     achável — o relatório de março precisa de quem saiu em abril. */
+  const pessoaDoDetalhe = useMemo(() => {
+    if (!detalhe) return null;
+    return (
+      pessoasDoFiltro.find((p) => p.id === detalhe.pessoaId) ||
+      indice.porPessoa.get(detalhe.pessoaId)?.pessoa ||
+      null
+    );
+  }, [detalhe, pessoasDoFiltro, indice]);
+
   // ==========================================================================
   // TELA
   // ==========================================================================
@@ -1544,7 +2071,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                         ? "Esta data não existe no calendário — escolha outro dia."
                         : vmDia.previsto === 0
                           ? "A escala da casa não prevê trabalho neste dia — nada aqui é atraso."
-                          : `Previsto pela escala: ${vmDia.inicio} às ${vmDia.fim} (${duracaoTexto(vmDia.previsto)}).`
+                          : `Previsto pela escala: ${vmDia.inicio} às ${vmDia.fim} (${duracaoTexto(vmDia.previsto)}). A lista vem ordenada por atraso: quem chegou depois aparece primeiro, e quem não tem registro fica no fim. Clique no nome para ver a pessoa por dentro.`
                   }
                 />
                 <Pendencias indice={indice} />
@@ -1552,10 +2079,23 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   <Empty>Ninguém no quadro para este dia.</Empty>
                 ) : (
                   <div className="max-w-full overflow-x-auto">
-                    <table className="w-full min-w-[980px] text-left text-sm">
+                    <table className="w-full min-w-[1120px] text-left text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
                           <th scope="col" className="px-3 py-2">Pessoa</th>
+                          {/* A COLUNA DA BARRA NÃO VAI PARA O PAPEL — `sem-impressao`
+                              no cabeçalho E em cada célula, para a tabela impressa não
+                              ficar com uma coluna a mais no corpo do que no topo. Em
+                              cinza as três cores viram o mesmo traço, e traço que não
+                              distingue nada ocupando coluna é pior que coluna nenhuma:
+                              quem informa no papel são as colunas escritas. */}
+                          <th
+                            scope="col"
+                            className="sem-impressao px-3 py-2"
+                            title="A barra do dia: em cinza a janela prevista pela escala, em cor o que foi batido"
+                          >
+                            O dia
+                          </th>
                           <th scope="col" className="px-3 py-2">Entrada</th>
                           <th scope="col" className="px-3 py-2">Saída</th>
                           <th scope="col" className="px-3 py-2" title="Intervalo não pago (o almoço)">Intervalo</th>
@@ -1571,8 +2111,21 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                       <tbody className="divide-y divide-slate-100">
                         {vmDia.linhas.map((l) => (
                           <tr key={l.pessoa.id} className="align-top">
-                            <td className="px-3 py-2 font-medium text-slate-800">{l.pessoa.nome}</td>
-                            <td className="px-3 py-2 tnum">{l.d?.entrada || <Nada />}</td>
+                            <td className="px-3 py-2">
+                              <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa} />
+                            </td>
+                            <td className="sem-impressao px-3 py-2">
+                              <LinhaDoTempoDoDia
+                                dia={l.d}
+                                inicioPrevisto={vmDia.inicio}
+                                fimPrevisto={vmDia.fim}
+                                p={l.p}
+                                emAberto={l.emAberto}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <EntradaComparada dia={l.d} p={l.p} />
+                            </td>
                             <td className="px-3 py-2 tnum">
                               {l.d?.saida || (l.emAberto ? <Nada>não bateu a saída</Nada> : <Nada />)}
                             </td>
@@ -1749,15 +2302,28 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                       <tbody className="divide-y divide-slate-100">
                         {vmMes.linhas.map((l) => (
                           <tr key={l.pessoa.id} className="align-top">
-                            <td className="px-3 py-2 font-medium text-slate-800">
-                              {l.nome}
-                              {l.ag.diasComRegistro === 0 && (
-                                <span className="block text-xs text-slate-400">sem nenhum dia neste mês</span>
-                              )}
+                            <td className="px-3 py-2">
+                              <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa}>
+                                {l.ag.diasComRegistro === 0 && (
+                                  <span className="block text-xs text-slate-400">sem nenhum dia neste mês</span>
+                                )}
+                              </NomeDaPessoa>
                             </td>
+                            {/* O NÚMERO DO MÊS TAMBÉM É PORTA. O mês não tem um dia
+                                para onde levar — ele tem trinta —, e quem clica num
+                                total de mês quer ver de onde ele veio. Então a célula
+                                abre o painel da pessoa naquele mês, onde o dia a dia
+                                está listado e cada dia leva à visão Dia. */}
                             {COLUNAS_MES.map((c) => (
                               <td key={c.chave} className="px-3 py-2">
-                                {celulaDoMes(c, l)}
+                                <button
+                                  type="button"
+                                  onClick={() => abrirPessoa(l.pessoa)}
+                                  className="block w-full text-left underline-offset-2 hover:text-brand-700 hover:underline"
+                                  title={`${c.rotulo} de ${l.nome} em ${rotuloCompetencia(competencia)} — abrir o dia a dia`}
+                                >
+                                  {celulaDoMes(c, l)}
+                                </button>
                               </td>
                             ))}
                             <td className="px-3 py-2">
@@ -1832,18 +2398,28 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                     <tbody className="divide-y divide-slate-100">
                       {vmAno.linhas.map((l) => (
                         <tr key={l.pessoa.id}>
-                          <td className="px-3 py-2 font-medium text-slate-800">{l.nome}</td>
+                          <td className="px-3 py-2">
+                            <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa} />
+                          </td>
+                          {/* CLICAR EM MARÇO ABRE MARÇO. A célula do mês leva à visão
+                              Mês já no mês clicado e já com esta pessoa no filtro —
+                              sem isso, para ver março a pessoa troca de visão e
+                              reencontra o recorte na mão. Célula vazia também abre: o
+                              mês sem registro é justamente o que se quer conferir. */}
                           {l.valores.map((v, i) => (
-                            <td
-                              key={vmAno.meses[i]}
-                              className="px-2 py-2 text-right tnum"
-                              title={
-                                v === null || v === undefined
-                                  ? `${MESES_LONGOS[i]}: sem registro`
-                                  : `${MESES_LONGOS[i]}: ${textoDaMedida(v, vmAno.medida.unidade)}`
-                              }
-                            >
-                              {v === null || v === undefined ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                            <td key={vmAno.meses[i]} className="px-2 py-2 text-right tnum">
+                              <button
+                                type="button"
+                                onClick={() => irParaMes(vmAno.meses[i], l.pessoa)}
+                                className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
+                                title={
+                                  v === null || v === undefined
+                                    ? `${MESES_LONGOS[i]}: sem registro — abrir o mês de ${l.nome}`
+                                    : `${MESES_LONGOS[i]}: ${textoDaMedida(v, vmAno.medida.unidade)} — abrir o mês de ${l.nome}`
+                                }
+                              >
+                                {v === null || v === undefined ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                              </button>
                             </td>
                           ))}
                           <td className="px-3 py-2 text-right tnum font-semibold">
@@ -1859,7 +2435,16 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                         </td>
                         {vmAno.totalPorMes.map((v, i) => (
                           <td key={vmAno.meses[i]} className="px-2 py-2 text-right tnum">
-                            {v === null ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                            {/* O rodapé é o total da casa: abre o mês SEM mexer no
+                                filtro de pessoa, que é o recorte que ele soma. */}
+                            <button
+                              type="button"
+                              onClick={() => irParaMes(vmAno.meses[i], null)}
+                              className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
+                              title={`Abrir ${MESES_LONGOS[i]} de ${ano} na visão Mês`}
+                            >
+                              {v === null ? <Nada>—</Nada> : textoDaMedida(v, vmAno.medida.unidade)}
+                            </button>
                           </td>
                         ))}
                         <td className="px-3 py-2 text-right tnum">
@@ -1938,7 +2523,9 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                             const pdB = porDia(l.valorB, vmComp.escalaB);
                             return (
                               <tr key={l.pessoa.id} className="align-top">
-                                <td className="px-3 py-2 font-medium text-slate-800">{l.nome}</td>
+                                <td className="px-3 py-2">
+                                  <NomeDaPessoa pessoa={l.pessoa} aoAbrir={abrirPessoa} />
+                                </td>
                                 <td className="px-3 py-2 text-right tnum">
                                   {l.valorA === null ? <Nada /> : textoDaMedida(l.valorA, vmComp.medida.unidade)}
                                 </td>
@@ -1994,6 +2581,24 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
             </Card>
           )}
         </>
+      )}
+
+      {/* O PAINEL DA PESSOA — fora da folha impressa (`sem-impressao`): a
+          janela cobre a tela inteira, e um relatório impresso com ela aberta
+          sairia com o detalhe de uma pessoa por cima da tabela de todas. */}
+      {pessoaDoDetalhe && detalhe && (
+        <div className="sem-impressao">
+          <PessoaDetalhe
+            pessoa={pessoaDoDetalhe}
+            diaFoco={detalhe.dia}
+            grupo={indice.porPessoa.get(pessoaDoDetalhe.id) || null}
+            jornada={cfg.jornada}
+            aoFechar={() => setDetalhe(null)}
+            aoEscolherDia={(d) => setDetalhe((v) => (v ? { ...v, dia: d } : v))}
+            aoVerNoDia={irParaDia}
+            aoVerNoMes={(c) => irParaMes(c, pessoaDoDetalhe)}
+          />
+        </div>
       )}
     </>
   );
