@@ -145,6 +145,7 @@ import {
   FATOR_HE_DOBRA, NOMES_DIA_SEMANA, TIPOS_AUSENCIA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
 } from "../../lib/rh/ponto.js";
 import { SectionTitle, Empty, Modal, Card, StatCard, Segmented } from "../ui.jsx";
+import PessoaDetalhe from "../ponto/PessoaDetalhe.jsx";
 import { anoRuim } from "./uteis.js";
 
 const COL_DIA = "rh_ponto_dia";
@@ -494,6 +495,34 @@ function efeitoDaCorrecao(base, { entrada, saida, pausaMin }) {
 
 // ---- linhas ----------------------------------------------------------------
 
+/**
+ * O NOME DA PESSOA COMO PORTA.
+ *
+ * Diagnóstico do Leonardo (28/08/2026): nas três telas do Ponto o nome aparecia
+ * 72 vezes e NENHUMA era clicável — lia-se "ANA CLAUDIA · 08:03" e a linha
+ * acabava ali. Aqui o nome vira botão e abre o detalhe da pessoa; na linha de
+ * BATIDA o dia daquela linha vai em foco, porque o motivo de clicar num nome na
+ * lista de batidas é quase sempre "o que houve NESTE dia".
+ *
+ * É um <button> DE VERDADE, e não uma <span onClick>: o teclado chega nele, o
+ * leitor de tela o anuncia como botão e o foco fica visível.
+ */
+function BotaoPessoa({ nome, aoAbrir, className }) {
+  return (
+    <button
+      type="button"
+      onClick={aoAbrir}
+      title={`Ver o ponto de ${nome}`}
+      className={clsx(
+        "max-w-full truncate rounded text-left underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400",
+        className
+      )}
+    >
+      {nome}
+    </button>
+  );
+}
+
 function LinhaFechamento({ l, editavel, acoes }) {
   const { pessoa, reg, conta, apuracao, repetidos, dif, valorFinal, divergente, semSalarioPendente, fonte, temSugestao, jornadaEmPalavras } = l;
   /* A CONTA ESCRITA SÓ EXISTE ONDE EXISTE LANÇAMENTO.
@@ -512,7 +541,7 @@ function LinhaFechamento({ l, editavel, acoes }) {
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <span className="min-w-0 flex-1 basis-52">
           <span className="block truncate font-display text-sm font-medium text-slate-900">
-            {pessoa.nome}
+            <BotaoPessoa nome={pessoa.nome} aoAbrir={() => acoes.detalhar(pessoa, null)} />
             {pessoa.ativo === false && <span className="ml-2 chip">desligado</span>}
           </span>
           <span className="block truncate text-xs text-slate-500">
@@ -715,6 +744,19 @@ function LinhaBatida({ b, editavel, acoes }) {
   if (extraCarimbada) carimbo.push(extraCarimbada);
   const original = corrigido && carimbo.length > 0 ? `relógio: ${carimbo.join(" · ")}` : "";
 
+  /* QUEM ESTA LINHA MOSTRA, para o botão do nome. Batida SEM FICHA ainda tem
+     como ser detalhada — pelo relógio (jibbleId) ou, na falta dele, pelo nome
+     que o relógio mandou. Só fica sem porta a linha que não tem nem uma coisa
+     nem outra: abrir um painel que não sabe de quem é mostraria um mês vazio e
+     faria parecer que a pessoa não bateu ponto nenhum, que é pior do que não
+     ter link. */
+  const nomeNaLinha = pessoa ? pessoa.nome : txt(d.pessoaNome);
+  const alvoDetalhe =
+    pessoa ||
+    (txt(d.jibbleId) || nomeNaLinha
+      ? { id: "", nome: nomeNaLinha || `relógio ${txt(d.jibbleId)}`, jibbleId: txt(d.jibbleId) }
+      : null);
+
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
       <span className="w-24 shrink-0 font-display text-xs font-semibold tnum text-slate-700">
@@ -723,7 +765,11 @@ function LinhaBatida({ b, editavel, acoes }) {
 
       <span className="min-w-0 flex-1 basis-44">
         <span className="block truncate font-display text-sm font-medium text-slate-900">
-          {pessoa ? pessoa.nome : d.pessoaNome || "pessoa não identificada"}
+          {alvoDetalhe ? (
+            <BotaoPessoa nome={alvoDetalhe.nome} aoAbrir={() => acoes.detalhar(alvoDetalhe, d.data)} />
+          ) : (
+            "pessoa não identificada"
+          )}
         </span>
         {!pessoa && (
           <span className="block truncate text-xs text-bad-700">
@@ -1706,6 +1752,12 @@ export default function AbaPonto({
   const [formBatida, setFormBatida] = useState(null);
   const [formAusencia, setFormAusencia] = useState(null);
   const [formParametros, setFormParametros] = useState(null);
+  /* QUEM ESTÁ ABERTO NO DETALHE, e qual dia está em foco lá dentro.
+     { pessoa, diaFoco } — diaFoco null quando o clique veio da linha de
+     FECHAMENTO, que é do mês inteiro e não de um dia; na linha de BATIDA vai o
+     dia daquela linha. */
+  const [detalhe, setDetalhe] = useState(null);
+  const detalhar = useCallback((pessoa, diaFoco) => setDetalhe({ pessoa, diaFoco: diaFoco || null }), []);
   const [salvando, setSalvando] = useState(false);
   const [escolhasVinculo, setEscolhasVinculo] = useState({});
   // A configuração global. null = AINDA NÃO CARREGOU (ou falhou), que não é o
@@ -2915,7 +2967,7 @@ export default function AbaPonto({
                   key={l.pessoa.id}
                   l={l}
                   editavel={editavel}
-                  acoes={{ lancar: abrirFechamento, fechar: fecharLinha, reabrir: reabrirLinha }}
+                  acoes={{ lancar: abrirFechamento, fechar: fecharLinha, reabrir: reabrirLinha, detalhar }}
                 />
               ))}
             </div>
@@ -2958,7 +3010,7 @@ export default function AbaPonto({
                   key={b.d.id}
                   b={b}
                   editavel={editavel}
-                  acoes={{ corrigir: abrirCorrecao, apagar: apagarBatida, ausentar: abrirAusenciaDoDia }}
+                  acoes={{ corrigir: abrirCorrecao, apagar: apagarBatida, ausentar: abrirAusenciaDoDia, detalhar }}
                 />
               ))}
             </div>
@@ -3006,6 +3058,23 @@ export default function AbaPonto({
         aoSalvar={gravarParametros}
         aoFechar={() => setFormParametros(null)}
       />
+
+      {/* O DETALHE DA PESSOA. Só leitura: quem corrige batida, lança ausência e
+          fecha o mês continua sendo o botão da própria linha. `pontoDia` vai
+          INTEIRA de propósito — o painel anda pelos meses por conta própria, e
+          recortar aqui o mês da aba faria as setas ‹ › mostrarem meses vazios
+          que têm dado. */}
+      {detalhe && (
+        <PessoaDetalhe
+          pessoa={detalhe.pessoa}
+          pontoDia={pontoDia}
+          competencia={detalhe.diaFoco ? competenciaDe(detalhe.diaFoco) : competencia}
+          diaFoco={detalhe.diaFoco}
+          jornada={cfg.jornada}
+          hojeISO={hojeISO}
+          aoFechar={() => setDetalhe(null)}
+        />
+      )}
     </>
   );
 }

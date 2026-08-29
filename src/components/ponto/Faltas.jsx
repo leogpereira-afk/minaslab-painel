@@ -79,6 +79,7 @@ import {
   minutosPrevistosDoDia, minutosTrabalhados, NOMES_DIA_SEMANA, TIPOS_AUSENCIA,
 } from "../../lib/rh/ponto.js";
 import { Card, SectionTitle, Empty, Modal } from "../ui.jsx";
+import PessoaDetalhe from "./PessoaDetalhe.jsx";
 import { anoRuim } from "../rh/uteis.js";
 
 const COL_DIA = "rh_ponto_dia";
@@ -333,7 +334,41 @@ function Legenda() {
 /* O resumo de UMA pessoa no mês. Cada grupo com o seu total, e o dinheiro só no
    grupo que custa dinheiro. Salário ausente da ficha vira PENDÊNCIA ESCRITA,
    nunca R$ 0,00 — zero afirmaria "não há nada a descontar". */
-function ResumoPessoa({ linha }) {
+/**
+ * O NOME DA PESSOA COMO PORTA.
+ *
+ * Diagnóstico do Leonardo (28/08/2026): nas três telas do Ponto o nome da
+ * pessoa aparecia 72 vezes e NENHUMA era clicável — lia-se "ANA CLAUDIA · 08:03"
+ * e a linha acabava ali, sem caminho para o dia, para o mês nem para a ficha.
+ * Aqui o nome vira botão e abre o detalhe da pessoa, com o dia daquela linha
+ * (quando a linha tem um dia) já em foco.
+ *
+ * É um <button> DE VERDADE, e não uma <span onClick>: o teclado chega nele, o
+ * leitor de tela o anuncia como botão e o foco fica visível. Nome clicável que
+ * só responde a mouse troca um beco sem saída por outro.
+ *
+ * O CLIQUE DA CÉLULA CONTINUA SENDO O DA CÉLULA. Este botão vive na coluna do
+ * nome; quadradinho de dia continua abrindo o lançamento da ausência, que é a
+ * função desta tela. Roubar aquele clique consertaria a navegação quebrando o
+ * trabalho.
+ */
+function BotaoPessoa({ nome, aoAbrir, className }) {
+  return (
+    <button
+      type="button"
+      onClick={aoAbrir}
+      title={`Ver o ponto de ${nome}`}
+      className={clsx(
+        "max-w-full truncate rounded text-left underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400",
+        className
+      )}
+    >
+      {nome}
+    </button>
+  );
+}
+
+function ResumoPessoa({ linha, aoAbrir }) {
   const { pessoa, apuracao, conta, semRegistro, repetidos, foraDaGrade } = linha;
   const grupos = TIPOS_AUSENCIA.filter((t) => apuracao.ausencias[t.tipo] > 0);
   const nada =
@@ -341,7 +376,9 @@ function ResumoPessoa({ linha }) {
     repetidos === 0 && foraDaGrade === 0;
   return (
     <div className="nao-quebrar border-t py-2 first:border-t-0 first:pt-0" style={{ borderColor: "var(--hairline)" }}>
-      <p className="text-sm font-medium text-slate-800">{pessoa.nome}</p>
+      <p className="text-sm font-medium text-slate-800">
+        <BotaoPessoa nome={pessoa.nome} aoAbrir={aoAbrir} />
+      </p>
       {nada ? (
         <p className="mt-0.5 text-xs text-slate-400">Nenhuma ausência lançada neste mês.</p>
       ) : (
@@ -571,6 +608,10 @@ export default function Faltas({
   const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
   const [busca, setBusca] = useState("");
   const [form, setForm] = useState(null);
+  /* QUEM ESTÁ ABERTO NO DETALHE, e qual dia está em foco lá dentro.
+     { pessoa, diaFoco } — diaFoco null quando o clique veio de um lugar que não
+     é de um dia só (a coluna do nome na grade, o resumo do mês). */
+  const [detalhe, setDetalhe] = useState(null);
   // A configuração global. null = AINDA NÃO CARREGOU (ou falhou), que não é o
   // mesmo que "não existe": até lá a escala é a padrão da casa, e a tela diz.
   const [config, setConfig] = useState(null);
@@ -1058,10 +1099,13 @@ export default function Faltas({
                       <tr key={l.pessoa.id}>
                         <th
                           scope="row"
-                          className="sticky left-0 z-10 max-w-[10rem] truncate bg-white p-1 text-left text-xs font-medium text-slate-700"
-                          title={l.pessoa.nome}
+                          className="sticky left-0 z-10 max-w-[10rem] bg-white p-1 text-left text-xs font-medium text-slate-700"
                         >
-                          {l.pessoa.nome}
+                          <BotaoPessoa
+                            nome={l.pessoa.nome}
+                            aoAbrir={() => setDetalhe({ pessoa: l.pessoa, diaFoco: null })}
+                            className="block w-full"
+                          />
                         </th>
                         {l.celulas.map((c) => (
                           <CelulaDia key={c.iso} celula={c} editavel={editavel} aoAbrir={() => abrirCelula(l, c)} />
@@ -1125,7 +1169,11 @@ export default function Faltas({
           ) : (
             <div className="max-h-[28rem] overflow-y-auto pr-1">
               {linhasVisiveis.map((l) => (
-                <ResumoPessoa key={l.pessoa.id} linha={l} />
+                <ResumoPessoa
+                  key={l.pessoa.id}
+                  linha={l}
+                  aoAbrir={() => setDetalhe({ pessoa: l.pessoa, diaFoco: null })}
+                />
               ))}
             </div>
           )}
@@ -1167,7 +1215,12 @@ export default function Faltas({
                         {dataLonga(l.iso)}
                         <span className="block text-xs text-slate-400">{NOMES_DIA_SEMANA[l.dia.semana]}</span>
                       </td>
-                      <td className="py-2 pr-3 text-slate-700">{l.pessoa.nome}</td>
+                      <td className="py-2 pr-3 text-slate-700">
+                        <BotaoPessoa
+                          nome={l.pessoa.nome}
+                          aoAbrir={() => setDetalhe({ pessoa: l.pessoa, diaFoco: l.iso })}
+                        />
+                      </td>
                       <td className="py-2 pr-3">
                         <span className={l.ausencia.chip}>{l.ausencia.rotulo}</span>
                         <span className="mt-0.5 block text-xs text-slate-400">
@@ -1216,6 +1269,22 @@ export default function Faltas({
         salvando={salvando}
         editavel={editavel}
       />
+
+      {/* O DETALHE DA PESSOA. Só leitura: quem lança ausência continua sendo o
+          clique na célula, acima. `pontoDia` vai INTEIRA de propósito — o painel
+          anda pelos meses por conta própria, e recortar aqui o mês da grade
+          faria as setas ‹ › mostrarem meses vazios que têm dado. */}
+      {detalhe && (
+        <PessoaDetalhe
+          pessoa={detalhe.pessoa}
+          pontoDia={pontoDia}
+          competencia={detalhe.diaFoco ? competenciaDe(detalhe.diaFoco) : competencia}
+          diaFoco={detalhe.diaFoco}
+          jornada={cfg.jornada}
+          hojeISO={hojeISO}
+          aoFechar={() => setDetalhe(null)}
+        />
+      )}
     </>
   );
 }
