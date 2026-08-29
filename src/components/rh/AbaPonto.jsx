@@ -161,6 +161,10 @@ import {
   FATOR_HE_DOBRA, NOMES_DIA_SEMANA, TIPOS_AUSENCIA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
 } from "../../lib/rh/ponto.js";
 import { SectionTitle, Empty, Modal, Card, StatCard, Segmented } from "../ui.jsx";
+/* O VOCABULÁRIO DA LISTA DE TRABALHO, um só para o módulo inteiro. Redesenhar
+   a linha aqui é o que faz duas telas do mesmo sistema parecerem dois sistemas
+   — ver o cabeçalho de components/lista.jsx. */
+import { Explicacao, LinhaRanking, Pilulas, Secao } from "../lista.jsx";
 import PessoaDetalhe from "../ponto/PessoaDetalhe.jsx";
 import { anoRuim } from "./uteis.js";
 
@@ -198,6 +202,23 @@ function lerRecorte() {
   } catch {
     // Sem localStorage a escolha só não persiste.
     return "ativos";
+  }
+}
+
+/* QUAIS SEÇÕES FICAM ABERTAS, guardado no aparelho. As duas nascem abertas: é
+   a primeira visita que ensina o que a aba tem: quem chega e vê tudo fechado
+   não sabe o que recolheu. Quem trabalha com um quadro fechado não quer
+   reabri-lo toda vez — por isso a escolha fica. */
+const K_SECOES = "minaslab.rh.ponto.secoes";
+const SECOES_PADRAO = ["fechamento", "batidas"];
+
+function lerSecoes() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(K_SECOES) || "null");
+    return Array.isArray(salvo) ? salvo : SECOES_PADRAO;
+  } catch {
+    // Sem localStorage (ou JSON estragado) vale o padrão.
+    return SECOES_PADRAO;
   }
 }
 
@@ -601,6 +622,37 @@ function BotaoPessoa({ nome, aoAbrir, className }) {
       {nome}
     </button>
   );
+}
+
+/* OS DOIS APOIOS DA LINHA DO RANKING — em cinza, ao lado do dinheiro, que é o
+   único número forte (ver components/lista.jsx).
+   Só existem onde existe LANÇAMENTO: sem registro gravado, "0h00 extra" e
+   "0 faltas" afirmariam uma apuração que ninguém fez. `null` vira travessão na
+   linha, e travessão é o que a ausência merece.
+   As duas faixas de extra vão SOMADAS aqui de propósito: isto é quantidade de
+   hora, não dinheiro — onde vira R$ elas continuam separadas, cada uma no seu
+   fator (a soma ali seria a conta errada). */
+function apoiosDoFechamento(l) {
+  if (!l.reg) return [null, null];
+  const cinquenta = numOuNulo(l.reg.horasExtrasMin);
+  const dobro = numOuNulo(l.reg.horasExtrasDobroMin);
+  const extras =
+    cinquenta === null && dobro === null
+      ? null
+      : `${duracaoTexto((cinquenta || 0) + (dobro || 0))} extra`;
+  const faltas = numOuNulo(l.reg.faltas);
+  return [extras, faltas === null ? null : plural(faltas, "falta", "faltas")];
+}
+
+/* UM SINAL DE ESTADO POR LINHA, e ele é o ESTADO DO FECHAMENTO — não o sinal
+   do dinheiro, que o próprio número já mostra ("−R$ 73,33" se lê sozinho).
+   A ordem é a da urgência: o que impede a conta vem antes do que só diverge,
+   e os dois vêm antes de "está fechado". */
+function tomDoFechamento(l) {
+  if (l.semSalarioPendente) return "bad";
+  if (l.divergente || l.dif !== 0) return "warn";
+  if (!l.reg) return "neutral";
+  return l.reg.fechado ? "ok" : "brand";
 }
 
 function LinhaFechamento({ l, editavel, acoes }) {
@@ -1845,6 +1897,12 @@ export default function AbaPonto({
   const detalhar = useCallback((pessoa, diaFoco) => setDetalhe({ pessoa, diaFoco: diaFoco || null }), []);
   const [salvando, setSalvando] = useState(false);
   const [escolhasVinculo, setEscolhasVinculo] = useState({});
+  // Quais seções estão abertas — a escolha volta do aparelho.
+  const [secoes, setSecoes] = useState(lerSecoes);
+  /* QUEM ESTÁ ABERTO NA LISTA DO FECHAMENTO. Uma pessoa por vez: com as vinte
+     contas escritas abertas ao mesmo tempo a lista deixa de ser lista, que é
+     de onde esta tela vinha. "" = nenhuma. */
+  const [pessoaAberta, setPessoaAberta] = useState("");
   // A configuração global. null = AINDA NÃO CARREGOU (ou falhou), que não é o
   // mesmo que "não existe": enquanto isso a conta usa o padrão da casa e a tela
   // diz que está usando o padrão.
@@ -1895,6 +1953,17 @@ export default function AbaPonto({
   }, [carregarCfg]);
 
   const cfg = useMemo(() => cfgDoPonto(config), [config]);
+
+  const alternarSecao = (id) =>
+    setSecoes((atual) => {
+      const nova = atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id];
+      try {
+        localStorage.setItem(K_SECOES, JSON.stringify(nova));
+      } catch {
+        // Sem localStorage a escolha só não persiste.
+      }
+      return nova;
+    });
 
   const mudarRecorte = (valor) => {
     setRecorte(valor);
@@ -2886,6 +2955,17 @@ export default function AbaPonto({
   const semBatidaNoMes = vm.batidasNoMes === 0;
   // Quem ficou de fora desta aba, em palavras. Vai embaixo dos cartões.
   const frasesFora = frasesDoFora(vm.fora, recorte);
+  /* O TETO DA BARRA: o maior mês DESTA lista, em módulo — a barra compara as
+     pessoas do recorte entre si, e um desconto grande é um mês grande do mesmo
+     jeito que um pagamento grande (quem diz de que lado ele cai é o número, que
+     sai com o sinal). Quem não tem lançamento não entra no teto nem desenha
+     barra: trilho vazio se leria como zero. */
+  const tetoFechamento = vm.linhas.reduce(
+    (m, l) => (Number.isFinite(l.valorFinal) ? Math.max(m, Math.abs(l.valorFinal)) : m),
+    0
+  );
+  const abertaFechamento = secoes.includes("fechamento");
+  const abertaBatidas = secoes.includes("batidas");
 
   return (
     <>
@@ -2949,18 +3029,17 @@ export default function AbaPonto({
               ))}
             </select>
           </div>
+          {/* O ANO EM PÍLULAS, não em lista suspensa: são dois ou três anos, e
+              lista suspensa esconde justamente o quanto de história existe.
+              Os anos vêm do que TEM DADO (mais o de hoje) — lista cravada
+              envelhece virando o ano. */}
           <div>
-            <label className="label" htmlFor="pt-ano">Ano</label>
-            <select
-              id="pt-ano"
-              className="select w-28"
-              value={ano}
-              onChange={(e) => setCompetencia(`${e.target.value}-${mes}`)}
-            >
-              {vm.anos.map((a) => (
-                <option key={a} value={String(a)}>{a}</option>
-              ))}
-            </select>
+            <span className="label">Ano</span>
+            <Pilulas
+              opcoes={vm.anos}
+              valor={ano}
+              aoEscolher={(a) => setCompetencia(`${a}-${mes}`)}
+            />
           </div>
           {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
               é o filtro que mais muda esta aba — 13 das 20 fichas estão
@@ -3097,11 +3176,25 @@ export default function AbaPonto({
       />
 
       {visao === "fechamento" ? (
-        <Card>
-          <SectionTitle
-            titulo="Fechamento por pessoa"
-            sub="A conta escrita ao lado é a mesma que o sistema faz — dá para conferir na calculadora."
-          />
+        /* O SUB DIZ O TAMANHO DO RECORTE, com o recorte pelo nome. A primeira
+           dúvida diante de um ranking é "isso aqui é tudo?", e um ranking que
+           não responde vira um ranking que ninguém usa. */
+        <Secao
+          titulo="Fechamento por pessoa"
+          sub={`${plural(vm.linhas.length, "pessoa", "pessoas")} no recorte (${rotuloDoRecorte(recorte)}) · ${
+            vm.kpi.lancadas
+          } com lançamento`}
+          aberta={abertaFechamento}
+          aoAlternar={() => alternarSecao("fechamento")}
+        >
+          <Explicacao>
+            O valor forte é o <strong>mês em R$</strong> de cada pessoa: o valor lançado à mão, quando alguém
+            lançou um; senão, o que a conta do sistema produziu para o fechamento gravado. A barra compara as
+            pessoas desta lista entre si; as duas colunas cinza são as <strong>horas extras</strong> e as{" "}
+            <strong>faltas</strong> do lançamento. Quem não tem fechamento gravado aparece com travessão — é
+            ausência de lançamento, não R$&nbsp;0,00. <strong>Toque numa pessoa</strong> para abrir a conta escrita
+            do mês e os botões de lançar, fechar e reabrir.
+          </Explicacao>
           {/* AS AUSÊNCIAS DO MÊS, com a mesma separação da linha: um total só
               faria a equipe que ficou doente somar junto com a que faltou. */}
           {(vm.kpi.faltasMes > 0 || vm.kpi.abonadasMes > 0 || vm.kpi.ausenciasEstranhas > 0) && (
@@ -3138,44 +3231,84 @@ export default function AbaPonto({
                 : "Ninguém no quadro ainda — o fechamento do ponto nasce das pessoas que batem ponto."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {vm.linhas.map((l) => (
-                <LinhaFechamento
-                  key={l.pessoa.id}
-                  l={l}
-                  editavel={editavel}
-                  acoes={{ lancar: abrirFechamento, fechar: fecharLinha, reabrir: reabrirLinha, detalhar }}
-                />
-              ))}
+            /* A LISTA, no padrão da casa: uma linha por pessoa, o dinheiro à
+               direita, e a CONTA ESCRITA só de quem está aberta. Antes as vinte
+               contas ficavam abertas ao mesmo tempo e a lista deixava de ser
+               lista — não dava para varrer os nomes, que é o que se faz aqui
+               primeiro. Nada saiu: o que era a linha inteira agora é o detalhe
+               dela, com os mesmos botões. */
+            <div className="space-y-0.5">
+              {vm.linhas.map((l) => {
+                const aberta = pessoaAberta === l.pessoa.id;
+                const [extras, faltas] = apoiosDoFechamento(l);
+                return (
+                  <div key={l.pessoa.id}>
+                    {/* Sem lançamento o valor vai `null`, e a linha desenha
+                        travessão. "R$ 0,00" aqui afirmaria que o mês desta
+                        pessoa fechou em zero, e ninguém afirmou isso. */}
+                    <LinhaRanking
+                      /* O "desligado" continua à vista: no recorte "Todos" a
+                         lista mistura quem está e quem saiu, e o mês final de
+                         quem saiu se confere de outro jeito. Vai no nome porque
+                         a cor da linha já tem dono — é o estado do fechamento. */
+                      nome={l.pessoa.ativo === false ? `${l.pessoa.nome} (desligado)` : l.pessoa.nome}
+                      valor={Number.isFinite(l.valorFinal) ? moedaCheia(l.valorFinal) : null}
+                      apoios={[extras, faltas]}
+                      medida={Number.isFinite(l.valorFinal) ? Math.abs(l.valorFinal) : null}
+                      teto={tetoFechamento}
+                      tom={tomDoFechamento(l)}
+                      aberta={aberta}
+                      aoAbrir={() => setPessoaAberta(aberta ? "" : l.pessoa.id)}
+                    />
+                    {aberta && (
+                      <div className="mb-2 mt-1">
+                        <LinhaFechamento
+                          l={l}
+                          editavel={editavel}
+                          acoes={{ lancar: abrirFechamento, fechar: fecharLinha, reabrir: reabrirLinha, detalhar }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
-        </Card>
+        </Secao>
       ) : (
-        <Card>
-          <SectionTitle
-            titulo="Batidas do mês"
-            sub="O extrato dia a dia: o crachá, o intervalo e o que vai para a folha — três números que não fecham por subtração, porque quem apura a escala é o relógio. Correção fica marcada e o que veio dele continua à vista."
-            acao={
-              <div>
-                <label className="sr-only" htmlFor="pt-filtro">Pessoa</label>
-                <select
-                  id="pt-filtro"
-                  className="select w-56"
-                  value={filtroPessoa}
-                  onChange={(e) => setFiltroPessoa(e.target.value)}
-                >
-                  {/* "Todas" é todas as DESTA LISTA, e o filtro só oferece
-                      quem está nela: nome que filtra para uma lista vazia é
-                      pergunta sem resposta possível. */}
-                  <option value="">Todas as pessoas da lista</option>
-                  {vm.semVinculo.length > 0 && <option value={SEM_VINCULO}>Pessoa não vinculada</option>}
-                  {vm.pessoasVisiveis.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nome}</option>
-                  ))}
-                </select>
-              </div>
-            }
-          />
+        <Secao
+          titulo="Batidas do mês"
+          sub={`${plural(batidasVisiveis.length, "dia nesta lista", "dias nesta lista")} · ${rotuloDoRecorte(
+            recorte
+          )} · ${rotuloCompetencia(competencia)}`}
+          aberta={abertaBatidas}
+          aoAlternar={() => alternarSecao("batidas")}
+          acao={
+            <div>
+              <label className="sr-only" htmlFor="pt-filtro">Pessoa</label>
+              <select
+                id="pt-filtro"
+                className="select w-56"
+                value={filtroPessoa}
+                onChange={(e) => setFiltroPessoa(e.target.value)}
+              >
+                {/* "Todas" é todas as DESTA LISTA, e o filtro só oferece
+                    quem está nela: nome que filtra para uma lista vazia é
+                    pergunta sem resposta possível. */}
+                <option value="">Todas as pessoas da lista</option>
+                {vm.semVinculo.length > 0 && <option value={SEM_VINCULO}>Pessoa não vinculada</option>}
+                {vm.pessoasVisiveis.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            </div>
+          }
+        >
+          <Explicacao>
+            O extrato dia a dia: o <strong>crachá</strong>, o intervalo e o que vai para a <strong>folha</strong> —
+            três números que não fecham por subtração, porque quem apura a escala é o relógio. Correção fica marcada
+            e o que veio do relógio continua à vista. Toque num dia para ver o mês inteiro daquela pessoa.
+          </Explicacao>
           {semBatidaNoMes ? (
             <Empty>
               Nenhuma batida importada para este mês. Você pode puxar do relógio aqui em cima, lançar as horas à
@@ -3207,7 +3340,7 @@ export default function AbaPonto({
               lançamento de ausência: só a falta desconta.
             </p>
           )}
-        </Card>
+        </Secao>
       )}
 
       <FormFechamento
