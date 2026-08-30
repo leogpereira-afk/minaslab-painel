@@ -1,9 +1,27 @@
-/* CURVA ABC DE PRODUTOS — o que a casa vende, em ordem de faturamento.
+/* CURVA ABC DE SERVIÇOS — o que a casa fatura, em ordem de faturamento.
  *
  * A régua é a mesma da aba Clientes (lib/curvaAbc.js: A+ até 30% do valor
  * acumulado, A até 80%, B+ até 90%, B até 95%, C o resto). O que muda é a
- * UNIDADE: aqui a linha não é o comprador, é o ITEM da venda — cada produto
- * ou serviço que o Omie manda dentro de `fin_vendas.itens[]`.
+ * UNIDADE: aqui a linha não é o comprador, é o ITEM do faturamento.
+ *
+ * ============================================================================
+ * NESTA CASA O ITEM É A CATEGORIA FINANCEIRA — E A TELA DIZ ISSO (30/08/2026)
+ *
+ * A aba nasceu copiando a Impresilk, onde o item vem dentro da nota fiscal:
+ * "camiseta", "adesivo", o produto de verdade. Medido contra a conta real da
+ * MinasLab no Omie: 0 notas fiscais de produto, 0 ordens de serviço, e todo o
+ * faturamento em 2.301 títulos a receber. O título não tem itens; tem uma
+ * CATEGORIA ("1.01.02 — Análises Ambientais").
+ *
+ * Então esta aba mostra a curva por categoria, que é o nível de detalhe que
+ * existe — e a faixa de explicação avisa, com todas as letras, que não é
+ * ensaio a ensaio. Sem esse aviso o leitor veria "Análises Ambientais" na
+ * classe A+ e concluiria que descobriu o produto campeão, quando na verdade
+ * está olhando o balde que contém quase tudo.
+ *
+ * O dia em que a MinasLab emitir nota com item no Omie, a tradução em
+ * lib/faturamento.js passa a mandar o item de verdade e esta aba vira a curva
+ * de produto sem trocar uma linha aqui.
  *
  * O BALDE É O CÓDIGO, e a descrição é só rótulo. Num laboratório o mesmo
  * ensaio troca de redação entre uma O.S. e outra ("Ensaio de compressão",
@@ -23,9 +41,8 @@
  * do item, então o número é a soma das quantidades lançadas, sem unidade — é
  * o que o dado permite afirmar.)
  *
- * A FONTE hoje está vazia: a ponte ml-omie está publicada e desligada, à
- * espera dos segredos que só a direção grava. Nenhum número de exemplo entra
- * aqui — sem venda, a tela diz que não há venda e por quê.
+ * NENHUM NÚMERO DE EXEMPLO ENTRA AQUI. Sem faturamento importado, a tela diz
+ * que não há faturamento e por quê — não desenha uma curva de mentira.
  */
 
 import { useMemo, useState } from "react";
@@ -60,8 +77,8 @@ const COLUNAS = [
   { chave: "posicao", rotulo: "Posição", tipo: "numero" },
   { chave: "classe", rotulo: "Classe" },
   { chave: "codigo", rotulo: "Código" },
-  { chave: "produto", rotulo: "Produto" },
-  { chave: "vendas", rotulo: "Vendas", tipo: "numero" },
+  { chave: "produto", rotulo: "Categoria" },
+  { chave: "vendas", rotulo: "Títulos", tipo: "numero" },
   { chave: "quantidade", rotulo: "Quantidade", tipo: "numero" },
   { chave: "participacao", rotulo: "% do valor", tipo: "numero" },
   { chave: "acumulado", rotulo: "% acumulado", tipo: "numero" },
@@ -186,6 +203,49 @@ function DetalheDoProduto({ produto, itensNoTempo, compradores, anoTexto }) {
 /* Recebe o mesmo contrato de props da aba Clientes; `receber` e `editavel`
    não entram aqui porque esta aba não escreve nada e não olha o financeiro —
    ela só lê fin_vendas. */
+/* QUANDO A CURVA NÃO SEPARA NADA, A TELA DIZ ISSO ANTES DE DESENHAR.
+   Medido no Omie da MinasLab em 30/08/2026: 748 dos 748 títulos de 2026 caem na
+   MESMA categoria, "1.01.02 — SERVIÇOS REALIZADOS". Uma curva ABC sobre isso é
+   uma barra só, com 100% e classe A+ — e uma barra de 100% não se lê como
+   "não há detalhe": lê-se como "achei o produto campeão". O leitor sairia daqui
+   com uma conclusão que o dado não sustenta, sem nenhum erro na tela.
+
+   Também está medido POR QUE não há detalhe, para o aviso não virar mistério:
+   o Omie desta casa tem 0 nota fiscal de produto, 0 ordem de serviço e 0 pedido
+   de venda — o faturamento entra como título a receber, e título não tem itens.
+   O cadastro de serviços existe (6 ensaios), mas o título não aponta para ele.
+
+   O corte é 90%: abaixo disso a curva já separa alguma coisa e o aviso só
+   atrapalharia. Componente fora da página porque declarado dentro remonta a
+   cada render, e o lint da casa reprova como erro. */
+function CurvaQueNaoSepara({ topo, quantas, titulos }) {
+  const fatia = topo?.participacao;
+  return (
+    <div className="rounded-xl border border-warn-200 bg-warn-50 px-4 py-3">
+      <p className="font-display text-sm font-semibold text-warn-800">
+        Esta curva não separa nada — e o motivo não é a curva.
+      </p>
+      <p className="mt-1.5 text-sm leading-relaxed text-warn-800">
+        {fatia === null || fatia === undefined
+          ? "Uma única categoria carrega o recorte inteiro"
+          : `${(fatia * 100).toFixed(fatia > 0.999 ? 0 : 1).replace(".", ",")}% do faturamento deste recorte está numa categoria só`}
+        {topo?.rotulo ? ` (${topo.rotulo})` : ""}
+        {quantas > 1 ? `, entre ${quantas} categorias no total` : ", e não há outra"}. Classificar
+        A+/A/B/C em cima disso devolveria uma barra de 100% — que se lê como “achei o serviço
+        campeão”, e não é o que o dado diz.
+      </p>
+      <p className="mt-1.5 text-xs leading-relaxed text-warn-700">
+        O Omie desta casa não guarda o serviço vendido no faturamento: são 0 notas fiscais de
+        produto, 0 ordens de serviço e 0 pedidos de venda — o dinheiro entra como título a receber,
+        e o título só carrega a categoria financeira
+        {titulos ? ` (${titulos} títulos neste recorte)` : ""}. Para a curva por ensaio existir, o
+        faturamento precisaria sair do Omie com o serviço junto. Enquanto isso, quem separa de
+        verdade é a aba <strong>Clientes</strong>.
+      </p>
+    </div>
+  );
+}
+
 export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }) {
   const [aberto, setAberto] = useState(null);
   const [classeVista, escolherClasse] = useEscolha(K_CLASSE, "");
@@ -208,6 +268,9 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
       }),
     [bruto]
   );
+
+  /* 90% numa categoria só = a curva perdeu a função. Ver CurvaQueNaoSepara. */
+  const naoSepara = abc.curva.length > 0 && (abc.curva[0].participacao ?? 0) >= 0.9;
 
   const membrosDaFaixa = useMemo(() => {
     const f = FAIXAS.find((x) => x.id === classeVista);
@@ -353,15 +416,28 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
         />
 
         <Explicacao>
-          A mesma régua da aba Clientes, com o <strong>item da venda</strong> no lugar do comprador:{" "}
-          <strong>A+</strong> são os produtos que somam os primeiros 30% do faturamento,{" "}
+          {/* O AVISO VEM ANTES DA RÉGUA porque é o que muda a leitura do número.
+              Explicar a curva primeiro e a unidade depois faria o olho classificar
+              "Análises Ambientais" como produto campeão antes de saber que é balde. */}
+          <strong>Aqui a linha é a categoria financeira do título</strong>, não o ensaio vendido: a
+          MinasLab fatura por RPS e o título do Omie não traz itens — este é o nível de detalhe que
+          existe hoje. Dito isso, vale a mesma régua da aba Clientes:{" "}
+          <strong>A+</strong> são as categorias que somam os primeiros 30% do faturamento,{" "}
           <strong>A</strong> até 80%, <strong>B+</strong> até 90%, <strong>B</strong> até 95%,{" "}
-          <strong>C</strong> o resto. O número forte é o faturamento do item; as colunas cinza contam em
-          quantas vendas ele apareceu e a quantidade somada — que só aparece quando{" "}
-          <strong>todas</strong> as linhas daquele código trouxeram quantidade. Produtos iguais são
-          juntados pelo <strong>código</strong>, e o nome mostrado é a descrição mais recente.{" "}
-          <strong>Toque num produto</strong> para o comportamento dele e para quem compra.
+          <strong>C</strong> o resto. O número forte é o faturamento da categoria; as colunas cinza
+          contam em quantos títulos ela apareceu. Categorias iguais são juntadas pelo{" "}
+          <strong>código</strong>, e o nome mostrado é a descrição do cadastro.{" "}
+          <strong>Toque numa categoria</strong> para o comportamento dela no tempo e para quem
+          contratou.
         </Explicacao>
+
+        {naoSepara && (
+          <CurvaQueNaoSepara
+            topo={abc.curva[0]}
+            quantas={abc.curva.length}
+            titulos={recorte.usadas.length}
+          />
+        )}
 
         {classeVista && (
           <div className="sem-impressao flex flex-wrap items-center gap-2 text-xs text-slate-500">

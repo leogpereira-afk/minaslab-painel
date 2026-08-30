@@ -8,39 +8,44 @@
 // dela mora em lib/curvaAbc.js, testado sem tela e sem banco.
 //
 // SÓ A DIREÇÃO CHEGA AQUI (SO_DIRECAO em lib/sessao.js). Não é zelo de menu:
-// esta tela lê "fin_vendas", "fin_clientes" e "fin_receber", que são o
+// esta tela lê "fin_receber", "fin_clientes" e "fin_categorias", que são o
 // faturamento da casa — o mesmo dado que o ml-sync já barra no servidor para
 // quem não é direção. Esconder o item do menu é conforto; quem barra de verdade
 // é o servidor, em toda chamada.
 //
 // ============================================================================
-// O ESTADO DE HOJE (30/08/2026): NÃO HÁ UMA VENDA SEQUER NO BANCO
+// A FONTE AQUI É O TÍTULO A RECEBER — NÃO A NOTA COM ITENS (30/08/2026)
 //
-// O ERP da MinasLab é o Omie. A ponte que traz o faturamento de lá para cá já
-// existe e já está publicada — a Edge Function ml-omie —, mas ela não consegue
-// falar com o Omie: faltam as credenciais do aplicativo, que só o dono do
-// sistema pode gravar nos segredos do Supabase.
+// Esta tela nasceu copiando o Painel da Impresilk, onde o faturamento é nota
+// fiscal com itens dentro. Quando a ponte do Omie foi ligada, o diagnóstico
+// mediu a conta real da MinasLab e achou outra coisa:
 //
-// Por isso a casca trata TRÊS AUSÊNCIAS COMO TRÊS FATOS DIFERENTES, e não como
-// um vazio só:
+//     notas fiscais de produto ......... 0     (a casa não emite)
+//     ordens de serviço ................ 0     (mesmo SEM filtro nenhum)
+//     contas a receber ............. 2.301  ← o faturamento mora aqui
+//     clientes ..................... 1.076
+//     categorias financeiras ......... 159
+//
+// Quem fatura análise ambiental emite RPS e lança o título. Então a casca
+// TRADUZ o título para o formato que as três abas já leem — `vendasDosTitulos`
+// em lib/faturamento.js, testada sem tela e sem banco — em vez de reescrever
+// 3.100 linhas de tela que funcionam. O que a tradução não inventa está escrito
+// lá em cima do arquivo: vendedor, produto e data de recebimento.
+//
+// AS TRÊS AUSÊNCIAS CONTINUAM SENDO TRÊS FATOS DIFERENTES, e não um vazio só:
 //
 //   1. O SERVIDOR RECUSOU a coleção → este crachá não abre o faturamento. Não
-//      diz nada sobre haver ou não haver vendas.
-//   2. A COLEÇÃO ESTÁ VAZIA → a ponte nunca entregou nada. A casca explica de
-//      onde viria o dado, que a ponte existe, que está desligada e o que
-//      exatamente falta para ligá-la — e não desenha filtro nem abas por cima
-//      do vazio: controle que não muda nada é promessa falsa.
-//   3. HÁ VENDAS, MAS NENHUMA NO RECORTE → aí a resposta é de cada aba, pelo
+//      diz nada sobre haver ou não haver faturamento.
+//   2. A COLEÇÃO ESTÁ VAZIA → a importação não rodou. A ponte já entra no Omie;
+//      a casca diz isso e não manda mais procurar credencial que já existe.
+//   3. HÁ TÍTULOS, MAS NENHUM NO RECORTE → aí a resposta é de cada aba, pelo
 //      `SemVenda` de components/abc/comum.jsx, que sabe dizer "nenhum cliente
-//      em 2024" e "nenhum produto em 2024" com a palavra certa e ainda aponta
-//      em que anos há venda.
+//      em 2024" com a palavra certa e ainda aponta em que anos há faturamento.
 //
-// Zero por falta de ligação e zero por falta de venda têm a mesma aparência num
-// gráfico e significados opostos na vida. Enquanto não houver dado, esta tela
-// não escreve R$ 0,00 em lugar nenhum: zero é uma AFIRMAÇÃO ("não vendemos"),
-// ausência é outra coisa. É a mesma regra do resto da casa, no lugar onde ela
-// seria mais cara — o dono olharia a Curva ABC zerada e concluiria que o
-// laboratório não vendeu.
+// Zero por falta de importação e zero por falta de venda têm a mesma aparência
+// num gráfico e significados opostos na vida. Enquanto não houver dado, esta
+// tela não escreve R$ 0,00 em lugar nenhum: zero é uma AFIRMAÇÃO ("não
+// faturamos"), ausência é outra coisa.
 //
 // E NADA DE DADO DE EXEMPLO. Uma tela que mostra número inventado é pior que
 // uma tela vazia: a vazia manda perguntar, a inventada manda decidir.
@@ -48,7 +53,7 @@
 // ============================================================================
 // O QUE A CASCA ENTREGA ÀS ABAS — E O QUE ELA NÃO CORTA
 //
-// `vendas` vai INTEIRA, do jeito que veio de fin_vendas. A casca NÃO pré-filtra
+// `vendas` vai INTEIRA — todos os títulos traduzidos. A casca NÃO pré-filtra
 // por ano, e isso é decisão, não esquecimento:
 //
 //   · Quem corta é `recortarVendas(vendas, ano)` de components/abc/comum.jsx —
@@ -63,9 +68,9 @@
 //     escolhido faria a curva de um cliente de dez anos caber num ano só, sem
 //     avisar que o resto existia.
 //
-// `clientes` e `receber` também vão inteiros: o primeiro é cadastro (dicionário
-// de código → nome, cidade, UF), o segundo tem três datas possíveis (emissão,
-// vencimento, pagamento) e escolher uma aqui em cima decidiria pelas abas.
+// `clientes`, `receber` e `categorias` também vão inteiros: o primeiro é
+// cadastro (código → nome, cidade, UF), o segundo é o título cru, para a aba
+// que quiser olhar vencimento, e o terceiro dá nome ao código da categoria.
 // `ano` viaja junto para todas cortarem com a mesma régua.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -76,15 +81,25 @@ import { moeda, numero, ymdLocal } from "../lib/format.js";
 import { PageTitle, Card, Segmented, CarregandoModulo, ErroModulo, Aviso } from "../components/ui.jsx";
 import { Explicacao, Pilulas } from "../components/lista.jsx";
 import { plural, recortarVendas } from "../components/abc/comum.jsx";
+import { vendasDosTitulos } from "../lib/faturamento.js";
 import AbaClientes from "../components/abc/AbaClientes.jsx";
 import AbaProdutos from "../components/abc/AbaProdutos.jsx";
 import AbaVendedores from "../components/abc/AbaVendedores.jsx";
 
-const COLECOES = ["fin_vendas", "fin_clientes", "fin_receber"];
+const COLECOES = ["fin_clientes", "fin_receber", "fin_categorias"];
 
+/* "SERVIÇOS", NÃO "PRODUTOS": o rótulo do menu é a primeira coisa que promete
+   o que a aba entrega. A MinasLab não vende produto com item de nota — vende
+   análise, e o detalhe que o Omie guarda é a categoria financeira. Chamar de
+   "Produtos" faria o dono clicar esperando o ensaio campeão.
+
+   "VENDEDORES" FICA, e fica ATIVA de propósito: medimos que o título a receber
+   não traz vendedor, e a aba explica isso em uma tela inteira. Esconder o botão
+   pareceria módulo pela metade e deixaria a pergunta sem resposta — quem quer
+   o ranking por pessoa merece ler POR QUE ele não existe, não um menu mudo. */
 const ABAS = [
   { valor: "clientes", rotulo: "Clientes" },
-  { valor: "produtos", rotulo: "Produtos" },
+  { valor: "produtos", rotulo: "Serviços" },
   { valor: "vendedores", rotulo: "Vendedores" },
 ];
 
@@ -145,7 +160,7 @@ function SemFaturamento({ motivo }) {
               O servidor não abriu o faturamento para este crachá.
             </p>
             <p className="text-sm leading-relaxed text-slate-600">
-              A coleção <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_vendas</code> foi
+              A coleção <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_receber</code> foi
               recusada na leitura. Isso <strong>não</strong> quer dizer que não há vendas — quer dizer
               que quem está logado agora não tem permissão para vê-las. O menu é conforto; quem barra
               de verdade é o servidor, e foi ele que barrou.
@@ -160,6 +175,10 @@ function SemFaturamento({ motivo }) {
     );
   }
 
+  /* A PONTE FOI LIGADA EM 30/08/2026 — este bloco parou de falar de credencial
+     que falta. Se ele aparecer hoje, a ausência é outra: a ponte entra no Omie,
+     mas nenhum título chegou ao painel. Dizer "falta a credencial" mandaria o
+     dono procurar no lugar errado. */
   return (
     <Card className="space-y-4">
       <div className="flex items-start gap-3">
@@ -168,48 +187,27 @@ function SemFaturamento({ motivo }) {
         </span>
         <div className="min-w-0 space-y-2">
           <p className="font-display text-base font-semibold text-slate-900">
-            Ainda não há faturamento no painel — a ponte com o Omie está desligada.
+            A ponte com o Omie está ligada, mas nenhum título chegou ao painel.
           </p>
           <p className="text-sm leading-relaxed text-slate-600">
-            A Curva ABC lê o que a MinasLab faturou: as notas fiscais e as ordens de serviço do{" "}
-            <strong>Omie</strong>, o ERP da casa. Elas chegam aqui pelas coleções{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_vendas</code>,{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_clientes</code> e{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_receber</code>, e hoje as
-            três estão vazias. É isto que a tela está lendo: zero registro, não zero venda.
+            A Curva ABC lê o que a MinasLab faturou. Nesta casa isso mora nas{" "}
+            <strong>contas a receber</strong> do Omie — a coleção{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">fin_receber</code> —, e ela
+            está vazia. É isto que a tela está lendo: <strong>zero registro, não zero venda</strong>.
           </p>
           <p className="text-sm leading-relaxed text-slate-600">
-            A ponte não está faltando: ela já está escrita e publicada (a Edge Function{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">ml-omie</code>). O que falta é
-            a credencial para ela entrar no Omie — sem isso ela responde que o Omie ainda não foi
-            ligado e não importa nada.
+            A credencial do Omie já está gravada e a ponte já respondeu — o que falta é a
+            importação ter rodado. Ela traz os títulos ano a ano, e o primeiro carregamento é
+            manual, de propósito: importar sozinho um histórico inteiro sem ninguém olhando é como
+            este painel perde a chance de avisar que algo veio errado.
           </p>
         </div>
       </div>
 
-      <div className="rounded-xl bg-brand-50 px-4 py-3">
-        <p className="font-display text-sm font-semibold text-brand-800">
-          O que falta — e só o dono do sistema pode fazer
-        </p>
-        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-brand-800">
-          <li>
-            Gravar os dois segredos do aplicativo do Omie no projeto do Supabase (Edge Functions →
-            Secrets): <code className="rounded bg-white/70 px-1 py-0.5 text-xs">ML_OMIE_APP_KEY</code> e{" "}
-            <code className="rounded bg-white/70 px-1 py-0.5 text-xs">ML_OMIE_APP_SECRET</code>. Eles
-            não passam por esta tela nem por ninguém do painel — vão direto do dono para o servidor.
-          </li>
-          <li>
-            Rodar a primeira importação (clientes, notas fiscais, ordens de serviço e contas a
-            receber) e, em seguida, o casamento dos nomes de cliente — a O.S. e o título vêm do Omie
-            só com o código do cliente.
-          </li>
-        </ol>
-      </div>
-
       <p className="text-xs leading-relaxed text-slate-500">
         Enquanto isso esta tela não mostra R$ 0,00 em lugar nenhum, e não desenha nenhuma curva de
-        exemplo. Zero é uma afirmação — “não vendemos nada” —, e o que existe aqui é ausência de
-        dado. No dia da primeira importação a curva se acende sozinha.
+        exemplo. Zero é uma afirmação — “não faturamos nada” —, e o que existe aqui é ausência de
+        dado. Assim que os títulos entrarem, a curva se acende sozinha.
       </p>
     </Card>
   );
@@ -266,10 +264,17 @@ export default function CurvaAbc() {
     // pergunta, não o download.
     carregarColecoes(COLECOES)
       .then((r) => {
+        const receber = r.fin_receber || [];
+        const categorias = r.fin_categorias || [];
         setDados({
-          vendas: r.fin_vendas || [],
+          /* A FONTE DO FATURAMENTO DESTA CASA É O TÍTULO A RECEBER, não a nota
+             com itens — medido no Omie em 30/08/2026: 0 notas, 0 O.S., 2.301
+             títulos. A tradução mora em lib/faturamento.js, testada sem tela.
+             As abas continuam recebendo o formato de sempre. */
+          vendas: vendasDosTitulos(receber, categorias),
           clientes: r.fin_clientes || [],
-          receber: r.fin_receber || [],
+          receber,
+          categorias,
           recusadas: r._recusadas || [],
         });
         setErro(null);
@@ -348,7 +353,7 @@ export default function CurvaAbc() {
   if (erro && !dados) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!dados) return <CarregandoModulo />;
 
-  const recusada = dados.recusadas.includes("fin_vendas");
+  const recusada = dados.recusadas.includes("fin_receber");
   const semNada = dados.vendas.length === 0 && dados.clientes.length === 0;
 
   const cabecalho = (

@@ -341,6 +341,37 @@ Deno.serve(async (req) => {
           });
         }
 
+        /* O TÍTULO APONTA PARA UM PEDIDO — e pedido tem itens.
+           A amostra crua de 30/08/2026 trouxe "numero_pedido": "1869" em título
+           de RPS. Se houver pedido de venda no Omie, é ali que mora o SERVIÇO
+           vendido, e a aba de Serviços deixa de ser um balde só ("SERVIÇOS
+           REALIZADOS" concentra 99% do faturamento como categoria). Sondamos
+           sem filtro de data primeiro: isso já responde "existe pedido?". */
+        await tentar("pedidos_de_venda", async () => {
+          const r = await omie("produtos/pedido", "ListarPedidos", {
+            pagina: 1, registros_por_pagina: 5, apenas_importado_api: "N",
+          });
+          const lista = (r.pedido_venda_produto ?? []) as Record<string, any>[];
+          return {
+            registros: numero(r.total_de_registros),
+            paginas: numero(r.total_de_paginas),
+            amostra: lista.length ? lista[0] : null,
+          };
+        });
+
+        /* O CADASTRO DE SERVIÇOS: mesmo sem pedido, se a casa mantém os ensaios
+           cadastrados, o nome do serviço existe em algum lugar do Omie. */
+        await tentar("cadastro_de_servicos", async () => {
+          const r = await omie("servicos/servico", "ListarCadastroServico", {
+            nPagina: 1, nRegPorPagina: 5,
+          });
+          const lista = (r.cadastros ?? r.servicoCadastro ?? []) as Record<string, any>[];
+          return {
+            registros: numero(r.nTotRegistros ?? r.total_de_registros),
+            amostra: lista.length ? lista[0] : null,
+          };
+        });
+
         await tentar("contas_a_receber", async () => {
           const r = await omie("financas/contareceber", "ListarContasReceber", {
             pagina: 1, registros_por_pagina: 50, apenas_importado_api: "N",

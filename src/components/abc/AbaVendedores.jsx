@@ -142,14 +142,24 @@ function SemVendedorNenhum({ quantidade, valor }) {
         </span>
         <div className="min-w-0 space-y-2">
           <p className="font-display text-base font-semibold text-slate-900">
-            As vendas importadas não trazem vendedor.
+            O faturamento desta casa não vem com vendedor.
           </p>
           <p className="text-sm leading-relaxed text-slate-600">
-            {plural(quantidade, "venda deste recorte chegou", "vendas deste recorte chegaram")} do
+            {plural(quantidade, "título deste recorte chegou", "títulos deste recorte chegaram")} do
             Omie sem quem vendeu — nem nome, nem código
-            {valor === null ? "" : `, somando ${moedaCheia(valor)}`}. Confira o cadastro no Omie: o
-            vendedor precisa estar preenchido na nota fiscal e na ordem de serviço para o painel
-            poder somar por pessoa.
+            {valor === null ? "" : `, somando ${moedaCheia(valor)}`}.
+          </p>
+          {/* O CONSELHO ANTIGO MANDAVA PARA O LUGAR ERRADO: dizia para preencher
+              o vendedor na nota fiscal e na ordem de serviço. Medido em
+              30/08/2026 contra a conta real: esta casa tem 0 notas e 0 O.S. no
+              Omie — fatura por RPS, lançando título a receber, e o título não
+              tem campo de vendedor. Mandar conferir um cadastro que não existe
+              faria o dono procurar por horas o defeito que não está lá. */}
+          <p className="text-sm leading-relaxed text-slate-600">
+            Não é campo em branco que alguém esqueceu: a MinasLab fatura lançando{" "}
+            <strong>título a receber</strong>, e o título do Omie não tem onde guardar o vendedor.
+            Enquanto o faturamento entrar por aí, esta aba não tem como somar por pessoa — venha de
+            onde vier a vontade de ver o ranking.
           </p>
           <p className="text-xs leading-relaxed text-slate-500">
             Não desenhamos uma lista vazia nem uma linha “Sem vendedor”: a lista vazia se leria como
