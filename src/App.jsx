@@ -22,6 +22,7 @@ const RH = lazy(() => import("./pages/RH.jsx"));
 const Ponto = lazy(() => import("./pages/Ponto.jsx"));
 const Financas = lazy(() => import("./pages/Financas.jsx"));
 const Recebimentos = lazy(() => import("./pages/Recebimentos.jsx"));
+const CurvaAbc = lazy(() => import("./pages/CurvaAbc.jsx"));
 const Acessos = lazy(() => import("./pages/Acessos.jsx"));
 
 // Porta da rota: sem sessao vai para o login; sem papel para o modulo, volta
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="/ponto" element={<Guarda modulo="ponto"><Ponto /></Guarda>} />
             <Route path="/financas" element={<Guarda modulo="financas"><Financas /></Guarda>} />
             <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>}/>
+            <Route path="/curva-abc" element={<Guarda modulo="curva-abc"><CurvaAbc /></Guarda>} />
             <Route path="/acessos" element={<Guarda modulo="acessos"><Acessos /></Guarda>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

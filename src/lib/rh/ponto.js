@@ -62,6 +62,14 @@
 //    tempo. Quem chega 08:12 deve 12 minutos, não 2 — abater os 10 daria um
 //    terceiro número, que não é nem o fato nem a lei. Ver atrasoDoDia.
 //
+// 12. A FOLHA JÁ CONTÉM A HORA EXTRA (29/08/2026). O `payrollHours` do Jibble,
+//    que a ponte grava em `trabalhadoMin` e a tela chama de "horas da folha",
+//    é NORMAIS + EXTRAS — foi a tela "Registros de Horário" do relógio que
+//    mostrou a composição. Somar folha + extra conta a mesma hora duas vezes, e
+//    comparar a folha com o previsto do mês infla o cumprimento da jornada pela
+//    hora extra. Quem se compara com o previsto são as NORMAIS. Ver
+//    normaisDoDia.
+//
 // Sem dependência de nenhum outro arquivo do projeto, como as demais libs de
 // src/lib/rh: quem formata dinheiro na tela é lib/format.js, e esta lib só
 // devolve NÚMEROS — assim a conta escrita na tela é composta exatamente dos
@@ -746,6 +754,129 @@ function contadorDeAusencias() {
 }
 
 // ============================================================================
+// NORMAIS × FOLHA
+// ============================================================================
+
+/**
+ * AS HORAS NORMAIS DO DIA: a folha MENOS a hora extra que já está dentro dela.
+ *
+ * DESCOBERTA DE 29/08/2026, na tela "Registros de Horário" do Jibble, com o
+ * dono ao lado. O relógio mostra a cascata inteira, e ela desmente a leitura
+ * que este painel fazia:
+ *
+ *       Horas registradas ............. 50h37   (o crachá aberto: trabalho +
+ *     − Pausa não remunerada ..........  4h25    pausa + deduções)
+ *     = Horas trabalhadas ............. 46h13
+ *     − Deduções automáticas ..........  5h00   (1h/dia, posta na escala)
+ *     = HORAS DE FOLHA DE PAGAMENTO ... 41h13   ← é ISTO que a ponte grava
+ *
+ * E o bloco "Horas de folha de pagamento" abre e mostra DO QUE ELA É FEITA. No
+ * dia 28/08/2026 da Ana, uma sexta:
+ *
+ *       Normais ................  8h00
+ *       Horas extras diárias ...  1h15
+ *       ----------------------- ------
+ *       TOTAL DA FOLHA .........  9h15
+ *
+ * Ou seja: `payrollHours` — `trabalhadoMin` aqui dentro, "horas da folha" na
+ * tela — JÁ INCLUI AS HORAS EXTRAS. As 8h00 de normais da Ana são exatamente o
+ * previsto da sexta na escala da casa, e o 1h15 vem POR CIMA, não ao lado.
+ *
+ * O ESTRAGO QUE ISSO FAZIA, em dois lugares:
+ *
+ *  - a tela mostrava "Horas da folha 177h30" ao lado de "Extra +50% 14h23", e
+ *    quem lê soma os dois — pagando a mesma hora extra duas vezes;
+ *
+ *  - quem comparava as 177h30 com o "Previsto no mês 193h00" para julgar se a
+ *    pessoa cumpriu a jornada comparava peras com laranjas: o previsto é de
+ *    horas NORMAIS, e o número ao lado tem extra dentro. No janeiro da
+ *    VICTORIA as normais foram ~163h contra 193h previstas — o déficit é o
+ *    DOBRO do que a tela sugeria, e a hora extra estava tapando justamente o
+ *    buraco que ela deveria denunciar.
+ *
+ * O QUE SAI, e por quê:
+ *
+ *  - `null` para o dia SEM TOTAL (em aberto): dia que não terminou não tem
+ *    composição — tem pendência. Não é dia de zero hora normal.
+ *
+ *  - `normaisMin` NUNCA NEGATIVA. Se o relógio mandar extra maior que a folha,
+ *    o dado está torto (correção pela metade, importação antiga) e número
+ *    negativo aqui viraria desconto inventado na folha. Vira 0 e sai DITO, em
+ *    `extraMaiorQueFolha` — o mês conta esses dias em `diasExtraMaiorQueFolha`,
+ *    porque zero calado é como se esconde um dado torto.
+ *
+ *  - `extraDobroMin` é null fora do relógio: a conta derivada joga todo o
+ *    excedente numa faixa só e não sabe separar a dobra. Null é "não apurei".
+ *
+ *  - dia lançado à mão SEM DATA LEGÍVEL (`fonte: "sem-regua"`) não tem previsto
+ *    para comparar: o total continua sendo verdade e vai INTEIRO para as
+ *    normais — não há evidência de excedente nenhum —, e o mês conta o caso em
+ *    `diasSemSaldo` para a tela dizer que a sugestão saiu incompleta.
+ *
+ * A IDENTIDADE QUE VALE, e que o teste tranca: a folha é as normais MAIS as
+ * faixas de extra que o dia tem apuradas — faixa em null não entra na soma
+ * valendo zero, ela simplesmente não existe naquele dia. Um único caso quebra a
+ * identidade, o dia torto, e ele quebra gritando em `extraMaiorQueFolha`.
+ */
+export function normaisDoDia(dia, jornada) {
+  const folhaMin = minutosTrabalhados(dia);
+  if (folhaMin === null) return null;
+
+  const escala = normalizarJornada(jornada);
+  const previstoMin = minutosPrevistosDoDia(dia?.data, escala);
+  const apurado = apuracaoDoRelogio(dia);
+
+  if (apurado) {
+    const extras = apurado.extraMin + apurado.extraDobroMin;
+    return {
+      fonte: "relogio",
+      folhaMin,
+      normaisMin: Math.max(0, folhaMin - extras),
+      extraMin: apurado.extraMin,
+      extraDobroMin: apurado.extraDobroMin,
+      previstoMin,
+      extraMaiorQueFolha: extras > folhaMin,
+    };
+  }
+
+  if (previstoMin === null) {
+    return {
+      fonte: "sem-regua",
+      folhaMin,
+      normaisMin: folhaMin,
+      extraMin: null,
+      extraDobroMin: null,
+      previstoMin: null,
+      extraMaiorQueFolha: false,
+    };
+  }
+
+  /* Dia derivado: o excedente é o que passou do previsto (no dia que a escala
+     não prevê, previsto 0, TUDO é excedente e a normal é zero). Escrito como
+     `min(folha, previsto)` de propósito — assim normal e extra saem da MESMA
+     linha e não podem divergir de mês para tela. */
+  const normaisMin = Math.min(folhaMin, previstoMin);
+  return {
+    fonte: "derivado",
+    folhaMin,
+    normaisMin,
+    extraMin: folhaMin - normaisMin,
+    extraDobroMin: null,
+    previstoMin,
+    extraMaiorQueFolha: false,
+  };
+}
+
+/**
+ * Só o número das normais do dia, para quem não precisa da composição inteira.
+ * Mesma regra, mesma função — null no dia em aberto, como `minutosTrabalhados`.
+ */
+export function minutosNormais(dia, jornada) {
+  const composicao = normaisDoDia(dia, jornada);
+  return composicao === null ? null : composicao.normaisMin;
+}
+
+// ============================================================================
 
 /**
  * O que as batidas de um mês dizem — a SUGESTÃO que o RH copia (ou não) para o
@@ -766,6 +897,20 @@ function contadorDeAusencias() {
  * painel passaria a divergir do que a própria pessoa vê no aplicativo do
  * Jibble, e número que diverge do aplicativo do funcionário não se defende em
  * reunião nenhuma.
+ *
+ * DUAS SOMAS DE HORA, QUE NÃO SE SOMAM (29/08/2026):
+ *
+ *  - `folhaMin` é o total que vai para a folha, e ELE JÁ CONTÉM AS EXTRAS —
+ *    `payrollHours` do Jibble é normais + extras (ver `normaisDoDia`). É o
+ *    mesmo número de `trabalhadoMin`, saído da mesma variável: dois nomes para
+ *    um campo, nunca dois campos que podem divergir.
+ *  - `normaisMin` é a folha MENOS as extras — a hora comum, a única que se
+ *    compara com o previsto do mês.
+ *
+ * SOMAR `folhaMin + extrasMin` CONTA A MESMA HORA DUAS VEZES. E comparar
+ * `folhaMin` com o previsto infla o cumprimento da jornada pela hora extra: no
+ * janeiro da VICTORIA isso escondia metade do déficit. Quem se compara com o
+ * previsto é `normaisMin`.
  *
  * Dia SEM TOTAL (em aberto) não entra em soma nenhuma — nem no trabalhado, nem
  * nas extras: sai contado à parte, em `diasEmAberto`.
@@ -794,6 +939,8 @@ export function apurarCompetencia(dias, jornada) {
   let diasComBatida = 0;
   let diasEmAberto = 0;
   let trabalhadoMin = 0;
+  let normaisMin = 0;
+  let diasExtraMaiorQueFolha = 0;
   let diasDoRelogio = 0;
   let diasDerivados = 0;
   let diasSemSaldo = 0;
@@ -842,6 +989,13 @@ export function apurarCompetencia(dias, jornada) {
     diasComBatida += 1;
     trabalhadoMin += min;
 
+    /* A COMPOSIÇÃO DO DIA sai de `normaisDoDia` — a MESMA função que a tela
+       chama para explicar a linha. Normal e extra saem da mesma conta, num
+       lugar só: o mês não pode dizer uma coisa e a linha outra. */
+    const composicao = normaisDoDia(d, escala);
+    normaisMin += composicao.normaisMin;
+    if (composicao.extraMaiorQueFolha) diasExtraMaiorQueFolha += 1;
+
     const apurado = apuracaoDoRelogio(d);
     if (apurado) {
       diasDoRelogio += 1;
@@ -851,7 +1005,7 @@ export function apurarCompetencia(dias, jornada) {
     }
 
     diasDerivados += 1;
-    const previsto = minutosPrevistosDoDia(d?.data, escala);
+    const previsto = composicao.previstoMin;
     if (previsto === null) {
       // Dia à mão sem data legível: o total trabalhado continua sendo verdade,
       // o saldo é que não existe — e a tela diz que a sugestão saiu incompleta,
@@ -862,16 +1016,20 @@ export function apurarCompetencia(dias, jornada) {
     previstoDerivadoMin += previsto;
     if (previsto === 0) {
       // Trabalho em dia que a escala não prevê (sábado, domingo): tudo é
-      // excedente. Entra na faixa de +50% porque é onde a conta derivada sabe
-      // pôr — e sai CONTADO em `diasForaDaEscala`, para a tela lembrar que
-      // descanso e feriado se pagam em dobro e podem precisar ser movidos à mão.
+      // excedente (a normal do dia é zero) e entra na faixa de +50%, porque é
+      // onde a conta derivada sabe pôr — e sai CONTADO em `diasForaDaEscala`,
+      // para a tela lembrar que descanso e feriado se pagam em dobro e podem
+      // precisar ser movidos à mão.
       diasForaDaEscala += 1;
-      extrasDerivadosMin += min;
-      continue;
     }
-    const saldo = min - previsto;
-    if (saldo > 0) extrasDerivadosMin += saldo;
-    else atrasosDerivadosMin += -saldo;
+    extrasDerivadosMin += composicao.extraMin;
+    /* O ATRASO É O PREVISTO MENOS AS NORMAIS, nunca menos a folha (29/08/2026).
+       A folha traz a extra dentro, e descontar do previsto um número que já tem
+       excedente faria a hora extra apagar o atraso do mesmo dia. Aqui os dois
+       jeitos dão o mesmo número — porque a extra derivada É o que passou do
+       previsto —, e é justamente por isso que esta é a forma que se escreve: a
+       régua fica a mesma quando o dia vier apurado de outro lugar. */
+    atrasosDerivadosMin += previsto - composicao.normaisMin;
   }
 
   const temRelogio = diasDoRelogio > 0;
@@ -881,6 +1039,17 @@ export function apurarCompetencia(dias, jornada) {
     diasComBatida,
     diasEmAberto,
     trabalhadoMin: diasComBatida > 0 ? trabalhadoMin : null,
+    /* O MESMO número de `trabalhadoMin`, saído da MESMA variável — nome novo
+       porque "trabalhado" fazia pensar em hora comum, e este total JÁ CONTÉM AS
+       EXTRAS. Somar `folhaMin + extrasMin` paga a mesma hora duas vezes. */
+    folhaMin: diasComBatida > 0 ? trabalhadoMin : null,
+    /* A HORA COMUM: a folha menos as extras. É ESTA que se compara com o
+       previsto do mês (`minutosPrevistosDoMes`) — comparar a folha diria que
+       quem fez 163h normais + 14h extras cumpriu 177h de uma jornada de 193h. */
+    normaisMin: diasComBatida > 0 ? normaisMin : null,
+    /* Dias em que o relógio mandou extra MAIOR que a folha: dado torto, normal
+       truncada em 0. Zero aqui é medida (o mês foi percorrido), não lacuna. */
+    diasExtraMaiorQueFolha,
     // De onde veio a sugestão — é isto que a conta escrita repete para quem
     // lê: número do relógio e número do dedo de alguém não se confundem.
     diasDoRelogio,
