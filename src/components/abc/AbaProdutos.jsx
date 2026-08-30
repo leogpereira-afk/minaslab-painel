@@ -57,6 +57,7 @@ import {
   CabecalhoDoPapel,
   CartoesDaCurva,
   ComportamentoNoTempo,
+  useRolarAoAbrir,
   SeloClasse,
   SemVenda,
   frasesDoCorte,
@@ -250,7 +251,9 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
   const [aberto, setAberto] = useState(null);
   const [classeVista, escolherClasse] = useEscolha(K_CLASSE, "");
   const [grupoAberto, setGrupoAberto] = useState(null);
-  const [secaoAberta, alternarSecao] = useSecoes(K_SECOES, SECOES_PADRAO);
+  const [secaoAberta, alternarSecao, abrirSecao] = useSecoes(K_SECOES, SECOES_PADRAO);
+  /* Mesmo motivo da aba Clientes: o detalhe nasce depois do ranking. */
+  const alvoDoDetalhe = useRolarAoAbrir(aberto);
 
   const anoTexto = /^\d{4}$/.test(String(ano ?? "")) ? String(ano) : "";
   const hoje = /^\d{4}-\d{2}-\d{2}$/.test(String(hojeISO ?? "")) ? String(hojeISO) : "";
@@ -498,7 +501,13 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
                 medida={p.valor}
                 teto={tetoDaCurva}
                 aberta={aberto === p.chave}
-                aoAbrir={() => setAberto((x) => (x === p.chave ? null : p.chave))}
+                /* Como na aba Clientes: o clique PEDE o detalhe, então garante
+                   o quadro aberto — recolhido, ele renderizaria fechado. */
+                aoAbrir={() => {
+                  const proximo = aberto === p.chave ? null : p.chave;
+                  setAberto(proximo);
+                  if (proximo) abrirSecao("produto");
+                }}
               />
             ))}
           </div>
@@ -544,6 +553,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
       </Secao>
 
       {linhaAberta && detalhe && (
+        <div ref={alvoDoDetalhe}>
         <Secao
           titulo={linhaAberta.rotulo}
           sub={`${linhaAberta.posicao}º da curva · classe ${linhaAberta.classe} · ${moedaCheia(
@@ -572,6 +582,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
             anoTexto={anoTexto}
           />
         </Secao>
+        </div>
       )}
     </div>
   );

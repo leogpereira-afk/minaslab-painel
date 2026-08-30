@@ -15,7 +15,7 @@
  * elas, não redesenha.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Download, Printer } from "lucide-react";
 import { moeda, moedaCheia, diaLocalISO, MESES } from "../../lib/format.js";
@@ -115,7 +115,60 @@ export function useSecoes(chave, padrao) {
       }),
     [chave]
   );
-  return [(id) => abertas.includes(id), alternar];
+  /* ABRIR, não alternar. Quem clica num cliente do ranking está PEDINDO para
+     ver o detalhe — se o quadro estiver recolhido (a escolha fica guardada no
+     aparelho, e pode ter sido feita meses atrás), alternar o fecharia de novo,
+     ou o clique renderizaria um quadro fechado e nada apareceria. Idempotente
+     de propósito: já aberto, devolve o mesmo array e não re-renderiza nem
+     regrava o localStorage à toa. */
+  const abrir = useCallback(
+    (id) =>
+      setAbertas((atual) => {
+        if (atual.includes(id)) return atual;
+        const nova = [...atual, id];
+        try {
+          localStorage.setItem(chave, JSON.stringify(nova));
+        } catch {
+          // Sem localStorage a escolha só não persiste.
+        }
+        return nova;
+      }),
+    [chave]
+  );
+
+  return [(id) => abertas.includes(id), alternar, abrir];
+}
+
+/* ROLAR ATÉ O DETALHE QUE ACABOU DE ABRIR.
+ *
+ * Nas três abas o quadro do detalhe fica DEPOIS do ranking. Com a classe A
+ * aberta em "Todos" são 68 linhas na frente dele: quem clica no 1º cliente vê
+ * o painel nascer uns oitocentos pixels abaixo da dobra — e conclui, com toda
+ * a razão, que o clique não fez nada. O defeito não é o painel não abrir; é
+ * ele abrir onde ninguém está olhando.
+ *
+ * Rola só quando a chave MUDA para algo. Fechar (chave nula) não mexe na
+ * página: puxar o olho de volta para cima ao fechar seria um solavanco que
+ * ninguém pediu.
+ *
+ * `block: "start"` e não "center": o detalhe é alto (mês a mês + ano a ano +
+ * lista de documentos) e centralizá-lo esconderia o próprio título. E respeita
+ * quem pediu menos movimento no sistema — rolagem suave em quem tem enjoo de
+ * movimento é o tipo de gentileza que vira mal-estar.
+ */
+export function useRolarAoAbrir(chaveAberta) {
+  const alvo = useRef(null);
+  useEffect(() => {
+    if (!chaveAberta || !alvo.current) return;
+    let suave = true;
+    try {
+      suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      // Navegador sem matchMedia: rola suave, que é o padrão da casa.
+    }
+    alvo.current.scrollIntoView({ behavior: suave ? "smooth" : "auto", block: "start" });
+  }, [chaveAberta]);
+  return alvo;
 }
 
 // Uma escolha de filtro (a classe vista), guardada do mesmo jeito.
@@ -496,12 +549,20 @@ export function ComportamentoNoTempo({ itens, anoPadrao, um, varios }) {
     return <p className="text-xs text-slate-400">Nenhuma venda com data para desenhar o comportamento.</p>;
   }
 
-  return (
-    <div className="space-y-4">
-      <div>
+  /* A ORDEM DOS DOIS QUADROS DEPENDE DA PERGUNTA QUE O FILTRO FEZ.
+     Com um ano escolhido, a pergunta é "como foi ESTE ano" — mês a mês lidera.
+     Em "Todos", a pergunta é "como este cliente se comporta ao longo do tempo",
+     e aí quem lidera é o ANO A ANO: é o quadro que mostra o cliente que cresceu,
+     o que encolheu e o que sumiu. Abrir em "Todos" no mês a mês de um ano só
+     responde uma pergunta que ninguém fez — e ainda esconde os outros anos
+     abaixo da dobra do painel. */
+  const todosOsAnos = !anoPadrao;
+
+  const quadroMeses = (
+    <div>
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
           <span className="font-display text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Mês a mês
+            Mês a mês{todosOsAnos ? ` de ${ano}` : ""}
           </span>
           {/* O filtro do topo em pílulas é o mesmo de toda a casa
               (components/lista.jsx) — desenhar outro aqui faria a mesma
@@ -520,8 +581,11 @@ export function ComportamentoNoTempo({ itens, anoPadrao, um, varios }) {
             teto={tetoMes}
           />
         ))}
-      </div>
-      <div>
+    </div>
+  );
+
+  const quadroAnos = (
+    <div>
         <span className="font-display text-xs font-semibold uppercase tracking-wide text-slate-400">
           Ano a ano — histórico completo
         </span>
@@ -537,7 +601,13 @@ export function ComportamentoNoTempo({ itens, anoPadrao, um, varios }) {
             />
           ))}
         </div>
-      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {todosOsAnos ? quadroAnos : quadroMeses}
+      {todosOsAnos ? quadroMeses : quadroAnos}
       {anos.semData.quantidade > 0 && (
         <p className="text-[11px] text-slate-400">
           {plural(anos.semData.quantidade, "venda sem data ficou", "vendas sem data ficaram")} fora destes
