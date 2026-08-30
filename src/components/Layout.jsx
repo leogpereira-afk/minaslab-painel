@@ -5,6 +5,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clsx } from "clsx";
 import {
+  BarChart3,
   CalendarDays,
   CalendarCheck,
   Clock,
@@ -41,6 +42,7 @@ const MODULOS = [
   { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users },
   { id: "ponto", rotulo: "Ponto", caminho: "/ponto", icone: Clock },
   { id: "financas", rotulo: "Finanças", caminho: "/financas", icone: Wallet },
+  { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3 },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
 
