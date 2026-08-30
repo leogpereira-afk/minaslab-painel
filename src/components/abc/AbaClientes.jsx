@@ -44,6 +44,7 @@ import {
   CabecalhoDoPapel,
   CartoesDaCurva,
   ComportamentoNoTempo,
+  useRolarAoAbrir,
   SeloClasse,
   SemVenda,
   frasesDoCorte,
@@ -332,7 +333,11 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
     const f = FAIXAS.find((x) => x.id === classeVista) || faixaDaClasse(classeVista);
     return f && f.membros.length > 1 ? f.id : null;
   });
-  const [secaoAberta, alternarSecao] = useSecoes(K_SECOES, SECOES_PADRAO);
+  const [secaoAberta, alternarSecao, abrirSecao] = useSecoes(K_SECOES, SECOES_PADRAO);
+  /* O quadro do detalhe nasce depois de um ranking de dezenas de linhas —
+     sem isto ele abriria fora da dobra e o clique pareceria não ter feito
+     nada. Ver useRolarAoAbrir em comum.jsx. */
+  const alvoDoDetalhe = useRolarAoAbrir(aberto);
 
   useEffect(() => {
     let vivo = true;
@@ -704,7 +709,15 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
                    Tingir também a barra e o valor pintaria a lista inteira, e
                    tom em tudo é tom em nada. */
                 aberta={aberto === c.chave}
-                aoAbrir={() => setAberto((x) => (x === c.chave ? null : c.chave))}
+                /* Clicar no cliente PEDE o detalhe: além de escolher a linha,
+                   garante que o quadro esteja aberto. Se ele estivesse
+                   recolhido (escolha guardada no aparelho), o clique
+                   renderizaria um quadro fechado e nada apareceria. */
+                aoAbrir={() => {
+                  const proximo = aberto === c.chave ? null : c.chave;
+                  setAberto(proximo);
+                  if (proximo) abrirSecao("cliente");
+                }}
               />
             ))}
           </div>
@@ -734,6 +747,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
       </Secao>
 
       {linhaAberta && detalhe && (
+        <div ref={alvoDoDetalhe}>
         <Secao
           titulo={linhaAberta.rotulo}
           sub={`${linhaAberta.posicao}º da curva · classe ${linhaAberta.classe} · ${moedaCheia(
@@ -771,6 +785,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
             }}
           />
         </Secao>
+        </div>
       )}
 
       {(grupos.length > 0 || editavel) && (
