@@ -11,7 +11,7 @@
 // depois das 21h no Brasil o UTC ja virou amanha e o evento nasceria um dia
 // a frente.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ymdLocal, MESES_LONGOS } from "../lib/format.js";
@@ -26,7 +26,7 @@ const PONTO = {
 
 const DIAS_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
-export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEscolherDia }) {
+export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEscolherDia, aoMudarMes }) {
   const hoje = ymdLocal(new Date());
   // O mes exibido e estado PROPRIO: navegar o calendario nao mexe no dia
   // escolhido pela tela.
@@ -44,6 +44,18 @@ export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEs
     const d = new Date(ano, mes - 1 + delta, 1);
     setAncora(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   };
+
+  /* AVISA QUAL MÊS ESTÁ NA TELA. O mês continua sendo estado desta grade —
+     quem navega o calendário não mexe no dia escolhido pela página. Mas há
+     evento que só EXISTE depois de se saber o ano: aniversário se repete todo
+     ano, e alguém tem de gerar a ocorrência de 2029 quando o dedo chega em
+     2029. Sem este aviso, navegar para longe apagaria os aniversários da grade
+     em silêncio — e sumiço silencioso se lê como sistema quebrado.
+
+     `aoMudarMes` é opcional: quem não passa continua com a grade de sempre. */
+  useEffect(() => {
+    aoMudarMes?.(ancora);
+  }, [ancora, aoMudarMes]);
 
   const celulas = [];
   for (let i = 0; i < comecaEm; i++) celulas.push(null);
