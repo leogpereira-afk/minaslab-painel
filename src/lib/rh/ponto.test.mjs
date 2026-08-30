@@ -35,9 +35,11 @@ import {
   minutosDaDuracao,
   minutosDoDia,
   minutosEntre,
+  minutosNormais,
   minutosPrevistosDoDia,
   minutosPrevistosDoMes,
   minutosTrabalhados,
+  normaisDoDia,
   normalizarJornada,
   origemDoLancamento,
   DIVISOR_MENSAL_PADRAO,
@@ -59,6 +61,10 @@ const QUARTA = "2026-08-19";
 const SEXTA = "2026-08-21";
 const SABADO = "2026-08-22";
 const DOMINGO = "2026-08-23";
+const SEGUNDA_SEGUINTE = "2026-08-24";
+// A sexta do caso real da Ana, o dia em que o Jibble abriu a composição da
+// folha na frente do dono: Normais 8h00 + Horas extras diárias 1h15 = 9h15.
+const SEXTA_ANA = "2026-08-28";
 
 // ---- leitura da duração digitada -------------------------------------------
 
@@ -642,6 +648,151 @@ test("apurarCompetencia: mês sem batida nenhuma devolve null, não zero hora", 
   assert.equal(r.trabalhadoMin, null);
   assert.equal(r.extrasMin, null);
   assert.equal(r.atrasosMin, null);
+});
+
+// ---- as normais, e a folha que já contém a extra ---------------------------
+
+test("normaisDoDia: o caso real da Ana — folha 9h15 é normais 8h00 + extra 1h15", () => {
+  // 28/08/2026, uma sexta. O bloco "Horas de folha de pagamento" do Jibble
+  // abriu e mostrou DO QUE a folha é feita: Normais 8h00 + Horas extras
+  // diárias 1h15 = TOTAL DA FOLHA 9h15. As 8h00 são exatamente o previsto da
+  // sexta na escala da casa — o 1h15 vem POR CIMA, não ao lado.
+  const dia = { data: SEXTA_ANA, trabalhadoMin: 555, extraMin: 75, extraDobroMin: 0 };
+  const n = normaisDoDia(dia, JORNADA_PADRAO);
+  assert.equal(n.fonte, "relogio");
+  assert.equal(n.folhaMin, 555); // 9h15, o payrollHours que a ponte gravou
+  assert.equal(n.extraMin, 75); // 1h15
+  assert.equal(n.normaisMin, 480); // 8h00
+  assert.equal(n.previstoMin, 480); // e a normal fecha com o previsto do dia
+  assert.equal(n.extraMaiorQueFolha, false);
+  // A conta escrita é a conta feita: a folha é a soma das duas parcelas.
+  assert.equal(n.normaisMin + n.extraMin + n.extraDobroMin, n.folhaMin);
+  assert.equal(minutosNormais(dia, JORNADA_PADRAO), 480);
+});
+
+test("normaisDoDia: a dobra também sai de DENTRO da folha, não por fora", () => {
+  // Domingo inteiro em dobra: a folha do dia é 4h e as 4h são todas extra.
+  const n = normaisDoDia(
+    { data: DOMINGO, trabalhadoMin: 240, extraMin: 0, extraDobroMin: 240 },
+    JORNADA_PADRAO
+  );
+  assert.equal(n.normaisMin, 0); // e este zero é medida: não houve hora comum
+  assert.equal(n.extraDobroMin, 240);
+  assert.equal(n.normaisMin + n.extraMin + n.extraDobroMin, n.folhaMin);
+});
+
+test("normaisDoDia: extra maior que a folha vira 0 COM SINALIZAÇÃO, nunca negativo", () => {
+  // Dado torto (correção pela metade, importação antiga). Normal negativa aqui
+  // viraria desconto inventado na folha; zero calado esconderia o defeito.
+  const dia = { data: SEGUNDA, trabalhadoMin: 480, extraMin: 600, extraDobroMin: 0 };
+  const n = normaisDoDia(dia, JORNADA_PADRAO);
+  assert.equal(n.normaisMin, 0);
+  assert.equal(n.extraMaiorQueFolha, true);
+
+  const r = apurarCompetencia([dia], JORNADA_PADRAO);
+  assert.equal(r.normaisMin, 0);
+  assert.equal(r.folhaMin, 480);
+  assert.equal(r.diasExtraMaiorQueFolha, 1); // o mês conta o dia torto e diz
+});
+
+test("normaisDoDia: dia EM ABERTO não tem composição — null, e não 0 hora normal", () => {
+  // O PT0S do Jibble grava trabalhadoMin 0 no dia que não terminou.
+  const aberto = { data: SEGUNDA, trabalhadoMin: 0, emAberto: true, entrada: "08:00", saida: "", extraMin: 30 };
+  assert.equal(normaisDoDia(aberto, JORNADA_PADRAO), null);
+  assert.equal(minutosNormais(aberto, JORNADA_PADRAO), null);
+
+  const r = apurarCompetencia([aberto], JORNADA_PADRAO);
+  assert.equal(r.diasEmAberto, 1);
+  assert.equal(r.normaisMin, null); // mês sem nenhuma batida fechada
+  assert.equal(r.folhaMin, null);
+});
+
+test("normaisDoDia: dia à mão — a normal é o previsto, o que passou é excedente", () => {
+  const passou = normaisDoDia({ data: SEGUNDA, trabalhadoMin: 600 }, JORNADA_PADRAO);
+  assert.equal(passou.fonte, "derivado");
+  assert.equal(passou.normaisMin, 540); // as 9h da segunda
+  assert.equal(passou.extraMin, 60);
+  assert.equal(passou.extraDobroMin, null); // a conta derivada não separa a dobra
+
+  const curto = normaisDoDia({ data: SEGUNDA, trabalhadoMin: 480 }, JORNADA_PADRAO);
+  assert.equal(curto.normaisMin, 480); // dia curto é normal inteira...
+  assert.equal(curto.extraMin, 0); // ...e excedente nenhum
+
+  const sabado = normaisDoDia({ data: SABADO, trabalhadoMin: 240 }, JORNADA_PADRAO);
+  assert.equal(sabado.normaisMin, 0); // a escala não prevê o sábado: tudo é excedente
+  assert.equal(sabado.extraMin, 240);
+});
+
+test("normaisDoDia: sem data legível não há previsto — o total inteiro é normal", () => {
+  const n = normaisDoDia({ trabalhadoMin: 600 }, JORNADA_PADRAO);
+  assert.equal(n.fonte, "sem-regua");
+  assert.equal(n.normaisMin, 600); // não existe evidência de excedente nenhum
+  assert.equal(n.extraMin, null); // e "não apurei" não vira zero
+  assert.equal(n.previstoMin, null);
+
+  const r = apurarCompetencia([{ trabalhadoMin: 600 }], JORNADA_PADRAO);
+  assert.equal(r.folhaMin, 600);
+  assert.equal(r.normaisMin, 600);
+  assert.equal(r.diasSemSaldo, 1); // e a tela avisa que a sugestão saiu incompleta
+  assert.equal(r.extrasMin, null);
+  assert.equal(r.atrasosMin, null);
+});
+
+test("A FOLHA JÁ CONTÉM AS EXTRAS — somar folha + extra paga a hora duas vezes (TRAVA)", () => {
+  // Se um dia a ponte passar a gravar em `trabalhadoMin` só as horas normais,
+  // este teste cai — e é PARA cair: a tela inteira, e a comparação com o
+  // previsto do mês, estão montadas em cima desta regra.
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 600, extraMin: 60, extraDobroMin: 0 }, // 9h + 1h
+      { data: DOMINGO, trabalhadoMin: 240, extraMin: 0, extraDobroMin: 240 }, // domingo em dobra
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.folhaMin, 840);
+  assert.equal(r.folhaMin, r.trabalhadoMin); // dois nomes, UMA variável
+  assert.equal(r.extrasMin, 60);
+  assert.equal(r.extrasDobroMin, 240);
+  assert.equal(r.normaisMin, 540); // 540 da segunda + 0 do domingo
+  assert.equal(r.diasExtraMaiorQueFolha, 0);
+  // A identidade: a folha É as normais mais as extras.
+  assert.equal(r.normaisMin + r.extrasMin + r.extrasDobroMin, r.folhaMin);
+  // E o tamanho do estrago da leitura errada, para ninguém achar que é detalhe:
+  const leituraErrada = r.folhaMin + r.extrasMin + r.extrasDobroMin;
+  assert.equal(leituraErrada - r.folhaMin, 300); // 5h de hora que nunca existiu
+});
+
+test("apurarCompetencia: quem se compara com o previsto são as NORMAIS", () => {
+  // O caso da VICTORIA em miniatura: duas segundas (9h previstas cada), 9h de
+  // folha em cada uma — mas com 1h de extra DENTRO. Pela folha a jornada
+  // estaria cumprida; pelas normais faltaram 2h.
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 540, extraMin: 60, extraDobroMin: 0 },
+      { data: SEGUNDA_SEGUINTE, trabalhadoMin: 540, extraMin: 60, extraDobroMin: 0 },
+    ],
+    JORNADA_PADRAO
+  );
+  const previsto = minutosPrevistosDoDia(SEGUNDA, JORNADA_PADRAO) * 2; // 1080
+  assert.equal(r.folhaMin, 1080);
+  assert.equal(r.folhaMin - previsto, 0); // pela folha: jornada cumprida
+  assert.equal(r.normaisMin, 960);
+  assert.equal(previsto - r.normaisMin, 120); // pelas normais: faltaram 2h
+});
+
+test("apurarCompetencia: o atraso derivado é o previsto menos as NORMAIS", () => {
+  const r = apurarCompetencia(
+    [
+      { data: SEGUNDA, trabalhadoMin: 480 }, // −60 sobre as 9h
+      { data: TERCA, trabalhadoMin: 600 }, // +60
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.atrasosMin, 60); // a extra de terça não apaga o atraso da segunda
+  assert.equal(r.extrasMin, 60);
+  assert.equal(r.normaisMin, 1020); // 480 + 540
+  assert.equal(r.folhaMin, 1080);
+  assert.equal(r.normaisMin + r.extrasMin, r.folhaMin);
 });
 
 // ---- o arredondamento passo a passo ----------------------------------------

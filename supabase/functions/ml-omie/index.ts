@@ -310,14 +310,36 @@ Deno.serve(async (req) => {
           return { registros: numero(r.nTotRegistros), paginas: numero(r.nTotPaginas), amostraSoma: soma };
         });
 
+        /* AS ORDENS DE SERVIÇO: o nome do filtro de data varia entre as versões
+           da API, e chutar custou uma rodada ("Tag [DDTPREVISAOATE] não faz
+           parte da estrutura"). Em vez de apostar de novo, PERGUNTAMOS: sem
+           filtro nenhum primeiro (isso já responde "existe OS?"), e depois cada
+           nome candidato, reportando qual foi aceito. */
         await tentar("ordens_de_servico", async () => {
           const r = await omie("servicos/os", "ListarOS", {
             pagina: 1, registros_por_pagina: 50, apenas_importado_api: "N",
-            dDtPrevisaoDe: isoParaBR(de), dDtPrevisaoAte: isoParaBR(ate),
           });
           const lista = (r.osCadastro ?? []) as Record<string, any>[];
-          return { registros: numero(r.nTotRegistros), paginas: numero(r.nTotPaginas), amostra: lista.length };
+          return {
+            registros: numero(r.nTotRegistros),
+            paginas: numero(r.nTotPaginas),
+            amostra: lista.length ? lista[0] : null,
+          };
         });
+
+        for (const par of [
+          ["dDtPrevisaoInicial", "dDtPrevisaoFinal"],
+          ["dDtInicial", "dDtFinal"],
+          ["dDtFaturamentoInicial", "dDtFaturamentoFinal"],
+        ]) {
+          await tentar(`os_filtro_${par[0]}`, async () => {
+            const r = await omie("servicos/os", "ListarOS", {
+              pagina: 1, registros_por_pagina: 5, apenas_importado_api: "N",
+              [par[0]]: isoParaBR(de), [par[1]]: isoParaBR(ate),
+            });
+            return { registros: numero(r.nTotRegistros), paginas: numero(r.nTotPaginas), aceito: true };
+          });
+        }
 
         await tentar("contas_a_receber", async () => {
           const r = await omie("financas/contareceber", "ListarContasReceber", {
@@ -326,7 +348,16 @@ Deno.serve(async (req) => {
           });
           const lista = (r.conta_receber_cadastro ?? []) as Record<string, any>[];
           const soma = lista.reduce((s, t) => s + numero(t.valor_documento), 0);
-          return { registros: numero(r.total_de_registros), paginas: numero(r.total_de_paginas), amostraSoma: soma };
+          /* A AMOSTRA CRUA importa: sem NF e sem O.S., a conta a receber é a
+             ÚNICA fonte de faturamento desta casa — e o que ela carrega decide
+             o que a curva consegue responder (cliente sim; produto, só se
+             houver categoria ou descrição). */
+          return {
+            registros: numero(r.total_de_registros),
+            paginas: numero(r.total_de_paginas),
+            amostraSoma: soma,
+            amostra: lista.length ? lista[0] : null,
+          };
         });
 
         await tentar("clientes", async () => {
@@ -334,6 +365,37 @@ Deno.serve(async (req) => {
             pagina: 1, registros_por_pagina: 50,
           });
           return { registros: numero(r.total_de_registros), paginas: numero(r.total_de_paginas) };
+        });
+
+        /* NFS-e E CATEGORIAS — o título a receber trouxe
+           `numero_documento_fiscal` e `codigo_categoria`, então as duas coisas
+           existem nesta casa: a nota é de SERVIÇO (a de produto deu zero) e a
+           categoria é o que mais perto chega de "o que foi vendido". Perguntar
+           antes de desenhar a tela: sem NFS-e, a curva de produtos não tem do
+           que ser feita, e é melhor a tela dizer isso do que fingir. */
+        await tentar("nfse_servico", async () => {
+          const r = await omie("servicos/nfse", "ListarNFSe", {
+            nPagina: 1, nRegPorPagina: 20,
+            cCodIntServico: "", dEmiInicial: isoParaBR(de), dEmiFinal: isoParaBR(ate),
+          });
+          const lista = (r.nfseEncontradas ?? r.cadastros ?? []) as Record<string, any>[];
+          return {
+            registros: numero(r.nTotRegistros) || lista.length,
+            paginas: numero(r.nTotPaginas),
+            amostra: lista.length ? lista[0] : null,
+          };
+        });
+
+        await tentar("categorias", async () => {
+          const r = await omie("geral/categorias", "ListarCategorias", {
+            pagina: 1, registros_por_pagina: 50,
+          });
+          const lista = (r.categoria_cadastro ?? []) as Record<string, any>[];
+          return {
+            registros: numero(r.total_de_registros),
+            paginas: numero(r.total_de_paginas),
+            amostra: lista.length ? lista[0] : null,
+          };
         });
 
         return resp({ periodo: { de, ate }, fontes });
@@ -399,6 +461,29 @@ Deno.serve(async (req) => {
             inativo: String(c.inativo ?? "N").toUpperCase() === "S",
           }));
           const gravados = await gravarVarios("fin_clientes", lista);
+          const paginas = numero(r.total_de_paginas) || 1;
+          return resp({ gravados, lidos: lista.length, pagina, paginas, proxima: pagina < paginas ? pagina + 1 : null });
+        }
+
+        /* AS CATEGORIAS dão NOME ao código que vem no título (1.01.02 → o que
+           é). Medido em 29/08/2026: esta casa não emite NF de produto (0) nem
+           usa ordem de serviço (0) — o faturamento inteiro está em conta a
+           receber, e a categoria é o que mais perto chega de "o que foi
+           vendido". Sem ela, a curva por serviço seria uma lista de códigos. */
+        if (fonte === "categorias") {
+          const r = await omie("geral/categorias", "ListarCategorias", {
+            pagina, registros_por_pagina: 100,
+          });
+          if (r.vazio) return resp({ gravados: 0, pagina, paginas: 0, proxima: null, vazio: true });
+          const lista = ((r.categoria_cadastro ?? []) as Record<string, any>[]).map((c) => ({
+            id: `cat_${c.codigo}`,
+            codigo: String(c.codigo ?? ""),
+            descricao: String(c.descricao ?? c.descricao_padrao ?? ""),
+            natureza: String(c.natureza ?? ""),
+            receita: String(c.conta_receita ?? "") === "S",
+            inativa: String(c.conta_inativa ?? "N") === "S",
+          }));
+          const gravados = await gravarVarios("fin_categorias", lista);
           const paginas = numero(r.total_de_paginas) || 1;
           return resp({ gravados, lidos: lista.length, pagina, paginas, proxima: pagina < paginas ? pagina + 1 : null });
         }

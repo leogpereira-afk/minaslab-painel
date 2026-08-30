@@ -32,6 +32,15 @@ jobs:
       # npm ci falha de propósito se o package-lock não bater com o package.json
       # — inconsistência que já deixou site congelado em deploy velho sem aviso.
       - run: npm ci
+
+      # O PORTÃO FICA ANTES DO DEPLOY, NÃO DEPOIS. Esta casa tem 13 arquivos de
+      # teste que, até 30/08/2026, não rodavam em lugar nenhum: a máquina do Léo
+      # não tem node, e o CI só fazia build. Teste que ninguém roda é comentário
+      # com sintaxe. Aqui lint e teste REPROVAM o deploy — o site velho continua
+      # no ar, que é melhor que um site novo quebrado.
+      - run: npm run lint
+      - run: npm test
+
       - run: npm run build
         env:
           BASE_PATH: /minaslab-painel/

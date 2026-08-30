@@ -44,9 +44,13 @@
 //     Só "falta" desconta (1/30 do salário). Ver TIPOS_AUSENCIA em lib/rh/ponto.js.
 //     Remover a ausência é gravar `ausencia: null` — lançamento errado tem de
 //     ter volta, senão o RH aprende a não lançar.
-//   OS TRÊS NÚMEROS DO DIA NÃO FECHAM POR SUBTRAÇÃO, e a tela nunca os escreve
-//   como se fechassem: 17/08 teve 10h16 de crachá, 1h04 de intervalo e 8h12
-//   para a folha. Quem concilia é a escala, e quem apura a escala é o relógio.
+//   OS TRÊS NÚMEROS DO DIA NÃO FECHAM POR SUBTRAÇÃO: 17/08 teve 10h16 de
+//   crachá, 1h04 de intervalo e 8h12 para a folha. Quem concilia é a escala, e
+//   quem apura a escala é o relógio. O QUE SOBRA (1h00, ali) É A DEDUÇÃO QUE O
+//   RELÓGIO APLICA, configurada na escala de cada pessoa — a ponte ainda não
+//   importa essa configuração, então a tela mostra a diferença MEDIDA entre os
+//   dois números e a chama pelo nome, em vez de deixá-la como mistério. Ver
+//   `cascataDoDia`.
 //   Esta tela ACRESCENTA, ao corrigir ou lançar à mão:
 //     pessoaId          — o id da ficha (a ponte só conhece o jibbleId)
 //     origem: "manual"  — dia que nasceu aqui, não no relógio
@@ -124,6 +128,16 @@
 //   de um dia que o relógio já apurou (respeitando a escala) cria um segundo
 //   resultado, e o painel passa a divergir do que a própria pessoa vê no
 //   aplicativo do Jibble. A conta derivada só vale para o dia lançado à mão.
+// - A FOLHA JÁ TEM AS EXTRAS DENTRO, e a tela mostra a CASCATA INTEIRA, na
+//   ordem do relógio: registradas − intervalo = trabalhadas − diferença da
+//   escala = folha, e a folha aberta em normais + extras. Descoberto em
+//   29/08/2026 na tela "Registros de Horário" do Jibble, com o dono ao lado:
+//   `payrollHours` — o `trabalhadoMin` daqui — é normais MAIS extras. Mostrar
+//   "Horas da folha 177h30" ao lado de "Extra +50% 14h23" fazia somar duas
+//   vezes a mesma hora; e comparar as 177h30 com as 193h00 previstas escondia
+//   metade do déficit, porque o previsto é de hora NORMAL (no janeiro da
+//   Victoria as normais foram ~163h). QUEM SE COMPARA COM O PREVISTO SÃO AS
+//   NORMAIS, e a tela diz isso por escrito embaixo da cascata.
 // - Dia sem batida NÃO é falta e NÃO é zero hora: é "sem registro". Falta é
 //   afirmação trabalhista (pode ser feriado, folga ou atestado) e quem afirma é
 //   o RH, LANÇANDO a ausência no dia. O campo Faltas do fechamento só é
@@ -531,10 +545,10 @@ function fraseDaDiferenca(dif) {
  * "10h16 no crachá · 1h04 de intervalo · 8h12 para a folha".
  *
  * Eles não fecham por subtração (10h16 − 1h04 dá 9h12, e para a folha foram
- * 8h12): quem concilia é a ESCALA da pessoa, e quem apura a escala é o
- * relógio. Escrever "−" entre eles seria mostrar uma conta que o sistema não
- * faz — e conta que não fecha na calculadora de quem lê é o começo da volta
- * para a planilha.
+ * 8h12): quem concilia é a ESCALA da pessoa, e quem apura a escala é o relógio.
+ * O que sobra NÃO fica calado — sai na linha seguinte, com o nome que tem
+ * ("diferença da escala"), por `cascataDoDia`. Escrever o "−" aqui dentro é que
+ * seria mentira: a conta do meio não é a subtração, é a dedução do relógio.
  */
 function fatosDoDia(d, min) {
   const partes = [];
@@ -550,6 +564,117 @@ function fatosDoDia(d, min) {
   // Dia sem total é SEM TOTAL. Zero aqui vira desconto na folha de alguém.
   partes.push(min === null ? "sem total para a folha" : `${duracaoTexto(min)} para a folha`);
   return partes;
+}
+
+/* A EXPLICAÇÃO DA DIFERENÇA, num lugar só — a linha do dia e a cascata do mês
+   mostram o MESMO número e têm de dizer a MESMA coisa sobre ele. */
+const DICA_DIFERENCA_ESCALA =
+  "O crachá menos o intervalo não dá o que foi para a folha porque o relógio aplica deduções próprias, " +
+  "configuradas na escala de cada pessoa (1h por dia, no que o relógio mostrou em 29/08/2026). A ponte ainda " +
+  "não importa essa configuração: o painel mostra a diferença MEDIDA entre os dois números, e não a regra que " +
+  "a produziu.";
+
+/**
+ * A CASCATA DE UM DIA, na ordem em que o relógio a monta (descoberta de
+ * 29/08/2026, na tela "Registros de Horário" do Jibble):
+ *
+ *       Horas registradas ....... 10h16   (o crachá aberto)
+ *     − Intervalo não pago ......  1h04
+ *     = Horas trabalhadas .......  9h12
+ *     − Diferença da escala .....  1h00   (a dedução configurada no relógio)
+ *     = HORAS DA FOLHA ..........  8h12   ← é isto que a ponte grava
+ *
+ * `null` quando falta qualquer um dos três lados medidos: explicar a diferença
+ * exige os três, e diferença calculada com um lado ausente valendo 0 seria uma
+ * dedução inventada. Dia lançado à mão fecha com diferença ZERO — ali a folha é
+ * mesmo (saída − entrada) − intervalo —, e é por isso que a linha da diferença
+ * só aparece quando ela existe.
+ *
+ * `min` entra por fora porque quem chama já o tem calculado: dois
+ * `minutosTrabalhados` no mesmo dia é o começo de dois resultados diferentes.
+ */
+function cascataDoDia(d, min) {
+  // O crachá: o que o relógio mediu de porta aberta; no dia lançado à mão, o
+  // intervalo entre as duas batidas. A MESMA leitura de `fatosDoDia`.
+  const registradasMin = numOuNulo(d?.trackedMin) ?? minutosEntre(d?.entrada, d?.saida);
+  const pausaMin = numOuNulo(d?.pausaMin);
+  const folhaMin = min === undefined ? minutosTrabalhados(d) : min;
+  if (registradasMin === null || pausaMin === null || folhaMin === null) return null;
+  const trabalhadasMin = registradasMin - pausaMin;
+  return { registradasMin, pausaMin, trabalhadasMin, folhaMin, diferencaMin: trabalhadasMin - folhaMin };
+}
+
+/** A diferença da escala em palavras (ou ""). Zero não é notícia. */
+function textoDaDiferencaDaEscala(dif) {
+  if (dif === null || dif === undefined || dif === 0) return "";
+  return dif > 0
+    ? `${duracaoTexto(dif)} de diferença da escala (dedução configurada no relógio)`
+    : `${duracaoTexto(-dif)} a mais que o crachá menos o intervalo (diferença da escala)`;
+}
+
+/**
+ * A CASCATA DO MÊS: a soma, dia a dia, da cascata de cada dia.
+ *
+ * Percorre os dias com a MESMA régua de `apurarCompetencia` — dia de ausência
+ * pura fica fora (é dia explicado, não dia de trabalho) e dia em aberto também
+ * (dia que não terminou não tem total). Assim o "= Horas da folha" desta conta
+ * é o mesmo `folhaMin` do mês, e não um segundo total parecido.
+ *
+ * O DIA QUE NÃO TEM AS TRÊS MEDIDAS NÃO ENTRA, E SAI CONTADO. Somar só os lados
+ * que existem faria um total de "horas registradas" menor do que o mês teve, com
+ * cara de total do mês — e é assim que uma tela passa a mentir baixinho. Ele sai
+ * em `diasDeFora` e as horas dele em `folhaDeForaMin`, para a tela dizer quanto
+ * da folha ficou fora das linhas de cima.
+ *
+ * `null` quando não houve nenhum dia de trabalho no mês: aí não há cascata para
+ * mostrar — não é uma cascata de zeros.
+ */
+function cascataDoMes(dias) {
+  let registradasMin = 0;
+  let pausaMin = 0;
+  let trabalhadasMin = 0;
+  let folhaMin = 0;
+  let diferencaMin = 0;
+  let diasNaCascata = 0;
+  let diasDeFora = 0;
+  let folhaDeForaMin = 0;
+
+  for (const d of dias || []) {
+    const min = minutosTrabalhados(d);
+    const ausencia = ausenciaDoDia(d);
+    // Dia de ausência PURA é dia explicado: fica fora, como na apuração.
+    if (ausencia && (min === null || min === 0)) continue;
+    // Dia em aberto não tem total — e sem total não há cascata.
+    if (min === null) continue;
+
+    const c = cascataDoDia(d, min);
+    if (!c) {
+      diasDeFora += 1;
+      folhaDeForaMin += min;
+      continue;
+    }
+    diasNaCascata += 1;
+    registradasMin += c.registradasMin;
+    pausaMin += c.pausaMin;
+    trabalhadasMin += c.trabalhadasMin;
+    folhaMin += c.folhaMin;
+    diferencaMin += c.diferencaMin;
+  }
+
+  if (diasNaCascata === 0 && diasDeFora === 0) return null;
+  // Sem nenhum dia completo, os números não existem — e não existir é travessão,
+  // nunca zero. O que sobra é a contagem do que ficou de fora, que a tela diz.
+  const vazia = diasNaCascata === 0;
+  return {
+    diasNaCascata,
+    diasDeFora,
+    folhaDeForaMin,
+    registradasMin: vazia ? null : registradasMin,
+    pausaMin: vazia ? null : pausaMin,
+    trabalhadasMin: vazia ? null : trabalhadasMin,
+    folhaMin: vazia ? null : folhaMin,
+    diferencaMin: vazia ? null : diferencaMin,
+  };
 }
 
 /** A hora extra que o relógio já apurou no dia, em palavras (ou ""). */
@@ -655,8 +780,156 @@ function tomDoFechamento(l) {
   return l.reg.fechado ? "ok" : "brand";
 }
 
+/* UMA LINHA DA CASCATA: rótulo à esquerda, minutos à direita, TRAVESSÃO onde
+   não há medida. Fora dos componentes de propósito — componente declarado
+   dentro de outro remonta a cada render. */
+function LinhaCascata({ rotulo, nota, valor, forte, recuada, topo, dica }) {
+  return (
+    <div
+      className={clsx("flex items-baseline gap-2", topo && "mt-1 border-t pt-1", recuada && "pl-4")}
+      style={topo ? { borderColor: "var(--hairline)" } : undefined}
+      title={dica}
+    >
+      <span className={clsx("min-w-0 flex-1", forte ? "font-medium text-slate-700" : "text-slate-500")}>
+        {rotulo}
+        {nota && <span className="block text-[11px] text-slate-400">{nota}</span>}
+      </span>
+      <span className={clsx("shrink-0 tnum", forte ? "font-semibold text-slate-900" : "text-slate-600")}>
+        {valor === null || valor === undefined ? "—" : duracaoTexto(valor)}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A CASCATA DO MÊS DE UMA PESSOA, na ordem em que o relógio a monta — e é essa
+ * ordem que responde à pergunta que ninguém conseguia responder olhando a tela:
+ * por que o crachá menos o intervalo não dá o que foi para a folha.
+ *
+ *       Horas registradas ........ 50h37
+ *     − Intervalo não pago .......  4h25
+ *     = Horas trabalhadas ........ 46h13
+ *     − Diferença da escala ......  5h00
+ *     = HORAS DA FOLHA ........... 41h13
+ *          Normais ............... 38h00
+ *          Extra +50% ............  2h00
+ *          Extra +100% ...........  1h13
+ *
+ * DUAS COISAS QUE ESTE QUADRO EXISTE PARA IMPEDIR:
+ *
+ *  - somar a folha com as extras. Elas JÁ ESTÃO dentro dela — por isso as duas
+ *    faixas aparecem RECUADAS embaixo da folha, e não ao lado dela;
+ *  - comparar a folha com o previsto do mês. O previsto é de hora NORMAL, e a
+ *    folha traz a extra dentro: no janeiro da Victoria isso mostrava 177h30 de
+ *    193h00 quando as normais eram ~163h, escondendo metade do déficit. A frase
+ *    embaixo da cascata diz, por escrito, qual linha se compara com o previsto.
+ *
+ * A DEDUÇÃO NÃO É INVENTADA AQUI. A ponte não importa a configuração de escala
+ * do relógio, então esta linha não afirma "1h por dia": ela mostra a DIFERENÇA
+ * MEDIDA entre o crachá menos o intervalo e o que foi para a folha, com o nome
+ * do que a produziu. Medida com nome vale mais que regra chutada — e muito mais
+ * que a diferença calada de antes.
+ */
+function BlocoCascata({ cascata, apuracao, previstoMesMin, jornadaEmPalavras }) {
+  if (!cascata) return null;
+  const dif = cascata.diferencaMin;
+  /* A folha da cascata e a folha do mês só divergem quando algum dia ficou de
+     fora por falta de medida. Iguais (o caso normal), a composição pendura
+     direto na linha da folha; diferentes, a folha do mês ganha linha própria e
+     a diferença sai dita — recuar normais e extras sob um total que não é o
+     delas faria a soma parecer errada sem dizer por quê. */
+  const fechaComOMes = cascata.folhaMin !== null && cascata.folhaMin === apuracao.folhaMin;
+  const previsto = numOuNulo(previstoMesMin);
+  const ressalvas = [
+    apuracao.ausenciasTotal > 0
+      ? plural(apuracao.ausenciasTotal, "dia de ausência lançada", "dias de ausência lançada")
+      : "",
+    apuracao.diasEmAberto > 0 ? plural(apuracao.diasEmAberto, "dia sem total", "dias sem total") : "",
+  ].filter(Boolean);
+
+  return (
+    <div className="mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--hairline)" }}>
+      {/* DE ONDE SAI ESTE QUADRO, dito no título: das BATIDAS do mês. O que
+          alguém lançou no fechamento é outra coisa e mora na conta escrita,
+          logo abaixo — dois números com o mesmo nome e sem procedência é como
+          se troca um pelo outro na hora de montar a folha. */}
+      <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        A cascata do mês{" "}
+        <span className="font-normal normal-case tracking-normal text-slate-400">
+          — o que as batidas somam
+        </span>
+      </p>
+      <LinhaCascata
+        rotulo="Horas registradas"
+        nota="crachá aberto: trabalho, intervalo e deduções, tudo dentro"
+        valor={cascata.registradasMin}
+      />
+      <LinhaCascata rotulo="− Intervalo não pago" valor={cascata.pausaMin} />
+      <LinhaCascata rotulo="= Horas trabalhadas" valor={cascata.trabalhadasMin} topo />
+      {/* A LINHA QUE EXPLICA O MISTÉRIO. Só aparece quando a diferença existe:
+          no mês inteiro lançado à mão ela é zero, e "− 0h00" seria ruído. */}
+      {dif !== null && dif !== 0 && (
+        <LinhaCascata
+          rotulo={
+            dif > 0
+              ? "− diferença da escala (dedução configurada no relógio)"
+              : "+ diferença da escala (o relógio apurou mais que o crachá)"
+          }
+          valor={Math.abs(dif)}
+          dica={DICA_DIFERENCA_ESCALA}
+        />
+      )}
+      <LinhaCascata
+        rotulo="= Horas da folha"
+        nota="as horas extras já estão AQUI DENTRO"
+        valor={cascata.folhaMin}
+        forte
+        topo
+      />
+      {!fechaComOMes && (
+        <LinhaCascata
+          rotulo="Folha do mês inteiro"
+          nota={`com ${plural(cascata.diasDeFora, "dia que ficou", "dias que ficaram")} fora da cascata`}
+          valor={apuracao.folhaMin}
+          forte
+          topo
+        />
+      )}
+      {/* Recuadas: são o DE QUE É FEITA a linha de cima, não parcelas ao lado
+          dela. Faixa que ninguém apurou vai travessão, nunca 0h00. */}
+      <LinhaCascata rotulo="Normais" valor={apuracao.normaisMin} recuada />
+      <LinhaCascata rotulo="Extra +50%" valor={apuracao.extrasMin} recuada />
+      <LinhaCascata rotulo="Extra +100%" valor={apuracao.extrasDobroMin} recuada />
+
+      <p className="mt-1.5 border-t pt-1.5 text-[11px] text-slate-500" style={{ borderColor: "var(--hairline)" }}>
+        Quem se compara com o previsto são as <strong>normais</strong>:{" "}
+        <span className="tnum">{horasOuSemApuracao(apuracao.normaisMin)}</span> contra{" "}
+        <span className="tnum">{previsto === null ? "—" : duracaoTexto(previsto)}</span> previstas no mês
+        {jornadaEmPalavras ? ` (escala: ${jornadaEmPalavras})` : ""}. A folha traz as extras dentro — somar as duas
+        conta a mesma hora duas vezes.
+        {ressalvas.length > 0 && ` O previsto é o do mês inteiro: ${ressalvas.join(" e ")} continuam dentro dele.`}
+      </p>
+
+      {cascata.diasDeFora > 0 && (
+        <p className="mt-1 text-[11px] text-warn-700">
+          {plural(cascata.diasDeFora, "dia ficou", "dias ficaram")} fora da cascata por falta da leitura de crachá ou
+          de intervalo — {horasOuNada(cascata.folhaDeForaMin)} que estão na folha do mês e não aparecem nas linhas de
+          cima. Confira em Batidas.
+        </p>
+      )}
+      {apuracao.diasExtraMaiorQueFolha > 0 && (
+        <p className="mt-1 text-[11px] text-warn-700">
+          {plural(apuracao.diasExtraMaiorQueFolha, "dia veio", "dias vieram")} com hora extra MAIOR que a folha do
+          próprio dia (correção pela metade ou importação antiga). A normal daquele dia entrou como zero, nunca
+          negativa — e o dado torto fica à vista em vez de virar desconto. Confira em Batidas.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function LinhaFechamento({ l, editavel, acoes }) {
-  const { pessoa, reg, conta, apuracao, repetidos, dif, valorFinal, divergente, semSalarioPendente, fonte, temSugestao, jornadaEmPalavras } = l;
+  const { pessoa, reg, conta, apuracao, cascata, previstoMesMin, repetidos, dif, valorFinal, divergente, semSalarioPendente, fonte, temSugestao, jornadaEmPalavras } = l;
   /* A CONTA ESCRITA SÓ EXISTE ONDE EXISTE LANÇAMENTO.
      Sem registro gravado, `conta` é a projeção das sugestões das batidas — e
      imprimi-la aqui punha um "Total: R$ 84,00" em dinheiro na MESMA linha que
@@ -681,7 +954,7 @@ function LinhaFechamento({ l, editavel, acoes }) {
           </span>
           <span className="block truncate text-xs text-slate-400">
             {apuracao.diasComBatida > 0
-              ? `${plural(apuracao.diasComBatida, "dia com batida", "dias com batida")} · ${horasOuNada(apuracao.trabalhadoMin)} no mês` +
+              ? `${plural(apuracao.diasComBatida, "dia com batida", "dias com batida")} · ${horasOuNada(apuracao.folhaMin)} para a folha` +
                 (apuracao.diasEmAberto ? ` · ${plural(apuracao.diasEmAberto, "dia sem total", "dias sem total")}` : "")
               : apuracao.ausenciasTotal > 0
                 ? `sem batida — ${plural(apuracao.ausenciasTotal, "dia explicado", "dias explicados")} por ausência`
@@ -788,6 +1061,16 @@ function LinhaFechamento({ l, editavel, acoes }) {
         </p>
       )}
 
+      {/* A CASCATA DAS HORAS vem antes da conta do dinheiro: é ela que diz o
+          que cada número quer dizer, e é o número mal lido que vira o valor
+          errado embaixo. */}
+      <BlocoCascata
+        cascata={cascata}
+        apuracao={apuracao}
+        previstoMesMin={previstoMesMin}
+        jornadaEmPalavras={jornadaEmPalavras}
+      />
+
       {/* A conta escrita: é ela que faz o número ser conferível na calculadora. */}
       {passos.length > 0 && (
         <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
@@ -863,6 +1146,20 @@ function LinhaBatida({ b, editavel, acoes }) {
   // sem total sem estar em aberto — o relógio mudo, por exemplo.
   const emAberto = d.emAberto === true;
   const extraApurada = textoDaExtraApurada(apuracaoDoRelogio(d));
+  /* QUANTO DUROU O TRECHO — o que o Jibble mostra em cada batida ("06:35
+     Entrada … 5h37m") e o que deixa ver de relance para onde o tempo foi. A
+     ponte traz só a entrada e a saída do dia, então o trecho é UM SÓ: é o
+     trecho único que sai aqui, e não uma sequência inventada de idas e vindas.
+     No dia em que ela trouxer as marcações do meio, cada trecho ganha a sua
+     linha neste mesmo lugar. */
+  const trechoMin = minutosEntre(d.entrada, d.saida);
+  /* A DIFERENÇA entre o crachá menos o intervalo e o que foi para a folha: a
+     dedução que o relógio aplica pela escala. A régua é a MESMA da cascata do
+     mês, inclusive em quem fica de fora — o dia de ausência pura (sem hora
+     trabalhada) não entra lá e não escreve diferença aqui, senão a linha de um
+     dia explicado apareceria anunciando uma dedução de jornada inteira. */
+  const cascataDia = ausencia && (min === null || min === 0) ? null : cascataDoDia(d, min);
+  const difDaEscala = textoDaDiferencaDaEscala(cascataDia ? cascataDia.diferencaMin : null);
   // O que o relógio tinha trazido E APURADO antes de alguém corrigir.
   const carimbo = [];
   if (d.relogioEntrada || d.relogioSaida) carimbo.push(`${d.relogioEntrada || "—"} → ${d.relogioSaida || "—"}`);
@@ -914,10 +1211,22 @@ function LinhaBatida({ b, editavel, acoes }) {
       <span className="min-w-0 shrink-0 basis-72 text-xs tabular-nums text-slate-600">
         <span className="block">
           {d.entrada || "—"} → {d.saida || "—"}
+          {trechoMin !== null && (
+            <span className="text-slate-400" title="quanto durou o trecho entre a batida de entrada e a de saída">
+              {" · "}
+              {duracaoTexto(trechoMin)}
+            </span>
+          )}
         </span>
         {/* Os três números do dia, sem sinal de conta entre eles: eles não
-            fecham por subtração, quem concilia é a escala. */}
+            fecham por subtração, quem concilia é a escala. O que sobra vem
+            logo abaixo, com nome — calado é que ele não fica mais. */}
         <span className="block text-slate-500">{fatosDoDia(d, min).join(" · ")}</span>
+        {difDaEscala && (
+          <span className="block text-slate-500" title={DICA_DIFERENCA_ESCALA}>
+            {difDaEscala}
+          </span>
+        )}
         {extraApurada && <span className="block text-slate-500">{extraApurada}</span>}
         {/* A pontualidade sai SEPARADA do total do dia: são duas réguas (a
             marcação contra a escala, e o trabalhado contra o previsto), e
@@ -2092,6 +2401,11 @@ export default function AbaPonto({
     };
 
     const jornadaEmPalavras = descreverJornada(cfg.jornada);
+    /* O PREVISTO DO MÊS INTEIRO pela escala da casa — a régua com que as horas
+       NORMAIS se comparam. Nunca a folha: a folha traz a extra dentro, e a
+       comparação com ela faz a hora extra tapar justamente o buraco que deveria
+       denunciar. Sai daqui, uma vez só, para as vinte linhas usarem a MESMA. */
+    const previstoMesMin = minutosPrevistosDoMes(competencia, cfg.jornada);
 
     const linhas = visiveis.map((pessoa) => {
       const dias = diasPorPessoa.get(pessoa.id) || [];
@@ -2100,6 +2414,10 @@ export default function AbaPonto({
       // não mais de 44h ÷ 5. A média inventava 48 min de atraso toda sexta e
       // cobrava jornada inteira de quem foi trabalhar no sábado.
       const apuracao = apurarCompetencia(unicos, cfg.jornada);
+      /* A cascata sai dos MESMOS dias da apuração (os únicos, sem o repetido) e
+         com a mesma régua de quem entra na conta: dois conjuntos de dias seria
+         a tela mostrando um total e o fechamento gravando outro. */
+      const cascata = cascataDoMes(unicos);
       const reg = regPorPessoa.get(pessoa.id) || null;
 
       // Registro gravado: manda o CARIMBO dos parâmetros. Sem carimbo (registro
@@ -2175,8 +2493,8 @@ export default function AbaPonto({
       const semSalarioPendente = conta.semSalario && (!!reg || apuracao.diasComBatida > 0);
 
       return {
-        pessoa, dias, repetidos, apuracao, reg, conta, dif, valorFinal, divergente, semSalarioPendente,
-        fonte, temSugestao, jornadaEmPalavras,
+        pessoa, dias, repetidos, apuracao, cascata, previstoMesMin, reg, conta, dif, valorFinal, divergente,
+        semSalarioPendente, fonte, temSugestao, jornadaEmPalavras,
       };
     });
 
@@ -3192,8 +3510,10 @@ export default function AbaPonto({
             lançou um; senão, o que a conta do sistema produziu para o fechamento gravado. A barra compara as
             pessoas desta lista entre si; as duas colunas cinza são as <strong>horas extras</strong> e as{" "}
             <strong>faltas</strong> do lançamento. Quem não tem fechamento gravado aparece com travessão — é
-            ausência de lançamento, não R$&nbsp;0,00. <strong>Toque numa pessoa</strong> para abrir a conta escrita
-            do mês e os botões de lançar, fechar e reabrir.
+            ausência de lançamento, não R$&nbsp;0,00. <strong>Toque numa pessoa</strong> para abrir a{" "}
+            <strong>cascata do mês</strong> (registradas → intervalo → trabalhadas → folha, e a folha aberta em
+            normais e extras), a conta escrita do mês e os botões de lançar, fechar e reabrir. As horas extras já
+            estão dentro da folha: quem se compara com o previsto são as <strong>normais</strong>.
           </Explicacao>
           {/* AS AUSÊNCIAS DO MÊS, com a mesma separação da linha: um total só
               faria a equipe que ficou doente somar junto com a que faltou. */}
@@ -3305,9 +3625,11 @@ export default function AbaPonto({
           }
         >
           <Explicacao>
-            O extrato dia a dia: o <strong>crachá</strong>, o intervalo e o que vai para a <strong>folha</strong> —
-            três números que não fecham por subtração, porque quem apura a escala é o relógio. Correção fica marcada
-            e o que veio do relógio continua à vista. Toque num dia para ver o mês inteiro daquela pessoa.
+            O extrato dia a dia: a <strong>duração</strong> do trecho entre as batidas, o <strong>crachá</strong>, o
+            intervalo e o que vai para a <strong>folha</strong>. Os três não fecham por subtração, e o que sobra sai
+            escrito na linha: é a <strong>diferença da escala</strong>, a dedução que o relógio aplica e que a ponte
+            ainda não importa. Correção fica marcada e o que veio do relógio continua à vista. Toque num dia para ver
+            o mês inteiro daquela pessoa.
           </Explicacao>
           {semBatidaNoMes ? (
             <Empty>
