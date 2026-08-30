@@ -5,10 +5,19 @@
 // diagnóstico mediu, contra a conta real da MinasLab:
 //
 //     notas fiscais de produto ......... 0     (a casa não emite)
-//     ordens de serviço ................ 0     (mesmo SEM filtro nenhum)
+//     ordens de serviço ............ 2.251   <- CORRIGIDO em 30/08/2026
 //     contas a receber ............. 2.301
 //     clientes ..................... 1.076
 //     categorias financeiras ......... 159
+//
+// A PRIMEIRA MEDIÇÃO DISSE "0 ORDENS DE SERVIÇO" E ESTAVA ERRADA. O defeito
+// era meu, não do ERP: a sondagem lia `nTotRegistros` na resposta e essa
+// família da API responde `total_de_registros`. O `undefined` virou 0 e o zero
+// virou fato — inclusive escrito na tela, para o dono ler. Zero inventado é
+// pior que medição nenhuma, porque a medição que falta a pessoa vai buscar.
+//
+// A O.S., mesmo existindo, não muda o que a curva consegue: as 907 de 2026 têm
+// UM item de serviço cada, sempre com a mesma descrição-carimbo.
 //
 // Não é ponte quebrada nem importação pela metade: é o desenho do ERP nesta
 // casa. Quem fatura análise ambiental emite RPS e lança o título; o item da

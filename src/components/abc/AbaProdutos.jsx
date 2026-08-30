@@ -8,10 +8,21 @@
  * NESTA CASA O ITEM É A CATEGORIA FINANCEIRA — E A TELA DIZ ISSO (30/08/2026)
  *
  * A aba nasceu copiando a Impresilk, onde o item vem dentro da nota fiscal:
- * "camiseta", "adesivo", o produto de verdade. Medido contra a conta real da
- * MinasLab no Omie: 0 notas fiscais de produto, 0 ordens de serviço, e todo o
- * faturamento em 2.301 títulos a receber. O título não tem itens; tem uma
- * CATEGORIA ("1.01.02 — Análises Ambientais").
+ * "camiseta", "adesivo", o produto de verdade. Aqui não existe nota de produto
+ * (0 medidas) e o faturamento entra por título a receber, que não tem itens —
+ * tem uma CATEGORIA ("1.01.02 — Serviços realizados").
+ *
+ * CORREÇÃO DE 30/08/2026 — HÁ ORDENS DE SERVIÇO, SIM: 2.251 delas. A primeira
+ * medição disse "0 O.S." e estava ERRADA, por um defeito meu e não do ERP: a
+ * sondagem lia `nTotRegistros` na resposta, campo que não existe nessa família
+ * da API (o certo é `total_de_registros`), e o `undefined` virou 0. Um zero
+ * inventado é pior que nenhuma medição, porque tem cara de fato.
+ *
+ * Só que a O.S. TAMBÉM não separa ensaio: todas as 907 de 2026 têm UM item de
+ * serviço só, com a mesma descrição-carimbo ("Nota fiscal referente aos
+ * serviços analíticos Minaslab"). O que ela carrega de útil é a referência do
+ * LIMS (Contrato e O.S. internos) escrita dentro dessa descrição — que aponta
+ * para fora do Omie, não para um ensaio.
  *
  * Então esta aba mostra a curva por categoria, que é o nível de detalhe que
  * existe — e a faixa de explicação avisa, com todas as letras, que não é
@@ -212,9 +223,10 @@ function DetalheDoProduto({ produto, itensNoTempo, compradores, anoTexto }) {
    com uma conclusão que o dado não sustenta, sem nenhum erro na tela.
 
    Também está medido POR QUE não há detalhe, para o aviso não virar mistério:
-   o Omie desta casa tem 0 nota fiscal de produto, 0 ordem de serviço e 0 pedido
-   de venda — o faturamento entra como título a receber, e título não tem itens.
-   O cadastro de serviços existe (6 ensaios), mas o título não aponta para ele.
+   as 2.251 ordens de serviço desta casa têm UM item cada, sempre com a mesma
+   descrição-carimbo, e o cadastro de serviços tem 6 linhas que se diferenciam
+   por IMPOSTO, não por ensaio. Não é o Omie que esconde o detalhe: é que o
+   detalhe nunca foi digitado nele.
 
    O corte é 90%: abaixo disso a curva já separa alguma coisa e o aviso só
    atrapalharia. Componente fora da página porque declarado dentro remonta a
@@ -236,12 +248,14 @@ function CurvaQueNaoSepara({ topo, quantas, titulos }) {
         campeão”, e não é o que o dado diz.
       </p>
       <p className="mt-1.5 text-xs leading-relaxed text-warn-700">
-        O Omie desta casa não guarda o serviço vendido no faturamento: são 0 notas fiscais de
-        produto, 0 ordens de serviço e 0 pedidos de venda — o dinheiro entra como título a receber,
-        e o título só carrega a categoria financeira
-        {titulos ? ` (${titulos} títulos neste recorte)` : ""}. Para a curva por ensaio existir, o
-        faturamento precisaria sair do Omie com o serviço junto. Enquanto isso, quem separa de
-        verdade é a aba <strong>Clientes</strong>.
+        O Omie desta casa não guarda QUAL ensaio foi vendido. Existem 2.251 ordens de serviço,
+        mas cada uma tem um item de serviço só, sempre com a mesma descrição — e o cadastro de
+        serviços tem 6 linhas que se diferenciam por imposto, não por ensaio. O dinheiro entra
+        como título a receber
+        {titulos ? ` (${titulos} títulos neste recorte)` : ""}, carregando só a categoria
+        financeira. Não é o ERP que esconde: é que o detalhe nunca foi digitado nele. Para a curva
+        por ensaio existir, a O.S. precisaria ser lançada com o serviço escolhido. Enquanto isso,
+        quem separa de verdade é a aba <strong>Clientes</strong>.
       </p>
     </div>
   );
