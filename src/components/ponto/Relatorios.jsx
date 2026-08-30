@@ -317,6 +317,12 @@ function lerPrefs() {
   try {
     const salvo = JSON.parse(localStorage.getItem(K_PREFS) || "null");
     return {
+      /* A VISÃO ABRE NO MÊS — ordem do dono (30/08/2026). A tela nascia em
+         "Dia", e dia é a pergunta de exceção ("o que houve na terça?"); a
+         pergunta de sempre é o mês, que é o ciclo do ponto, do fechamento e da
+         folha. Abrir no dia obrigava dois cliques todo dia para chegar onde
+         quase todo mundo ia. */
+      visao: VISOES.some((v) => v.valor === salvo?.visao) ? salvo.visao : "mes",
       quadro: QUADROS.some((q) => q.valor === salvo?.quadro) ? salvo.quadro : "ativos",
       mesesTodos: salvo?.mesesTodos === true,
       // MEDIDAS é declarado mais abaixo neste arquivo: a leitura acontece no
@@ -328,7 +334,7 @@ function lerPrefs() {
     };
   } catch {
     // Sem localStorage (ou JSON estragado) vale o padrão: só o quadro de hoje.
-    return { quadro: "ativos", mesesTodos: false, medidaMes: "horas", rankMes: true, rankAno: true, explicacao: false };
+    return { visao: "mes", quadro: "ativos", mesesTodos: false, medidaMes: "horas", rankMes: true, rankAno: true, explicacao: false };
   }
 }
 
@@ -1960,7 +1966,10 @@ const COLUNAS_MES = [
 // ============================================================================
 
 export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, setAviso }) {
-  const [visao, setVisao] = useState("dia");
+  /* Nasce da preferência guardada (padrão: mês). Lê o localStorage direto
+     porque `prefs` só é declarado mais abaixo — e o inicializador roda uma vez
+     só, no primeiro render. */
+  const [visao, setVisao] = useState(() => lerPrefs().visao);
   const [filtroPessoa, setFiltroPessoa] = useState(TODAS);
 
   /* O QUADRO ESCOLHIDO vale para as quatro visões e FICA GUARDADO. Quem abre a
@@ -2122,6 +2131,16 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   /* CLICAR NUM NÚMERO LEVA À VISÃO DELE, JÁ FILTRADA. Sem isto, para ver março
      a pessoa troca de visão e reencontra o filtro na mão — e é justamente aí
      que se olha o mês errado sem perceber. */
+  /* ESCOLHER é diferente de SALTAR. Quem clica no seletor está dizendo como
+     quer encontrar a tela amanhã, e isso fica guardado. Já `irParaDia` e
+     `irParaMes` são navegação: clicar numa célula para investigar um dia não
+     pode reescrever a preferência de abertura — senão uma investigação de
+     terça-feira faria a tela abrir no dia pelo resto do ano. */
+  const escolherVisao = (v) => {
+    setVisao(v);
+    salvar({ visao: v });
+  };
+
   const irParaDia = (data) => {
     if (!ehData(data)) return;
     setDia(data);
@@ -2770,7 +2789,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         </div>
 
         <div className="sem-impressao mb-3 flex max-w-full flex-wrap items-center gap-3 overflow-x-auto pb-1">
-          <Segmented opcoes={VISOES} valor={visao} onChange={setVisao} />
+          <Segmented opcoes={VISOES} valor={visao} onChange={escolherVisao} />
           {/* O QUADRO VALE PARA AS QUATRO VISÕES, e por isso ele fica aqui em
               cima, ao lado delas — e não escondido entre os campos de data de
               uma visão só. Sete pessoas no quadro contra treze desligadas: sem

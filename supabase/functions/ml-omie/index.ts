@@ -284,6 +284,59 @@ Deno.serve(async (req) => {
          (OS/NFS-e), comércio fatura produto (NF) — e só o dado real diz de
          onde vem o faturamento desta casa. Zero em toda fonte é instrumento
          quebrado, não empresa parada. */
+      /* SONDAR — uma chamada de LEITURA, avulsa, ao Omie, para descobrir o que
+         este ERP tem. Nasceu de uma pergunta do dono: "aprofunda no produto,
+         será que não acha?". O diagnóstico fixo só sabe perguntar o que alguém
+         já pensou em perguntar; para varrer famílias inteiras da API sem
+         reescrever e republicar a ponte a cada palpite, é preciso uma porta que
+         aceite o endpoint como parâmetro.
+
+         SÓ LEITURA, E A TRAVA É AQUI, NÃO NA BOA INTENÇÃO. A ponte inteira
+         existe para não escrever no ERP (ver o cabeçalho do arquivo), e uma
+         porta que aceita `call` livre poderia criar, alterar ou excluir
+         cadastro — bastaria um palpite errado meu num nome de chamada. Por
+         isso o verbo é conferido contra uma lista curta de prefixos de leitura,
+         e qualquer outra coisa é recusada antes de sair daqui. Uma trava que
+         depende de quem chama lembrar de ser cuidadoso não é trava. */
+      case "sondar": {
+        const modulo = String(body.modulo ?? "").trim();
+        const call = String(body.call ?? "").trim();
+        const param = (body.param ?? {}) as Record<string, unknown>;
+
+        if (!modulo || !call) return resp({ erro: "Informe modulo e call." }, 400);
+        if (!/^(Listar|Consultar|Obter|Pesquisar|Verificar)/.test(call)) {
+          return resp(
+            { erro: `Só leitura nesta porta. "${call}" não começa por Listar/Consultar/Obter/Pesquisar/Verificar.` },
+            400,
+          );
+        }
+        /* O caminho vai montado por nós, nunca concatenado com o que veio de
+           fora sem conferir: só letras, números, barra e traço. Sem isto, um
+           "../" no módulo sairia do endereço do Omie. */
+        if (!/^[a-z0-9/-]+$/i.test(modulo)) return resp({ erro: "Módulo com caractere inesperado." }, 400);
+
+        try {
+          const r = await omie(modulo, call, param);
+          /* A RESPOSTA VOLTA INTEIRA, mas cortada no tamanho: o que interessa
+             aqui é o FORMATO (que campos existem), e uma página de 500 registros
+             estoura a resposta sem ensinar nada além do que a primeira ensina. */
+          const texto = JSON.stringify(r);
+          return resp({
+            modulo,
+            call,
+            chaves: Object.keys(r),
+            bytes: texto.length,
+            resposta: texto.length > 120000 ? JSON.parse(texto.slice(0, 0) || "{}") : r,
+            cortada: texto.length > 120000,
+          });
+        } catch (e) {
+          /* ERRO DO OMIE É RESPOSTA, não queda: metade desta varredura é
+             descobrir QUAIS endpoints não existem nesta conta, e um 500 com
+             "não existem registros" é exatamente o dado que se procura. */
+          return resp({ modulo, call, erro: e instanceof Error ? e.message : "falhou" });
+        }
+      }
+
       case "diagnostico": {
         const de = String(body.de ?? "");
         const ate = String(body.ate ?? "");
