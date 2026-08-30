@@ -121,6 +121,54 @@
 //         alguém confundir este atraso com o desconto da folha. Só deixou de
 //         ocupar a altura que era do número. RECOLHER É DIFERENTE DE APAGAR.
 //
+// 12. A FOLHA JÁ INCLUI AS EXTRAS — E A TELA PASSOU A DIZER ISSO (30/08/2026).
+//     Navegando o Jibble com o dono ao lado, a tela "Registros de Horário"
+//     mostrou a CASCATA inteira, e ela desmentia a leitura desta aba:
+//
+//       Horas registradas       50h37   (crachá aberto: trabalho + pausa)
+//         − pausa não remunerada  4h25
+//       = Horas trabalhadas      46h13
+//         − deduções automáticas  5h00   (1h/dia configurada na escala)
+//       = HORAS DE FOLHA          41h13
+//
+//     E o bloco "Horas de folha de pagamento" abre a composição — no 28/08 da
+//     Ana: normais 8h00 + extras diárias 1h15 = 9h15 DE FOLHA. Ou seja:
+//     `payrollHours`, que a ponte grava como `trabalhadoMin` e esta tela
+//     chamava de "Horas da folha", JÁ TEM AS EXTRAS DENTRO.
+//     O ESTRAGO ERA DUPLO, e os dois eram silenciosos:
+//       · "Horas da folha 177h30" ao lado de "Extra +50% 14h23" convidava a
+//         SOMAR — pagando a mesma hora extra duas vezes;
+//       · comparar as 177h30 com "Previsto no mês 193h00" para julgar se a
+//         pessoa cumpriu a jornada é comparar peras com laranjas: o previsto é
+//         de horas NORMAIS. No janeiro da VICTORIA as normais foram ~163h
+//         contra 193h previstas — o déficit é o DOBRO do que a tela sugeria, e
+//         era a hora extra que estava tapando justamente o buraco que ela
+//         deveria denunciar.
+//     O QUE MUDOU AQUI, e é regra desta aba daqui em diante:
+//       · ONDE APARECE UM NÚMERO DE HORA, APARECE A CASCATA: normais, +50%,
+//         +100% e, ao lado, a FOLHA como TOTAL — com o title dizendo em voz
+//         alta que a folha já inclui as extras. Nunca a folha sozinha ao lado
+//         de uma extra solta.
+//       · QUEM SE COMPARA COM O PREVISTO É "NORMAIS", nunca a folha. O cartão
+//         do Mês virou "Horas normais", com o previsto embaixo e a folha ao
+//         lado como total.
+//       · O SELETOR "Número na tabela" ganhou "Horas normais (sem extras)", e
+//         o rótulo antigo virou "Horas da folha (com extras)" — quem escolhe
+//         precisa saber qual é qual ANTES de escolher, não depois de somar.
+//     QUEM FAZ A CONTA É A LIB (`normaisDoDia`), a MESMA que `apurarCompetencia`
+//     usa: normal e extra saem da mesma linha, num lugar só. Se a tela fizesse
+//     a subtração aqui, o mês e a linha divergiriam no primeiro conserto feito
+//     de um lado só.
+//
+// 13. TRAVESSÃO SOZINHO NÃO DISTINGUE "NÃO TRABALHOU" DE "NÃO ERA DIA DE
+//     TRABALHO" (30/08/2026). No Jibble o dia sem jornada vem com um selo
+//     explícito ("Dia de descanso"), e é uma dúvida real de quem confere: o
+//     sábado em branco desta tela lia igualzinho à segunda-feira em branco de
+//     quem faltou. Onde a escala prevê ZERO minuto, o travessão passa a vir
+//     acompanhado do selo `sem jornada` — e ele aparece TAMBÉM no sábado
+//     TRABALHADO, onde a normal é 0 e a folha inteira é excedente: sem o selo,
+//     "normais —" ao lado de "folha 4h20" pareceria erro de conta.
+//
 // ============================================================================
 // CONTRATO — props que esta aba recebe da casca (pages/Ponto.jsx)
 // ----------------------------------------------------------------------------
@@ -153,10 +201,10 @@ import { lerCfg } from "../../services/dados.js";
 import { dataCurta, dataLonga, diasEntre, ymdLocal, MESES, MESES_LONGOS } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import {
-  apuracaoDoRelogio, apurarCompetencia, atrasoDoDia, ausenciaDoDia, cfgDoPonto, competenciaDe,
+  apurarCompetencia, atrasoDoDia, ausenciaDoDia, cfgDoPonto, competenciaDe,
   descreverJornada, diaDaSemanaISO, diasDoMes, divisorDaJornada, duracaoTexto, ehCompetencia, fimPrevistoDoDia,
   horasDecimais, inicioPrevistoDoDia, minutosPrevistosDoDia, minutosPrevistosDoMes,
-  minutosTrabalhados, NOMES_DIA_SEMANA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
+  minutosTrabalhados, normaisDoDia, NOMES_DIA_SEMANA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
 } from "../../lib/rh/ponto.js";
 import { Card, Empty, Modal, SectionTitle, Segmented, StatCard } from "../ui.jsx";
 /* O PADRÃO DA LISTA DE TRABALHO (components/lista.jsx) — o mesmo desenho da aba
@@ -647,11 +695,25 @@ function agregar(dias, jornada) {
 const MEDIDAS = [
   {
     chave: "horas",
-    rotulo: "Horas da folha",
+    /* O RÓTULO DIZ O QUE O NÚMERO TEM DENTRO. "Horas da folha", sozinho, foi
+       lido durante meses como "a hora comum" — e ele traz a extra dentro (ver
+       a decisão 12). O parêntese é feio e é de propósito: quem escolhe no
+       seletor decide ANTES de somar, não depois. */
+    rotulo: "Horas da folha (com extras)",
     unidade: "horas",
     sentido: "neutro",
-    valor: (a) => a.trabalhadoMin,
-    ajuda: "O que o relógio apurou para a folha (payrollHours), somado. Dia em aberto não entra.",
+    valor: (a) => a.folhaMin,
+    ajuda:
+      "O que o relógio apurou para a folha (payrollHours), somado — E ELE JÁ INCLUI AS HORAS EXTRAS. Dia em aberto não entra. Para comparar com o previsto da escala, use Horas normais.",
+  },
+  {
+    chave: "normais",
+    rotulo: "Horas normais (sem extras)",
+    unidade: "horas",
+    sentido: "neutro",
+    valor: (a) => a.normaisMin,
+    ajuda:
+      "A folha MENOS as extras: a hora comum, a única que se compara com o previsto da escala. Somar esta com as extras dá a folha — somar a FOLHA com as extras paga a mesma hora duas vezes.",
   },
   {
     chave: "extra",
@@ -925,6 +987,35 @@ function Nada({ children }) {
 }
 
 /**
+ * O SELO DO DIA SEM JORNADA — decisão 13, copiada do "Dia de descanso" do
+ * Jibble.
+ *
+ * ELE NÃO SUBSTITUI O TRAVESSÃO, ACOMPANHA. O travessão continua dizendo "não
+ * há número aqui"; o selo diz POR QUÊ — e são duas coisas diferentes que o
+ * cinza sozinho confundia: o sábado em branco lia igual à segunda-feira em
+ * branco de quem faltou.
+ *
+ * E ELE APARECE TAMBÉM NO DIA SEM JORNADA QUE FOI TRABALHADO, que é onde ele
+ * mais informa: ali a normal é 0 (a escala não previa hora nenhuma) e a folha
+ * inteira é excedente — sem o selo, "normais —" ao lado de "folha 4h20" parece
+ * erro de conta, e é o contrário: é a conta certa de um dia que não era de
+ * trabalho.
+ *
+ * É `chip` (cinza), nunca `chip-warn`: dia de descanso não é pendência de
+ * ninguém. No papel ele vira borda preta com a palavra dentro (index.css).
+ */
+function SemJornada() {
+  return (
+    <span
+      className="chip"
+      title="A escala da casa não prevê trabalho neste dia. O travessão aqui é “não era dia de trabalho”, não “não trabalhou”."
+    >
+      sem jornada
+    </span>
+  );
+}
+
+/**
  * O RANKING DO PONTO — a lista do print, uma linha por pessoa, do maior para o
  * menor. Ela é a mesma no Mês e no Ano, e por isso mora aqui: duas cópias do
  * mesmo desenho é como uma delas passa a mentir depois de um conserto.
@@ -1088,6 +1179,14 @@ function RecorteImpresso({ titulo, recorte, jornadaEmPalavras, emitidoEm, import
         Atrasos com a tolerância da CLT já aplicada ({TOLERANCIA_MARCACAO_MIN} min por marcação,{" "}
         {TOLERANCIA_DIA_MIN} no dia) — não é o atraso que desconta na folha.
       </p>
+      {/* A CASCATA VAI PARA O PAPEL, e não recolhe (decisão 12). Na folha
+          impressa não há title para passar o mouse nem cartão ao lado: se a
+          régua não estiver escrita ali, quem lê soma folha + extras e paga a
+          mesma hora duas vezes. */}
+      <p className="text-xs">
+        Horas da folha = normais + extra 50% + extra 100% — a folha JÁ INCLUI as extras, não as some de novo. Quem se
+        compara com o previsto da escala é a coluna de horas NORMAIS.
+      </p>
       <p className="text-xs">
         Emitido em {dataLonga(emitidoEm)} · Última importação do relógio:{" "}
         {importadoEm || "não sei dizer (nenhum dia com carimbo de importação)"}
@@ -1166,7 +1265,16 @@ function minutosComSinal(min) {
 function situacaoDoDia({ dia, ausencia, emAberto, previstoMin }) {
   if (emAberto) return { situacao: "em aberto (entrou e não saiu)", chip: "chip-warn" };
   if (ausencia) return { situacao: ausencia.rotulo, chip: ausencia.chip };
-  if (dia) return { situacao: "presente", chip: "chip-ok" };
+  /* TRABALHOU NUM DIA QUE A ESCALA NÃO PREVÊ (decisão 13). "Presente" seco
+     escondia justamente o dia que precisa de olho: ali a hora normal é 0 e a
+     folha inteira é excedente — e descanso e feriado se pagam em DOBRO, faixa
+     que a conta derivada não sabe separar (a lib conta o caso em
+     `diasForaDaEscala`). Por isso `chip-warn`: não é erro, é conferência. */
+  if (dia) {
+    return previstoMin === 0
+      ? { situacao: "trabalhou em dia sem jornada", chip: "chip-warn" }
+      : { situacao: "presente", chip: "chip-ok" };
+  }
   if (previstoMin === 0) return { situacao: "a escala não prevê trabalho", chip: "chip" };
   return { situacao: SEM, chip: "chip-warn" };
 }
@@ -1364,13 +1472,63 @@ function LinhaDoTempoDoDia({ dia, inicioPrevisto, fimPrevisto, p, emAberto }) {
   );
 }
 
-/** Rótulo em cima, valor embaixo — o par que o painel repete. */
-function Campo({ rotulo, children }) {
+/**
+ * AS DUAS FRASES DA CASCATA — escritas uma vez, usadas em todo lugar onde um
+ * número de hora aparece (decisão 12). Duas cópias divergem no primeiro
+ * conserto feito de um lado só, e aí a mesma hora tem duas explicações.
+ */
+const AJUDA_FOLHA =
+  "A FOLHA JÁ INCLUI AS EXTRAS: folha = normais + extra 50% + extra 100%. É o payrollHours do relógio. Não some a folha com as extras ao lado — seria pagar a mesma hora duas vezes.";
+const AJUDA_NORMAIS =
+  "A hora comum: a folha MENOS as extras. É esta que se compara com o previsto da escala — a folha traz a extra dentro e infla o cumprimento da jornada.";
+
+/**
+ * Rótulo em cima, valor embaixo — o par que o painel repete.
+ *
+ * `ajuda` vai no bloco INTEIRO, não só no rótulo: quem passa o mouse está em
+ * cima do número, e é sobre o número que a dúvida é ("isto aqui tem extra
+ * dentro?").
+ */
+function Campo({ rotulo, ajuda, sub, largura, children }) {
   return (
-    <div>
+    <div className={largura} title={ajuda}>
       <p className="font-display text-xs font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
       <div className="text-sm text-slate-800">{children}</div>
+      {sub && <p className="mt-0.5 text-xs text-slate-500 tnum">{sub}</p>}
     </div>
+  );
+}
+
+/**
+ * A CASCATA DE UM DIA, em quatro campos: normais, +50%, +100% e a FOLHA como
+ * total. Mora aqui porque sai igual no painel da pessoa e é a mesma leitura da
+ * tabela do Dia — e porque a ORDEM importa: as parcelas primeiro, o total
+ * depois. Folha em primeiro lugar foi o que ensinou a tela inteira a somar
+ * errado.
+ *
+ * O DIA EM ABERTO NÃO TEM COMPOSIÇÃO (`composicao` null): não é dia de zero
+ * hora normal, é dia que não terminou. Extra em `null` é "não apurei" — dia
+ * lançado à mão não sabe separar a dobra —, e isso se escreve com a palavra,
+ * nunca com 0h00.
+ */
+function CascataDoDia({ composicao, folhaMin, emAberto, semJornada }) {
+  const vazio = <Nada>{emAberto ? "dia em aberto" : SEM}</Nada>;
+  const faixa = (v) =>
+    composicao === null ? vazio : v === null ? <Nada>{SEM_APURACAO}</Nada> : <span className="tnum">{duracaoTexto(v)}</span>;
+  return (
+    <>
+      <Campo rotulo="Normais" ajuda={AJUDA_NORMAIS}>
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {composicao === null ? vazio : <span className="tnum font-medium">{duracaoTexto(composicao.normaisMin)}</span>}
+          {semJornada && <SemJornada />}
+        </span>
+      </Campo>
+      <Campo rotulo="Extra +50%">{faixa(composicao?.extraMin ?? null)}</Campo>
+      <Campo rotulo="Extra +100%">{faixa(composicao?.extraDobroMin ?? null)}</Campo>
+      <Campo rotulo="Folha" ajuda={AJUDA_FOLHA} sub="normais + extras">
+        {folhaMin === null ? vazio : <span className="tnum font-medium">{duracaoTexto(folhaMin)}</span>}
+      </Campo>
+    </>
   );
 }
 
@@ -1416,9 +1574,14 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
   const p = d ? atrasoDoDia(d, jornada) : null;
   const ausencia = d ? ausenciaDoDia(d) : null;
   const min = d ? minutosTrabalhados(d) : null;
-  const apurado = d ? apuracaoDoRelogio(d) : null;
+  /* A CASCATA DO DIA SAI DA LIB, nunca de uma subtração escrita aqui: é a MESMA
+     `normaisDoDia` que `apurarCompetencia` soma no mês. Se a tela fizesse a
+     conta por conta própria, o mês diria uma coisa e a linha outra no primeiro
+     conserto feito de um lado só. */
+  const composicao = d ? normaisDoDia(d, jornada) : null;
   const emAberto = !!d && min === null;
   const previstoDia = minutosPrevistosDoDia(diaFoco, jornada);
+  const semJornadaDia = previstoDia === 0;
   const inicioPrev = inicioPrevistoDoDia(diaFoco, jornada);
   const fimPrev = fimPrevistoDoDia(diaFoco, jornada);
   const semana = diaDaSemanaISO(diaFoco);
@@ -1483,35 +1646,25 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
           <Campo rotulo="Intervalo">
             {numOuNulo(d?.pausaMin) === null ? <Nada /> : <span className="tnum">{duracaoTexto(d.pausaMin)}</span>}
           </Campo>
-          <Campo rotulo="Horas da folha">
-            {min === null ? (
-              <Nada>{emAberto ? "dia em aberto" : SEM}</Nada>
-            ) : (
-              <span className="tnum font-medium">{duracaoTexto(min)}</span>
-            )}
-          </Campo>
-          <Campo rotulo="Extra +50%">
-            {!d ? <Nada /> : apurado ? <span className="tnum">{duracaoTexto(apurado.extraMin)}</span> : <Nada>{SEM_APURACAO}</Nada>}
-          </Campo>
-          <Campo rotulo="Extra +100%">
-            {!d ? (
-              <Nada />
-            ) : apurado ? (
-              <span className="tnum">{duracaoTexto(apurado.extraDobroMin)}</span>
-            ) : (
-              <Nada>{SEM_APURACAO}</Nada>
-            )}
-          </Campo>
           <Campo rotulo="Atraso na chegada">
             {!p ? (
-              <Nada>{previstoDia === 0 ? "fora da escala" : "sem entrada batida"}</Nada>
+              <span className="inline-flex flex-wrap items-center gap-1">
+                <Nada>{semJornadaDia ? "fora da escala" : "sem entrada batida"}</Nada>
+                {semJornadaDia && <SemJornada />}
+              </span>
             ) : p.pontual ? (
               <span className="text-ok-700">no horário</span>
             ) : (
               <span className="tnum font-semibold text-bad-700">{duracaoTexto(p.atrasoMin)}</span>
             )}
           </Campo>
-          <Campo rotulo="Como foi o dia">
+
+          {/* A CASCATA NUMA LINHA SÓ, e nesta ordem: as parcelas, depois o
+              total. Ver a decisão 12 — a folha ao lado de uma extra solta é o
+              desenho que ensinou a somar errado. */}
+          <CascataDoDia composicao={composicao} folhaMin={min} emAberto={emAberto} semJornada={semJornadaDia} />
+
+          <Campo rotulo="Como foi o dia" largura="col-span-2 sm:col-span-4">
             <LinhaDoTempoDoDia dia={d} inicioPrevisto={inicioPrev} fimPrevisto={fimPrev} p={p} emAberto={emAberto} />
           </Campo>
         </div>
@@ -1539,11 +1692,25 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Campo rotulo="Horas da folha">
-            {semMedicaoNoMes ? <Nada /> : <span className="tnum font-medium">{horasOuNada(ag.trabalhadoMin)}</span>}
+          {/* A CASCATA DO MÊS, na ordem da decisão 12: a hora comum primeiro,
+              com o PREVISTO logo embaixo — é este par que responde "cumpriu a
+              jornada?". A folha fecha a linha como total, e não como referência
+              de jornada: ela tem a extra dentro. */}
+          <Campo
+            rotulo="Horas normais"
+            ajuda={AJUDA_NORMAIS}
+            sub={`previsto na escala: ${horasOuNada(previstoMes)}`}
+          >
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum font-medium">{horasOuNada(ag.normaisMin)}</span>}
           </Campo>
-          <Campo rotulo="Previsto no mês">
-            <span className="tnum">{horasOuNada(previstoMes)}</span>
+          <Campo rotulo="Extra +50%">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasMin)}</span>}
+          </Campo>
+          <Campo rotulo="Extra +100%">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasDobroMin)}</span>}
+          </Campo>
+          <Campo rotulo="Horas da folha" ajuda={AJUDA_FOLHA} sub="normais + extras">
+            {semMedicaoNoMes ? <Nada /> : <span className="tnum font-medium">{horasOuNada(ag.folhaMin)}</span>}
           </Campo>
           <Campo rotulo="Pontualidade">
             {ag.pontualidadePct === null ? (
@@ -1560,12 +1727,6 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
           <Campo rotulo="Atrasos na chegada">
             {ag.atrasoChegadaMin === null ? <Nada /> : <span className="tnum">{duracaoTexto(ag.atrasoChegadaMin)}</span>}
           </Campo>
-          <Campo rotulo="Extra +50%">
-            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasMin)}</span>}
-          </Campo>
-          <Campo rotulo="Extra +100%">
-            {semMedicaoNoMes ? <Nada /> : <span className="tnum">{horasOuSemApuracao(ag.extrasDobroMin)}</span>}
-          </Campo>
           <Campo rotulo="Faltas que descontam">
             {ag.faltasQueDescontam === null ? <Nada /> : <span className="tnum">{ag.faltasQueDescontam}</span>}
           </Campo>
@@ -1573,6 +1734,25 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
             {ag.ausenciasSemDesconto === null ? <Nada /> : <span className="tnum">{ag.ausenciasSemDesconto}</span>}
           </Campo>
         </div>
+
+        {/* A FRASE QUE FALTAVA, e ela vale para toda a aba. Sem ela, o par
+            "folha 177h30 · previsto 193h00" convida à leitura errada; com ela,
+            fica dito de quem é a comparação. Não recolhe: é a régua do número
+            que está logo acima. */}
+        <p className="mt-3 text-xs text-slate-500">
+          Quem se compara com o previsto da escala é <strong>Horas normais</strong>.{" "}
+          <strong>Horas da folha</strong> é o total que vai para o pagamento — e ele já inclui as extras (normais +50%
+          +100%), então somá-lo com as extras ao lado pagaria a mesma hora duas vezes.
+          {ag.diasExtraMaiorQueFolha > 0 && (
+            <>
+              {" "}
+              <span className="chip-warn">
+                {plural(ag.diasExtraMaiorQueFolha, "dia com extra maior que a folha", "dias com extra maior que a folha")}
+              </span>{" "}
+              — dado torto do relógio: a normal ficou em 0h00 nesses dias, e é preciso conferir a importação.
+            </>
+          )}
+        </p>
 
         {/* O DIA A DIA, e cada linha é clicável: é daqui que se chega ao dia. */}
         {diasDaPessoa.length === 0 ? (
@@ -1640,8 +1820,16 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
                       <span className="tnum w-16 shrink-0 text-right font-medium text-slate-800">
                         {mm === null ? "—" : duracaoTexto(mm)}
                       </span>
+                      {/* O SELO DO DIA SEM JORNADA VEM ANTES DE TUDO (decisão
+                          13): sábado e domingo caíam em "sem medida de
+                          chegada", que é verdade e não é a informação — a
+                          informação é que não era dia de trabalho. E ele
+                          aparece TAMBÉM no sábado trabalhado, onde a hora
+                          escrita à esquerda é toda excedente. */}
                       {aus ? (
                         <span className={aus.chip}>{aus.rotulo}</span>
+                      ) : previstoDoDia === 0 ? (
+                        <SemJornada />
                       ) : pp ? (
                         pp.pontual ? (
                           <span className="chip-ok">no horário</span>
@@ -1696,11 +1884,18 @@ const COLUNAS_MES = [
     ajuda: "Dias com total apurado. Dia em aberto não entra — sai na coluna de pendência da linha.",
   },
   {
+    chave: "normais",
+    rotulo: "Horas normais",
+    tipo: "horas",
+    valor: (l) => l.ag.normaisMin,
+    ajuda: "A folha menos as extras — a hora comum. É esta que se compara com o previsto da escala.",
+  },
+  {
     chave: "horas",
     rotulo: "Horas da folha",
     tipo: "horas",
-    valor: (l) => l.ag.trabalhadoMin,
-    ajuda: "O payrollHours do relógio, somado.",
+    valor: (l) => l.ag.folhaMin,
+    ajuda: "O payrollHours do relógio, somado — e ele JÁ INCLUI as extras (normais +50% +100%).",
   },
   {
     chave: "extra",
@@ -1956,7 +2151,13 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       const grupo = indice.porPessoa.get(pessoa.id);
       const d = grupo ? grupo.dias.get(dia) || null : null;
       const min = d ? minutosTrabalhados(d) : null;
-      const apurado = d ? apuracaoDoRelogio(d) : null;
+      /* A CASCATA DA LINHA (normais/+50%/+100%) sai de `normaisDoDia`, a MESMA
+         função que `apurarCompetencia` soma no mês — antes a coluna de extra
+         lia `apuracaoDoRelogio` direto e dizia "sem apuração" no dia lançado à
+         mão, enquanto o total do mês já contava a extra derivada daquele mesmo
+         dia. A tabela e o rodapé discordavam, e ninguém sabia qual estava
+         certo. */
+      const composicao = d ? normaisDoDia(d, cfg.jornada) : null;
       const ausencia = d ? ausenciaDoDia(d) : null;
       const p = d ? atrasoDoDia(d, cfg.jornada) : null;
       const emAberto = !!d && min === null;
@@ -1971,7 +2172,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         pessoa,
         d,
         min,
-        apurado,
+        composicao,
         ausencia,
         p,
         emAberto,
@@ -2343,9 +2544,13 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         { chave: "entrada", rotulo: "Entrada" },
         { chave: "saida", rotulo: "Saída" },
         { chave: "intervaloMin", rotulo: "Intervalo (min)", tipo: "numero" },
-        { chave: "horasFolha", rotulo: "Horas da folha (h)", tipo: "numero" },
+        /* A PLANILHA LEVA A CASCATA NA MESMA ORDEM DA TELA, e o rótulo da folha
+           traz a fórmula dentro: quem soma na planilha é quem mais precisa
+           saber que "folha" já contém as duas colunas de extra ao lado. */
+        { chave: "horasNormais", rotulo: "Horas normais (h)", tipo: "numero" },
         { chave: "extra50", rotulo: "Extra +50% (h)", tipo: "numero" },
         { chave: "extra100", rotulo: "Extra +100% (h)", tipo: "numero" },
+        { chave: "horasFolha", rotulo: "Horas da folha = normais + extras (h)", tipo: "numero" },
         { chave: "atrasoCru", rotulo: "Atraso na entrada (min)", tipo: "numero" },
         { chave: "atrasoCobravel", rotulo: "Atraso cobrável (min)", tipo: "numero" },
         { chave: "situacao", rotulo: "Situação" },
@@ -2360,9 +2565,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         // Célula VAZIA, nunca 0: zero em coluna que o RH soma vira desconto.
         // Number("") devolveria 0 — por isso o campo passa por numOuNulo.
         intervaloMin: numOuNulo(l.d?.pausaMin) ?? "",
+        horasNormais: l.composicao === null ? "" : horasDecimais(l.composicao.normaisMin),
+        extra50: l.composicao === null || l.composicao.extraMin === null ? "" : horasDecimais(l.composicao.extraMin),
+        extra100:
+          l.composicao === null || l.composicao.extraDobroMin === null ? "" : horasDecimais(l.composicao.extraDobroMin),
         horasFolha: l.min === null ? "" : horasDecimais(l.min),
-        extra50: l.apurado ? horasDecimais(l.apurado.extraMin) : "",
-        extra100: l.apurado ? horasDecimais(l.apurado.extraDobroMin) : "",
         atrasoCru: l.p ? l.p.atrasoEntradaMin : "",
         atrasoCobravel: l.p ? l.p.atrasoMin : "",
         situacao: l.situacao,
@@ -2376,9 +2583,11 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         { chave: "pessoa", rotulo: "Pessoa" },
         { chave: "diasTrabalhados", rotulo: "Dias trabalhados", tipo: "numero" },
         { chave: "diasEmAberto", rotulo: "Dias em aberto", tipo: "numero" },
-        { chave: "horasFolha", rotulo: "Horas da folha (h)", tipo: "numero" },
+        { chave: "horasNormais", rotulo: "Horas normais (h)", tipo: "numero" },
         { chave: "extra50", rotulo: "Extra +50% (h)", tipo: "numero" },
         { chave: "extra100", rotulo: "Extra +100% (h)", tipo: "numero" },
+        { chave: "horasFolha", rotulo: "Horas da folha = normais + extras (h)", tipo: "numero" },
+        { chave: "previstoMes", rotulo: "Previsto na escala (h)", tipo: "numero" },
         { chave: "atrasoChegadaMin", rotulo: "Atrasos na chegada (min)", tipo: "numero" },
         { chave: "atrasoMedioMin", rotulo: "Atraso médio por dia (min)", tipo: "numero" },
         { chave: "faltas", rotulo: "Faltas que descontam", tipo: "numero" },
@@ -2392,9 +2601,14 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
         pessoa: l.nome,
         diasTrabalhados: l.ag.diasComBatida,
         diasEmAberto: l.ag.diasEmAberto,
-        horasFolha: l.ag.trabalhadoMin === null ? "" : horasDecimais(l.ag.trabalhadoMin),
+        horasNormais: l.ag.normaisMin === null ? "" : horasDecimais(l.ag.normaisMin),
         extra50: l.ag.extrasMin === null ? "" : horasDecimais(l.ag.extrasMin),
         extra100: l.ag.extrasDobroMin === null ? "" : horasDecimais(l.ag.extrasDobroMin),
+        horasFolha: l.ag.folhaMin === null ? "" : horasDecimais(l.ag.folhaMin),
+        /* O PREVISTO VAI JUNTO na planilha do mês: é o denominador da coluna de
+           normais, e sem ele quem soma fora da tela não tem contra o que
+           comparar — foi exatamente a comparação que faltava na tela. */
+        previstoMes: vmMes.previstoMin === null ? "" : horasDecimais(vmMes.previstoMin),
         atrasoChegadaMin: l.ag.atrasoChegadaMin === null ? "" : l.ag.atrasoChegadaMin,
         atrasoMedioMin: l.ag.atrasoMedioMin === null ? "" : l.ag.atrasoMedioMin,
         faltas: l.ag.faltasQueDescontam,
@@ -2800,11 +3014,29 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                 desconta na folha, que fica no Fechamento.
               </span>
             </p>
+            {/* A CASCATA DO JIBBLE, escrita como ele a mostra (decisão 12).
+                Ela mora aqui porque é a régua de TODA hora desta aba, não de
+                uma visão só — e recolhida, porque quem já sabe não a lê todo
+                dia. Recolher não é apagar: o RecorteImpresso a leva ao papel
+                sem depender deste botão. */}
+            <p className="flex items-start gap-2">
+              <Clock size={13} className="mt-0.5 shrink-0 text-slate-400" />
+              <span>
+                <strong>A folha já inclui as extras.</strong> O relógio entrega{" "}
+                <em>horas registradas</em> − pausa não remunerada − deduções da escala ={" "}
+                <strong>horas de folha</strong>, e a folha se abre em <strong>normais + extra 50% + extra 100%</strong>{" "}
+                (no 28/08 da Ana: 8h00 + 1h15 = 9h15 de folha). Por isso quem se compara com o previsto da escala é{" "}
+                <strong>horas normais</strong> — a folha traz o excedente dentro e faria a hora extra tapar o buraco da
+                jornada.
+              </span>
+            </p>
             <p className="flex items-start gap-2">
               <CalendarDays size={13} className="mt-0.5 shrink-0 text-slate-400" />
               <span>
-                O previsto de cada dia sai da escala acima. A última importação do relógio, por extenso, fica na faixa
-                “Puxar do relógio” no alto da tela — e sai impressa em toda folha que esta aba gera.
+                O previsto de cada dia sai da escala acima; onde ela não prevê minuto nenhum o dia vem com o selo{" "}
+                <span className="chip">sem jornada</span>, que é diferente de não ter trabalhado. A última importação
+                do relógio, por extenso, fica na faixa “Puxar do relógio” no alto da tela — e sai impressa em toda
+                folha que esta aba gera.
               </span>
             </p>
           </div>
@@ -2914,7 +3146,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   </Empty>
                 ) : (
                   <div className="max-w-full overflow-x-auto">
-                    <table className="w-full min-w-[1120px] text-left text-sm">
+                    <table className="w-full min-w-[1260px] text-left text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
                           <th scope="col" className="px-3 py-2">Pessoa</th>
@@ -2934,9 +3166,16 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                           <th scope="col" className="px-3 py-2">Entrada</th>
                           <th scope="col" className="px-3 py-2">Saída</th>
                           <th scope="col" className="px-3 py-2" title="Intervalo não pago (o almoço)">Intervalo</th>
-                          <th scope="col" className="px-3 py-2">Horas da folha</th>
+                          {/* A CASCATA EM QUATRO COLUNAS, e nesta ordem: as
+                              parcelas primeiro, o TOTAL depois (decisão 12).
+                              "Horas da folha" sozinha ao lado de "Extra +50%"
+                              era o desenho que convidava a somar as duas. */}
+                          <th scope="col" className="px-3 py-2" title={AJUDA_NORMAIS}>Normais</th>
                           <th scope="col" className="px-3 py-2">Extra +50%</th>
                           <th scope="col" className="px-3 py-2">Extra +100%</th>
+                          <th scope="col" className="px-3 py-2" title={AJUDA_FOLHA}>
+                            Folha <span className="normal-case tracking-normal">(normais + extras)</span>
+                          </th>
                           <th scope="col" className="px-3 py-2" title="Chegada contra a escala, com a tolerância já aplicada">
                             Atraso
                           </th>
@@ -2967,23 +3206,48 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                             <td className="px-3 py-2 tnum">
                               {numOuNulo(l.d?.pausaMin) === null ? <Nada /> : duracaoTexto(l.d.pausaMin)}
                             </td>
+                            {/* NORMAIS — a hora comum, e é ela que se compara
+                                com o previsto do dia escrito no subtítulo da
+                                seção. O selo `sem jornada` acompanha o número
+                                (não o substitui) no dia que a escala não prevê:
+                                ali a normal é 0h00 de direito, e a folha ao
+                                lado é toda excedente. */}
                             <td className="px-3 py-2 tnum font-medium">
-                              {l.min === null ? <Nada>{l.emAberto ? "dia em aberto" : SEM}</Nada> : duracaoTexto(l.min)}
+                              <span className="inline-flex flex-wrap items-center gap-1">
+                                {l.composicao === null ? (
+                                  <Nada>{l.emAberto ? "dia em aberto" : SEM}</Nada>
+                                ) : (
+                                  duracaoTexto(l.composicao.normaisMin)
+                                )}
+                                {vmDia.previsto === 0 && <SemJornada />}
+                              </span>
                             </td>
                             {/* Sem dia nenhum é "sem registro"; dia que existe e
-                                o relógio não apurou é "sem apuração" — a
+                                não tem a faixa apurada é "sem apuração" — a
                                 palavra diz onde procurar. */}
                             <td className="px-3 py-2 tnum">
-                              {!l.d ? <Nada /> : l.apurado ? duracaoTexto(l.apurado.extraMin) : <Nada>{SEM_APURACAO}</Nada>}
+                              {l.composicao === null ? (
+                                <Nada>{l.emAberto ? "dia em aberto" : SEM}</Nada>
+                              ) : l.composicao.extraMin === null ? (
+                                <Nada>{SEM_APURACAO}</Nada>
+                              ) : (
+                                duracaoTexto(l.composicao.extraMin)
+                              )}
                             </td>
                             <td className="px-3 py-2 tnum">
-                              {!l.d ? (
-                                <Nada />
-                              ) : l.apurado ? (
-                                duracaoTexto(l.apurado.extraDobroMin)
-                              ) : (
+                              {l.composicao === null ? (
+                                <Nada>{l.emAberto ? "dia em aberto" : SEM}</Nada>
+                              ) : l.composicao.extraDobroMin === null ? (
                                 <Nada>{SEM_APURACAO}</Nada>
+                              ) : (
+                                duracaoTexto(l.composicao.extraDobroMin)
                               )}
+                            </td>
+                            {/* A FOLHA FECHA A CASCATA — total, não referência
+                                de jornada. O title repete em voz alta o que o
+                                cabeçalho diz, porque é aqui que o olho para. */}
+                            <td className="px-3 py-2 tnum font-medium" title={AJUDA_FOLHA}>
+                              {l.min === null ? <Nada>{l.emAberto ? "dia em aberto" : SEM}</Nada> : duracaoTexto(l.min)}
                             </td>
                             <td className="px-3 py-2">
                               {!l.p ? (
@@ -3043,11 +3307,21 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
           {visao === "mes" && (
             <>
               <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {/* O CARTÃO QUE MUDOU DE NÚMERO (decisão 12). Ele mostrava a
+                    FOLHA com o previsto embaixo, e esse par não se compara: a
+                    folha tem a extra dentro, e a extra tapava justamente o
+                    déficit que o previsto deveria denunciar (a VICTORIA de
+                    janeiro: 163h normais contra 193h previstas, lidas como
+                    177h30). Agora o número forte é a HORA COMUM, o previsto
+                    continua embaixo — agora comparável — e a folha vai ao lado,
+                    dita como total. */}
                 <StatCard
-                  rotulo="Horas da folha"
-                  valor={horasOuNada(vmMes.totais.porColuna.horas)}
+                  rotulo="Horas normais"
+                  valor={horasOuNada(vmMes.totais.porColuna.normais)}
                   tom="brand"
-                  sub={`previstas na escala: ${duracaoTexto(vmMes.previstoMin)} por pessoa`}
+                  sub={`previsto na escala: ${horasOuNada(vmMes.previstoMin)} por pessoa · folha (com extras): ${horasOuNada(
+                    vmMes.totais.porColuna.horas
+                  )}`}
                   icone={Clock}
                 />
                 <StatCard
@@ -3056,7 +3330,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   tom="neutral"
                   sub={`+50%: ${horasOuSemApuracao(vmMes.totais.porColuna.extra)} · +100%: ${horasOuSemApuracao(
                     vmMes.totais.porColuna.extraDobro
-                  )}`}
+                  )} · já contadas dentro da folha`}
                   icone={AlarmClock}
                 />
                 <StatCard
@@ -3100,6 +3374,27 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   icone={Percent}
                 />
               </div>
+
+              {/* A CASCATA ESCRITA, embaixo dos cartões que ela explica. Não
+                  recolhe e não é `Explicacao`: é a régua dos dois primeiros
+                  cartões, e sem ela o par "normais / horas extras" volta a ser
+                  somado por quem lê depressa. */}
+              <p className="mb-4 text-xs text-slate-500">
+                <strong>Horas normais</strong> é a hora comum, e é ela que se compara com o previsto da escala.{" "}
+                <strong>Horas da folha</strong> (o <em>payrollHours</em> do relógio) é o total do pagamento e{" "}
+                <strong>já inclui as extras</strong> — folha = normais + 50% + 100%. Somar a folha com as extras ao lado
+                pagaria a mesma hora duas vezes.{" "}
+                {/* O PREVISTO SAI POR PESSOA, NUNCA MULTIPLICADO PELO GRUPO.
+                    Quem foi admitido no dia 12, quem saiu no dia 20 e quem
+                    esteve de férias não devem o mês inteiro — um "previsto do
+                    grupo" seria um denominador inventado, e o número que ele
+                    produziria (um déficit coletivo) é exatamente o tipo de
+                    total que ninguém consegue conferir. A comparação honesta é
+                    linha a linha, no painel de cada pessoa. */}
+                O previsto é <strong>por pessoa</strong> ({horasOuNada(vmMes.previstoMin)} neste mês): quem entrou,
+                saiu ou esteve de férias no meio do mês não deve o mês inteiro, então a comparação se faz pessoa a
+                pessoa — toque num nome para ver a dela.
+              </p>
 
               {/* A SEÇÃO RECOLHÍVEL, no padrão do print: título grande, e
                   embaixo o TAMANHO DO RECORTE — porque a primeira dúvida diante
