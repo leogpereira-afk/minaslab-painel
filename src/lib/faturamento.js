@@ -122,3 +122,47 @@ export function vendasDosTitulos(receber, categorias) {
 
   return saida;
 }
+
+/* OS ANOS QUE O FILTRO OFERECE.
+ *
+ * Nasceu com piso fixo em 2020, copiado do print do Painel da Impresilk — que
+ * tem dez anos de história. A MinasLab entrou no Omie em 2024, e o filtro
+ * mostrava 2020, 2021, 2022 e 2023: quatro botões que só sabem devolver tela
+ * vazia. Botão que não pode dar certo não é filtro, é armadilha; e quatro deles
+ * em fila fazem o módulo parecer quebrado antes de o dono clicar em nada.
+ *
+ * Agora o piso é O PRIMEIRO ANO COM FATURAMENTO. Três coisas entram além dele,
+ * e cada uma existe por um motivo:
+ *
+ *   · O ANO CORRENTE, sempre. Na virada de janeiro ainda não há título do ano
+ *     novo; sem esta linha o ano novo seria inalcançável justamente no mês em
+ *     que o dono mais quer olhar para ele — e ele não teria onde clicar para
+ *     descobrir que ainda não entrou nada.
+ *   · TODO ano com faturamento, mesmo fora da faixa. Se um título de 2019
+ *     aparecer numa importação futura, a lista não pode escondê-lo.
+ *   · O ANO JÁ ESCOLHIDO. Parece zelo demais e não é: uma escolha guardada no
+ *     aparelho que saísse da lista deixaria a tela SEM NENHUMA PÍLULA ACESA, e
+ *     é exatamente assim que alguém conclui que "o filtro não funciona".
+ *
+ * Sem faturamento nenhum, sobra o ano corrente. Oferecer sete anos vazios
+ * quando não há dado é encher a tela de perguntas que já se sabe responder.
+ */
+export function anosDoFiltro({ anosComVenda, anoAtual, anoEscolhido } = {}) {
+  const ehAno = (v) => /^\d{4}$/.test(String(v ?? ""));
+  const comVenda = (Array.isArray(anosComVenda) ? anosComVenda : []).filter(ehAno).map(String);
+  const atual = ehAno(anoAtual) ? String(anoAtual) : null;
+
+  const anos = new Set(comVenda);
+  if (atual) anos.add(atual);
+  if (ehAno(anoEscolhido)) anos.add(String(anoEscolhido));
+
+  /* O PISO É O MENOR ANO COM FATURAMENTO — e daí até hoje sem buraco. Um ano
+     no meio sem título ainda merece botão: "2025 não teve faturamento" é uma
+     resposta, e some da lista viraria uma pergunta que ninguém pode fazer. */
+  if (comVenda.length && atual) {
+    const piso = Number(comVenda.reduce((m, a) => (a < m ? a : m)));
+    for (let a = piso; a <= Number(atual); a += 1) anos.add(String(a));
+  }
+
+  return [...anos].sort();
+}

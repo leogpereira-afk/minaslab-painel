@@ -81,7 +81,7 @@ import { moeda, numero, ymdLocal } from "../lib/format.js";
 import { PageTitle, Card, Segmented, CarregandoModulo, ErroModulo, Aviso } from "../components/ui.jsx";
 import { Explicacao, Pilulas } from "../components/lista.jsx";
 import { plural, recortarVendas } from "../components/abc/comum.jsx";
-import { vendasDosTitulos } from "../lib/faturamento.js";
+import { anosDoFiltro, vendasDosTitulos } from "../lib/faturamento.js";
 import AbaClientes from "../components/abc/AbaClientes.jsx";
 import AbaProdutos from "../components/abc/AbaProdutos.jsx";
 import AbaVendedores from "../components/abc/AbaVendedores.jsx";
@@ -102,13 +102,6 @@ const ABAS = [
   { valor: "produtos", rotulo: "Serviços" },
   { valor: "vendedores", rotulo: "Vendedores" },
 ];
-
-/* O primeiro ano do filtro. Fixo de propósito: o print que o dono mandou começa
-   em 2020, e uma lista que só oferecesse os anos COM DADO deixaria o ano novo
-   inalcançável na virada de janeiro — a pessoa não teria onde clicar para ver
-   que ainda não entrou nada. Ano com venda FORA dessa faixa entra também (ver
-   `opcoesDeAno`): a lista fixa não pode esconder venda de 2019. */
-const ANO_INICIAL = 2020;
 
 const K_ABA = "minaslab.abc.aba";
 const K_ANO = "minaslab.abc.ano";
@@ -335,18 +328,19 @@ export default function CurvaAbc() {
     };
   }, [recorte]);
 
-  /* AS PÍLULAS: "Todos" e os anos de 2020 até o corrente, mais todo ano que
-     tenha venda fora dessa faixa, mais o ANO JÁ ESCOLHIDO. O último parece zelo
-     demais e não é: sem ele, uma escolha guardada que saísse da lista deixaria
-     a tela sem nenhuma pílula acesa — e é exatamente assim que o usuário
-     descobre que "o filtro não funciona". */
+  /* QUEM DECIDE OS ANOS É O DADO, não uma constante. O piso era 2020, copiado
+     do print do Painel da Impresilk; a MinasLab entrou no Omie em 2024 e a tela
+     oferecia quatro botões (2020..2023) que só sabiam devolver recorte vazio.
+     A regra inteira, com as bordas, mora em lib/faturamento.js — testada sem
+     tela: o ano corrente entra sempre (a virada de janeiro), ano com
+     faturamento fora da faixa não some, e o ano já escolhido nunca cai da
+     lista (senão a tela ficaria sem nenhuma pílula acesa). */
   const opcoesDeAno = useMemo(() => {
-    const atual = Number(hojeISO.slice(0, 4));
-    const set = new Set();
-    for (let a = ANO_INICIAL; a <= atual; a += 1) set.add(String(a));
-    for (const a of recorte.anosComVenda) set.add(a);
-    if (/^\d{4}$/.test(ano)) set.add(ano);
-    const lista = [...set].sort();
+    const lista = anosDoFiltro({
+      anosComVenda: recorte.anosComVenda,
+      anoAtual: hojeISO.slice(0, 4),
+      anoEscolhido: ano,
+    });
     return [{ valor: "", rotulo: "Todos" }, ...lista.map((a) => ({ valor: a, rotulo: a }))];
   }, [recorte.anosComVenda, hojeISO, ano]);
 
