@@ -73,10 +73,13 @@ test("admissão NÃO conferida chega marcada — o padrão não é otimista", ()
 });
 
 test("o CASO REAL DA MINASLAB: fichas do relógio, nenhuma com nascimento", () => {
+  /* O APELIDO MANDA no nome exibido (é como a casa chama a pessoa), então aqui
+     ele vai explícito: trocar só o `nome` deixaria os três com o apelido "Ana"
+     do molde e o find abaixo procuraria alguém que não existe. */
   const quadro = [
     P({ id: "a", admissao: "2024-01-15", admissaoConferida: false }),
-    P({ id: "b", nome: "Bruno", admissao: "2023-06-01", admissaoConferida: false }),
-    P({ id: "c", nome: "Carla", admissao: "2020-02-29", admissaoConferida: false }),
+    P({ id: "b", nome: "Bruno Lima", apelido: "Bruno", admissao: "2023-06-01", admissaoConferida: false }),
+    P({ id: "c", nome: "Carla Souza", apelido: "Carla", admissao: "2020-02-29", admissaoConferida: false }),
   ];
   const r = aniversariosDoAno(quadro, 2026);
   assert.equal(r.ativos, 3);
