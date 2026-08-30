@@ -41,13 +41,29 @@
 // pior que a falta dele. O alternador de verdade é o do próprio AbaPonto.
 //
 // ----------------------------------------------------------------------------
-// O MÊS DA FAIXA É DA FAIXA, e ela DIZ qual é, em letra grande. Pelo mesmo
-// motivo de cima: cada aba guarda a competência dela por dentro, e a casca não
-// tem como perguntar qual é. Um seletor mudo aqui em cima mostraria agosto no
-// alto e julho na tabela. Então a faixa carrega o próprio seletor (que começa
-// no mês de hoje) e escreve por extenso o mês que vai puxar — ninguém puxa um
-// mês achando que puxou outro. Quando o AbaPonto aceitar a competência por
-// prop, o seletor vira um só e vale para as três abas.
+// O MÊS DA FAIXA É DA FAIXA, e ela DIZ qual é. Pelo mesmo motivo de cima: cada
+// aba guarda a competência dela por dentro, e a casca não tem como perguntar
+// qual é. Um seletor mudo aqui em cima mostraria agosto no alto e julho na
+// tabela. Então a faixa carrega o próprio seletor (que começa no mês de hoje) e
+// o mês vai escrito NO RÓTULO DO BOTÃO — "Puxar agosto/2026" —, que é onde a
+// mão clica: ninguém puxa um mês achando que puxou outro. Quando o AbaPonto
+// aceitar a competência por prop, o seletor vira um só e vale para as três
+// abas.
+//
+// A LINHA "Vai puxar o mês de agosto — de 01/08 a 31/08" SAIU (30/08/2026). O
+// dono mandou o print da tela rolada inteira: nenhum dado à vista, só cabeçalho
+// e explicação. O mesmo mês estava escrito TRÊS vezes na faixa (os dois
+// seletores e aquela linha), e era isso que empurrava o número para fora da
+// primeira dobra. O período por extenso continua no "como funciona".
+//
+// ----------------------------------------------------------------------------
+// A FAIXA ENCOLHE DEPOIS DA PRIMEIRA VEZ. Quem NUNCA importou vê o texto
+// inteiro — chegar pela primeira vez sem a explicação é chegar sem saber o que
+// o botão faz. Quem JÁ importou vê uma linha: a última leitura, os dois
+// seletores e o botão. A escolha de abrir ou recolher fica guardada
+// (localStorage, K_FAIXA), e o RESUMO DA RODADA (o card verde, as divergências,
+// o aviso de relógio desligado) NUNCA recolhe: aquilo é resultado, não é
+// explicação, e resultado que some é trabalho que ninguém confere.
 //
 // ----------------------------------------------------------------------------
 // IMPRESSÃO: o botão "Imprimir / PDF" chama a impressão do navegador — é por
@@ -58,7 +74,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef} from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Printer, RefreshCw, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronDown, Printer, RefreshCw, Users } from "lucide-react";
 import { salvar, apagar, carregarColecoes } from "../services/dados.js";
 import { estadoDoRelogio, sincronizarPeriodo } from "../services/ponto.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
@@ -89,6 +105,39 @@ function rotuloDoMes(competencia) {
   return nome ? `${nome} de ${ano}` : String(competencia || "mês não escolhido");
 }
 
+// "2026-08" → "agosto/2026". É o rótulo do BOTÃO: depois que a frase "vai puxar
+// o mês de X" saiu da faixa (ela dizia pela terceira vez o que os dois seletores
+// ao lado já diziam), o mês continua escrito onde a mão vai clicar.
+function rotuloCurtoDoMes(competencia) {
+  const [ano, mes] = String(competencia || "").split("-");
+  const nome = MESES_LONGOS[Number(mes) - 1];
+  return nome ? `${nome}/${ano}` : String(competencia || "");
+}
+
+/* A FAIXA ABERTA OU RECOLHIDA — a escolha da pessoa, guardada.
+   Chave própria (não um objeto de preferências): é uma decisão só, e um JSON
+   com um campo só envelhece pior que um "1"/"0". Devolve `null` quando NINGUÉM
+   escolheu ainda — que não é "recolhida": é o que deixa a faixa decidir sozinha
+   pela primeira visita. */
+const K_FAIXA = "minaslab.ponto.faixa.aberta";
+
+function lerFaixaAberta() {
+  try {
+    const v = localStorage.getItem(K_FAIXA);
+    return v === "1" ? true : v === "0" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function gravarFaixaAberta(aberta) {
+  try {
+    localStorage.setItem(K_FAIXA, aberta ? "1" : "0");
+  } catch {
+    /* sem localStorage a escolha só não persiste */
+  }
+}
+
 // O último dia do mês, em "AAAA-MM-DD" local. new Date(ano, mes, 0) é o dia 0
 // do mês SEGUINTE, que é o último deste — e acerta fevereiro bissexto sozinho.
 function fimDoMes(competencia) {
@@ -100,14 +149,19 @@ function fimDoMes(competencia) {
 /* A frase da última leitura. Ela existe para responder, sem clicar em nada, a
    pergunta que o dono do sistema faz ao abrir a tela: "isto aqui está velho?".
    DADO AUSENTE NÃO É ZERO nem é "agora": sem carimbo, a frase diz que nunca
-   foi lido — nunca inventa uma data. */
-function fraseDaUltimaLeitura(ultima, hojeISO) {
+   foi lido — nunca inventa uma data.
+
+   `curta` é a versão da faixa RECOLHIDA: só "Relógio lido hoje às 21:45", sem o
+   período entre parênteses. O período não some do sistema — ele volta inteiro
+   assim que a faixa abre. */
+function fraseDaUltimaLeitura(ultima, hojeISO, curta = false) {
   if (!ultima?.em) return "O relógio ainda não foi lido por aqui.";
   const d = new Date(ultima.em);
   if (Number.isNaN(d.getTime())) return "O relógio já foi lido, mas a data do registro não é legível.";
   const dia = ymdLocal(d);
   const hora = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const quando = dia === hojeISO ? `hoje às ${hora}` : `em ${dataLonga(dia)} às ${hora}`;
+  if (curta) return `Relógio lido ${quando}.`;
   const periodo = ultima.de && ultima.ate ? ` (período de ${dataLonga(ultima.de)} a ${dataLonga(ultima.ate)})` : "";
   return `Relógio lido ${quando}${periodo}.`;
 }
@@ -266,36 +320,92 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
   const [ano, mes] = competencia.split("-");
   const desligado = estado && estado.ligado === false;
   const rotulo = rotuloDoMes(competencia);
+  const rotuloCurto = rotuloCurtoDoMes(competencia);
+
+  /* A FAIXA ENCOLHE DEPOIS DA PRIMEIRA VEZ (pedido do Léo, 30/08/2026: ele
+     rolou a tela inteira e não viu um dado sequer — o que ocupava a primeira
+     dobra era explicação).
+
+     Quem manda é a escolha da pessoa, guardada. Enquanto ninguém escolheu:
+     NUNCA houve importação → nasce ABERTA, porque quem chega pela primeira vez
+     precisa da explicação; já houve → nasce RECOLHIDA, porque quem já usou não
+     lê duas vezes o mesmo parágrafo.
+
+     Antes de o servidor responder (`estado === null`) a faixa fica recolhida de
+     propósito: abrir grande e encolher sozinha na frente de quem já começou a
+     ler é pior que começar pequena. E o caso do servidor que NÃO respondeu não
+     fica mudo — a linha recolhida é justamente onde o erro aparece. */
+  const [escolha, setEscolha] = useState(lerFaixaAberta);
+  const aberta = escolha ?? (estado ? !estado.ultima?.em : false);
+  const alternar = () => {
+    const nova = !aberta;
+    setEscolha(nova);
+    gravarFaixaAberta(nova);
+  };
+
+  const fraseDaLeitura = estadoFalhou
+    ? `Não consegui perguntar ao servidor quando foi a última leitura: ${estadoFalhou}`
+    : estado
+      ? fraseDaUltimaLeitura(estado.ultima, hojeISO, !aberta)
+      : "Perguntando ao servidor quando foi a última leitura...";
 
   return (
     <Card className="sem-impressao mb-6 border-l-4 border-l-brand">
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      {/* Recolhida a faixa é UMA LINHA, e por isso `items-center`: com o
+          alinhamento pelo topo a frase ficaria pendurada acima dos seletores. */}
+      <div
+        className={`flex flex-wrap justify-between gap-x-6 gap-y-3 ${aberta ? "items-start" : "items-center"}`}
+      >
         {/* basis-72 é o PISO da coluna de texto, e não enfeite: com flex-1
             sozinho (base 0) a linha nunca quebra — o bloco dos controles fica
             do lado e espreme o texto até virar uma coluna de uma letra. Com um
             piso de 18rem, quando os dois não cabem juntos os controles descem
             para a linha de baixo, inteiros. */}
         <div className="min-w-0 flex-1 basis-72">
-          <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-slate-900">
-            <RefreshCw size={18} strokeWidth={2.5} className="text-brand" />
-            Puxar do relógio
-          </h2>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Uma chamada só: cria a ficha de quem ainda não tem, completa o que está vazio, traz os dias do mês e já
-            deixa cada dia com dono. Não é preciso importar planilha nem vincular ninguém à mão.
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            {estadoFalhou
-              ? `Não consegui perguntar ao servidor quando foi a última leitura: ${estadoFalhou}`
-              : estado
-                ? fraseDaUltimaLeitura(estado.ultima, hojeISO)
-                : "Perguntando ao servidor quando foi a última leitura..."}
+          {aberta ? (
+            <>
+              <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-slate-900">
+                <RefreshCw size={18} strokeWidth={2.5} className="text-brand" />
+                Puxar do relógio
+              </h2>
+              <p className="mt-1 max-w-xl text-sm text-slate-500">
+                Uma chamada só: cria a ficha de quem ainda não tem, completa o que está vazio, traz os dias do mês e já
+                deixa cada dia com dono. Não é preciso importar planilha nem vincular ninguém à mão. O período é o mês
+                inteiro: de {dataLonga(`${competencia}-01`)} a {dataLonga(fimDoMes(competencia))}.
+              </p>
+            </>
+          ) : (
+            /* Recolhida a faixa perde o título VISÍVEL, não o título: sem ele o
+               leitor de tela entraria num bloco sem nome. */
+            <h2 className="sr-only">Puxar do relógio</h2>
+          )}
+          <p
+            className={
+              aberta
+                ? "mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500"
+                : "flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600"
+            }
+          >
+            {!aberta && <RefreshCw size={15} strokeWidth={2.5} className="shrink-0 text-brand" />}
+            <span className="min-w-0">{fraseDaLeitura}</span>
+            <button
+              type="button"
+              onClick={alternar}
+              aria-expanded={aberta}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-brand underline-offset-2 hover:underline"
+            >
+              <ChevronDown size={13} strokeWidth={2.5} className={aberta ? undefined : "-rotate-90"} />
+              como funciona
+            </button>
           </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="label" htmlFor="fx-mes">Mês que vou puxar</label>
+            {/* Recolhida, o rótulo continua para quem ouve a tela e sai da
+                frente de quem vê: o mês escolhido está escrito dentro do
+                seletor e outra vez no botão ("Puxar agosto/2026"). */}
+            <label className={aberta ? "label" : "sr-only"} htmlFor="fx-mes">Mês que vou puxar</label>
             <select
               id="fx-mes"
               className="select w-36"
@@ -309,7 +419,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="fx-ano">Ano</label>
+            <label className={aberta ? "label" : "sr-only"} htmlFor="fx-ano">Ano</label>
             <select
               id="fx-ano"
               className="select w-28"
@@ -323,9 +433,14 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
             </select>
           </div>
           {editavel && !desligado && (
+            /* O MÊS VAI NO BOTÃO. A frase "vai puxar o mês de agosto — de 01/08
+               a 31/08" saiu: era a terceira vez que o mesmo mês aparecia na
+               faixa (os dois seletores já o diziam) e era ela que empurrava o
+               dado para fora da tela. Escrito aqui, o mês está onde a mão vai
+               clicar — ninguém puxa um mês achando que puxou outro. */
             <button
               type="button"
-              className="btn-primary px-6 py-3 text-base"
+              className={aberta ? "btn-primary px-6 py-3 text-base" : "btn-primary"}
               onClick={puxar}
               disabled={rodando}
               title={`Busca no Jibble as pessoas e as batidas de ${rotulo}`}
@@ -335,19 +450,11 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
                 ? progresso?.pessoasLidas > 0
                   ? `Puxando... ${plural(progresso.pessoasLidas, "pessoa", "pessoas")}`
                   : "Puxando..."
-                : "Puxar do relógio"}
+                : `Puxar ${rotuloCurto}`}
             </button>
           )}
         </div>
       </div>
-
-      {/* O MÊS POR EXTENSO, sempre à vista. O seletor diz "agosto" numa caixa
-          pequena; esta linha diz a frase inteira, para ninguém puxar um mês
-          achando que puxou outro. */}
-      <p className="mt-4 border-t pt-3 text-sm text-slate-600" style={{ borderColor: "var(--hairline)" }}>
-        Vai puxar o <strong className="font-semibold text-slate-900">mês de {rotulo}</strong> — de{" "}
-        {dataLonga(`${competencia}-01`)} a {dataLonga(fimDoMes(competencia))}.
-      </p>
 
       {desligado && (
         <div className="mt-3 rounded-xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
@@ -565,9 +672,12 @@ export default function Ponto() {
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <CabecalhoDoPapel hojeISO={hojeISO} aba={aba} sessao={sessao} />
 
+      {/* A DESCRIÇÃO É CURTA DE PROPÓSITO: o que o painel faz ao puxar está no
+          "como funciona" da faixa logo abaixo, e repetir aqui eram mais duas
+          linhas de explicação empurrando o número para fora da primeira dobra. */}
       <PageTitle
         titulo="Ponto"
-        descricao="O relógio da MinasLab é o Jibble. Puxe o mês no topo — o painel busca as pessoas e as batidas de uma vez — e confira aqui embaixo o dia, o fechamento, as faltas e os relatórios."
+        descricao="O relógio da MinasLab é o Jibble."
         acao={
           <div className="sem-impressao flex flex-wrap items-center gap-2">
             {/* Imprimir não é escrita: quem só consulta também leva a folha.

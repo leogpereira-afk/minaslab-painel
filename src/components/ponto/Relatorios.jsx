@@ -101,6 +101,26 @@
 //     matriz é a razão de a visão existir. O ranking entra ACIMA dela, para a
 //     tela abrir respondendo "quem trabalhou mais no ano".
 //
+// 11. A PRIMEIRA DOBRA É DO DADO (30/08/2026). O dono mandou o print: rolou a
+//     tela do Ponto inteira e NÃO VIU UM NÚMERO — tudo o que cabia na altura da
+//     tela era cabeçalho e explicação. O rodapé do cabeçalho tinha QUATRO
+//     linhas de texto (escala, tolerância da CLT em parágrafo, carimbo do
+//     relógio por extenso) entre os seletores e o primeiro cartão, e o carimbo
+//     do relógio ainda REPETIA o que a faixa "Puxar do relógio" já dizia dois
+//     blocos acima.
+//     As quatro viraram UMA linha de fatos curtos — jornada · tolerância
+//     aplicada · relógio lido hoje 21:45 — e um "entender os números" que abre
+//     o texto inteiro, com a escolha guardada (`explicacao` em lerPrefs).
+//     TRÊS COISAS NÃO RECOLHEM, e não recolhem de propósito:
+//       · OS AVISOS (escala padrão, configuração que não carregou, turno não
+//         entendido, divisor que não bate). Aviso escondido é aviso apagado.
+//       · O CARIMBO DO RELÓGIO NO PAPEL. No `.apenas-impressao` ele continua
+//         por extenso: na folha não há faixa nenhuma acima, e relatório
+//         impresso que não diz de quando é já mandou descontar mês errado.
+//       · O TEXTO DA TOLERÂNCIA. Ele não saiu do sistema — é o que evita
+//         alguém confundir este atraso com o desconto da folha. Só deixou de
+//         ocupar a altura que era do número. RECOLHER É DIFERENTE DE APAGAR.
+//
 // ============================================================================
 // CONTRATO — props que esta aba recebe da casca (pages/Ponto.jsx)
 // ----------------------------------------------------------------------------
@@ -127,7 +147,7 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import {
   AlarmClock, ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff,
-  CircleAlert, Clock, Download, Minus, Percent, Printer, Settings2, Users,
+  ChevronDown, CircleAlert, Clock, Download, Minus, Percent, Printer, Settings2, Users,
 } from "lucide-react";
 import { lerCfg } from "../../services/dados.js";
 import { dataCurta, dataLonga, diasEntre, ymdLocal, MESES, MESES_LONGOS } from "../../lib/format.js";
@@ -238,6 +258,12 @@ function foraDoQuadroEmPalavras(quadro, n) {
  *
  * `medidaMes` é o número forte da lista do Mês. Guardado pela mesma razão do
  * quadro: quem abre a tela para olhar atraso não quer reescolher todo dia.
+ *
+ * `explicacao` é o texto do cabeçalho (escala, tolerância da CLT, carimbo do
+ * relógio). Ao contrário dos rankings, ele nasce RECOLHIDO — `=== true` e não
+ * `!== false` —: são quatro linhas de explicação que empurravam os cartões para
+ * fora da primeira dobra, e quem já conhece a régua não a lê todo dia. Recolher
+ * NÃO É APAGAR: o texto inteiro está a um clique, e o papel o leva sempre.
  */
 function lerPrefs() {
   try {
@@ -250,10 +276,11 @@ function lerPrefs() {
       medidaMes: MEDIDAS.some((m) => m.chave === salvo?.medidaMes) ? salvo.medidaMes : "horas",
       rankMes: salvo?.rankMes !== false,
       rankAno: salvo?.rankAno !== false,
+      explicacao: salvo?.explicacao === true,
     };
   } catch {
     // Sem localStorage (ou JSON estragado) vale o padrão: só o quadro de hoje.
-    return { quadro: "ativos", mesesTodos: false, medidaMes: "horas", rankMes: true, rankAno: true };
+    return { quadro: "ativos", mesesTodos: false, medidaMes: "horas", rankMes: true, rankAno: true, explicacao: false };
   }
 }
 
@@ -312,6 +339,18 @@ function instanteLocal(iso) {
   return `${dataLonga(ymdLocal(t))} às ${hh}:${mm}`;
 }
 
+/** O mesmo instante em VERSÃO CURTA — "hoje 21:45", "28/08 21:45". É a marca do
+    rodapé recolhido; a versão por extenso continua no papel (RecorteImpresso) e
+    na faixa "Puxar do relógio", que é onde a ação de importar mora. */
+function instanteCurto(iso, hojeISO) {
+  const t = new Date(String(iso ?? ""));
+  if (Number.isNaN(t.getTime())) return null;
+  const hh = String(t.getHours()).padStart(2, "0");
+  const mm = String(t.getMinutes()).padStart(2, "0");
+  const dia = ymdLocal(t);
+  return `${dia === hojeISO ? "hoje" : dataCurta(dia)} ${hh}:${mm}`;
+}
+
 /**
  * QUANDO O RELÓGIO FOI IMPORTADO PELA ÚLTIMA VEZ.
  *
@@ -323,15 +362,19 @@ function instanteLocal(iso) {
  * Nenhum carimbo devolve null, e a tela escreve "não sei dizer" — dizer
  * "nunca importado" seria afirmar sobre o Jibble a partir da ausência de um
  * campo que pode simplesmente ser velho.
+ *
+ * DEVOLVE O INSTANTE CRU, não a frase: a mesma leitura é escrita em dois
+ * tamanhos (curto na tela, por extenso no papel), e formatar aqui obrigaria a
+ * varrer a coleção duas vezes ou a recortar texto já pronto.
  */
-function ultimaImportacao(pontoDia) {
+function ultimaImportacaoISO(pontoDia) {
   let maior = "";
   for (const d of pontoDia || []) {
     if (txt(d.atualizadoPor) !== "jibble") continue;
     const q = txt(d.atualizadoEm);
     if (q > maior) maior = q;
   }
-  return maior ? instanteLocal(maior) : null;
+  return maior || null;
 }
 
 // ---- datas -----------------------------------------------------------------
@@ -1789,7 +1832,10 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   const jornadaEmPalavras = useMemo(() => descreverJornada(cfg.jornada), [cfg.jornada]);
 
   const indice = useMemo(() => montarIndice(pessoas, pontoDia), [pessoas, pontoDia]);
-  const importadoEm = useMemo(() => ultimaImportacao(pontoDia), [pontoDia]);
+  const importadoISO = useMemo(() => ultimaImportacaoISO(pontoDia), [pontoDia]);
+  // Por extenso para o PAPEL; curta para a linha do rodapé.
+  const importadoEm = useMemo(() => instanteLocal(importadoISO), [importadoISO]);
+  const importadoCurto = useMemo(() => instanteCurto(importadoISO, hojeISO), [importadoISO, hojeISO]);
 
   /* Quem pode ser escolhido no filtro: o quadro mais quem tem dia gravado em
      qualquer época (o relatório de março precisa de quem saiu em abril) — e
@@ -2480,28 +2526,34 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   return (
     <>
       <Card className="mb-4">
-        <SectionTitle
-          titulo="Relatórios do ponto"
-          sub="O mesmo dado das outras abas, somado por dia, por mês, por ano e entre períodos. Esta aba não grava nada."
-          acao={
-            <div className="sem-impressao flex flex-wrap items-center gap-2">
-              {/* O PDF É A IMPRESSÃO: no destino da impressão, "Salvar como PDF".
-                  Não há segunda geração de documento — se houvesse, a folha e a
-                  tela discordariam no dia em que uma das duas mudasse. */}
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => window.print()}
-                title="Imprime esta tela; no destino da impressão escolha Salvar como PDF"
-              >
-                <Printer size={16} strokeWidth={2.5} /> Baixar PDF
-              </button>
-              <button type="button" className="btn-outline" onClick={baixar}>
-                <Download size={16} strokeWidth={2.5} /> Baixar planilha
-              </button>
-            </div>
-          }
-        />
+        {/* O TÍTULO E O SUB NA MESMA LINHA (o SectionTitle da casa os empilha).
+            Duas linhas de cabeçalho antes do primeiro número, numa tela cuja
+            queixa era "rolei tudo e não vi um dado", é uma linha a mais do que
+            a tela pode pagar. O sub continua escrito — só menor e ao lado. */}
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <h2 className="font-display text-lg font-semibold text-slate-900">Relatórios do ponto</h2>
+            <p className="min-w-0 text-xs text-slate-500">
+              o mesmo dado das outras abas, somado por dia, mês, ano e entre períodos · esta aba não grava nada
+            </p>
+          </div>
+          <div className="sem-impressao flex flex-wrap items-center gap-2">
+            {/* O PDF É A IMPRESSÃO: no destino da impressão, "Salvar como PDF".
+                Não há segunda geração de documento — se houvesse, a folha e a
+                tela discordariam no dia em que uma das duas mudasse. */}
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => window.print()}
+              title="Imprime esta tela; no destino da impressão escolha Salvar como PDF"
+            >
+              <Printer size={16} strokeWidth={2.5} /> Baixar PDF
+            </button>
+            <button type="button" className="btn-outline" onClick={baixar}>
+              <Download size={16} strokeWidth={2.5} /> Baixar planilha
+            </button>
+          </div>
+        </div>
 
         <div className="sem-impressao mb-3 flex max-w-full flex-wrap items-center gap-3 overflow-x-auto pb-1">
           <Segmented opcoes={VISOES} valor={visao} onChange={setVisao} />
@@ -2678,11 +2730,41 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
           </div>
         </div>
 
-        {/* A RÉGUA À VISTA. Previsto e atraso saem da escala; escala que não se
-            lê na tela vira número sem dono na hora da conferência. */}
+        {/* A RÉGUA EM UMA LINHA (30/08/2026). Eram quatro linhas de texto —
+            escala, tolerância da CLT em parágrafo e o carimbo do relógio por
+            extenso — e elas ficavam entre os seletores e o primeiro cartão: o
+            dono rolou a tela e não viu um dado sequer.
+
+            O QUE FICA: os fatos curtos, que cabem numa linha, e TODO AVISO. Os
+            chips (escala padrão, configuração que não carregou, turno não
+            entendido, divisor que não bate) NÃO recolhem — aviso escondido é
+            aviso apagado, e é ele que muda a leitura do número.
+
+            O QUE RECOLHE: o texto que EXPLICA a régua, atrás de "entender os
+            números". Ele não some do sistema — é o que evita alguém confundir
+            este atraso com o desconto da folha —, só deixa de ocupar a primeira
+            dobra. E no papel o RecorteImpresso o leva inteiro, sempre.
+
+            O CARIMBO DO RELÓGIO APARECIA DUAS VEZES na mesma tela: aqui e na
+            faixa "Puxar do relógio", logo acima. Ficou o de cima, que é onde a
+            ação de importar mora; aqui sobrou a marca curta ("relógio hoje
+            21:45"), porque um relatório também não pode calar de quando é. */}
         <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          <Clock size={13} className="text-slate-400" />
+          <Clock size={13} className="shrink-0 text-slate-400" />
           <span className="tnum">Jornada: {jornadaEmPalavras}</span>
+          <span aria-hidden="true" className="text-slate-300">·</span>
+          <span>tolerância da CLT aplicada</span>
+          <span aria-hidden="true" className="text-slate-300">·</span>
+          {/* SEM CARIMBO NÃO É "AGORA" nem é 0: a linha diz que não sabe. */}
+          <span>
+            {importadoCurto ? (
+              <>
+                relógio lido <strong className="tnum">{importadoCurto}</strong>
+              </>
+            ) : (
+              <Nada>não sei quando o relógio foi lido</Nada>
+            )}
+          </span>
           {!cfg.jornadaDefinida && <span className="chip">escala padrão da casa</span>}
           {config === null && !cfgFalhou && <span className="chip">carregando a configuração — vale o padrão</span>}
           {cfgFalhou && <span className="chip-warn">não consegui ler a configuração — usando o padrão da casa</span>}
@@ -2696,27 +2778,37 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
               a escala sustenta o divisor {divisorDaJornada(cfg.jornada)}, e o configurado é {cfg.divisor}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => salvar({ explicacao: !prefs.explicacao })}
+            aria-expanded={prefs.explicacao}
+            className="sem-impressao inline-flex shrink-0 items-center gap-1 font-medium text-brand underline-offset-2 hover:underline"
+          >
+            <ChevronDown size={13} strokeWidth={2.5} className={prefs.explicacao ? undefined : "-rotate-90"} />
+            entender os números
+          </button>
         </p>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          <Settings2 size={13} className="text-slate-400" />
-          <span>
-            Atraso já com a <strong>tolerância da CLT aplicada</strong> ({TOLERANCIA_MARCACAO_MIN} min por marcação,{" "}
-            {TOLERANCIA_DIA_MIN} no dia, art. 58 § 1º): dentro do limite não conta nada; passando dele, conta o tempo
-            inteiro. Este atraso mede a <strong>chegada</strong> contra a escala — não é o atraso que desconta na
-            folha, que fica no Fechamento.
-          </span>
-        </p>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          <CalendarDays size={13} className="text-slate-400" />
-          <span>
-            Última importação do relógio:{" "}
-            {importadoEm ? (
-              <strong className="tnum">{importadoEm}</strong>
-            ) : (
-              <Nada>não sei dizer (nenhum dia com carimbo de importação)</Nada>
-            )}
-          </span>
-        </p>
+
+        {prefs.explicacao && (
+          <div className="sem-impressao mt-2 space-y-1.5 rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
+            <p className="flex items-start gap-2">
+              <Settings2 size={13} className="mt-0.5 shrink-0 text-slate-400" />
+              <span>
+                Atraso já com a <strong>tolerância da CLT aplicada</strong> ({TOLERANCIA_MARCACAO_MIN} min por
+                marcação, {TOLERANCIA_DIA_MIN} no dia, art. 58 § 1º): dentro do limite não conta nada; passando dele,
+                conta o tempo inteiro. Este atraso mede a <strong>chegada</strong> contra a escala — não é o atraso que
+                desconta na folha, que fica no Fechamento.
+              </span>
+            </p>
+            <p className="flex items-start gap-2">
+              <CalendarDays size={13} className="mt-0.5 shrink-0 text-slate-400" />
+              <span>
+                O previsto de cada dia sai da escala acima. A última importação do relógio, por extenso, fica na faixa
+                “Puxar do relógio” no alto da tela — e sai impressa em toda folha que esta aba gera.
+              </span>
+            </p>
+          </div>
+        )}
       </Card>
 
       <RecorteImpresso
