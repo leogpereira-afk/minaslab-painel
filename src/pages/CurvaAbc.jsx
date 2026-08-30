@@ -21,7 +21,7 @@
 // mediu a conta real da MinasLab e achou outra coisa:
 //
 //     notas fiscais de produto ......... 0     (a casa não emite)
-//     ordens de serviço ................ 0     (mesmo SEM filtro nenhum)
+//     ordens de serviço ............ 2.251   (corrigido — ver faturamento.js)
 //     contas a receber ............. 2.301  ← o faturamento mora aqui
 //     clientes ..................... 1.076
 //     categorias financeiras ......... 159

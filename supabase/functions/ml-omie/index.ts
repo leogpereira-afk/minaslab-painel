@@ -117,6 +117,26 @@ const numero = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/* QUANTOS REGISTROS A RESPOSTA DIZ TER — e `null` quando ela NÃO diz.
+ *
+ * Escrito depois de um erro caro (30/08/2026): a sondagem das ordens de serviço
+ * lia `r.nTotRegistros`, e essa família da API responde `total_de_registros`.
+ * `numero(undefined)` devolveu 0, o 0 virou "não existem O.S. nesta casa", e
+ * essa frase foi parar na tela do dono como fato medido. Existiam 2.251.
+ *
+ * O defeito não foi o nome errado — isso acontece. Foi o zero ter a mesma cara
+ * de uma contagem de verdade. Aqui, campo ausente devolve NULL: quem chama é
+ * obrigado a decidir o que fazer com "não sei", e "não sei" nunca mais se
+ * disfarça de "nenhum". As duas grafias convivem porque a API do Omie usa uma
+ * ou outra conforme o módulo. */
+function totalDeRegistros(r: Record<string, unknown>): number | null {
+  for (const k of ["total_de_registros", "nTotRegistros", "nTotalRegistros", "registros"]) {
+    const v = r?.[k];
+    if (v !== undefined && v !== null && Number.isFinite(Number(v))) return Number(v);
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------- gravação
 async function bump(colecao: string) {
   const agora = Date.now();
@@ -220,6 +240,12 @@ function osParaVenda(os: Record<string, any>): Record<string, unknown> {
     etapa: status,
     // Etapa 50 = cancelada no Omie. Mesma regra da NF: sai da soma, fica no histórico.
     cancelada: status === "50",
+    /* QUANTOS itens a O.S. tem — não só o primeiro. É este número que sustenta
+       a frase "a O.S. não separa ensaio" (medido: 1 item em 907 de 907 O.S. de
+       2026). Se um dia virar 3, a frase deixa de valer, e a tela descobre isso
+       sozinha em vez de alguém precisar sondar o ERP de novo. */
+    quantosItens: itens.length,
+    ...referenciasDoLims(itens.map((i: { descricao?: string }) => i?.descricao ?? "").join(" ")),
   };
 }
 
@@ -244,7 +270,36 @@ function tituloParaReceber(t: Record<string, any>): Record<string, unknown> {
     categoria: String(t.codigo_categoria ?? ""),
     status: status === "RECEBIDO" ? "pago" : status === "CANCELADO" ? "cancelado" : "aberto",
     statusOmie: status,
+    /* O ELO COM A ORDEM DE SERVIÇO — dois campos, nesta ordem, porque nenhum
+       cobre tudo (medido em 30/08/2026):
+         · `nCodOS` é o código interno da O.S. e é o elo forte, mas some nos
+           títulos refeitos à mão (parcelamento, renegociação);
+         · `numero_pedido` traz o NÚMERO da O.S. e sobrevive a esses refazimentos.
+       Guardar só um deixaria uma parte do faturamento órfã em silêncio — que é
+       o jeito mais caro de descobrir um furo. */
+    osId: String(t.nCodOS ?? ""),
+    osNumero: String(t.numero_pedido ?? ""),
   };
+}
+
+/* A REFERÊNCIA DO LIMS ESCRITA DENTRO DA DESCRIÇÃO DA O.S.
+ *
+ * O Omie não guarda qual ensaio foi vendido, mas quem emite a nota escreve, no
+ * texto do serviço, o contrato e a O.S. do sistema do laboratório:
+ *
+ *   "Nota fiscal referente aos serviços analíticos Minaslab:||Contrato:
+ *    00000714/20266 | OS01289/2026"
+ *
+ * Não é o ensaio — é o ENDEREÇO dele, fora do Omie. Extraímos como LISTA
+ * porque uma nota pode citar vários contratos, e somar o valor da nota a cada
+ * um deles contaria o mesmo dinheiro várias vezes. Quem for usar isso precisa
+ * ver quantos são para decidir a regra de rateio; por isso a lista viaja
+ * inteira em vez de virar um campo só. */
+function referenciasDoLims(descricao: string) {
+  const texto = String(descricao ?? "");
+  const contratos = [...texto.matchAll(/Contrato:\s*([0-9]{4,}\/[0-9]{4,})/gi)].map((m) => m[1]);
+  const ordens = [...texto.matchAll(/OS\s*:?\s*(OS?[0-9]{3,}\/[0-9]{4})/gi)].map((m) => m[1]);
+  return { contratos: [...new Set(contratos)], ordens: [...new Set(ordens)] };
 }
 
 // ---------------------------------------------------------------- serviço
@@ -360,7 +415,7 @@ Deno.serve(async (req) => {
           });
           const lista = (r.nfCadastro ?? []) as Record<string, any>[];
           const soma = lista.reduce((s, nf) => s + numero(nf?.nfTotal?.ICMSTot?.vNF), 0);
-          return { registros: numero(r.nTotRegistros), paginas: numero(r.nTotPaginas), amostraSoma: soma };
+          return { registros: totalDeRegistros(r), paginas: numero(r.nTotPaginas ?? r.total_de_paginas), amostraSoma: soma };
         });
 
         /* AS ORDENS DE SERVIÇO: o nome do filtro de data varia entre as versões
@@ -374,8 +429,8 @@ Deno.serve(async (req) => {
           });
           const lista = (r.osCadastro ?? []) as Record<string, any>[];
           return {
-            registros: numero(r.nTotRegistros),
-            paginas: numero(r.nTotPaginas),
+            registros: totalDeRegistros(r),
+            paginas: numero(r.nTotPaginas ?? r.total_de_paginas),
             amostra: lista.length ? lista[0] : null,
           };
         });
@@ -390,7 +445,7 @@ Deno.serve(async (req) => {
               pagina: 1, registros_por_pagina: 5, apenas_importado_api: "N",
               [par[0]]: isoParaBR(de), [par[1]]: isoParaBR(ate),
             });
-            return { registros: numero(r.nTotRegistros), paginas: numero(r.nTotPaginas), aceito: true };
+            return { registros: totalDeRegistros(r), paginas: numero(r.nTotPaginas ?? r.total_de_paginas), aceito: true };
           });
         }
 
@@ -420,7 +475,7 @@ Deno.serve(async (req) => {
           });
           const lista = (r.cadastros ?? r.servicoCadastro ?? []) as Record<string, any>[];
           return {
-            registros: numero(r.nTotRegistros ?? r.total_de_registros),
+            registros: totalDeRegistros(r),
             amostra: lista.length ? lista[0] : null,
           };
         });
@@ -464,7 +519,7 @@ Deno.serve(async (req) => {
           });
           const lista = (r.nfseEncontradas ?? r.cadastros ?? []) as Record<string, any>[];
           return {
-            registros: numero(r.nTotRegistros) || lista.length,
+            registros: totalDeRegistros(r) ?? lista.length,
             paginas: numero(r.nTotPaginas),
             amostra: lista.length ? lista[0] : null,
           };
@@ -506,15 +561,29 @@ Deno.serve(async (req) => {
           return resp({ gravados, lidos: lista.length, pagina, paginas, proxima: pagina < paginas ? pagina + 1 : null });
         }
 
+        /* AS ORDENS DE SERVIÇO — 2.251 delas, e por muito tempo esta ponte
+           jurou que eram zero. Dois defeitos empilhados, os dois meus:
+
+             1. ESTE FILTRO DE DATA NÃO EXISTE. `dDtPrevisaoDe/Ate` fazia o Omie
+                responder "Tag [DDTPREVISAOATE] não faz parte da estrutura" —
+                erro, não lista vazia. Sai o filtro: a listagem não aceita
+                recorte de data e a paginação dá conta das 2.251.
+             2. A CONTAGEM VINHA DE UM CAMPO INEXISTENTE. Esta família responde
+                `total_de_registros` / `total_de_paginas`; ler `nTotPaginas`
+                devolvia undefined, virava 1, e a importação parava na primeira
+                página achando que tinha acabado. O mesmo engano na sondagem
+                produziu o "0 O.S." que foi parar na tela do dono como fato.
+
+           `de` e `ate` continuam chegando aqui e são IGNORADOS de propósito —
+           quem chama não precisa saber que esta fonte não filtra. */
         if (fonte === "os") {
           const r = await omie("servicos/os", "ListarOS", {
-            pagina, registros_por_pagina: 100, apenas_importado_api: "N",
-            dDtPrevisaoDe: isoParaBR(de), dDtPrevisaoAte: isoParaBR(ate),
+            pagina, registros_por_pagina: 50, apenas_importado_api: "N",
           });
           if (r.vazio) return resp({ gravados: 0, pagina, paginas: 0, proxima: null, vazio: true });
           const lista = ((r.osCadastro ?? []) as Record<string, any>[]).map(osParaVenda);
           const gravados = await gravarVarios("fin_vendas", lista);
-          const paginas = numero(r.nTotPaginas) || 1;
+          const paginas = numero(r.total_de_paginas) || 1;
           return resp({ gravados, lidos: lista.length, pagina, paginas, proxima: pagina < paginas ? pagina + 1 : null });
         }
 
