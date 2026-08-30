@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { vendasDosTitulos, indiceDeCategorias, nomeDaCategoria } from "./faturamento.js";
+import { vendasDosTitulos, indiceDeCategorias, nomeDaCategoria, anosDoFiltro } from "./faturamento.js";
 
 const CATS = [
   { codigo: "1.01.02", descricao: "Análises Ambientais" },
@@ -91,4 +91,69 @@ test("o índice de categorias ignora cadastro sem código", () => {
 test("nomeDaCategoria com código vazio devolve vazio, não travessão", () => {
   assert.equal(nomeDaCategoria("", indiceDeCategorias(CATS)), "");
   assert.equal(nomeDaCategoria(null, indiceDeCategorias(CATS)), "");
+});
+
+/* ---------------------------------------------------------------------------
+   OS ANOS DO FILTRO — a lista de pílulas em cima da Curva ABC.
+   O caso que motivou tudo: a MinasLab começou em 2024 e a tela oferecia 2020.
+   --------------------------------------------------------------------------- */
+
+test("o piso é o primeiro ano COM faturamento — 2020..2023 somem", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2024", "2025", "2026"], anoAtual: "2026", anoEscolhido: "2026",
+  });
+  assert.deepEqual(anos, ["2024", "2025", "2026"]);
+});
+
+test("o ano corrente entra mesmo sem nenhum título dele — a virada de janeiro", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2024", "2025"], anoAtual: "2026", anoEscolhido: "",
+  });
+  assert.ok(anos.includes("2026"), "sem isto o ano novo seria inalcançável em janeiro");
+  assert.deepEqual(anos, ["2024", "2025", "2026"]);
+});
+
+test("ano com faturamento FORA da faixa não some — um título de 2019 aparece", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2019", "2024", "2025"], anoAtual: "2025", anoEscolhido: "",
+  });
+  assert.deepEqual(anos, ["2019", "2020", "2021", "2022", "2023", "2024", "2025"],
+    "o piso desce até o dado mais antigo, sem buraco até hoje");
+});
+
+test("ano do meio SEM faturamento continua clicável — 'não teve' é resposta", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2024", "2026"], anoAtual: "2026", anoEscolhido: "",
+  });
+  assert.ok(anos.includes("2025"), "sumir viraria uma pergunta que ninguém pode fazer");
+});
+
+test("o ano JÁ ESCOLHIDO entra sempre — senão a tela fica sem pílula acesa", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2024"], anoAtual: "2024", anoEscolhido: "2030",
+  });
+  assert.ok(anos.includes("2030"));
+});
+
+test("sem faturamento nenhum sobra o ano corrente — não sete anos vazios", () => {
+  assert.deepEqual(anosDoFiltro({ anosComVenda: [], anoAtual: "2026", anoEscolhido: "" }), ["2026"]);
+});
+
+test("lixo no aparelho não vira pílula", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2024", "abc", "", null, "20260"], anoAtual: "2026", anoEscolhido: "todos",
+  });
+  assert.deepEqual(anos, ["2024", "2025", "2026"]);
+});
+
+test("chamada sem argumento nenhum não quebra", () => {
+  assert.deepEqual(anosDoFiltro(), []);
+  assert.deepEqual(anosDoFiltro({}), []);
+});
+
+test("a lista sai ordenada e sem repetição", () => {
+  const anos = anosDoFiltro({
+    anosComVenda: ["2026", "2024", "2024", "2025"], anoAtual: "2026", anoEscolhido: "2024",
+  });
+  assert.deepEqual(anos, ["2024", "2025", "2026"]);
 });
