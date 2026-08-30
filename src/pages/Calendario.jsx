@@ -14,12 +14,13 @@ import { Link } from "react-router-dom";
 import { clsx } from "clsx";
 import {
   CalendarCheck, CalendarDays, CalendarRange, Gavel, Wrench, Palmtree,
-  AlarmClock, AlertTriangle, CircleDot, Plus,
+  AlarmClock, AlertTriangle, Cake, CircleDot, Plus,
 } from "lucide-react";
 import { listar, salvar, elenco } from "../services/dados.js";
 import { getSessao, ehDirecao, podeEditar } from "../lib/sessao.js";
 import { proximasPorAlvo } from "../lib/manutencaoRegra.js";
 import { dataLonga, diasEntre, ymdLocal } from "../lib/format.js";
+import { aniversariosDoAno, textoDoAniversario } from "../lib/rh/aniversarios.js";
 import {
   parseData, validarPeriodo, validarAgendamento, temErro,
   diasEntre as diasEntreDatas,
@@ -39,6 +40,11 @@ const ORIGENS = {
   manutencoes: { rotulo: "Manutenções", cor: "warn", icone: Wrench, link: "/manutencoes" },
   ferias: { rotulo: "Férias", cor: "neutral", icone: Palmtree, link: "/rh", soDirecao: true },
   vencimentos: { rotulo: "Vencimentos", cor: "warn", icone: AlarmClock, link: "/rh", soDirecao: true },
+  /* SÓ A DIREÇÃO, e não por escolha desta tela: data de nascimento e admissão
+     moram em rh_pessoas, e a porta de dados recusa rh_* para quem não é
+     direção (ver ehColecaoRH no ml-sync). Esconder o filtro é conforto; quem
+     barra de verdade é o servidor. */
+  aniversarios: { rotulo: "Aniversários", cor: "ok", icone: Cake, link: "/rh", soDirecao: true },
 };
 
 // As mesmas cores dos pontos do CalendarioMes — filtro e legenda apontam
@@ -51,6 +57,7 @@ const LEGENDA = [
   { cor: "warn", texto: "Sessão, manutenção ou vencimento por vir" },
   { cor: "bad", texto: "Sessão, manutenção ou vencimento que já passou" },
   { cor: "neutral", texto: "Férias" },
+  { cor: "ok", texto: "Aniversário de vida ou de casa" },
 ];
 
 const K_FILTROS = "ml_calendario_filtros";
@@ -98,7 +105,7 @@ const FERIAS_VALEM = ["marcada", "concluida"];
 
 // Traduz cada coleção em eventos { dia, hora, texto, cor, origem }. Só entram
 // itens ABERTOS — feito, concluído e cancelado não são agenda.
-function montarEventos(dados, hojeISO) {
+function montarEventos(dados, hojeISO, anos = []) {
   const eventos = [];
   const corPrazo = (dia) => (diasEntre(hojeISO, dia) < 0 ? "bad" : "warn");
 
@@ -134,6 +141,34 @@ function montarEventos(dados, hojeISO) {
   }
   for (const m of proximasPorAlvo(dados.manutencoes).values()) {
     eventos.push({ dia: m.proxima, hora: "", texto: `Manutenção: ${m.alvoNome}`, cor: corPrazo(m.proxima), origem: "manutencoes" });
+  }
+
+  /* ANIVERSÁRIOS — de vida e de casa, só de quem está na casa. A conta mora em
+     lib/rh/aniversarios.js, testada sem tela: é lá que 29/02 vira 28/02 no ano
+     comum, que "zero ano de casa" não é aniversário e que ficha sem data é
+     CONTADA em vez de sumir.
+
+     Verde ("ok") e não amarelo: as outras origens usam a cor para dizer
+     "vence" e "venceu", e aniversário não vence. Um ponto amarelo no dia do
+     aniversário de alguém se leria como pendência. */
+  for (const ano of anos) {
+    for (const o of aniversariosDoAno(dados.quadro || [], ano).ocorrencias) {
+      eventos.push({
+        dia: o.dia,
+        hora: "",
+        texto: textoDoAniversario(o),
+        cor: "ok",
+        origem: "aniversarios",
+        /* Viaja junto para a lista do dia poder pôr a ressalva onde a pessoa
+           está olhando: a admissão destas fichas veio da primeira batida no
+           relógio, não do contrato. */
+        ressalva: o.tipo === "casa" && !o.conferida
+          ? "Admissão ainda não conferida — a data veio do relógio de ponto, não do contrato."
+          : o.ajustada
+            ? "Nasceu em 29 de fevereiro; em ano comum a data cai em 28."
+            : "",
+      });
+    }
   }
 
   for (const f of dados.ferias) {
@@ -282,7 +317,16 @@ function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
                 {e.hora && (
                   <span className="mt-0.5 shrink-0 font-display text-xs font-semibold tnum text-slate-500">{e.hora}</span>
                 )}
-                <span className="min-w-0 flex-1 text-sm text-slate-800">{e.texto}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm text-slate-800">{e.texto}</span>
+                  {/* A RESSALVA MORA NA LINHA, não num rodapé. "5 anos de casa"
+                      lido sem a ressalva vira placa de bronze — e a admissão
+                      destas fichas veio da primeira batida no relógio, não do
+                      contrato. Aviso longe do número não é aviso. */}
+                  {e.ressalva && (
+                    <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">{e.ressalva}</span>
+                  )}
+                </span>
               </Link>
             );
           })}
@@ -504,6 +548,20 @@ export default function Calendario() {
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [dia, setDia] = useState(null); // dia escolhido na grade; null = hoje
+
+  /* O ANO QUE A GRADE ESTÁ MOSTRANDO. Aniversário se repete todo ano, então a
+     ocorrência de 2029 só existe quando alguém navega até 2029 — e é a grade
+     que sabe onde o dedo está.
+
+     `useCallback` sem dependência NÃO É ZELO: o efeito lá dentro do
+     CalendarioMes depende desta função, e uma função nova a cada render faria
+     o efeito rodar a cada render, que chama setState, que renderiza de novo —
+     laço infinito. Só `setAnoVisivel` entra, e ele é estável. */
+  const [anoVisivel, setAnoVisivel] = useState(() => Number(ymdLocal(new Date()).slice(0, 4)));
+  const aoMudarMes = useCallback((ancora) => {
+    const a = Number(String(ancora).slice(0, 4));
+    if (Number.isInteger(a)) setAnoVisivel(a);
+  }, []);
   const [filtros, setFiltros] = useState(lerFiltros);
   // Apoio do "+ Novo". null = não carregou (≠ [] = nada cadastrado).
   const [carros, setCarros] = useState(null);
@@ -529,6 +587,11 @@ export default function Calendario() {
       // falha: RH que recusa ou cai não pode apagar as outras origens da tela.
       querRH ? listar("rh_ferias") : Promise.resolve([]),
       querRH ? listar("rh_vencimentos") : Promise.resolve([]),
+      /* O QUADRO INTEIRO, não o `elenco`. O elenco só devolve id, nome e
+         apelido — e de propósito: ele não tem trava de papel, serve de lista
+         para escolher gente. Data de nascimento e de admissão são dado pessoal
+         e saem por rh_pessoas, que a porta só abre para a direção. */
+      querRH ? listar("rh_pessoas") : Promise.resolve([]),
     ]).then((r) => {
       const nomes = ["compromissos", "licitações", "manutenções"];
       const falhas = nomes.filter((_, i) => r[i].status === "rejected");
@@ -545,7 +608,7 @@ export default function Calendario() {
       // RH que falhou vira LACUNA DECLARADA, não lista vazia: calendário sem a
       // linha de férias não é calendário sem férias marcadas.
       const rhFalhas = querRH
-        ? ["férias", "vencimentos"].filter((_, i) => r[3 + i].status === "rejected")
+        ? ["férias", "vencimentos", "aniversários"].filter((_, i) => r[3 + i].status === "rejected")
         : [];
       setDados({
         compromissos: r[0].value,
@@ -553,6 +616,7 @@ export default function Calendario() {
         manutencoes: r[2].value,
         ferias: r[3].status === "fulfilled" ? r[3].value : [],
         vencimentos: r[4].status === "fulfilled" ? r[4].value : [],
+        quadro: r[5].status === "fulfilled" ? r[5].value : [],
         rhFalhas,
       });
       setErro(null);
@@ -608,7 +672,11 @@ export default function Calendario() {
     if (!dados) return null;
     // Sem hora vai para o fim do dia ("99:99"), como na lista de compromissos.
     const horaDe = (e) => e.hora || "99:99";
-    const eventos = montarEventos(dados, hojeISO)
+    /* DOIS ANOS: o de hoje e o que está na tela. Só o visível deixaria os
+       cartões "hoje" e "nesta semana" perderem aniversário quando alguém
+       estivesse folheando outro ano — número da tela discordando da grade. */
+    const anos = [...new Set([Number(hojeISO.slice(0, 4)), anoVisivel])].filter(Number.isInteger);
+    const eventos = montarEventos(dados, hojeISO, anos)
       .filter((e) => filtros[e.origem])
       .sort((a, b) => a.dia.localeCompare(b.dia) || horaDe(a).localeCompare(horaDe(b)));
 
@@ -626,6 +694,12 @@ export default function Calendario() {
       eventos,
       porDia,
       rhFalhas: dados.rhFalhas || [],
+      /* A CONTAGEM DE QUEM NÃO TEM A DATA. Sem ela, um calendário sem
+         aniversário nenhum é indistinguível de um calendário quebrado — e é
+         exatamente o estado de hoje: as fichas nasceram do relógio de ponto,
+         que não sabe data de nascimento. Zero por falta de cadastro e zero por
+         não haver ninguém têm a mesma aparência e significados opostos. */
+      faltamDatas: aniversariosDoAno(dados.quadro || [], Number(hojeISO.slice(0, 4))),
       hoje: eventos.filter((e) => diasEntre(hojeISO, e.dia) === 0).length,
       semana: eventos.filter((e) => {
         const d = diasEntre(hojeISO, e.dia);
@@ -634,7 +708,7 @@ export default function Calendario() {
       atrasados: eventos.filter((e) => atrasaveis.includes(e.origem) && diasEntre(hojeISO, e.dia) < 0).length,
       semData: filtros.compromissos ? dados.compromissos.filter((c) => !c.feito && !c.data).length : 0,
     };
-  }, [dados, hojeISO, filtros]);
+  }, [dados, hojeISO, filtros, anoVisivel]);
 
   const diaVisto = dia || hojeISO;
 
@@ -730,7 +804,25 @@ export default function Calendario() {
               Não consegui carregar {vm.rhFalhas.join(" e ")} do RH agora — o que falta na grade não é ausência de registro.
             </p>
           )}
-          <CalendarioMes eventosPorDia={vm.porDia} diaSelecionado={dia} aoEscolherDia={setDia} />
+          {/* O AVISO FICA ONDE A PESSOA ESTÁ OLHANDO: em cima da grade, não numa
+              tela de configuração. E só para quem pode consertar (a direção é
+              quem edita a ficha) e só quando o filtro de aniversários está
+              ligado — aviso sobre coisa desligada é ruído. */}
+          {direcao && filtros.aniversarios && vm.faltamDatas.semNascimento > 0 && (
+            <p className="mb-3 text-xs text-slate-500">
+              {vm.faltamDatas.semNascimento === vm.faltamDatas.ativos
+                ? `Nenhuma das ${vm.faltamDatas.ativos} pessoas do quadro tem data de nascimento na ficha`
+                : `${vm.faltamDatas.semNascimento} de ${vm.faltamDatas.ativos} pessoas do quadro estão sem data de nascimento na ficha`}
+              {" "}— por isso o aniversário delas não aparece aqui. Preenche em{" "}
+              <Link to="/rh" className="underline">RH → Pessoas</Link>.
+            </p>
+          )}
+          <CalendarioMes
+            eventosPorDia={vm.porDia}
+            diaSelecionado={dia}
+            aoEscolherDia={setDia}
+            aoMudarMes={aoMudarMes}
+          />
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
             {LEGENDA.map((l) => (
               <span key={l.cor} className="flex items-center gap-1.5 text-xs text-slate-500">
