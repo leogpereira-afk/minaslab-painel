@@ -130,33 +130,53 @@ export const trocarMinhaSenha = (senhaAtual, senhaNova) =>
 // -----------------------------------------------------------------------------
 // Financeiro — Recebimentos
 // -----------------------------------------------------------------------------
-
 export const recebimentosListar = (empresaId = "") =>
   chamar("finRecebimentosListar", {
     empresaId,
     limite: 500,
   }).then((r) => r.recebimentos || []);
 
+export const recebimentosOpcoes = () =>
+  chamar("finRecebimentosOpcoes").then((r) => ({
+    empresas: r.empresas || [],
+    categorias: r.categorias || [],
+    contas: r.contas || [],
+  }));
+
 export const recebimentoSalvar = async (registro) => {
   const r = await chamar("finRecebimentoSalvar", { registro });
-
   if (!r?.recebimento?.id) {
     throw new Error(
       "O servidor não confirmou a gravação do recebimento. Recarregue e confira."
     );
   }
+  return r.recebimento;
+};
 
+export const recebimentoLiquidar = async (id, dataPagamento) => {
+  const r = await chamar("finRecebimentoLiquidar", { id, dataPagamento });
+  if (!r?.recebimento?.id) {
+    throw new Error("O servidor não confirmou a baixa do recebimento.");
+  }
   return r.recebimento;
 };
 
 export const recebimentoExcluir = async (id) => {
   const r = await chamar("finRecebimentoExcluir", { id });
-
   if (!r?.ok) {
-    throw new Error(
-      "O servidor não confirmou a exclusão do recebimento."
-    );
+    throw new Error("O servidor não confirmou a exclusão do recebimento.");
   }
-
   return true;
+};
+
+export const recebimentosImportar = async (empresaId, itens, origemArquivo) => {
+  const r = await chamar("finRecebimentosImportar", {
+    empresaId,
+    itens,
+    origemArquivo,
+  });
+  if (!r?.ok) {
+    throw new Error("O servidor não confirmou a importação dos recebimentos.");
+  }
+  return r;
 };
