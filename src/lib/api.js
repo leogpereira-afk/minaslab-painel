@@ -1,8 +1,7 @@
-// Endereco do backend: a Edge Function ml-sync no projeto Supabase
-// "Projetos Léo". O projeto e COMPARTILHADO com outros sistemas do Leonardo
-// (bsq_, domo_, pdb_) — por isso o nome leva o prefixo "ml-".
-//
-// Nenhum segredo aqui: o repositorio e publico. Quem autoriza e o crachá
-// (JWT) que o servidor emite no login e confere em toda chamada.
+// Enderecos do backend no projeto Supabase "Projetos Léo".
+// O repositorio e publico: nenhum segredo fica aqui. A autorizacao e feita
+// pelos crachas emitidos pelo ml-sync e conferidos em cada Edge Function.
 export const API = "https://reoghclxripktzpdwhiy.supabase.co/functions/v1";
 export const SYNC = `${API}/ml-sync`;
+export const FINANCEIRO = `${API}/ml-financeiro`;
+export const OMIE = `${API}/ml-omie`;
