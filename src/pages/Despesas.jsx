@@ -1,35 +1,136 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Plus, Search, Pencil, Trash2, CheckCircle2, X, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, CheckCircle2, FileText, Paperclip, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finDespesasListar, finDespesaSalvar, finDespesaBaixar, finDespesaExcluir } from "../services/financeiro.js";
+import {
+  financeiroOpcoes,
+  finArquivoUpload,
+  finArquivoUrl,
+  finDespesasListar,
+  finDespesaSalvar,
+  finDespesaBaixar,
+  finDespesaExcluir,
+} from "../services/financeiro.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-const dataBR = (v) => { if(!v)return "—"; const p=String(v).slice(0,10).split("-"); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:v; };
+const dataBR = (v) => { if (!v) return "—"; const p = String(v).slice(0,10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v; };
 const hoje = () => new Date().toISOString().slice(0,10);
 const vazio = { id:"", empresa_id:"", fornecedor:"", cnpj_cpf:"", descricao:"", valor_original:"", data_lancamento:hoje(), data_vencimento:"", categoria_id:"", conta_bancaria_id:"", centro_custo_id:"", centro_custo:"", forma_pagamento:"PIX", comprovante_url:"", observacao:"" };
-function Modal({titulo,onClose,children}){return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"><div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b px-5 py-4"><h2 className="font-bold">{titulo}</h2><button className="btn-ghost h-9 w-9 p-0" onClick={onClose}><X size={18}/></button></div><div className="max-h-[calc(92vh-68px)] overflow-y-auto p-5">{children}</div></div></div>}
-function Status({v}){const s=String(v||"").toUpperCase();const c=s==="PAGO"?"bg-emerald-50 text-emerald-700":s==="PARCIAL"?"bg-amber-50 text-amber-700":s==="VENCIDO"?"bg-red-50 text-red-700":s==="CANCELADO"?"bg-slate-100 text-slate-600":"bg-sky-50 text-sky-700";return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${c}`}>{s||"A PAGAR"}</span>}
 
-export default function Despesas(){
-  const navigate=useNavigate(); const [itens,setItens]=useState([]); const [op,setOp]=useState({empresas:[],categorias:[],contas:[],centros:[],formas:[]}); const [loading,setLoading]=useState(true); const [erro,setErro]=useState(""); const [busca,setBusca]=useState(""); const [empresa,setEmpresa]=useState(""); const [modal,setModal]=useState(null); const [form,setForm]=useState(vazio); const [baixa,setBaixa]=useState({id:"",fornecedor:"",valor:"",dataPagamento:hoje(),formaPagamento:"PIX",contaBancariaId:"",observacao:""});
-  async function carregar(){setLoading(true);setErro("");try{const[o,d]=await Promise.all([financeiroOpcoes(),finDespesasListar(empresa)]);setOp(o);setItens(d);}catch(e){setErro(e.message)}finally{setLoading(false)}}
-  useEffect(()=>{carregar()},[empresa]);
-  const filtrados=useMemo(()=>{const t=busca.toLowerCase().trim();return itens.filter(x=>!t||`${x.fornecedor} ${x.cnpj_cpf||""} ${x.descricao||""}`.toLowerCase().includes(t))},[itens,busca]);
-  const totais=useMemo(()=>filtrados.reduce((a,x)=>({original:a.original+Number(x.valor_original||0),pago:a.pago+Number(x.valor_pago||0),pendente:a.pendente+Number(x.valor_pendente||0)}),{original:0,pago:0,pendente:0}),[filtrados]);
-  function novo(){setForm({...vazio,empresa_id:empresa||op.empresas?.[0]?.id||""});setModal("form")}
-  function editar(x){setForm({id:x.id,empresa_id:x.empresa_id,fornecedor:x.fornecedor||"",cnpj_cpf:x.cnpj_cpf||"",descricao:x.descricao||"",valor_original:String(x.valor_original??""),data_lancamento:x.data_lancamento||hoje(),data_vencimento:x.data_vencimento||"",categoria_id:x.categoria_id||"",conta_bancaria_id:x.conta_bancaria_id||"",centro_custo_id:x.centro_custo_id||"",centro_custo:x.centro_custo||"",forma_pagamento:x.forma_pagamento||"PIX",comprovante_url:x.comprovante_url||"",observacao:x.observacao||""});setModal("form")}
-  async function salvar(e){e.preventDefault();setErro("");try{await finDespesaSalvar({...form,valor_original:Number(form.valor_original||0)});setModal(null);await carregar()}catch(ex){setErro(ex.message)}}
-  function abrirBaixa(x){setBaixa({id:x.id,fornecedor:x.fornecedor,valor:String(x.valor_pendente||""),dataPagamento:hoje(),formaPagamento:x.forma_pagamento||"PIX",contaBancariaId:x.conta_bancaria_id||"",observacao:""});setModal("baixa")}
-  async function baixar(e){e.preventDefault();try{await finDespesaBaixar(baixa.id,Number(baixa.valor||0),baixa.dataPagamento,{formaPagamento:baixa.formaPagamento,contaBancariaId:baixa.contaBancariaId||null,observacao:baixa.observacao});setModal(null);await carregar()}catch(ex){setErro(ex.message)}}
-  async function excluir(x){if(!confirm(`Excluir a despesa de ${x.fornecedor}?`))return;try{await finDespesaExcluir(x.id);await carregar()}catch(ex){setErro(ex.message)}}
+async function arquivoBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
+function Modal({ titulo, onClose, children }) {
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"><div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b px-5 py-4"><h2 className="font-bold">{titulo}</h2><button className="btn-ghost h-9 w-9 p-0" onClick={onClose}><X size={18}/></button></div><div className="max-h-[calc(92vh-68px)] overflow-y-auto p-5">{children}</div></div></div>;
+}
+function Status({ v }) {
+  const s = String(v || "").toUpperCase();
+  const c = s === "PAGO" ? "bg-emerald-50 text-emerald-700" : s === "PARCIAL" ? "bg-amber-50 text-amber-700" : s === "VENCIDO" ? "bg-red-50 text-red-700" : s === "CANCELADO" ? "bg-slate-100 text-slate-600" : "bg-sky-50 text-sky-700";
+  return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${c}`}>{s || "A PAGAR"}</span>;
+}
+
+export default function Despesas() {
+  const navigate = useNavigate();
+  const comprovanteRef = useRef(null);
+  const [itens, setItens] = useState([]);
+  const [op, setOp] = useState({ empresas:[], categorias:[], contas:[], centros:[], formas:[] });
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [empresa, setEmpresa] = useState("");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(vazio);
+  const [comprovanteFile, setComprovanteFile] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [baixa, setBaixa] = useState({ id:"", fornecedor:"", valor:"", dataPagamento:hoje(), formaPagamento:"PIX", contaBancariaId:"", observacao:"" });
+
+  async function carregar() {
+    setLoading(true); setErro("");
+    try {
+      const [o, d] = await Promise.all([financeiroOpcoes(), finDespesasListar(empresa)]);
+      setOp(o); setItens(d);
+    } catch (e) { setErro(e.message); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { carregar(); }, [empresa]);
+
+  const filtrados = useMemo(() => {
+    const t = busca.toLowerCase().trim();
+    return itens.filter(x => !t || `${x.fornecedor} ${x.cnpj_cpf || ""} ${x.descricao || ""}`.toLowerCase().includes(t));
+  }, [itens, busca]);
+  const totais = useMemo(() => filtrados.reduce((a, x) => ({ original:a.original + Number(x.valor_original || 0), pago:a.pago + Number(x.valor_pago || 0), pendente:a.pendente + Number(x.valor_pendente || 0) }), { original:0, pago:0, pendente:0 }), [filtrados]);
+
+  function novo() {
+    setComprovanteFile(null);
+    setForm({ ...vazio, empresa_id:empresa || op.empresas?.[0]?.id || "" });
+    setModal("form");
+  }
+  function editar(x) {
+    setComprovanteFile(null);
+    setForm({ id:x.id, empresa_id:x.empresa_id, fornecedor:x.fornecedor || "", cnpj_cpf:x.cnpj_cpf || "", descricao:x.descricao || "", valor_original:String(x.valor_original ?? ""), data_lancamento:x.data_lancamento || hoje(), data_vencimento:x.data_vencimento || "", categoria_id:x.categoria_id || "", conta_bancaria_id:x.conta_bancaria_id || "", centro_custo_id:x.centro_custo_id || "", centro_custo:x.centro_custo || "", forma_pagamento:x.forma_pagamento || "PIX", comprovante_url:x.comprovante_url || "", observacao:x.observacao || "" });
+    setModal("form");
+  }
+  async function escolherComprovante(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setErro("O comprovante deve ter no máximo 8 MB."); return; }
+    if (!(f.type === "application/pdf" || f.type.startsWith("image/") || !f.type)) { setErro("Use PDF ou imagem como comprovante."); return; }
+    setComprovanteFile(f);
+  }
+  async function abrirComprovante(path, nome = "comprovante") {
+    try {
+      if (/^https?:\/\//i.test(String(path || ""))) { window.open(path, "_blank", "noopener,noreferrer"); return; }
+      const url = await finArquivoUrl(path, nome);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) { setErro(e.message); }
+  }
+  async function salvar(e) {
+    e.preventDefault(); setErro(""); setSalvando(true);
+    try {
+      const registro = { ...form, valor_original:Number(form.valor_original || 0) };
+      if (comprovanteFile) {
+        if (!form.empresa_id) throw new Error("Selecione a empresa antes de anexar o comprovante.");
+        const base64 = await arquivoBase64(comprovanteFile);
+        const arq = await finArquivoUpload(form.empresa_id, "comprovante", { nome:comprovanteFile.name, mime:comprovanteFile.type || "application/octet-stream", base64 });
+        registro.comprovante_url = arq.path;
+      }
+      await finDespesaSalvar(registro);
+      setModal(null); setComprovanteFile(null); await carregar();
+    } catch (ex) { setErro(ex.message); }
+    finally { setSalvando(false); }
+  }
+  function abrirBaixa(x) {
+    setBaixa({ id:x.id, fornecedor:x.fornecedor, valor:String(x.valor_pendente || ""), dataPagamento:hoje(), formaPagamento:x.forma_pagamento || "PIX", contaBancariaId:x.conta_bancaria_id || "", observacao:"" });
+    setModal("baixa");
+  }
+  async function baixar(e) {
+    e.preventDefault();
+    try {
+      await finDespesaBaixar(baixa.id, Number(baixa.valor || 0), baixa.dataPagamento, { formaPagamento:baixa.formaPagamento, contaBancariaId:baixa.contaBancariaId || null, observacao:baixa.observacao });
+      setModal(null); await carregar();
+    } catch (ex) { setErro(ex.message); }
+  }
+  async function excluir(x) {
+    if (!confirm(`Excluir a despesa de ${x.fornecedor}?`)) return;
+    try { await finDespesaExcluir(x.id); await carregar(); } catch (ex) { setErro(ex.message); }
+  }
+
   return <div className="space-y-5">
-    <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={()=>navigate("/financas")}><ArrowLeft size={18}/></button><PageTitle titulo="Despesas" descricao="Contas a pagar, pagamentos integrais ou parciais e comprovantes."/></div>
+    <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={() => navigate("/financas")}><ArrowLeft size={18}/></button><PageTitle titulo="Despesas" descricao="Contas a pagar, pagamentos integrais ou parciais e comprovantes privados."/></div>
     <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Total lançado</p><p className="mt-1 text-xl font-bold">{moeda(totais.original)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Pago</p><p className="mt-1 text-xl font-bold text-emerald-700">{moeda(totais.pago)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">A pagar</p><p className="mt-1 text-xl font-bold text-amber-700">{moeda(totais.pendente)}</p></div></div>
-    <div className="flex flex-col gap-3 rounded-2xl border bg-white p-4 md:flex-row md:items-end"><label className="flex-1"><span className="label">Pesquisar</span><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={16}/><input className="input pl-9" value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Fornecedor, CNPJ ou descrição"/></div></label><label className="md:w-56"><span className="label">Empresa</span><select className="input" value={empresa} onChange={e=>setEmpresa(e.target.value)}><option value="">Todas</option>{op.empresas.map(x=><option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><button className="btn-outline" onClick={carregar}><RefreshCw size={15}/></button><button className="btn-primary" onClick={novo}><Plus size={16}/>Nova despesa</button></div>
-    {erro&&<div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
-    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3 text-right">Pago</th><th className="px-4 py-3 text-right">Pendente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3"></th></tr></thead><tbody>{loading?<tr><td colSpan="9" className="p-8 text-center text-slate-500">Carregando...</td></tr>:filtrados.length===0?<tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhuma despesa encontrada.</td></tr>:filtrados.map(x=><tr key={x.id} className="border-t"><td className="px-4 py-3">{x.empresa?.nome||"—"}</td><td className="px-4 py-3"><div className="font-medium">{x.fornecedor}</div><div className="text-xs text-slate-500">{x.cnpj_cpf||x.descricao||""}</div></td><td className="px-4 py-3">{dataBR(x.data_vencimento)}</td><td className="px-4 py-3 text-right">{moeda(x.valor_original)}</td><td className="px-4 py-3 text-right text-emerald-700">{moeda(x.valor_pago)}</td><td className="px-4 py-3 text-right font-semibold">{moeda(x.valor_pendente)}</td><td className="px-4 py-3"><Status v={x.status}/></td><td className="px-4 py-3"><span className="text-xs font-semibold">{x.origem}</span></td><td className="px-4 py-3"><div className="flex justify-end gap-1">{x.origem!=="OMIE"&&Number(x.valor_pendente)>0&&<button className="btn-ghost h-8 w-8 p-0 text-emerald-700" title="Dar baixa" onClick={()=>abrirBaixa(x)}><CheckCircle2 size={16}/></button>}{x.origem!=="OMIE"&&<button className="btn-ghost h-8 w-8 p-0" onClick={()=>editar(x)}><Pencil size={15}/></button>}{x.origem!=="OMIE"&&<button className="btn-ghost h-8 w-8 p-0 text-red-600" onClick={()=>excluir(x)}><Trash2 size={15}/></button>}</div></td></tr>)}</tbody></table></div>
-    {modal==="form"&&<Modal titulo={form.id?"Editar despesa":"Nova despesa"} onClose={()=>setModal(null)}><form onSubmit={salvar} className="grid gap-4 md:grid-cols-2"><label><span className="label">Empresa</span><select className="input" required value={form.empresa_id} onChange={e=>setForm({...form,empresa_id:e.target.value})}>{op.empresas.map(x=><option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Fornecedor</span><input className="input" required value={form.fornecedor} onChange={e=>setForm({...form,fornecedor:e.target.value})}/></label><label><span className="label">CNPJ/CPF</span><input className="input" value={form.cnpj_cpf} onChange={e=>setForm({...form,cnpj_cpf:e.target.value})}/></label><label><span className="label">Valor</span><input className="input" type="number" step="0.01" required value={form.valor_original} onChange={e=>setForm({...form,valor_original:e.target.value})}/></label><label><span className="label">Data lançamento</span><input className="input" type="date" value={form.data_lancamento} onChange={e=>setForm({...form,data_lancamento:e.target.value})}/></label><label><span className="label">Vencimento</span><input className="input" type="date" value={form.data_vencimento} onChange={e=>setForm({...form,data_vencimento:e.target.value})}/></label><label><span className="label">Categoria</span><select className="input" value={form.categoria_id} onChange={e=>setForm({...form,categoria_id:e.target.value})}><option value="">Sem categoria</option>{op.categorias.filter(c=>!c.empresa_id||c.empresa_id===form.empresa_id).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Centro de custo</span><select className="input" value={form.centro_custo_id} onChange={e=>setForm({...form,centro_custo_id:e.target.value})}><option value="">Sem centro</option>{op.centros.filter(c=>c.empresa_id===form.empresa_id).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Conta bancária</span><select className="input" value={form.conta_bancaria_id} onChange={e=>setForm({...form,conta_bancaria_id:e.target.value})}><option value="">Sem conta</option>{op.contas.filter(c=>c.empresa_id===form.empresa_id).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Forma de pagamento</span><select className="input" value={form.forma_pagamento} onChange={e=>setForm({...form,forma_pagamento:e.target.value})}>{op.formas.filter(f=>!f.empresa_id||f.empresa_id===form.empresa_id).map(f=><option key={f.id} value={f.nome}>{f.nome}</option>)}</select></label><label className="md:col-span-2"><span className="label">Descrição</span><input className="input" value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})}/></label><label className="md:col-span-2"><span className="label">Comprovante / URL</span><input className="input" value={form.comprovante_url} onChange={e=>setForm({...form,comprovante_url:e.target.value})}/></label><label className="md:col-span-2"><span className="label">Observação</span><textarea className="input min-h-24" value={form.observacao} onChange={e=>setForm({...form,observacao:e.target.value})}/></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" className="btn-outline" onClick={()=>setModal(null)}>Cancelar</button><button className="btn-primary">Salvar</button></div></form></Modal>}
-    {modal==="baixa"&&<Modal titulo={`Pagamento — ${baixa.fornecedor}`} onClose={()=>setModal(null)}><form onSubmit={baixar} className="grid gap-4 md:grid-cols-2"><label><span className="label">Valor pago</span><input className="input" type="number" step="0.01" required value={baixa.valor} onChange={e=>setBaixa({...baixa,valor:e.target.value})}/></label><label><span className="label">Data do pagamento</span><input className="input" type="date" required value={baixa.dataPagamento} onChange={e=>setBaixa({...baixa,dataPagamento:e.target.value})}/></label><label><span className="label">Forma</span><select className="input" value={baixa.formaPagamento} onChange={e=>setBaixa({...baixa,formaPagamento:e.target.value})}>{op.formas.map(f=><option key={f.id} value={f.nome}>{f.nome}</option>)}</select></label><label><span className="label">Conta</span><select className="input" value={baixa.contaBancariaId} onChange={e=>setBaixa({...baixa,contaBancariaId:e.target.value})}><option value="">Sem conta</option>{op.contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label className="md:col-span-2"><span className="label">Observação</span><input className="input" value={baixa.observacao} onChange={e=>setBaixa({...baixa,observacao:e.target.value})}/></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" className="btn-outline" onClick={()=>setModal(null)}>Cancelar</button><button className="btn-primary">Registrar pagamento</button></div></form></Modal>}
-  </div>
+    <div className="flex flex-col gap-3 rounded-2xl border bg-white p-4 md:flex-row md:items-end"><label className="flex-1"><span className="label">Pesquisar</span><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={16}/><input className="input pl-9" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Fornecedor, CNPJ ou descrição"/></div></label><label className="md:w-56"><span className="label">Empresa</span><select className="input" value={empresa} onChange={e => setEmpresa(e.target.value)}><option value="">Todas</option>{op.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><button className="btn-outline" onClick={carregar}><RefreshCw size={15}/></button><button className="btn-primary" onClick={novo}><Plus size={16}/>Nova despesa</button></div>
+    {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
+
+    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3 text-right">Pago</th><th className="px-4 py-3 text-right">Pendente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Comprovante</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3"></th></tr></thead><tbody>
+      {loading ? <tr><td colSpan="10" className="p-8 text-center text-slate-500">Carregando...</td></tr> : filtrados.length === 0 ? <tr><td colSpan="10" className="p-8 text-center text-slate-500">Nenhuma despesa encontrada.</td></tr> : filtrados.map(x => <tr key={x.id} className="border-t"><td className="px-4 py-3">{x.empresa?.nome || "—"}</td><td className="px-4 py-3"><div className="font-medium">{x.fornecedor}</div><div className="text-xs text-slate-500">{x.cnpj_cpf || x.descricao || ""}</div></td><td className="px-4 py-3">{dataBR(x.data_vencimento)}</td><td className="px-4 py-3 text-right">{moeda(x.valor_original)}</td><td className="px-4 py-3 text-right text-emerald-700">{moeda(x.valor_pago)}</td><td className="px-4 py-3 text-right font-semibold">{moeda(x.valor_pendente)}</td><td className="px-4 py-3"><Status v={x.status}/></td><td className="px-4 py-3">{x.comprovante_url ? <button className="btn-ghost h-8 px-2 text-xs" onClick={() => abrirComprovante(x.comprovante_url, `comprovante-${x.id}`)}><Paperclip size={14}/>Abrir</button> : <span className="text-slate-400">—</span>}</td><td className="px-4 py-3"><span className="text-xs font-semibold">{x.origem}</span></td><td className="px-4 py-3"><div className="flex justify-end gap-1">{x.origem !== "OMIE" && Number(x.valor_pendente) > 0 && <button className="btn-ghost h-8 w-8 p-0 text-emerald-700" title="Dar baixa" onClick={() => abrirBaixa(x)}><CheckCircle2 size={16}/></button>}{x.origem !== "OMIE" && <button className="btn-ghost h-8 w-8 p-0" onClick={() => editar(x)}><Pencil size={15}/></button>}{x.origem !== "OMIE" && <button className="btn-ghost h-8 w-8 p-0 text-red-600" onClick={() => excluir(x)}><Trash2 size={15}/></button>}</div></td></tr>)}
+    </tbody></table></div>
+
+    {modal === "form" && <Modal titulo={form.id ? "Editar despesa" : "Nova despesa"} onClose={() => { setModal(null); setComprovanteFile(null); }}><form onSubmit={salvar} className="grid gap-4 md:grid-cols-2"><label><span className="label">Empresa</span><select className="input" required value={form.empresa_id} onChange={e => setForm({ ...form, empresa_id:e.target.value })}><option value="">Selecione</option>{op.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Fornecedor</span><input className="input" required value={form.fornecedor} onChange={e => setForm({ ...form, fornecedor:e.target.value })}/></label><label><span className="label">CNPJ/CPF</span><input className="input" value={form.cnpj_cpf} onChange={e => setForm({ ...form, cnpj_cpf:e.target.value })}/></label><label><span className="label">Valor</span><input className="input" type="number" step="0.01" required value={form.valor_original} onChange={e => setForm({ ...form, valor_original:e.target.value })}/></label><label><span className="label">Data lançamento</span><input className="input" type="date" value={form.data_lancamento} onChange={e => setForm({ ...form, data_lancamento:e.target.value })}/></label><label><span className="label">Vencimento</span><input className="input" type="date" value={form.data_vencimento} onChange={e => setForm({ ...form, data_vencimento:e.target.value })}/></label><label><span className="label">Categoria</span><select className="input" value={form.categoria_id} onChange={e => setForm({ ...form, categoria_id:e.target.value })}><option value="">Sem categoria</option>{op.categorias.filter(c => !c.empresa_id || c.empresa_id === form.empresa_id).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Centro de custo</span><select className="input" value={form.centro_custo_id} onChange={e => setForm({ ...form, centro_custo_id:e.target.value })}><option value="">Sem centro</option>{op.centros.filter(c => c.empresa_id === form.empresa_id).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Conta bancária</span><select className="input" value={form.conta_bancaria_id} onChange={e => setForm({ ...form, conta_bancaria_id:e.target.value })}><option value="">Sem conta</option>{op.contas.filter(c => c.empresa_id === form.empresa_id).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Forma de pagamento</span><select className="input" value={form.forma_pagamento} onChange={e => setForm({ ...form, forma_pagamento:e.target.value })}>{op.formas.filter(f => !f.empresa_id || f.empresa_id === form.empresa_id).map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></label><label className="md:col-span-2"><span className="label">Descrição</span><input className="input" value={form.descricao} onChange={e => setForm({ ...form, descricao:e.target.value })}/></label><div className="md:col-span-2"><span className="label">Comprovante</span><div className="flex flex-col gap-2 rounded-xl border bg-slate-50 p-3 sm:flex-row sm:items-center"><button type="button" className="btn-outline" onClick={() => comprovanteRef.current?.click()}><FileText size={15}/>{comprovanteFile ? "Trocar arquivo" : "Selecionar PDF ou imagem"}</button><input ref={comprovanteRef} type="file" accept="application/pdf,image/*,.pdf" className="hidden" onChange={escolherComprovante}/>{comprovanteFile ? <span className="text-xs text-slate-600">{comprovanteFile.name}</span> : form.comprovante_url ? <button type="button" className="text-left text-xs font-medium text-sky-700 underline" onClick={() => abrirComprovante(form.comprovante_url, `comprovante-${form.id || "despesa"}`)}>Abrir comprovante atual</button> : <span className="text-xs text-slate-500">Nenhum comprovante anexado.</span>}</div><p className="mt-1 text-xs text-slate-500">PDF ou imagem, até 8 MB. URLs antigas continuam compatíveis.</p></div><label className="md:col-span-2"><span className="label">Observação</span><textarea className="input min-h-24" value={form.observacao} onChange={e => setForm({ ...form, observacao:e.target.value })}/></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" className="btn-outline" onClick={() => { setModal(null); setComprovanteFile(null); }}>Cancelar</button><button className="btn-primary" disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button></div></form></Modal>}
+
+    {modal === "baixa" && <Modal titulo={`Pagamento — ${baixa.fornecedor}`} onClose={() => setModal(null)}><form onSubmit={baixar} className="grid gap-4 md:grid-cols-2"><label><span className="label">Valor pago</span><input className="input" type="number" step="0.01" required value={baixa.valor} onChange={e => setBaixa({ ...baixa, valor:e.target.value })}/></label><label><span className="label">Data do pagamento</span><input className="input" type="date" required value={baixa.dataPagamento} onChange={e => setBaixa({ ...baixa, dataPagamento:e.target.value })}/></label><label><span className="label">Forma</span><select className="input" value={baixa.formaPagamento} onChange={e => setBaixa({ ...baixa, formaPagamento:e.target.value })}>{op.formas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></label><label><span className="label">Conta</span><select className="input" value={baixa.contaBancariaId} onChange={e => setBaixa({ ...baixa, contaBancariaId:e.target.value })}><option value="">Sem conta</option>{op.contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label className="md:col-span-2"><span className="label">Observação</span><input className="input" value={baixa.observacao} onChange={e => setBaixa({ ...baixa, observacao:e.target.value })}/></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" className="btn-outline" onClick={() => setModal(null)}>Cancelar</button><button className="btn-primary">Registrar pagamento</button></div></form></Modal>}
+  </div>;
 }
