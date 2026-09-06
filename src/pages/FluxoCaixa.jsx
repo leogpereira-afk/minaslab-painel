@@ -1,21 +1,210 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowLeft,
+  ArrowUpRight,
+  BarChart3,
+  CircleDollarSign,
+  Plus,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Wallet,
+  X,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroDashboard, financeiroOpcoes } from "../services/financeiro.js";
+import {
+  financeiroDashboard,
+  financeiroOpcoes,
+  finRecebimentosListar,
+  finDespesasListar,
+  finRecebimentoSalvar,
+  finRecebimentoBaixar,
+  finDespesaSalvar,
+  finDespesaBaixar,
+} from "../services/financeiro.js";
 
-const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-const dataBR=v=>{const p=String(v||"").slice(0,10).split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:"—"};
-const mesBR=v=>{const [a,m]=String(v||"").split("-");return a&&m?new Date(Number(a),Number(m)-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}):"—"};
-const hoje=()=>new Date().toISOString().slice(0,10);
-const fimAno=()=>`${new Date().getFullYear()}-12-31`;
+const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const hoje = () => new Date().toISOString().slice(0, 10);
+const inicioMes = () => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
+const fimAno = () => `${new Date().getFullYear()}-12-31`;
+const dataBR = (v) => { const p = String(v || "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : "—"; };
+const mesBR = (v) => { const [a, m] = String(v || "").split("-"); return a && m ? new Date(Number(a), Number(m) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "—"; };
+const num = (v) => Number(v || 0);
+const noPeriodo = (d, de, ate) => !!d && (!de || d >= de) && (!ate || d <= ate);
+const soma = (lista, campo) => lista.reduce((s, x) => s + num(x[campo]), 0);
+const addDias = (data, dias) => { const d = new Date(`${data}T12:00:00`); d.setDate(d.getDate() + dias); return d.toISOString().slice(0, 10); };
 
-export default function FluxoCaixa(){
- const navigate=useNavigate();const[op,setOp]=useState({empresas:[]});const[empresa,setEmpresa]=useState("");const[de,setDe]=useState(hoje());const[ate,setAte]=useState(fimAno());const[dados,setDados]=useState(null);const[erro,setErro]=useState("");
- async function carregar(){setErro("");try{const[o,d]=await Promise.all([financeiroOpcoes(),financeiroDashboard({empresaId:empresa,de,ate})]);setOp(o);setDados(d)}catch(e){setErro(e.message)}}
- useEffect(()=>{carregar()},[empresa,de,ate]);
- const empresaSelecionada=useMemo(()=>op.empresas.find(x=>x.id===empresa)||null,[op.empresas,empresa]);
- const mensal=!!empresaSelecionada&&!empresaSelecionada.usa_omie;
- const linhas=useMemo(()=>{const m=new Map();const chave=d=>mensal?String(d).slice(0,7):d;for(const r of dados?.recebimentos||[]){if(r.status==="CANCELADO")continue;const d=r.data_vencimento;if(!d)continue;const k=chave(d),x=m.get(k)||{data:k,entradas:0,saidas:0};x.entradas+=Number(r.valor_pendente||0);m.set(k,x)}for(const p of dados?.despesas||[]){if(p.status==="CANCELADO")continue;const d=p.data_vencimento;if(!d)continue;const k=chave(d),x=m.get(k)||{data:k,entradas:0,saidas:0};x.saidas+=Number(p.valor_pendente||0);m.set(k,x)}let saldo=Number(dados?.saldoAtual||0);return[...m.values()].sort((a,b)=>a.data.localeCompare(b.data)).map(x=>{saldo+=x.entradas-x.saidas;return{...x,saldo}})},[dados,mensal]);
- return <div className="space-y-5"><div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={()=>navigate("/financas")}><ArrowLeft size={18}/></button><PageTitle titulo="Fluxo de Caixa" descricao={mensal?"M Lab: entradas e saídas previstas com projeção mensal.":"MinasLab: entradas e saídas previstas com saldo projetado por dia."}/></div><div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4"><label><span className="label">Empresa</span><select className="input" value={empresa} onChange={e=>setEmpresa(e.target.value)}><option value="">Consolidado</option>{op.empresas.map(x=><option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">De</span><input className="input" type="date" value={de} onChange={e=>setDe(e.target.value)}/></label><label><span className="label">Até</span><input className="input" type="date" value={ate} onChange={e=>setAte(e.target.value)}/></label><div className="flex items-end"><button className="btn-outline w-full" onClick={carregar}><RefreshCw size={15}/>Atualizar</button></div></div>{erro&&<div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}<div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Saldo atual</p><p className="mt-1 text-xl font-bold">{moeda(dados?.saldoAtual)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Entradas previstas</p><p className="mt-1 text-xl font-bold text-emerald-700">{moeda(dados?.totalReceber)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Saldo projetado</p><p className="mt-1 text-xl font-bold">{moeda(dados?.saldoProjetado)}</p></div></div><div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">{mensal?"Mês":"Data"}</th><th className="px-4 py-3 text-right">Entradas</th><th className="px-4 py-3 text-right">Saídas</th><th className="px-4 py-3 text-right">Resultado</th><th className="px-4 py-3 text-right">Saldo projetado</th></tr></thead><tbody>{linhas.length===0?<tr><td colSpan="5" className="p-8 text-center text-slate-500">Sem previsões no período.</td></tr>:linhas.map(x=><tr key={x.data} className="border-t"><td className="px-4 py-3">{mensal?mesBR(x.data):dataBR(x.data)}</td><td className="px-4 py-3 text-right text-emerald-700">{moeda(x.entradas)}</td><td className="px-4 py-3 text-right text-rose-700">{moeda(x.saidas)}</td><td className="px-4 py-3 text-right">{moeda(x.entradas-x.saidas)}</td><td className={`px-4 py-3 text-right font-semibold ${x.saldo<0?"text-red-700":"text-slate-900"}`}>{moeda(x.saldo)}</td></tr>)}</tbody></table></div></div>
+function Card({ titulo, valor, detalhe, icone: Icon, destaque = "text-slate-900" }) {
+  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex items-start justify-between gap-3">
+      <div><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{titulo}</p><p className={`mt-1 text-xl font-bold ${destaque}`}>{valor}</p>{detalhe && <p className="mt-1 text-xs text-slate-500">{detalhe}</p>}</div>
+      {Icon && <div className="rounded-xl bg-slate-50 p-2 text-slate-500"><Icon size={18} /></div>}
+    </div>
+  </div>;
+}
+
+function Modal({ children, onClose }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+    <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div className="flex items-center justify-between border-b px-5 py-4"><h2 className="text-lg font-bold">Novo lançamento manual</h2><button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={18} /></button></div>
+      <div className="p-5">{children}</div>
+    </div>
+  </div>;
+}
+
+function MiniLinha({ pontos = [] }) {
+  if (!pontos.length) return <div className="flex h-56 items-center justify-center text-sm text-slate-400">Sem dados no período.</div>;
+  const vals = pontos.map(x => x.valor); const min = Math.min(...vals, 0); const max = Math.max(...vals, 0); const faixa = max - min || 1;
+  const path = pontos.map((p, i) => { const x = pontos.length === 1 ? 50 : (i / (pontos.length - 1)) * 100; const y = 92 - ((p.valor - min) / faixa) * 82; return `${i ? "L" : "M"}${x},${y}`; }).join(" ");
+  return <div className="h-56 w-full"><svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible"><line x1="0" y1={92 - ((0 - min) / faixa) * 82} x2="100" y2={92 - ((0 - min) / faixa) * 82} stroke="currentColor" className="text-slate-200" strokeWidth="0.6" /><path d={path} fill="none" stroke="currentColor" className="text-blue-600" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg></div>;
+}
+
+export default function FluxoCaixa() {
+  const navigate = useNavigate();
+  const [op, setOp] = useState({ empresas: [], categorias: [], contas: [], formas: [] });
+  const [empresa, setEmpresa] = useState("");
+  const [de, setDe] = useState(inicioMes());
+  const [ate, setAte] = useState(fimAno());
+  const [dashboard, setDashboard] = useState(null);
+  const [recebimentos, setRecebimentos] = useState([]);
+  const [despesas, setDespesas] = useState([]);
+  const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [modal, setModal] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [mesFiltro, setMesFiltro] = useState("Todos");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("Todos");
+  const [tipoFiltro, setTipoFiltro] = useState("Todos");
+  const [statusFiltro, setStatusFiltro] = useState("Todos");
+  const [form, setForm] = useState({ tipo: "RECEBIMENTO", empresa_id: "", entidade: "", descricao: "", data: hoje(), valor: "", categoria_id: "", conta_bancaria_id: "", forma_pagamento: "PIX", status: "PREVISTO" });
+
+  async function carregar() {
+    setCarregando(true); setErro("");
+    try {
+      const [o, d, r, p] = await Promise.all([
+        financeiroOpcoes(), financeiroDashboard({ empresaId: empresa, de, ate }), finRecebimentosListar(empresa), finDespesasListar(empresa),
+      ]);
+      setOp(o || { empresas: [], categorias: [], contas: [], formas: [] }); setDashboard(d || {}); setRecebimentos(r || []); setDespesas(p || []);
+    } catch (e) { setErro(e?.message || "Não foi possível carregar o fluxo de caixa."); }
+    finally { setCarregando(false); }
+  }
+  useEffect(() => { carregar(); }, [empresa, de, ate]);
+
+  const empresaSelecionada = useMemo(() => op.empresas.find(x => x.id === empresa) || null, [op.empresas, empresa]);
+  const mensal = !!empresaSelecionada && !empresaSelecionada.usa_omie;
+  const empresasNome = useMemo(() => new Map(op.empresas.map(x => [x.id, x.nome])), [op.empresas]);
+
+  const lancamentos = useMemo(() => {
+    const itens = [];
+    const add = (x) => { if (x.data && noPeriodo(x.data, de, ate)) itens.push(x); };
+    for (const r of recebimentos) {
+      if (String(r.status).toUpperCase() === "CANCELADO") continue;
+      const base = { id: r.id, empresa_id: r.empresa_id, empresa: r.empresa?.nome || empresasNome.get(r.empresa_id) || "—", descricao: r.descricao || r.cliente || "Recebimento", categoria: r.categoria?.nome || r.categoria_texto || "Sem categoria", conta: r.conta_bancaria?.nome || r.conta_bancaria_texto || "—", tipo: "ENTRADA" };
+      const baixas = (r.baixas || []).filter(b => !b.estornada);
+      if (baixas.length) baixas.forEach((b, i) => add({ ...base, chave: `r-${r.id}-b-${b.id || i}`, data: String(b.data_pagamento || "").slice(0, 10), entrada: num(b.valor), saida: 0, status: "REALIZADO" }));
+      else if (r.origem === "OMIE" && num(r.valor_recebido) > 0 && r.data_pagamento) add({ ...base, chave: `r-${r.id}-omie`, data: String(r.data_pagamento).slice(0, 10), entrada: num(r.valor_recebido), saida: 0, status: "REALIZADO" });
+      if (num(r.valor_pendente) > 0 && r.data_vencimento) add({ ...base, chave: `r-${r.id}-prev`, data: String(r.data_vencimento).slice(0, 10), entrada: num(r.valor_pendente), saida: 0, status: "PREVISTO" });
+    }
+    for (const p of despesas) {
+      if (String(p.status).toUpperCase() === "CANCELADO") continue;
+      const base = { id: p.id, empresa_id: p.empresa_id, empresa: p.empresa?.nome || empresasNome.get(p.empresa_id) || "—", descricao: p.descricao || p.fornecedor || "Despesa", categoria: p.categoria?.nome || p.categoria_texto || "Sem categoria", conta: p.conta_bancaria?.nome || p.conta_bancaria_texto || "—", tipo: "SAÍDA" };
+      const baixas = (p.baixas || []).filter(b => !b.estornada);
+      if (baixas.length) baixas.forEach((b, i) => add({ ...base, chave: `d-${p.id}-b-${b.id || i}`, data: String(b.data_pagamento || "").slice(0, 10), entrada: 0, saida: num(b.valor), status: "REALIZADO" }));
+      else if (p.origem === "OMIE" && num(p.valor_pago) > 0 && p.data_pagamento) add({ ...base, chave: `d-${p.id}-omie`, data: String(p.data_pagamento).slice(0, 10), entrada: 0, saida: num(p.valor_pago), status: "REALIZADO" });
+      if (num(p.valor_pendente) > 0 && p.data_vencimento) add({ ...base, chave: `d-${p.id}-prev`, data: String(p.data_vencimento).slice(0, 10), entrada: 0, saida: num(p.valor_pendente), status: "PREVISTO" });
+    }
+    return itens.sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
+  }, [recebimentos, despesas, de, ate, empresasNome]);
+
+  const categorias = useMemo(() => [...new Set(lancamentos.map(x => x.categoria).filter(Boolean))].sort(), [lancamentos]);
+  const filtrados = useMemo(() => lancamentos.filter(x => {
+    const termo = busca.trim().toLowerCase(); const mes = String(Number(String(x.data).slice(5, 7)));
+    return (mesFiltro === "Todos" || mes === mesFiltro) && (categoriaFiltro === "Todos" || x.categoria === categoriaFiltro) && (tipoFiltro === "Todos" || x.tipo === tipoFiltro) && (statusFiltro === "Todos" || x.status === statusFiltro) && (!termo || `${x.descricao} ${x.categoria} ${x.conta} ${x.empresa}`.toLowerCase().includes(termo));
+  }), [lancamentos, busca, mesFiltro, categoriaFiltro, tipoFiltro, statusFiltro]);
+
+  const totais = useMemo(() => {
+    const realizado = lancamentos.filter(x => x.status === "REALIZADO"); const previsto = lancamentos.filter(x => x.status === "PREVISTO");
+    const recebido = soma(realizado.filter(x => x.tipo === "ENTRADA"), "entrada"); const pago = soma(realizado.filter(x => x.tipo === "SAÍDA"), "saida");
+    const aReceber = soma(previsto.filter(x => x.tipo === "ENTRADA"), "entrada"); const aPagar = soma(previsto.filter(x => x.tipo === "SAÍDA"), "saida");
+    const resultado = recebido - pago; const margem = recebido > 0 ? (resultado / recebido) * 100 : 0;
+    return { recebido, pago, aReceber, aPagar, resultado, margem };
+  }, [lancamentos]);
+
+  const saldoBase = num(dashboard?.saldoAtual);
+  const projecoes = useMemo(() => {
+    const h = hoje();
+    const calc = (dias) => { const lim = addDias(h, dias); return saldoBase + lancamentos.filter(x => x.status === "PREVISTO" && x.data >= h && x.data <= lim).reduce((s, x) => s + x.entrada - x.saida, 0); };
+    return { p7: calc(7), p30: calc(30), p90: calc(90) };
+  }, [saldoBase, lancamentos]);
+
+  const evolucao = useMemo(() => {
+    const mapa = new Map(); lancamentos.forEach(x => mapa.set(x.data, (mapa.get(x.data) || 0) + x.entrada - x.saida));
+    let saldo = saldoBase; return [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([data, mov]) => ({ data, valor: (saldo += mov) }));
+  }, [lancamentos, saldoBase]);
+  const risco = useMemo(() => projecoes.p7 < 0 || projecoes.p30 < 0 || projecoes.p90 < 0 || evolucao.some(x => x.valor < 0), [projecoes, evolucao]);
+  const saude = risco ? "ATENÇÃO" : totais.aPagar > totais.aReceber + Math.max(saldoBase, 0) ? "MONITORAR" : "SAUDÁVEL";
+
+  const gastoCategorias = useMemo(() => {
+    const m = new Map(); lancamentos.filter(x => x.tipo === "SAÍDA" && x.status === "REALIZADO").forEach(x => m.set(x.categoria, (m.get(x.categoria) || 0) + x.saida));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [lancamentos]);
+  const maxGasto = gastoCategorias[0]?.[1] || 1;
+
+  const tabela = useMemo(() => {
+    let saldo = saldoBase; return filtrados.map(x => ({ ...x, saldo: (saldo += x.entrada - x.saida) }));
+  }, [filtrados, saldoBase]);
+
+  function limparFiltros() { setBusca(""); setMesFiltro("Todos"); setCategoriaFiltro("Todos"); setTipoFiltro("Todos"); setStatusFiltro("Todos"); }
+  function abrirLancamento() { const emp = empresa || op.empresas?.[0]?.id || ""; setForm({ tipo: "RECEBIMENTO", empresa_id: emp, entidade: "", descricao: "", data: hoje(), valor: "", categoria_id: "", conta_bancaria_id: "", forma_pagamento: op.formas?.[0]?.nome || "PIX", status: "PREVISTO" }); setModal(true); }
+
+  async function salvarLancamento(e) {
+    e.preventDefault(); setErro(""); setSucesso("");
+    try {
+      const valor = num(form.valor); if (!form.empresa_id || !form.entidade.trim() || !form.data || valor <= 0) throw new Error("Informe empresa, cliente/fornecedor, data e valor.");
+      const cat = op.categorias.find(x => String(x.id) === String(form.categoria_id)); const conta = op.contas.find(x => String(x.id) === String(form.conta_bancaria_id));
+      if (form.tipo === "RECEBIMENTO") {
+        const item = await finRecebimentoSalvar({ empresa_id: form.empresa_id, cliente: form.entidade, descricao: form.descricao || "Lançamento rápido via Fluxo de Caixa", valor_previsto: valor, data_vencimento: form.data, categoria_id: form.categoria_id || null, categoria_texto: cat?.nome || null, conta_bancaria_id: form.conta_bancaria_id || null, conta_bancaria_texto: conta?.nome || null, forma_pagamento: form.forma_pagamento, observacao: "Lançamento rápido via Fluxo de Caixa" });
+        if (form.status === "REALIZADO") await finRecebimentoBaixar(item.id, valor, form.data, { contaBancariaId: form.conta_bancaria_id || null, formaPagamento: form.forma_pagamento, observacao: "Baixa no lançamento rápido do Fluxo de Caixa" });
+      } else {
+        const item = await finDespesaSalvar({ empresa_id: form.empresa_id, fornecedor: form.entidade, descricao: form.descricao || "Lançamento rápido via Fluxo de Caixa", valor_original: valor, data_lancamento: form.data, data_vencimento: form.data, categoria_id: form.categoria_id || null, categoria_texto: cat?.nome || null, conta_bancaria_id: form.conta_bancaria_id || null, conta_bancaria_texto: conta?.nome || null, forma_pagamento: form.forma_pagamento, observacao: "Lançamento rápido via Fluxo de Caixa" });
+        if (form.status === "REALIZADO") await finDespesaBaixar(item.id, valor, form.data, { contaBancariaId: form.conta_bancaria_id || null, formaPagamento: form.forma_pagamento, observacao: "Baixa no lançamento rápido do Fluxo de Caixa" });
+      }
+      setModal(false); setSucesso("Lançamento registrado com sucesso."); await carregar();
+    } catch (e2) { setErro(e2?.message || "Não foi possível salvar o lançamento."); }
+  }
+
+  return <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={() => navigate("/financas")}><ArrowLeft size={18} /></button><PageTitle titulo="Fluxo de Caixa" descricao={mensal ? "M Lab: visão mensal com realizados, previstos, projeções e análise financeira." : "MinasLab / Consolidado: visão diária com realizados, previstos, projeções e análise financeira."} /></div><button className="btn-primary" onClick={abrirLancamento}><Plus size={16} /> Novo lançamento manual</button></div>
+
+    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4"><label><span className="label">Empresa</span><select className="input" value={empresa} onChange={e => setEmpresa(e.target.value)}><option value="">Consolidado</option>{op.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">De</span><input className="input" type="date" value={de} onChange={e => setDe(e.target.value)} /></label><label><span className="label">Até</span><input className="input" type="date" value={ate} onChange={e => setAte(e.target.value)} /></label><div className="flex items-end"><button className="btn-outline w-full" onClick={carregar} disabled={carregando}><RefreshCw size={15} className={carregando ? "animate-spin" : ""} /> Atualizar</button></div></div>
+    {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}{sucesso && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{sucesso}</div>}
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Card titulo="Saldo atual" valor={moeda(saldoBase)} detalhe="Saldo inicial + realizados no período" icone={Wallet} destaque={saldoBase < 0 ? "text-red-700" : "text-slate-900"} />
+      <Card titulo="Recebido no período" valor={moeda(totais.recebido)} detalhe={`A receber: ${moeda(totais.aReceber)}`} icone={ArrowUpRight} destaque="text-emerald-700" />
+      <Card titulo="Pago no período" valor={moeda(totais.pago)} detalhe={`A pagar: ${moeda(totais.aPagar)}`} icone={ArrowDownRight} destaque="text-rose-700" />
+      <Card titulo="Resultado do período" valor={moeda(totais.resultado)} detalhe={`Saúde: ${saude}`} icone={CircleDollarSign} destaque={totais.resultado < 0 ? "text-red-700" : "text-emerald-700"} />
+    </div>
+
+    <div className="grid gap-3 sm:grid-cols-3"><Card titulo="Projeção 7 dias" valor={moeda(projecoes.p7)} icone={TrendingUp} destaque={projecoes.p7 < 0 ? "text-red-700" : "text-slate-900"} /><Card titulo="Projeção 30 dias" valor={moeda(projecoes.p30)} icone={TrendingUp} destaque={projecoes.p30 < 0 ? "text-red-700" : "text-slate-900"} /><Card titulo="Projeção 90 dias" valor={moeda(projecoes.p90)} icone={TrendingUp} destaque={projecoes.p90 < 0 ? "text-red-700" : "text-slate-900"} /></div>
+
+    <div className={`rounded-2xl border p-4 text-sm ${risco ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}><div className="flex gap-3"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><div><p className="font-semibold">{risco ? "Alerta preditivo de caixa" : "Estabilidade de liquidez"}</p><p className="mt-1 text-xs">{risco ? "Há risco de saldo negativo em algum ponto da projeção de até 90 dias. Revise vencimentos, recebimentos e compromissos." : "A projeção atual não aponta quebra de caixa nos próximos ciclos considerados."}</p></div></div></div>
+
+    <div className="grid gap-4 lg:grid-cols-3">
+      <div className="rounded-2xl border bg-white p-5 lg:col-span-2"><div className="mb-3 flex items-center justify-between"><div><h3 className="font-bold text-slate-800">Evolução do saldo</h3><p className="text-xs text-slate-500">Saldo líquido {mensal ? "mensal" : "diário"} considerando realizados e previstos.</p></div><BarChart3 size={18} className="text-blue-600" /></div><MiniLinha pontos={evolucao} /></div>
+      <div className="rounded-2xl border bg-white p-5"><h3 className="font-bold text-slate-800">Despesas por categoria</h3><p className="mb-4 text-xs text-slate-500">Valores realizados no período.</p><div className="space-y-3">{gastoCategorias.length === 0 ? <p className="py-16 text-center text-sm text-slate-400">Sem despesas realizadas.</p> : gastoCategorias.slice(0, 8).map(([cat, valor]) => <div key={cat}><div className="mb-1 flex justify-between gap-3 text-xs"><span className="truncate text-slate-600">{cat}</span><b>{moeda(valor)}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-slate-500" style={{ width: `${Math.max(4, (valor / maxGasto) * 100)}%` }} /></div></div>)}</div></div>
+    </div>
+
+    <div className="grid gap-3 md:grid-cols-3"><Card titulo="DRE · Receita bruta" valor={moeda(totais.recebido)} /><Card titulo="DRE · Custos e despesas" valor={moeda(totais.pago)} destaque="text-rose-700" /><Card titulo="Margem do período" valor={`${totais.margem.toFixed(1)}%`} detalhe={gastoCategorias[0] ? `Categoria crítica: ${gastoCategorias[0][0]} (${moeda(gastoCategorias[0][1])})` : "Sem categoria crítica no período"} /></div>
+
+    <div className="rounded-2xl border bg-white p-4"><div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end"><label className="flex-1"><span className="label">Busca</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className="input pl-9" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Descrição, categoria, conta ou empresa" /></div></label><label><span className="label">Mês</span><select className="input" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)}><option value="Todos">Todos</option>{["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}</select></label><label><span className="label">Categoria</span><select className="input" value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)}><option value="Todos">Todas</option>{categorias.map(c => <option key={c}>{c}</option>)}</select></label><label><span className="label">Tipo</span><select className="input" value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}><option value="Todos">Todos</option><option value="ENTRADA">Entrada</option><option value="SAÍDA">Saída</option></select></label><label><span className="label">Status</span><select className="input" value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)}><option value="Todos">Todos</option><option value="REALIZADO">Realizado</option><option value="PREVISTO">Previsto</option></select></label><button className="btn-outline" onClick={limparFiltros}>Limpar filtros</button></div>
+      <div className="overflow-x-auto rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-[11px] uppercase text-slate-500"><tr><th className="px-3 py-3">{mensal ? "Mês" : "Data"}</th><th className="px-3 py-3">Descrição</th><th className="px-3 py-3">Categoria</th><th className="px-3 py-3">Tipo</th><th className="px-3 py-3">Conta</th><th className="px-3 py-3 text-right">Entrada</th><th className="px-3 py-3 text-right">Saída</th><th className="px-3 py-3 text-right">Saldo acumulado</th><th className="px-3 py-3 text-center">Status</th></tr></thead><tbody>{tabela.length === 0 ? <tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhum registro localizado para os filtros aplicados.</td></tr> : tabela.map(x => <tr key={x.chave} className="border-t hover:bg-slate-50"><td className="whitespace-nowrap px-3 py-3">{mensal ? mesBR(String(x.data).slice(0, 7)) : dataBR(x.data)}</td><td className="px-3 py-3"><div className="font-medium text-slate-700">{x.descricao}</div>{!empresa && <div className="text-[10px] text-slate-400">{x.empresa}</div>}</td><td className="px-3 py-3 text-xs text-slate-600">{x.categoria}</td><td className={`px-3 py-3 font-semibold ${x.tipo === "ENTRADA" ? "text-emerald-700" : "text-rose-700"}`}>{x.tipo}</td><td className="px-3 py-3 text-xs text-slate-500">{x.conta}</td><td className="px-3 py-3 text-right text-emerald-700">{x.entrada ? moeda(x.entrada) : "—"}</td><td className="px-3 py-3 text-right text-rose-700">{x.saida ? moeda(x.saida) : "—"}</td><td className={`px-3 py-3 text-right font-semibold ${x.saldo < 0 ? "text-red-700" : "text-slate-800"}`}>{moeda(x.saldo)}</td><td className="px-3 py-3 text-center"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${x.status === "REALIZADO" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{x.status === "REALIZADO" ? "Realizado" : "Previsto"}</span></td></tr>)}</tbody></table></div>
+    </div>
+
+    {modal && <Modal onClose={() => setModal(false)}><form onSubmit={salvarLancamento} className="grid gap-4 sm:grid-cols-2"><label><span className="label">Tipo</span><select className="input" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}><option value="RECEBIMENTO">Recebimento / Entrada</option><option value="DESPESA">Despesa / Saída</option></select></label><label><span className="label">Empresa *</span><select className="input" required value={form.empresa_id} onChange={e => setForm({ ...form, empresa_id: e.target.value })}><option value="">Selecione</option>{op.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label className="sm:col-span-2"><span className="label">{form.tipo === "RECEBIMENTO" ? "Cliente / origem *" : "Fornecedor / destino *"}</span><input className="input" required value={form.entidade} onChange={e => setForm({ ...form, entidade: e.target.value })} /></label><label className="sm:col-span-2"><span className="label">Descrição</span><input className="input" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} /></label><label><span className="label">Data *</span><input className="input" type="date" required value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></label><label><span className="label">Valor *</span><input className="input" type="number" min="0.01" step="0.01" required value={form.valor} onChange={e => setForm({ ...form, valor: e.target.value })} /></label><label><span className="label">Categoria</span><select className="input" value={form.categoria_id} onChange={e => setForm({ ...form, categoria_id: e.target.value })}><option value="">Sem categoria</option>{op.categorias.filter(x => !x.empresa_id || x.empresa_id === form.empresa_id).map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Conta bancária</span><select className="input" value={form.conta_bancaria_id} onChange={e => setForm({ ...form, conta_bancaria_id: e.target.value })}><option value="">Sem conta</option>{op.contas.filter(x => !x.empresa_id || x.empresa_id === form.empresa_id).map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Forma de pagamento</span><select className="input" value={form.forma_pagamento} onChange={e => setForm({ ...form, forma_pagamento: e.target.value })}>{(op.formas || []).map(x => <option key={x.id || x.nome} value={x.nome}>{x.nome}</option>)}{!(op.formas || []).length && <option value="PIX">PIX</option>}</select></label><label><span className="label">Situação</span><select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="PREVISTO">Previsto / em aberto</option><option value="REALIZADO">Realizado / liquidado</option></select></label><div className="flex justify-end gap-2 border-t pt-4 sm:col-span-2"><button type="button" className="btn-outline" onClick={() => setModal(false)}>Cancelar</button><button type="submit" className="btn-primary">Salvar lançamento</button></div></form></Modal>}
+  </div>;
 }
