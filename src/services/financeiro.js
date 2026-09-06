@@ -1,4 +1,4 @@
-import { FINANCEIRO, FINANCEIRO_ARQUIVOS, FINANCEIRO_OMIE_PREVIEW } from "../lib/api.js";
+import { FINANCEIRO, FINANCEIRO_ARQUIVOS, FINANCEIRO_OMIE_PREVIEW, FINANCEIRO_C6 } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
 async function chamarUrl(url, action, corpo = {}) {
@@ -25,6 +25,7 @@ async function chamarPreview(corpo = {}) {
 
 const chamar = (action, corpo = {}) => chamarUrl(FINANCEIRO, action, corpo);
 const chamarArquivos = (action, corpo = {}) => chamarUrl(FINANCEIRO_ARQUIVOS, action, corpo);
+const chamarC6 = (action, corpo = {}) => chamarUrl(FINANCEIRO_C6, action, corpo);
 
 export const financeiroOpcoes = () => chamar("opcoes");
 export const financeiroDashboard = (filtros = {}) => chamar("dashboard", filtros);
@@ -63,3 +64,6 @@ export const finFormaSalvar = (registro) => chamar("formaSalvar", { registro }).
 export const finOmieEstado = () => chamar("omieEstado");
 export const finOmiePreviaPagina = (tipo, de, ate, pagina = 1) => chamarPreview({ tipo, de, ate, pagina });
 export const finOmieSincronizarPagina = (tipo, de, ate, pagina = 1) => chamar("omieSincronizarPagina", { tipo, de, ate, pagina });
+
+export const finC6Previa = (empresaId, csvText) => chamarC6("preview", { empresaId, csvText });
+export const finC6Importar = (empresaId, csvText) => chamarC6("importar", { empresaId, csvText });
