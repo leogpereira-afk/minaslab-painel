@@ -20,7 +20,7 @@ const RH = lazy(() => import("./pages/RH.jsx"));
 const Ponto = lazy(() => import("./pages/Ponto.jsx"));
 const Financas = lazy(() => import("./pages/Financas.jsx"));
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard.jsx"));
-const Recebimentos = lazy(() => import("./pages/Recebimentos.jsx"));
+const Recebimentos = lazy(() => import("./pages/RecebimentosFinanceiro.jsx"));
 const Despesas = lazy(() => import("./pages/Despesas.jsx"));
 const NotasFiscais = lazy(() => import("./pages/NotasFiscais.jsx"));
 const Extrato = lazy(() => import("./pages/Extrato.jsx"));
