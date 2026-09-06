@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
+  Landmark,
+  Eye,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
@@ -25,6 +27,7 @@ import {
   recebimentoExcluir,
   recebimentosImportar,
 } from "../services/dados.js";
+import { finC6Previa, finC6Importar } from "../services/financeiro.js";
 
 const ITENS_POR_PAGINA = 10;
 
@@ -69,6 +72,13 @@ function StatusBadge({ status }) {
     CANCELADO: "bg-slate-100 text-slate-600",
   };
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${estilos[s]}`}>{s}</span>;
+}
+
+function C6Badge({ status }) {
+  const s = String(status || "").toUpperCase();
+  if (!s) return <span className="text-slate-400">—</span>;
+  const classe = s === "PAGO" ? "bg-emerald-50 text-emerald-700" : s === "VENCIDO" ? "bg-red-50 text-red-700" : s === "CANCELADO" ? "bg-slate-100 text-slate-600" : "bg-sky-50 text-sky-700";
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${classe}`}>{s}</span>;
 }
 
 function Modal({ titulo, children, onClose, largura = "max-w-3xl" }) {
@@ -208,6 +218,7 @@ function mapearLinhaImportacao(obj) {
 export default function Recebimentos() {
   const navigate = useNavigate();
   const fileRef = useRef(null);
+  const c6FileRef = useRef(null);
 
   const [dados, setDados] = useState([]);
   const [opcoes, setOpcoes] = useState({ empresas: [], categorias: [], contas: [] });
@@ -227,6 +238,7 @@ export default function Recebimentos() {
   const [form, setForm] = useState(FORM_VAZIO);
   const [baixa, setBaixa] = useState({ id: "", cliente: "", dataPagamento: hojeISO() });
   const [importacao, setImportacao] = useState({ empresaId: "", arquivo: null, itens: [], nome: "", tipo: "" });
+  const [c6, setC6] = useState({ empresaId: "", nome: "", csvText: "", previa: null });
 
   async function carregar() {
     try {
@@ -258,7 +270,7 @@ export default function Recebimentos() {
     const termo = busca.trim().toLowerCase();
     return dados.filter((item) => {
       const empresaNome = item.empresa?.nome || "";
-      const texto = `${item.cliente || ""} ${item.cnpj_cpf || ""} ${item.descricao || ""} ${item.numero_nf || ""}`.toLowerCase();
+      const texto = `${item.cliente || ""} ${item.cnpj_cpf || ""} ${item.descricao || ""} ${item.numero_nf || ""} ${item.c6_status || ""} ${item.c6_codigo_barras || ""}`.toLowerCase();
       const dt = String(item.data_vencimento || "").slice(0, 10);
       const a = dt.slice(0, 4);
       const m = dt.slice(5, 7);
@@ -406,6 +418,51 @@ export default function Recebimentos() {
     }
   }
 
+  function abrirImportacaoC6() {
+    const mLab = opcoes.empresas.find((x) => String(x.nome || "").trim().toUpperCase() === "M LAB") || opcoes.empresas.find((x) => String(x.nome || "").toUpperCase().includes("M LAB"));
+    setC6({ empresaId: mLab?.id || "", nome: "", csvText: "", previa: null });
+    setErro("");
+    setModal("c6");
+  }
+
+  async function lerRelatorioC6(file) {
+    if (!file) return;
+    if (!String(file.name || "").toLowerCase().endsWith(".csv")) throw new Error("O relatório de boletos C6 deve ser enviado em CSV.");
+    const csvText = await file.text();
+    setC6((v) => ({ ...v, nome:file.name || "Relatorio_C6.csv", csvText, previa:null }));
+  }
+
+  async function prevalidarC6() {
+    try {
+      if (!c6.empresaId) throw new Error("Selecione a empresa M Lab.");
+      if (!c6.csvText) throw new Error("Selecione o relatório CSV do C6.");
+      setSalvando(true); setErro("");
+      const previa = await finC6Previa(c6.empresaId, c6.csvText);
+      setC6((v) => ({ ...v, previa }));
+    } catch (e) {
+      setErro(e?.message || "Falha na pré-validação do relatório C6.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function importarC6() {
+    try {
+      if (!c6.previa) throw new Error("Faça a pré-validação antes de importar.");
+      if (c6.previa.conflitos > 0 && !window.confirm(`A prévia encontrou ${c6.previa.conflitos} conflito(s). Eles serão ignorados e listados para revisão. Deseja continuar?`)) return;
+      setSalvando(true); setErro("");
+      const r = await finC6Importar(c6.empresaId, c6.csvText);
+      setModal(null);
+      setC6({ empresaId:"", nome:"", csvText:"", previa:null });
+      setSucesso(`C6 importado: ${r.inseridos || 0} novos, ${r.atualizados || 0} atualizados e ${r.ignorados || 0} para revisão. Pagos no C6 permanecem aguardando conciliação pelo OFX.`);
+      await carregar();
+    } catch (e) {
+      setErro(e?.message || "Falha na importação do relatório C6.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function baixarModelo() {
     try {
       const XLSX = await carregarSheetJS();
@@ -448,6 +505,9 @@ export default function Recebimentos() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <PageTitle titulo="Recebimentos" descricao="Controle de contas a receber da MinasLab e M Lab." />
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={abrirImportacaoC6} className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700 hover:bg-violet-100">
+            <Landmark size={17} /> Boletos C6
+          </button>
           <button type="button" onClick={baixarModelo} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <Download size={17} /> Baixar modelo
           </button>
@@ -471,7 +531,7 @@ export default function Recebimentos() {
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(260px,1fr)_160px_130px_150px_160px_44px]">
-          <div className="relative"><Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, CNPJ/CPF, descrição ou NF..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-teal-500" /></div>
+          <div className="relative"><Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, CNPJ/CPF, descrição, NF ou boleto C6..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-teal-500" /></div>
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3"><Filter size={16} className="text-slate-400" /><select value={empresa} onChange={(e) => setEmpresa(e.target.value)} className="w-full bg-transparent py-2.5 text-sm outline-none"><option>Todas</option><option>MinasLab</option><option>M Lab</option></select></div>
           <select value={ano} onChange={(e) => setAno(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none"><option>Todos</option>{anos.map((a) => <option key={a}>{a}</option>)}</select>
           <select value={mes} onChange={(e) => setMes(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none"><option value="Todos">Todos meses</option>{meses.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
@@ -485,16 +545,16 @@ export default function Recebimentos() {
       ) : (
         <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-[1750px] w-full text-left text-sm">
+            <table className="min-w-[1900px] w-full text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr>
-                <th className="px-4 py-3">Empresa</th><th className="px-4 py-3">CNPJ/CPF</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Descrição</th><th className="px-4 py-3">NF</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3">Previsto</th><th className="px-4 py-3">Recebido</th><th className="px-4 py-3">A receber</th><th className="px-4 py-3">Pagamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Categoria</th><th className="px-4 py-3">Forma</th><th className="px-4 py-3">Conta</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3 text-right">Ações</th>
+                <th className="px-4 py-3">Empresa</th><th className="px-4 py-3">CNPJ/CPF</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Descrição</th><th className="px-4 py-3">NF</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3">Previsto</th><th className="px-4 py-3">Recebido</th><th className="px-4 py-3">A receber</th><th className="px-4 py-3">Pagamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Status C6</th><th className="px-4 py-3">Crédito C6</th><th className="px-4 py-3">Liquidado C6</th><th className="px-4 py-3">Categoria</th><th className="px-4 py-3">Forma</th><th className="px-4 py-3">Conta</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3 text-right">Ações</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {itensPagina.map((item) => {
                   const ehOmie = String(item.origem || "").toUpperCase() === "OMIE";
                   const st = normalizarStatus(item.status);
                   return <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-4">{item.empresa?.nome || "—"}</td><td className="px-4 py-4">{item.cnpj_cpf || "—"}</td><td className="px-4 py-4 font-medium text-slate-900">{item.cliente || "—"}</td><td className="px-4 py-4">{item.descricao || "—"}</td><td className="px-4 py-4">{item.numero_nf || "—"}</td><td className="px-4 py-4">{dataBR(item.data_vencimento)}</td><td className="px-4 py-4">{moeda(item.valor_previsto)}</td><td className="px-4 py-4 text-emerald-700">{moeda(item.valor_recebido)}</td><td className="px-4 py-4 text-amber-700">{moeda(item.valor_pendente)}</td><td className="px-4 py-4">{dataBR(item.data_pagamento)}</td><td className="px-4 py-4"><StatusBadge status={item.status} /></td><td className="px-4 py-4">{item.categoria?.nome || item.categoria_texto || "—"}</td><td className="px-4 py-4">{item.forma_pagamento || "—"}</td><td className="px-4 py-4">{item.conta_bancaria?.nome || item.conta_bancaria_texto || "—"}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ehOmie ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600"}`}>{ehOmie ? "OMIE" : "MANUAL"}</span></td>
+                    <td className="px-4 py-4">{item.empresa?.nome || "—"}</td><td className="px-4 py-4">{item.cnpj_cpf || "—"}</td><td className="px-4 py-4 font-medium text-slate-900">{item.cliente || "—"}</td><td className="px-4 py-4">{item.descricao || "—"}</td><td className="px-4 py-4">{item.numero_nf || "—"}</td><td className="px-4 py-4">{dataBR(item.data_vencimento)}</td><td className="px-4 py-4">{moeda(item.valor_previsto)}</td><td className="px-4 py-4 text-emerald-700">{moeda(item.valor_recebido)}</td><td className="px-4 py-4 text-amber-700">{moeda(item.valor_pendente)}</td><td className="px-4 py-4">{dataBR(item.data_pagamento)}</td><td className="px-4 py-4"><StatusBadge status={item.status} /></td><td className="px-4 py-4"><C6Badge status={item.c6_status} /></td><td className="px-4 py-4">{dataBR(item.c6_data_credito)}</td><td className="px-4 py-4">{item.c6_status ? moeda(item.c6_valor_liquidacao) : "—"}</td><td className="px-4 py-4">{item.categoria?.nome || item.categoria_texto || "—"}</td><td className="px-4 py-4">{item.forma_pagamento || "—"}</td><td className="px-4 py-4">{item.conta_bancaria?.nome || item.conta_bancaria_texto || "—"}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ehOmie ? "bg-violet-50 text-violet-700" : item.importacao_origem === "C6_BOLETOS" ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>{ehOmie ? "OMIE" : item.importacao_origem === "C6_BOLETOS" ? "C6" : "MANUAL"}</span></td>
                     <td className="px-4 py-4"><div className="flex justify-end gap-1.5">
                       <button type="button" disabled={ehOmie} onClick={() => abrirEditar(item)} title={ehOmie ? "Controlado pela Omie" : "Editar"} className={`rounded-lg p-2 ${ehOmie ? "cursor-not-allowed text-slate-300" : "text-slate-500 hover:bg-slate-100"}`}><Pencil size={16} /></button>
                       <button type="button" disabled={ehOmie || st === "PAGO" || st === "CANCELADO"} onClick={() => { setBaixa({ id: item.id, cliente: item.cliente || "", dataPagamento: hojeISO() }); setModal("baixa"); }} title={ehOmie ? "Controlado pela Omie" : "Dar baixa"} className={`rounded-lg p-2 ${ehOmie || st === "PAGO" || st === "CANCELADO" ? "cursor-not-allowed text-slate-300" : "text-emerald-600 hover:bg-emerald-50"}`}><CheckCircle2 size={16} /></button>
@@ -502,7 +562,7 @@ export default function Recebimentos() {
                     </div></td>
                   </tr>;
                 })}
-                {!itensPagina.length && <tr><td colSpan="16" className="px-4 py-12 text-center text-slate-500">Nenhum recebimento encontrado.</td></tr>}
+                {!itensPagina.length && <tr><td colSpan="19" className="px-4 py-12 text-center text-slate-500">Nenhum recebimento encontrado.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -528,7 +588,7 @@ export default function Recebimentos() {
             {form.status === "PAGO" && <Input label="Data do pagamento" type="date" value={form.data_pagamento} onChange={(e) => setForm((f) => ({ ...f, data_pagamento: e.target.value }))} />}
             <Select label="Categoria" value={form.categoria_id} onChange={(e) => setForm((f) => ({ ...f, categoria_id: e.target.value }))}><option value="">Sem categoria</option>{opcoes.categorias.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</Select>
             <Select label="Conta bancária" value={form.conta_bancaria_id} onChange={(e) => setForm((f) => ({ ...f, conta_bancaria_id: e.target.value }))}><option value="">Sem conta</option>{opcoes.contas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</Select>
-            <Select label="Forma de pagamento" value={form.forma_pagamento} onChange={(e) => setForm((f) => ({ ...f, forma_pagamento: e.target.value }))}><option>PIX</option><option>BOLETO</option><option>TRANSFERÊNCIA</option><option>DINHEIRO</option><option>CARTÃO</option><option>OUTRO</option></Select>
+            <Select label="Forma de pagamento" value={form.forma_pagamento} onChange={(e) => setForm((f) => ({ ...f, forma_pagamento: e.target.value }))}><option>PIX</option><option>BOLETO</option><option>BOLETO C6</option><option>TRANSFERÊNCIA</option><option>DINHEIRO</option><option>CARTÃO</option><option>OUTRO</option></Select>
           </div>
           <label className="block"><span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Observação</span><textarea value={form.observacao} onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))} rows="3" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-teal-500" /></label>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Cancelar</button><button type="submit" disabled={salvando} className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{salvando ? "Salvando..." : "Salvar recebimento"}</button></div>
@@ -546,6 +606,23 @@ export default function Recebimentos() {
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={async (e) => { try { await lerArquivo(e.target.files?.[0]); } catch (err) { setErro(err?.message || "Falha ao ler arquivo."); } }} />
           {importacao.nome && <div className="rounded-xl bg-slate-50 p-4 text-sm"><div><strong>Arquivo:</strong> {importacao.nome}</div><div><strong>Linhas reconhecidas:</strong> {importacao.itens.length}</div>{importacao.itens.length > 0 && <div className="mt-3 overflow-x-auto"><table className="min-w-[700px] text-xs"><thead><tr className="text-left text-slate-500"><th className="p-2">Cliente</th><th className="p-2">Vencimento</th><th className="p-2">Valor</th><th className="p-2">Status</th><th className="p-2">NF</th></tr></thead><tbody>{importacao.itens.slice(0, 5).map((x, i) => <tr key={i} className="border-t border-slate-200"><td className="p-2">{x.cliente || "—"}</td><td className="p-2">{x.data_vencimento || "—"}</td><td className="p-2">{moeda(x.valor_previsto)}</td><td className="p-2">{x.status}</td><td className="p-2">{x.numero_nf || "—"}</td></tr>)}</tbody></table></div>}</div>}
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Cancelar</button><button type="button" disabled={salvando || !importacao.itens.length || !importacao.empresaId} onClick={executarImportacao} className="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{salvando ? "Importando..." : `Importar ${importacao.itens.length || ""}`}</button></div>
+        </div>
+      </Modal>}
+
+      {modal === "c6" && <Modal titulo="Importar relatório de boletos C6" onClose={() => setModal(null)} largura="max-w-4xl">
+        <div className="space-y-5">
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800"><strong>Regra:</strong> “Número do documento” do C6 é tratado como <strong>número da Nota Fiscal</strong>. O código de barras identifica tecnicamente o boleto. Um boleto marcado como PAGO no C6 <strong>não gera baixa financeira sozinho</strong>; a baixa é confirmada pelo OFX/conciliação bancária.</div>
+          <Select label="Empresa *" value={c6.empresaId} onChange={(e) => setC6((v) => ({ ...v, empresaId:e.target.value, previa:null }))}><option value="">Selecione</option>{opcoes.empresas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</Select>
+          <button type="button" onClick={() => c6FileRef.current?.click()} className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-violet-200 p-8 text-violet-700 hover:bg-violet-50"><Landmark size={34}/><span className="font-semibold">Selecionar relatório CSV do C6 Bank</span><span className="text-xs text-slate-500">Use o arquivo exportado no mesmo formato do relatório enviado para configuração.</span></button>
+          <input ref={c6FileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { try { await lerRelatorioC6(e.target.files?.[0]); } catch (err) { setErro(err?.message || "Falha ao ler relatório C6."); } }} />
+          {c6.nome && <div className="rounded-xl bg-slate-50 p-3 text-sm"><strong>Arquivo:</strong> {c6.nome}</div>}
+          <div className="flex justify-end"><button type="button" disabled={salvando || !c6.csvText || !c6.empresaId} onClick={prevalidarC6} className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2.5 text-sm font-semibold text-violet-700 disabled:opacity-50"><Eye size={16}/>{salvando ? "Validando..." : "Pré-validar C6"}</button></div>
+          {c6.previa && <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4"><div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Boletos</div><div className="mt-1 text-xl font-bold">{c6.previa.itens || 0}</div></div><div className="rounded-xl bg-emerald-50 p-3"><div className="text-xs text-emerald-700">Novos</div><div className="mt-1 text-xl font-bold text-emerald-800">{c6.previa.novos || 0}</div></div><div className="rounded-xl bg-sky-50 p-3"><div className="text-xs text-sky-700">Atualizar</div><div className="mt-1 text-xl font-bold text-sky-800">{c6.previa.atualizaveis || 0}</div></div><div className="rounded-xl bg-amber-50 p-3"><div className="text-xs text-amber-700">Revisar</div><div className="mt-1 text-xl font-bold text-amber-800">{c6.previa.conflitos || 0}</div></div></div>
+            <div className="flex flex-wrap gap-2">{Object.entries(c6.previa.status || {}).map(([s, q]) => <span key={s} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{s}: {q}</span>)}</div>
+            {!!c6.previa.amostra?.length && <div className="overflow-x-auto"><table className="min-w-[760px] w-full text-xs"><thead><tr className="border-b text-left text-slate-500"><th className="p-2">Cliente</th><th className="p-2">NF</th><th className="p-2">Vencimento</th><th className="p-2 text-right">Valor</th><th className="p-2">Status C6</th><th className="p-2">Ação</th></tr></thead><tbody>{c6.previa.amostra.map((x, i) => <tr key={i} className="border-b border-slate-100"><td className="p-2">{x.cliente}</td><td className="p-2">{x.nf || "—"}</td><td className="p-2">{dataBR(x.vencimento)}</td><td className="p-2 text-right">{moeda(x.valor)}</td><td className="p-2"><C6Badge status={x.statusC6}/></td><td className="p-2 font-semibold">{x.acao}</td></tr>)}</tbody></table></div>}
+          </div>}
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setModal(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Cancelar</button><button type="button" disabled={salvando || !c6.previa} onClick={importarC6} className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{salvando ? "Importando..." : "Confirmar importação C6"}</button></div>
         </div>
       </Modal>}
     </div>
