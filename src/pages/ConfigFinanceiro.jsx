@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, CloudDownload, Eye, RefreshCw, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, CloudDownload, Eye, Pencil, Plus, RefreshCw, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import {
@@ -16,6 +16,7 @@ import {
 const hoje = () => new Date().toISOString().slice(0, 10);
 const inicioAno = () => `${new Date().getFullYear()}-01-01`;
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+const contaVazia = (empresaId="") => ({ id:"", empresa_id:empresaId, nome:"", banco:"", agencia:"", conta:"", saldo_inicial:"0", ativa:true });
 
 function Previa({ titulo, dados }) {
   if (!dados) return null;
@@ -45,7 +46,7 @@ export default function ConfigFinanceiro() {
   const [validadoPeriodo, setValidadoPeriodo] = useState("");
   const [previas, setPrevias] = useState({ receber:null, pagar:null });
   const [categoria, setCategoria] = useState({ empresa_id:"", nome:"", tipo:"AMBOS" });
-  const [conta, setConta] = useState({ empresa_id:"", nome:"", banco:"", agencia:"", conta:"", saldo_inicial:"0" });
+  const [conta, setConta] = useState(contaVazia());
   const [centro, setCentro] = useState({ empresa_id:"", nome:"" });
   const [forma, setForma] = useState({ empresa_id:"", nome:"" });
   const chavePeriodo = `${periodo.de}|${periodo.ate}`;
@@ -71,8 +72,18 @@ export default function ConfigFinanceiro() {
     setValidadoPeriodo(""); setPrevias({ receber:null, pagar:null }); setOk("");
   }
   async function salvar(fn, obj, limpar) {
-    try { setErro(""); await fn(obj); setOk("Cadastro salvo."); limpar(); await carregar(); }
+    try { setErro(""); await fn(obj); setOk(obj.id ? "Cadastro atualizado." : "Cadastro salvo."); limpar(); await carregar(); }
     catch (e) { setErro(e.message); }
+  }
+  function editarConta(x) {
+    setConta({ id:x.id, empresa_id:x.empresa_id, nome:x.nome || "", banco:x.banco || "", agencia:x.agencia || "", conta:x.conta || "", saldo_inicial:String(x.saldo_inicial ?? 0), ativa:x.ativa !== false });
+    setOk("Conta carregada para consulta/edição.");
+    window.scrollTo({ top:document.body.scrollHeight * 0.45, behavior:"smooth" });
+  }
+  function novaConta() {
+    const empresaId = conta.empresa_id || dados.empresas?.[0]?.id || "";
+    setConta(contaVazia(empresaId));
+    setOk("");
   }
   async function prevalidar() {
     if (!omie.ligado) { setErro("A integração Omie não está configurada nos Secrets do Supabase."); return; }
@@ -128,7 +139,21 @@ export default function ConfigFinanceiro() {
 
     <div className="grid gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Categorias</h2><div className="mt-3 grid gap-3 md:grid-cols-3"><select className="input" value={categoria.empresa_id} onChange={e => setCategoria({ ...categoria, empresa_id:e.target.value })}><option value="">Global</option>{dados.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select><input className="input" placeholder="Nome" value={categoria.nome} onChange={e => setCategoria({ ...categoria, nome:e.target.value })}/><select className="input" value={categoria.tipo} onChange={e => setCategoria({ ...categoria, tipo:e.target.value })}><option>AMBOS</option><option>RECEITA</option><option>DESPESA</option></select></div><button className="btn-primary mt-3" onClick={() => salvar(finCategoriaSalvar, categoria, () => setCategoria({ ...categoria, nome:"" }))}><Save size={15}/>Salvar categoria</button><div className="mt-4 flex flex-wrap gap-2">{dados.categorias.map(x => <span key={x.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{x.nome} · {x.tipo}</span>)}</div></section>
-      <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Contas bancárias</h2><div className="mt-3 grid gap-3 md:grid-cols-2"><select className="input" value={conta.empresa_id} onChange={e => setConta({ ...conta, empresa_id:e.target.value })}>{dados.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select><input className="input" placeholder="Nome da conta" value={conta.nome} onChange={e => setConta({ ...conta, nome:e.target.value })}/><input className="input" placeholder="Banco" value={conta.banco} onChange={e => setConta({ ...conta, banco:e.target.value })}/><input className="input" placeholder="Agência" value={conta.agencia} onChange={e => setConta({ ...conta, agencia:e.target.value })}/><input className="input" placeholder="Conta" value={conta.conta} onChange={e => setConta({ ...conta, conta:e.target.value })}/><input className="input" type="number" step="0.01" placeholder="Saldo inicial" value={conta.saldo_inicial} onChange={e => setConta({ ...conta, saldo_inicial:e.target.value })}/></div><button className="btn-primary mt-3" onClick={() => salvar(finContaSalvar, conta, () => setConta({ ...conta, nome:"", banco:"", agencia:"", conta:"", saldo_inicial:"0" }))}><Save size={15}/>Salvar conta</button><div className="mt-4 space-y-2">{dados.contas.map(x => <div key={x.id} className="rounded-xl bg-slate-50 p-2 text-sm"><b>{x.nome}</b> · {x.banco || "Banco não informado"}</div>)}</div></section>
+
+      <section className="rounded-2xl border bg-white p-5">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold">Contas bancárias</h2><p className="mt-1 text-xs text-slate-500">Cadastre, consulte e edite os dados bancários usados no Financeiro e na conciliação OFX.</p></div><button type="button" className="btn-outline" onClick={novaConta}><Plus size={15}/>Nova conta</button></div>
+        {conta.id && <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">Editando <b>{conta.nome}</b>. Altere os dados abaixo e clique em “Atualizar conta”.</div>}
+        <div className="mt-3 grid gap-3 md:grid-cols-2"><select className="input" value={conta.empresa_id} onChange={e => setConta({ ...conta, empresa_id:e.target.value })}>{dados.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select><input className="input" placeholder="Nome da conta" value={conta.nome} onChange={e => setConta({ ...conta, nome:e.target.value })}/><input className="input" placeholder="Banco" value={conta.banco} onChange={e => setConta({ ...conta, banco:e.target.value })}/><input className="input" placeholder="Agência" value={conta.agencia} onChange={e => setConta({ ...conta, agencia:e.target.value })}/><input className="input" placeholder="Conta" value={conta.conta} onChange={e => setConta({ ...conta, conta:e.target.value })}/><input className="input" type="number" step="0.01" placeholder="Saldo inicial" value={conta.saldo_inicial} onChange={e => setConta({ ...conta, saldo_inicial:e.target.value })}/></div>
+        <button className="btn-primary mt-3" onClick={() => salvar(finContaSalvar, conta, () => setConta(contaVazia(conta.empresa_id)))}><Save size={15}/>{conta.id ? "Atualizar conta" : "Salvar conta"}</button>
+        <div className="mt-5 space-y-3">{dados.contas.length === 0 ? <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Nenhuma conta bancária cadastrada.</div> : dados.contas.map(x => {
+          const empresaNome = dados.empresas.find(e => e.id === x.empresa_id)?.nome || "Empresa";
+          return <div key={x.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="font-bold text-slate-900">{x.nome}</div><div className="mt-1 text-xs text-slate-500">{empresaNome} · {x.ativa === false ? "Inativa" : "Ativa"}</div></div><button type="button" className="btn-outline" onClick={() => editarConta(x)}><Pencil size={14}/>Consultar / editar</button></div>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4"><div><span className="text-slate-500">Banco</span><div className="mt-0.5 font-semibold text-slate-800">{x.banco || "—"}</div></div><div><span className="text-slate-500">Agência</span><div className="mt-0.5 font-semibold text-slate-800">{x.agencia || "—"}</div></div><div><span className="text-slate-500">Conta</span><div className="mt-0.5 font-semibold text-slate-800">{x.conta || "—"}</div></div><div><span className="text-slate-500">Saldo inicial</span><div className="mt-0.5 font-semibold text-slate-800">{moeda(x.saldo_inicial)}</div></div></div>
+          </div>;
+        })}</div>
+      </section>
+
       <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Centros de custo</h2><div className="mt-3 flex gap-2"><select className="input" value={centro.empresa_id} onChange={e => setCentro({ ...centro, empresa_id:e.target.value })}>{dados.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select><input className="input" placeholder="Centro de custo" value={centro.nome} onChange={e => setCentro({ ...centro, nome:e.target.value })}/></div><button className="btn-primary mt-3" onClick={() => salvar(finCentroSalvar, centro, () => setCentro({ ...centro, nome:"" }))}><Save size={15}/>Salvar centro</button><div className="mt-4 flex flex-wrap gap-2">{dados.centros.map(x => <span key={x.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{x.nome}</span>)}</div></section>
       <section className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Formas de pagamento</h2><div className="mt-3 flex gap-2"><select className="input" value={forma.empresa_id} onChange={e => setForma({ ...forma, empresa_id:e.target.value })}><option value="">Global</option>{dados.empresas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}</select><input className="input" placeholder="Forma" value={forma.nome} onChange={e => setForma({ ...forma, nome:e.target.value })}/></div><button className="btn-primary mt-3" onClick={() => salvar(finFormaSalvar, forma, () => setForma({ ...forma, nome:"" }))}><Save size={15}/>Salvar forma</button><div className="mt-4 flex flex-wrap gap-2">{dados.formas.map(x => <span key={x.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{x.nome}</span>)}</div></section>
     </div>
