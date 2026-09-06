@@ -1,7 +1,5 @@
 // As rotas do painel. Modulo novo: entra AQUI e no MODULOS do Layout — e em
 // nenhum outro lugar (lista copiada falha calada).
-//
-// lazy() em cada pagina: quem abre o Calendario nao baixa o RH junto.
 
 import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
@@ -21,12 +19,16 @@ const Laboratorio = lazy(() => import("./pages/Laboratorio.jsx"));
 const RH = lazy(() => import("./pages/RH.jsx"));
 const Ponto = lazy(() => import("./pages/Ponto.jsx"));
 const Financas = lazy(() => import("./pages/Financas.jsx"));
-const Recebimentos = lazy(() => import("./pages/Recebimentos.jsx"));
+const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard.jsx"));
+const Recebimentos = lazy(() => import("./pages/RecebimentosFinanceiro.jsx"));
+const Despesas = lazy(() => import("./pages/Despesas.jsx"));
+const NotasFiscais = lazy(() => import("./pages/NotasFiscais.jsx"));
+const Extrato = lazy(() => import("./pages/Extrato.jsx"));
+const FluxoCaixa = lazy(() => import("./pages/FluxoCaixa.jsx"));
+const ConfigFinanceiro = lazy(() => import("./pages/ConfigFinanceiro.jsx"));
 const CurvaAbc = lazy(() => import("./pages/CurvaAbc.jsx"));
 const Acessos = lazy(() => import("./pages/Acessos.jsx"));
 
-// Porta da rota: sem sessao vai para o login; sem papel para o modulo, volta
-// para o inicio. E conforto de navegacao — a porta de verdade e o servidor.
 function Guarda({ modulo, children }) {
   const sessao = getSessao();
   const location = useLocation();
@@ -36,7 +38,6 @@ function Guarda({ modulo, children }) {
 }
 
 export default function App() {
-  // Re-render quando a sessao muda (login, logout, cracha vencido).
   const [, setVersao] = useState(0);
   useEffect(() => aoMudarSessao(() => setVersao((v) => v + 1)), []);
 
@@ -45,13 +46,7 @@ export default function App() {
       <Suspense fallback={<div className="p-8"><CarregandoModulo /></div>}>
         <Routes>
           <Route path="/entrar" element={<Login />} />
-          <Route
-            element={
-              <Guarda>
-                <Layout />
-              </Guarda>
-            }
-          >
+          <Route element={<Guarda><Layout /></Guarda>}>
             <Route path="/" element={<Home />} />
             <Route path="/calendario" element={<Calendario />} />
             <Route path="/compromissos" element={<Compromissos />} />
@@ -63,7 +58,13 @@ export default function App() {
             <Route path="/rh" element={<Guarda modulo="rh"><RH /></Guarda>} />
             <Route path="/ponto" element={<Guarda modulo="ponto"><Ponto /></Guarda>} />
             <Route path="/financas" element={<Guarda modulo="financas"><Financas /></Guarda>} />
-            <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>}/>
+            <Route path="/financas/dashboard" element={<Guarda modulo="financas"><FinanceiroDashboard /></Guarda>} />
+            <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>} />
+            <Route path="/financas/despesas" element={<Guarda modulo="financas"><Despesas /></Guarda>} />
+            <Route path="/financas/notas-fiscais" element={<Guarda modulo="financas"><NotasFiscais /></Guarda>} />
+            <Route path="/financas/extrato" element={<Guarda modulo="financas"><Extrato /></Guarda>} />
+            <Route path="/financas/fluxo-caixa" element={<Guarda modulo="financas"><FluxoCaixa /></Guarda>} />
+            <Route path="/financas/configuracoes" element={<Guarda modulo="financas"><ConfigFinanceiro /></Guarda>} />
             <Route path="/curva-abc" element={<Guarda modulo="curva-abc"><CurvaAbc /></Guarda>} />
             <Route path="/acessos" element={<Guarda modulo="acessos"><Acessos /></Guarda>} />
             <Route path="*" element={<Navigate to="/" replace />} />
