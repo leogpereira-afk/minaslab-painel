@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SERVICE_KEY = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOKEN = Deno.env.get("ML_TOKEN") ?? "";
 const JWT_SECRET = Deno.env.get("ML_JWT_SECRET") ?? "";
 const OMIE_KEY = Deno.env.get("ML_OMIE_APP_KEY") ?? "";
@@ -9,272 +9,105 @@ const OMIE_SECRET = Deno.env.get("ML_OMIE_APP_SECRET") ?? "";
 const OMIE_URL = "https://app.omie.com.br/api/v1/";
 const SIS = "minaslab";
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession:false, autoRefreshToken:false } });
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-token",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Origin":"*",
+  "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-token",
+  "Access-Control-Allow-Methods":"POST, OPTIONS",
 };
-const resp = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
-
-function bytesFromB64url(s: string) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  const bin = atob(s);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-async function verificarJwt(token: string): Promise<Record<string, unknown> | null> {
-  if (!JWT_SECRET || !token) return null;
-  const p = token.split(".");
-  if (p.length !== 3) return null;
-  try {
-    const key = await crypto.subtle.importKey("raw", enc.encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-    const ok = await crypto.subtle.verify("HMAC", key, bytesFromB64url(p[2]), enc.encode(`${p[0]}.${p[1]}`));
-    if (!ok) return null;
-    const payload = JSON.parse(dec.decode(bytesFromB64url(p[1])));
-    if (payload.sis !== SIS) return null;
-    if (typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
+const resp = (data:unknown, status=200) => new Response(JSON.stringify(data), { status, headers:{ ...CORS, "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" } });
 const iso = () => new Date().toISOString();
-const n = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0;
-const texto = (v: unknown) => String(v ?? "").trim();
-const brParaISO = (v: unknown) => {
-  const s = texto(v);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
-};
-const isoParaBR = (v: unknown) => {
-  const s = texto(v).slice(0, 10);
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
-};
-const statusReceber = (valor: number, pago: number, statusOmie = "", vencimento = "") => {
-  const so = statusOmie.toUpperCase();
-  if (so.includes("CANCEL")) return { status: "CANCELADO", recebido: 0, pendente: 0 };
-  if (pago >= valor && valor > 0 || ["RECEBIDO", "PAGO", "LIQUIDADO"].includes(so)) return { status: "PAGO", recebido: valor, pendente: 0 };
-  if (pago > 0) return { status: "PARCIAL", recebido: pago, pendente: Math.max(valor - pago, 0) };
-  if (vencimento && vencimento < new Date().toISOString().slice(0, 10)) return { status: "VENCIDO", recebido: 0, pendente: valor };
-  return { status: "A RECEBER", recebido: 0, pendente: valor };
-};
-const statusPagar = (valor: number, pago: number, statusOmie = "", vencimento = "") => {
-  const so = statusOmie.toUpperCase();
-  if (so.includes("CANCEL")) return { status: "CANCELADO", pago: 0, pendente: 0 };
-  if (pago >= valor && valor > 0 || ["PAGO", "LIQUIDADO"].includes(so)) return { status: "PAGO", pago: valor, pendente: 0 };
-  if (pago > 0) return { status: "PARCIAL", pago, pendente: Math.max(valor - pago, 0) };
-  if (vencimento && vencimento < new Date().toISOString().slice(0, 10)) return { status: "VENCIDO", pago: 0, pendente: valor };
-  return { status: "A PAGAR", pago: 0, pendente: valor };
-};
+const hoje = () => iso().slice(0,10);
+const n = (v:unknown) => Number.isFinite(Number(v)) ? Number(v) : 0;
+const texto = (v:unknown) => String(v ?? "").trim();
 
-async function omie(modulo: string, call: string, param: Record<string, unknown>) {
-  if (!OMIE_KEY || !OMIE_SECRET) throw new Error("Integração Omie não configurada nos Secrets do Supabase.");
-  const r = await fetch(OMIE_URL + modulo + "/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ call, app_key: OMIE_KEY, app_secret: OMIE_SECRET, param: [param] }),
-  });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const falha = texto((body as Record<string, unknown>).faultstring || r.status);
-    if (/não existem registros|nao existem registros/i.test(falha)) return { vazio: true } as Record<string, unknown>;
-    throw new Error(`Omie · ${call}: ${falha}`);
-  }
-  return body as Record<string, unknown>;
+function bytesFromB64url(s:string) {
+  s=s.replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4)s+="=";
+  const bin=atob(s), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out;
 }
-
-async function opcoes() {
-  const [e, c, b, cc, fp] = await Promise.all([
-    sb.from("empresas").select("*").eq("ativa", true).order("nome"),
-    sb.from("categorias_financeiras").select("*").eq("ativa", true).order("nome"),
-    sb.from("contas_bancarias").select("*").eq("ativa", true).order("nome"),
-    sb.from("centros_custo").select("*").eq("ativo", true).order("nome"),
-    sb.from("formas_pagamento").select("*").eq("ativa", true).order("nome"),
-  ]);
-  for (const q of [e, c, b, cc, fp]) if (q.error) throw q.error;
-  return { empresas: e.data ?? [], categorias: c.data ?? [], contas: b.data ?? [], centros: cc.data ?? [], formas: fp.data ?? [] };
-}
-
-async function recalcularRecebimento(id: string, usuario: string) {
-  const { data: t, error } = await sb.from("recebimentos").select("*").eq("id", id).maybeSingle();
-  if (error) throw error;
-  if (!t) throw new Error("Recebimento não encontrado.");
-  if (t.origem === "OMIE") return t;
-  const { data: baixas, error: eb } = await sb.from("baixas_recebimentos").select("valor,data_pagamento").eq("recebimento_id", id).eq("estornada", false);
-  if (eb) throw eb;
-  const recebido = (baixas ?? []).reduce((s, x) => s + n(x.valor), 0);
-  const ultima = [...(baixas ?? [])].sort((a, b) => texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];
-  const st = statusReceber(n(t.valor_previsto), recebido, "", texto(t.data_vencimento));
-  const { data, error: eu } = await sb.from("recebimentos").update({
-    valor_recebido: st.recebido,
-    valor_pendente: st.pendente,
-    status: st.status,
-    data_pagamento: st.status === "PAGO" ? ultima?.data_pagamento ?? null : null,
-    updated_by: usuario,
-    updated_at: iso(),
-  }).eq("id", id).select("*").maybeSingle();
-  if (eu) throw eu;
-  return data;
-}
-
-async function recalcularDespesa(id: string, usuario: string) {
-  const { data: t, error } = await sb.from("despesas").select("*").eq("id", id).maybeSingle();
-  if (error) throw error;
-  if (!t) throw new Error("Despesa não encontrada.");
-  if (t.origem === "OMIE") return t;
-  const { data: baixas, error: eb } = await sb.from("baixas_despesas").select("valor,data_pagamento").eq("despesa_id", id).eq("estornada", false);
-  if (eb) throw eb;
-  const pago = (baixas ?? []).reduce((s, x) => s + n(x.valor), 0);
-  const ultima = [...(baixas ?? [])].sort((a, b) => texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];
-  const st = statusPagar(n(t.valor_original), pago, "", texto(t.data_vencimento));
-  const { data, error: eu } = await sb.from("despesas").update({
-    valor_pago: st.pago,
-    valor_pendente: st.pendente,
-    status: st.status,
-    data_pagamento: st.status === "PAGO" ? ultima?.data_pagamento ?? null : null,
-    updated_by: usuario,
-    updated_at: iso(),
-  }).eq("id", id).select("*").maybeSingle();
-  if (eu) throw eu;
-  return data;
-}
-
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return resp({ erro: "Use POST." }, 405);
-  let body: Record<string, any>;
-  try { body = await req.json(); } catch { return resp({ erro: "JSON inválido." }, 400); }
-  const action = texto(body.action);
-  const m = texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);
-  const cracha = m ? await verificarJwt(m[1]) : null;
-  const maquina = !!TOKEN && req.headers.get("x-token") === TOKEN;
-  if (!cracha && !maquina) return resp({ erro: "Entre no sistema.", semSessao: true }, 401);
-  if (!maquina && texto(cracha?.papel) !== "direcao") return resp({ erro: "O financeiro é somente da direção.", semPermissao: true }, 403);
-  const usuario = maquina ? "maquina" : texto(cracha?.sub) || "direcao";
-
+async function verificarJwt(token:string):Promise<Record<string,unknown>|null> {
+  if(!JWT_SECRET||!token)return null; const p=token.split("."); if(p.length!==3)return null;
   try {
-    switch (action) {
-      case "opcoes": return resp(await opcoes());
+    const key=await crypto.subtle.importKey("raw",enc.encode(JWT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
+    if(!await crypto.subtle.verify("HMAC",key,bytesFromB64url(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;
+    const payload=JSON.parse(dec.decode(bytesFromB64url(p[1])));
+    if(payload.sis!==SIS)return null;
+    if(typeof payload.exp==="number"&&payload.exp<Math.floor(Date.now()/1000))return null;
+    return payload;
+  } catch { return null; }
+}
+const brParaISO=(v:unknown)=>{const s=texto(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?`${m[3]}-${m[2]}-${m[1]}`:"";};
+const isoParaBR=(v:unknown)=>{const s=texto(v).slice(0,10);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:"";};
+const statusReceber=(valor:number,pago:number,statusOmie="",vencimento="")=>{const so=statusOmie.toUpperCase();if(so.includes("CANCEL"))return{status:"CANCELADO",recebido:0,pendente:0};if((pago>=valor&&valor>0)||["RECEBIDO","PAGO","LIQUIDADO"].includes(so))return{status:"PAGO",recebido:valor,pendente:0};if(pago>0)return{status:"PARCIAL",recebido:pago,pendente:Math.max(valor-pago,0)};if(vencimento&&vencimento<hoje())return{status:"VENCIDO",recebido:0,pendente:valor};return{status:"A RECEBER",recebido:0,pendente:valor};};
+const statusPagar=(valor:number,pago:number,statusOmie="",vencimento="")=>{const so=statusOmie.toUpperCase();if(so.includes("CANCEL"))return{status:"CANCELADO",pago:0,pendente:0};if((pago>=valor&&valor>0)||["PAGO","LIQUIDADO"].includes(so))return{status:"PAGO",pago:valor,pendente:0};if(pago>0)return{status:"PARCIAL",pago,pendente:Math.max(valor-pago,0)};if(vencimento&&vencimento<hoje())return{status:"VENCIDO",pago:0,pendente:valor};return{status:"A PAGAR",pago:0,pendente:valor};};
 
-      case "dashboard": {
-        const empresaId = texto(body.empresaId);
-        const de = texto(body.de);
-        const ate = texto(body.ate);
-        let qr = sb.from("recebimentos").select("id,empresa_id,valor_previsto,valor_recebido,valor_pendente,data_vencimento,data_pagamento,status,origem").eq("apagado", false);
-        let qd = sb.from("despesas").select("id,empresa_id,valor_original,valor_pago,valor_pendente,data_vencimento,data_pagamento,status,origem").eq("apagado", false);
-        let qn = sb.from("notas_fiscais").select("id,empresa_id,valor_total,data_emissao,origem,tipo").eq("apagado", false);
-        if (empresaId) { qr = qr.eq("empresa_id", empresaId); qd = qd.eq("empresa_id", empresaId); qn = qn.eq("empresa_id", empresaId); }
-        if (de) { qr = qr.gte("data_vencimento", de); qd = qd.gte("data_vencimento", de); qn = qn.gte("data_emissao", de); }
-        if (ate) { qr = qr.lte("data_vencimento", ate); qd = qd.lte("data_vencimento", ate); qn = qn.lte("data_emissao", ate); }
-        const [r, d, nf, contas] = await Promise.all([qr, qd, qn, sb.from("contas_bancarias").select("id,empresa_id,saldo_inicial,ativa").eq("ativa", true)]);
-        for (const q of [r, d, nf, contas]) if (q.error) throw q.error;
-        const rec = r.data ?? [], des = d.data ?? [];
-        const totalRecebido = rec.reduce((s, x) => s + n(x.valor_recebido), 0);
-        const totalReceber = rec.filter(x => x.status !== "CANCELADO").reduce((s, x) => s + n(x.valor_pendente), 0);
-        const totalPago = des.reduce((s, x) => s + n(x.valor_pago), 0);
-        const totalPagar = des.filter(x => x.status !== "CANCELADO").reduce((s, x) => s + n(x.valor_pendente), 0);
-        const saldoInicial = (contas.data ?? []).filter(x => !empresaId || x.empresa_id === empresaId).reduce((s, x) => s + n(x.saldo_inicial), 0);
-        const vencidos = rec.filter(x => ["VENCIDO","A RECEBER"].includes(x.status) && x.data_vencimento && x.data_vencimento < new Date().toISOString().slice(0,10)).reduce((s,x)=>s+n(x.valor_pendente),0);
-        const baseInad = totalRecebido + totalReceber;
-        return resp({
-          totalRecebido, totalReceber, totalPago, totalPagar,
-          saldoAtual: saldoInicial + totalRecebido - totalPago,
-          saldoProjetado: saldoInicial + totalRecebido - totalPago + totalReceber - totalPagar,
-          inadimplencia: baseInad > 0 ? vencidos / baseInad * 100 : 0,
-          notas: (nf.data ?? []).reduce((s,x)=>s+n(x.valor_total),0),
-          recebimentos: rec, despesas: des,
-        });
-      }
+async function omie(modulo:string,call:string,param:Record<string,unknown>) {
+  if(!OMIE_KEY||!OMIE_SECRET)throw new Error("Integração Omie não configurada nos Secrets do Supabase.");
+  const r=await fetch(OMIE_URL+modulo+"/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({call,app_key:OMIE_KEY,app_secret:OMIE_SECRET,param:[param]})});
+  const body=await r.json().catch(()=>({}));
+  if(!r.ok){const falha=texto((body as any).faultstring||r.status);if(/não existem registros|nao existem registros/i.test(falha))return{vazio:true};throw new Error(`Omie · ${call}: ${falha}`);} return body as Record<string,unknown>;
+}
+async function opcoes(){
+  const[e,c,b,cc,fp]=await Promise.all([
+    sb.from("empresas").select("*").eq("ativa",true).order("nome"),
+    sb.from("categorias_financeiras").select("*").eq("ativa",true).order("nome"),
+    sb.from("contas_bancarias").select("*").eq("ativa",true).order("nome"),
+    sb.from("centros_custo").select("*").eq("ativo",true).order("nome"),
+    sb.from("formas_pagamento").select("*").eq("ativa",true).order("nome"),
+  ]); for(const q of[e,c,b,cc,fp])if(q.error)throw q.error; return{empresas:e.data??[],categorias:c.data??[],contas:b.data??[],centros:cc.data??[],formas:fp.data??[]};
+}
+async function recalcularRecebimento(id:string,usuario:string){
+  const{data:t,error}=await sb.from("recebimentos").select("*").eq("id",id).maybeSingle();if(error)throw error;if(!t)throw new Error("Recebimento não encontrado.");if(t.origem==="OMIE")return t;
+  const{data:bs,error:eb}=await sb.from("baixas_recebimentos").select("valor,data_pagamento").eq("recebimento_id",id).eq("estornada",false);if(eb)throw eb;const recebido=(bs??[]).reduce((s,x)=>s+n(x.valor),0);const ultima=[...(bs??[])].sort((a,b)=>texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];const st=statusReceber(n(t.valor_previsto),recebido,"",texto(t.data_vencimento));
+  const{data,error:eu}=await sb.from("recebimentos").update({valor_recebido:st.recebido,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?ultima?.data_pagamento??null:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
+}
+async function recalcularDespesa(id:string,usuario:string){
+  const{data:t,error}=await sb.from("despesas").select("*").eq("id",id).maybeSingle();if(error)throw error;if(!t)throw new Error("Despesa não encontrada.");if(t.origem==="OMIE")return t;
+  const{data:bs,error:eb}=await sb.from("baixas_despesas").select("valor,data_pagamento").eq("despesa_id",id).eq("estornada",false);if(eb)throw eb;const pago=(bs??[]).reduce((s,x)=>s+n(x.valor),0);const ultima=[...(bs??[])].sort((a,b)=>texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];const st=statusPagar(n(t.valor_original),pago,"",texto(t.data_vencimento));
+  const{data,error:eu}=await sb.from("despesas").update({valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?ultima?.data_pagamento??null:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
+}
 
-      case "recebimentosListar": {
-        let q = sb.from("recebimentos").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),baixas:baixas_recebimentos(*)").eq("apagado", false).order("data_vencimento", { ascending: false, nullsFirst: false }).limit(2000);
-        if (body.empresaId) q = q.eq("empresa_id", body.empresaId);
-        const { data, error } = await q; if (error) throw error; return resp({ itens: data ?? [] });
-      }
-      case "recebimentoSalvar": {
-        const x = body.registro ?? {};
-        if (!x.empresa_id || !texto(x.cliente)) return resp({ erro: "Informe empresa e cliente." }, 400);
-        const valor = n(x.valor_previsto);
-        if (valor < 0) return resp({ erro: "Valor inválido." }, 400);
-        const base = { empresa_id:x.empresa_id, cliente:texto(x.cliente), cnpj_cpf:texto(x.cnpj_cpf)||null, descricao:texto(x.descricao)||null, valor_previsto:valor, data_vencimento:x.data_vencimento||null, categoria_id:x.categoria_id||null, conta_bancaria_id:x.conta_bancaria_id||null, categoria_texto:texto(x.categoria_texto)||null, conta_bancaria_texto:texto(x.conta_bancaria_texto)||null, forma_pagamento:texto(x.forma_pagamento)||null, numero_nf:texto(x.numero_nf)||null, observacao:texto(x.observacao)||null, updated_by:usuario, updated_at:iso() };
-        if (x.id) {
-          const { data: atual } = await sb.from("recebimentos").select("origem,apagado").eq("id",x.id).maybeSingle();
-          if (!atual || atual.apagado) return resp({ erro:"Recebimento não encontrado." },404);
-          if (atual.origem === "OMIE") return resp({ erro:"Título Omie só pode ser alterado pela integração." },409);
-          const { data,error }=await sb.from("recebimentos").update(base).eq("id",x.id).select("*").maybeSingle(); if(error)throw error;
-          return resp({ item: await recalcularRecebimento(data.id,usuario) });
-        }
-        const st=statusReceber(valor,0,"",texto(x.data_vencimento));
-        const { data,error }=await sb.from("recebimentos").insert({...base,valor_recebido:0,valor_pendente:st.pendente,status:st.status,origem:"MANUAL",apagado:false,created_by:usuario,created_at:iso()}).select("*").maybeSingle(); if(error)throw error; return resp({item:data});
-      }
-      case "recebimentoBaixar": {
-        const id=texto(body.id), valor=n(body.valor), dataPagamento=texto(body.dataPagamento);
-        const { data:t,error:e }=await sb.from("recebimentos").select("*").eq("id",id).maybeSingle(); if(e)throw e;
-        if(!t||t.apagado)return resp({erro:"Recebimento não encontrado."},404); if(t.origem==="OMIE")return resp({erro:"Título Omie é atualizado pela integração."},409);
-        if(valor<=0||valor>n(t.valor_pendente)+0.005)return resp({erro:"Valor da baixa inválido ou maior que o saldo pendente."},400);
-        const {error}=await sb.from("baixas_recebimentos").insert({recebimento_id:id,valor,data_pagamento:dataPagamento,conta_bancaria_id:body.contaBancariaId||t.conta_bancaria_id||null,forma_pagamento:texto(body.formaPagamento)||t.forma_pagamento||null,observacao:texto(body.observacao)||null,origem:"MANUAL",created_by:usuario}); if(error)throw error;
-        return resp({item:await recalcularRecebimento(id,usuario)});
-      }
-      case "recebimentoExcluir": {
-        const id=texto(body.id); const {data:t}=await sb.from("recebimentos").select("origem").eq("id",id).maybeSingle(); if(!t)return resp({erro:"Recebimento não encontrado."},404); if(t.origem==="OMIE")return resp({erro:"Título Omie não pode ser excluído manualmente."},409);
-        const {error}=await sb.from("recebimentos").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_by:usuario,updated_at:iso()}).eq("id",id); if(error)throw error; return resp({ok:true});
-      }
-
-      case "despesasListar": {
-        let q=sb.from("despesas").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),centro:centros_custo(id,nome),baixas:baixas_despesas(*)").eq("apagado",false).order("data_vencimento",{ascending:false,nullsFirst:false}).limit(2000); if(body.empresaId)q=q.eq("empresa_id",body.empresaId); const {data,error}=await q;if(error)throw error;return resp({itens:data??[]});
-      }
-      case "despesaSalvar": {
-        const x=body.registro??{}; if(!x.empresa_id||!texto(x.fornecedor))return resp({erro:"Informe empresa e fornecedor."},400); const valor=n(x.valor_original); if(valor<0)return resp({erro:"Valor inválido."},400);
-        const base={empresa_id:x.empresa_id,fornecedor:texto(x.fornecedor),cnpj_cpf:texto(x.cnpj_cpf)||null,descricao:texto(x.descricao)||null,valor_original:valor,data_lancamento:x.data_lancamento||new Date().toISOString().slice(0,10),data_vencimento:x.data_vencimento||null,categoria_id:x.categoria_id||null,conta_bancaria_id:x.conta_bancaria_id||null,centro_custo_id:x.centro_custo_id||null,centro_custo:texto(x.centro_custo)||null,categoria_texto:texto(x.categoria_texto)||null,conta_bancaria_texto:texto(x.conta_bancaria_texto)||null,forma_pagamento:texto(x.forma_pagamento)||null,comprovante_url:texto(x.comprovante_url)||null,observacao:texto(x.observacao)||null,updated_by:usuario,updated_at:iso()};
-        if(x.id){const{data:a}=await sb.from("despesas").select("origem,apagado").eq("id",x.id).maybeSingle();if(!a||a.apagado)return resp({erro:"Despesa não encontrada."},404);if(a.origem==="OMIE")return resp({erro:"Título Omie só pode ser alterado pela integração."},409);const{data,error}=await sb.from("despesas").update(base).eq("id",x.id).select("*").maybeSingle();if(error)throw error;return resp({item:await recalcularDespesa(data.id,usuario)});} const st=statusPagar(valor,0,"",texto(x.data_vencimento));const{data,error}=await sb.from("despesas").insert({...base,valor_pago:0,valor_pendente:st.pendente,status:st.status,origem:"MANUAL",apagado:false,created_by:usuario,created_at:iso()}).select("*").maybeSingle();if(error)throw error;return resp({item:data});
-      }
-      case "despesaBaixar": {
-        const id=texto(body.id),valor=n(body.valor),dataPagamento=texto(body.dataPagamento);const{data:t,error:e}=await sb.from("despesas").select("*").eq("id",id).maybeSingle();if(e)throw e;if(!t||t.apagado)return resp({erro:"Despesa não encontrada."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie é atualizado pela integração."},409);if(valor<=0||valor>n(t.valor_pendente)+0.005)return resp({erro:"Valor da baixa inválido ou maior que o saldo pendente."},400);const{error}=await sb.from("baixas_despesas").insert({despesa_id:id,valor,data_pagamento:dataPagamento,conta_bancaria_id:body.contaBancariaId||t.conta_bancaria_id||null,forma_pagamento:texto(body.formaPagamento)||t.forma_pagamento||null,observacao:texto(body.observacao)||null,origem:"MANUAL",created_by:usuario});if(error)throw error;return resp({item:await recalcularDespesa(id,usuario)});
-      }
-      case "despesaExcluir": {const id=texto(body.id);const{data:t}=await sb.from("despesas").select("origem").eq("id",id).maybeSingle();if(!t)return resp({erro:"Despesa não encontrada."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie não pode ser excluído manualmente."},409);const{error}=await sb.from("despesas").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_by:usuario,updated_at:iso()}).eq("id",id);if(error)throw error;return resp({ok:true});}
-
-      case "notasListar": {let q=sb.from("notas_fiscais").select("*,empresa:empresas(id,nome)").eq("apagado",false).order("data_emissao",{ascending:false,nullsFirst:false}).limit(2000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
-      case "notaSalvar": {const x=body.registro??{};if(!x.empresa_id)return resp({erro:"Informe a empresa."},400);const base={empresa_id:x.empresa_id,tipo:texto(x.tipo)||"SAIDA",numero_nf:texto(x.numero_nf)||null,chave_acesso:texto(x.chave_acesso)||null,cnpj_emitente:texto(x.cnpj_emitente)||null,cnpj_destinatario:texto(x.cnpj_destinatario)||null,nome_emitente:texto(x.nome_emitente)||null,nome_destinatario:texto(x.nome_destinatario)||null,data_emissao:x.data_emissao||null,valor_total:n(x.valor_total),xml_url:texto(x.xml_url)||null,pdf_url:texto(x.pdf_url)||null,recebimento_id:x.recebimento_id||null,despesa_id:x.despesa_id||null,email_destino:texto(x.email_destino)||null,observacao:texto(x.observacao)||null,origem:texto(x.origem)||"MANUAL",updated_at:iso()};if(x.id){const{data,error}=await sb.from("notas_fiscais").update(base).eq("id",x.id).eq("apagado",false).select("*").maybeSingle();if(error)throw error;return resp({item:data});}const{data,error}=await sb.from("notas_fiscais").insert({...base,created_at:iso()}).select("*").maybeSingle();if(error)throw error;return resp({item:data});}
-      case "notaExcluir": {const{error}=await sb.from("notas_fiscais").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_at:iso()}).eq("id",body.id);if(error)throw error;return resp({ok:true});}
-
-      case "movimentosListar": {let q=sb.from("movimentos_bancarios").select("*,empresa:empresas(id,nome),conta:contas_bancarias(id,nome),conciliacoes(*)").order("data_movimento",{ascending:false}).limit(3000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
-      case "movimentosImportar": {const empresaId=texto(body.empresaId),contaId=body.contaBancariaId||null,itens=Array.isArray(body.itens)?body.itens:[];if(!empresaId||!itens.length)return resp({erro:"Informe empresa e movimentações."},400);let inseridos=0,ignorados=0;for(const x of itens){const fitid=texto(x.fitid)||null;if(fitid){const{data:ja}=await sb.from("movimentos_bancarios").select("id").eq("empresa_id",empresaId).eq("conta_bancaria_id",contaId).eq("fitid",fitid).maybeSingle();if(ja){ignorados++;continue;}}const valor=Math.abs(n(x.valor));const tipo=texto(x.tipo).toUpperCase()==="CREDITO"||n(x.valor)>=0?"CREDITO":"DEBITO";const{error}=await sb.from("movimentos_bancarios").insert({empresa_id:empresaId,conta_bancaria_id:contaId,data_movimento:x.data_movimento,descricao:texto(x.descricao)||null,tipo,valor,fitid,documento:texto(x.documento)||null,origem:texto(x.origem)||"OFX",conciliado:false});if(error)throw error;inseridos++;}return resp({ok:true,inseridos,ignorados});}
-      case "conciliar": {const movimentoId=texto(body.movimentoId),recebimentoId=body.recebimentoId||null,despesaId=body.despesaId||null,valor=n(body.valor);if(!movimentoId||(!recebimentoId&&!despesaId)||valor<=0)return resp({erro:"Conciliação incompleta."},400);const{error}=await sb.from("conciliacoes").insert({movimento_id:movimentoId,recebimento_id:recebimentoId,despesa_id:despesaId,valor_conciliado:valor,conciliado_por:usuario});if(error)throw error;await sb.from("movimentos_bancarios").update({conciliado:true,updated_at:iso()}).eq("id",movimentoId);return resp({ok:true});}
-
-      case "configListar": return resp(await opcoes());
-      case "categoriaSalvar": {const x=body.registro??{};const payload={empresa_id:x.empresa_id||null,nome:texto(x.nome),tipo:texto(x.tipo)||"AMBOS",ativa:x.ativa!==false,updated_at:iso()};if(!payload.nome)return resp({erro:"Informe o nome."},400);const q=x.id?sb.from("categorias_financeiras").update(payload).eq("id",x.id):sb.from("categorias_financeiras").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
-      case "contaSalvar": {const x=body.registro??{};const payload={empresa_id:x.empresa_id,nome:texto(x.nome),banco:texto(x.banco)||null,agencia:texto(x.agencia)||null,conta:texto(x.conta)||null,saldo_inicial:n(x.saldo_inicial),ativa:x.ativa!==false,updated_at:iso()};if(!payload.empresa_id||!payload.nome)return resp({erro:"Informe empresa e nome da conta."},400);const q=x.id?sb.from("contas_bancarias").update(payload).eq("id",x.id):sb.from("contas_bancarias").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
-      case "centroSalvar": {const x=body.registro??{};const payload={empresa_id:x.empresa_id,nome:texto(x.nome),ativo:x.ativo!==false,updated_at:iso()};if(!payload.empresa_id||!payload.nome)return resp({erro:"Informe empresa e nome."},400);const q=x.id?sb.from("centros_custo").update(payload).eq("id",x.id):sb.from("centros_custo").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
-      case "formaSalvar": {const x=body.registro??{};const payload={empresa_id:x.empresa_id||null,nome:texto(x.nome),ativa:x.ativa!==false,updated_at:iso()};if(!payload.nome)return resp({erro:"Informe o nome."},400);const q=x.id?sb.from("formas_pagamento").update(payload).eq("id",x.id):sb.from("formas_pagamento").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
-
-      case "omieEstado": return resp({ ligado: !!OMIE_KEY && !!OMIE_SECRET });
-      case "omieSincronizarPagina": {
-        const tipo=texto(body.tipo).toUpperCase(); const pagina=Math.max(1,n(body.pagina)||1); const de=texto(body.de),ate=texto(body.ate);
-        if(!["RECEBER","PAGAR"].includes(tipo))return resp({erro:"Tipo Omie inválido."},400);
-        const{data:empresa,error:ee}=await sb.from("empresas").select("*").eq("usa_omie",true).eq("ativa",true).maybeSingle();if(ee)throw ee;if(!empresa)return resp({erro:"Empresa MinasLab com Omie ativa não encontrada."},500);
-        const receber=tipo==="RECEBER";const modulo=receber?"financas/contareceber":"financas/contapagar";const call=receber?"ListarContasReceber":"ListarContasPagar";
-        const param:Record<string,unknown>={pagina,registros_por_pagina:100,apenas_importado_api:"N"};if(de)param.filtrar_por_data_de=isoParaBR(de);if(ate)param.filtrar_por_data_ate=isoParaBR(ate);
-        const r=await omie(modulo,call,param);if(r.vazio)return resp({ok:true,tipo,pagina,paginas:0,proxima:null,inseridos:0,atualizados:0,vazio:true});
-        const lista=(r[receber?"conta_receber_cadastro":"conta_pagar_cadastro"]??[]) as Record<string,any>[];let inseridos=0,atualizados=0;
-        for(const t of lista){const idOmie=texto(t.codigo_lancamento_omie);if(!idOmie)continue;const venc=brParaISO(t.data_vencimento),valor=n(t.valor_documento),pago=n(t.valor_pago),so=texto(t.status_titulo);const pessoa=texto(t.razao_social)||texto(t.nome_fantasia)||`Omie ${texto(t.codigo_cliente_fornecedor)}`;const comum={empresa_id:empresa.id,cnpj_cpf:texto(t.cnpj_cpf)||null,descricao:texto(t.observacao)||texto(t.numero_documento)||null,data_vencimento:venc||null,data_pagamento:brParaISO(t.data_pagamento)||null,categoria_texto:texto(t.codigo_categoria)||null,forma_pagamento:texto(t.codigo_tipo_documento)||null,origem:"OMIE",id_omie:idOmie,data_sincronizacao_omie:iso(),status_omie:so,codigo_lancamento_integracao:texto(t.codigo_lancamento_integracao)||null,numero_parcela:texto(t.numero_parcela)||null,dados_omie:t,ultimo_evento_omie:iso(),updated_at:iso()};
-          if(receber){const st=statusReceber(valor,pago,so,venc);const payload={...comum,cliente:pessoa,valor_previsto:valor,valor_recebido:st.recebido,valor_pendente:st.pendente,status:st.status,numero_nf:texto(t.numero_documento_fiscal)||texto(t.numero_documento)||null};const{data:ja}=await sb.from("recebimentos").select("id").eq("empresa_id",empresa.id).eq("id_omie",idOmie).maybeSingle();if(ja){const{error}=await sb.from("recebimentos").update(payload).eq("id",ja.id);if(error)throw error;atualizados++;}else{const{error}=await sb.from("recebimentos").insert({...payload,apagado:false,created_by:"omie",updated_by:"omie",created_at:iso()});if(error)throw error;inseridos++;}}
-          else{const st=statusPagar(valor,pago,so,venc);const payload={...comum,fornecedor:pessoa,valor_original:valor,valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_lancamento:brParaISO(t.data_emissao)||null,centro_custo:texto(t.codigo_projeto)||null};const{data:ja}=await sb.from("despesas").select("id").eq("empresa_id",empresa.id).eq("id_omie",idOmie).maybeSingle();if(ja){const{error}=await sb.from("despesas").update(payload).eq("id",ja.id);if(error)throw error;atualizados++;}else{const{error}=await sb.from("despesas").insert({...payload,apagado:false,created_by:"omie",updated_by:"omie",created_at:iso()});if(error)throw error;inseridos++;}}
-        }
-        const paginas=n(r.total_de_paginas)||1;await sb.from("omie_sync").insert({empresa_id:empresa.id,tipo:receber?"RECEBIMENTOS":"DESPESAS",fonte:call,status:"CONCLUIDO",pagina_atual:pagina,total_paginas:paginas,inseridos,atualizados,ignorados:Math.max(lista.length-inseridos-atualizados,0),erros:0,mensagem:`Página ${pagina}/${paginas}`,iniciado_em:iso(),finalizado_em:iso(),detalhes:{de,ate}});
-        return resp({ok:true,tipo,pagina,paginas,proxima:pagina<paginas?pagina+1:null,lidos:lista.length,inseridos,atualizados});
-      }
-
-      default: return resp({ erro: `Ação desconhecida: ${action}` }, 400);
+Deno.serve(async(req)=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:CORS}); if(req.method!=="POST")return resp({erro:"Use POST."},405);
+  let body:Record<string,any>;try{body=await req.json();}catch{return resp({erro:"JSON inválido."},400);}const action=texto(body.action);const m=texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);const cracha=m?await verificarJwt(m[1]):null;const maquina=!!TOKEN&&req.headers.get("x-token")===TOKEN;if(!cracha&&!maquina)return resp({erro:"Entre no sistema.",semSessao:true},401);if(!maquina&&texto(cracha?.papel)!=="direcao")return resp({erro:"O financeiro é somente da direção.",semPermissao:true},403);const usuario=maquina?"maquina":texto(cracha?.sub)||"direcao";
+  try{switch(action){
+    case"opcoes":return resp(await opcoes());
+    case"dashboard":{
+      const empresaId=texto(body.empresaId),de=texto(body.de),ate=texto(body.ate);
+      let qr=sb.from("recebimentos").select("id,empresa_id,valor_previsto,valor_recebido,valor_pendente,data_vencimento,data_pagamento,status,origem,baixas:baixas_recebimentos(valor,data_pagamento,estornada)").eq("apagado",false);
+      let qd=sb.from("despesas").select("id,empresa_id,valor_original,valor_pago,valor_pendente,data_vencimento,data_pagamento,status,origem,categoria_texto,categoria:categorias_financeiras(nome),baixas:baixas_despesas(valor,data_pagamento,estornada)").eq("apagado",false);
+      let qn=sb.from("notas_fiscais").select("id,empresa_id,valor_total,data_emissao,origem,tipo").eq("apagado",false);
+      let qc=sb.from("contas_bancarias").select("id,empresa_id,saldo_inicial").eq("ativa",true);
+      if(empresaId){qr=qr.eq("empresa_id",empresaId);qd=qd.eq("empresa_id",empresaId);qn=qn.eq("empresa_id",empresaId);qc=qc.eq("empresa_id",empresaId);}const[r,d,nf,c]=await Promise.all([qr,qd,qn,qc]);for(const q of[r,d,nf,c])if(q.error)throw q.error;
+      const noPeriodo=(v:any)=>{const x=texto(v).slice(0,10);return!!x&&(!de||x>=de)&&(!ate||x<=ate);};const rec=r.data??[],des=d.data??[];
+      const realizadoR=(x:any)=>{const bs=(x.baixas??[]).filter((b:any)=>!b.estornada&&noPeriodo(b.data_pagamento));if(bs.length)return bs.reduce((s:number,b:any)=>s+n(b.valor),0);return x.origem==="OMIE"&&noPeriodo(x.data_pagamento)?n(x.valor_recebido):0;};
+      const realizadoD=(x:any)=>{const bs=(x.baixas??[]).filter((b:any)=>!b.estornada&&noPeriodo(b.data_pagamento));if(bs.length)return bs.reduce((s:number,b:any)=>s+n(b.valor),0);return x.origem==="OMIE"&&noPeriodo(x.data_pagamento)?n(x.valor_pago):0;};
+      const totalRecebido=rec.reduce((s,x)=>s+realizadoR(x),0),totalPago=des.reduce((s,x)=>s+realizadoD(x),0);const totalReceber=rec.filter(x=>x.status!=="CANCELADO"&&(!ate||!x.data_vencimento||x.data_vencimento<=ate)).reduce((s,x)=>s+n(x.valor_pendente),0);const totalPagar=des.filter(x=>x.status!=="CANCELADO"&&(!ate||!x.data_vencimento||x.data_vencimento<=ate)).reduce((s,x)=>s+n(x.valor_pendente),0);const saldoInicial=(c.data??[]).reduce((s,x)=>s+n(x.saldo_inicial),0);const vencidos=rec.filter(x=>x.status!=="CANCELADO"&&n(x.valor_pendente)>0&&x.data_vencimento&&x.data_vencimento<hoje()).reduce((s,x)=>s+n(x.valor_pendente),0);const base=totalRecebido+totalReceber;
+      return resp({totalRecebido,totalPago,totalReceber,totalPagar,saldoAtual:saldoInicial+totalRecebido-totalPago,saldoProjetado:saldoInicial+totalRecebido-totalPago+totalReceber-totalPagar,inadimplencia:base>0?vencidos/base*100:0,notas:(nf.data??[]).filter(x=>noPeriodo(x.data_emissao)).reduce((s,x)=>s+n(x.valor_total),0),recebimentos:rec,despesas:des});
     }
-  } catch (e) {
-    return resp({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
-  }
+    case"recebimentosListar":{let q=sb.from("recebimentos").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),baixas:baixas_recebimentos(*)").eq("apagado",false).order("data_vencimento",{ascending:false,nullsFirst:false}).limit(2000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
+    case"recebimentoSalvar":{const x=body.registro??{};if(!x.empresa_id||!texto(x.cliente))return resp({erro:"Informe empresa e cliente."},400);const valor=n(x.valor_previsto);if(valor<0)return resp({erro:"Valor inválido."},400);const base={empresa_id:x.empresa_id,cliente:texto(x.cliente),cnpj_cpf:texto(x.cnpj_cpf)||null,descricao:texto(x.descricao)||null,valor_previsto:valor,data_vencimento:x.data_vencimento||null,categoria_id:x.categoria_id||null,conta_bancaria_id:x.conta_bancaria_id||null,categoria_texto:texto(x.categoria_texto)||null,conta_bancaria_texto:texto(x.conta_bancaria_texto)||null,forma_pagamento:texto(x.forma_pagamento)||null,numero_nf:texto(x.numero_nf)||null,observacao:texto(x.observacao)||null,updated_by:usuario,updated_at:iso()};if(x.id){const{data:a}=await sb.from("recebimentos").select("origem,apagado").eq("id",x.id).maybeSingle();if(!a||a.apagado)return resp({erro:"Recebimento não encontrado."},404);if(a.origem==="OMIE")return resp({erro:"Título Omie só pode ser alterado pela integração."},409);const{data,error}=await sb.from("recebimentos").update(base).eq("id",x.id).select("*").maybeSingle();if(error)throw error;return resp({item:await recalcularRecebimento(data.id,usuario)});}const st=statusReceber(valor,0,"",texto(x.data_vencimento));const{data,error}=await sb.from("recebimentos").insert({...base,valor_recebido:0,valor_pendente:st.pendente,status:st.status,origem:"MANUAL",apagado:false,created_by:usuario,created_at:iso()}).select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"recebimentoBaixar":{const id=texto(body.id),valor=n(body.valor),dataPagamento=texto(body.dataPagamento);const{data:t,error:e}=await sb.from("recebimentos").select("*").eq("id",id).maybeSingle();if(e)throw e;if(!t||t.apagado)return resp({erro:"Recebimento não encontrado."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie é atualizado pela integração."},409);if(valor<=0||valor>n(t.valor_pendente)+0.005)return resp({erro:"Valor da baixa inválido ou maior que o saldo pendente."},400);const{error}=await sb.from("baixas_recebimentos").insert({recebimento_id:id,valor,data_pagamento:dataPagamento,conta_bancaria_id:body.contaBancariaId||t.conta_bancaria_id||null,forma_pagamento:texto(body.formaPagamento)||t.forma_pagamento||null,observacao:texto(body.observacao)||null,origem:"MANUAL",created_by:usuario});if(error)throw error;return resp({item:await recalcularRecebimento(id,usuario)});}
+    case"recebimentoExcluir":{const id=texto(body.id);const{data:t}=await sb.from("recebimentos").select("origem").eq("id",id).maybeSingle();if(!t)return resp({erro:"Recebimento não encontrado."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie não pode ser excluído manualmente."},409);const{error}=await sb.from("recebimentos").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_by:usuario,updated_at:iso()}).eq("id",id);if(error)throw error;return resp({ok:true});}
+    case"despesasListar":{let q=sb.from("despesas").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),centro:centros_custo(id,nome),baixas:baixas_despesas(*)").eq("apagado",false).order("data_vencimento",{ascending:false,nullsFirst:false}).limit(2000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
+    case"despesaSalvar":{const x=body.registro??{};if(!x.empresa_id||!texto(x.fornecedor))return resp({erro:"Informe empresa e fornecedor."},400);const valor=n(x.valor_original);if(valor<0)return resp({erro:"Valor inválido."},400);const base={empresa_id:x.empresa_id,fornecedor:texto(x.fornecedor),cnpj_cpf:texto(x.cnpj_cpf)||null,descricao:texto(x.descricao)||null,valor_original:valor,data_lancamento:x.data_lancamento||hoje(),data_vencimento:x.data_vencimento||null,categoria_id:x.categoria_id||null,conta_bancaria_id:x.conta_bancaria_id||null,centro_custo_id:x.centro_custo_id||null,centro_custo:texto(x.centro_custo)||null,categoria_texto:texto(x.categoria_texto)||null,conta_bancaria_texto:texto(x.conta_bancaria_texto)||null,forma_pagamento:texto(x.forma_pagamento)||null,comprovante_url:texto(x.comprovante_url)||null,observacao:texto(x.observacao)||null,updated_by:usuario,updated_at:iso()};if(x.id){const{data:a}=await sb.from("despesas").select("origem,apagado").eq("id",x.id).maybeSingle();if(!a||a.apagado)return resp({erro:"Despesa não encontrada."},404);if(a.origem==="OMIE")return resp({erro:"Título Omie só pode ser alterado pela integração."},409);const{data,error}=await sb.from("despesas").update(base).eq("id",x.id).select("*").maybeSingle();if(error)throw error;return resp({item:await recalcularDespesa(data.id,usuario)});}const st=statusPagar(valor,0,"",texto(x.data_vencimento));const{data,error}=await sb.from("despesas").insert({...base,valor_pago:0,valor_pendente:st.pendente,status:st.status,origem:"MANUAL",apagado:false,created_by:usuario,created_at:iso()}).select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"despesaBaixar":{const id=texto(body.id),valor=n(body.valor),dataPagamento=texto(body.dataPagamento);const{data:t,error:e}=await sb.from("despesas").select("*").eq("id",id).maybeSingle();if(e)throw e;if(!t||t.apagado)return resp({erro:"Despesa não encontrada."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie é atualizado pela integração."},409);if(valor<=0||valor>n(t.valor_pendente)+0.005)return resp({erro:"Valor da baixa inválido ou maior que o saldo pendente."},400);const{error}=await sb.from("baixas_despesas").insert({despesa_id:id,valor,data_pagamento:dataPagamento,conta_bancaria_id:body.contaBancariaId||t.conta_bancaria_id||null,forma_pagamento:texto(body.formaPagamento)||t.forma_pagamento||null,observacao:texto(body.observacao)||null,origem:"MANUAL",created_by:usuario});if(error)throw error;return resp({item:await recalcularDespesa(id,usuario)});}
+    case"despesaExcluir":{const id=texto(body.id);const{data:t}=await sb.from("despesas").select("origem").eq("id",id).maybeSingle();if(!t)return resp({erro:"Despesa não encontrada."},404);if(t.origem==="OMIE")return resp({erro:"Título Omie não pode ser excluído manualmente."},409);const{error}=await sb.from("despesas").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_by:usuario,updated_at:iso()}).eq("id",id);if(error)throw error;return resp({ok:true});}
+    case"notasListar":{let q=sb.from("notas_fiscais").select("*,empresa:empresas(id,nome)").eq("apagado",false).order("data_emissao",{ascending:false,nullsFirst:false}).limit(2000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
+    case"notaSalvar":{const x=body.registro??{};if(!x.empresa_id)return resp({erro:"Informe a empresa."},400);const base={empresa_id:x.empresa_id,tipo:texto(x.tipo)||"SAIDA",numero_nf:texto(x.numero_nf)||null,chave_acesso:texto(x.chave_acesso)||null,cnpj_emitente:texto(x.cnpj_emitente)||null,cnpj_destinatario:texto(x.cnpj_destinatario)||null,nome_emitente:texto(x.nome_emitente)||null,nome_destinatario:texto(x.nome_destinatario)||null,data_emissao:x.data_emissao||null,data_vencimento:x.data_vencimento||null,valor_total:n(x.valor_total),xml_url:texto(x.xml_url)||null,pdf_url:texto(x.pdf_url)||null,recebimento_id:x.recebimento_id||null,despesa_id:x.despesa_id||null,email_destino:texto(x.email_destino)||null,observacao:texto(x.observacao)||null,origem:texto(x.origem)||"MANUAL",updated_at:iso()};if(x.id){const{data,error}=await sb.from("notas_fiscais").update(base).eq("id",x.id).eq("apagado",false).select("*").maybeSingle();if(error)throw error;return resp({item:data});}const{data,error}=await sb.from("notas_fiscais").insert({...base,apagado:false,created_at:iso()}).select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"notaExcluir":{const{error}=await sb.from("notas_fiscais").update({apagado:true,apagado_em:iso(),apagado_por:usuario,updated_at:iso()}).eq("id",body.id);if(error)throw error;return resp({ok:true});}
+    case"movimentosListar":{let q=sb.from("movimentos_bancarios").select("*,empresa:empresas(id,nome),conta:contas_bancarias(id,nome),conciliacoes(*)").order("data_movimento",{ascending:false}).limit(3000);if(body.empresaId)q=q.eq("empresa_id",body.empresaId);const{data,error}=await q;if(error)throw error;return resp({itens:data??[]});}
+    case"movimentosImportar":{const empresaId=texto(body.empresaId),contaId=body.contaBancariaId||null,itens=Array.isArray(body.itens)?body.itens:[];if(!empresaId||!itens.length)return resp({erro:"Informe empresa e movimentações."},400);let inseridos=0,ignorados=0;for(const x of itens){const fitid=texto(x.fitid)||null;if(fitid){const{data:ja}=await sb.from("movimentos_bancarios").select("id").eq("empresa_id",empresaId).eq("conta_bancaria_id",contaId).eq("fitid",fitid).maybeSingle();if(ja){ignorados++;continue;}}const valor=Math.abs(n(x.valor));const tipo=texto(x.tipo).toUpperCase()==="CREDITO"||n(x.valor)>=0?"CREDITO":"DEBITO";const{error}=await sb.from("movimentos_bancarios").insert({empresa_id:empresaId,conta_bancaria_id:contaId,data_movimento:x.data_movimento,descricao:texto(x.descricao)||null,tipo,valor,fitid,documento:texto(x.documento)||null,origem:texto(x.origem)||"OFX",conciliado:false});if(error)throw error;inseridos++;}return resp({ok:true,inseridos,ignorados});}
+    case"conciliar":{const movimentoId=texto(body.movimentoId),recebimentoId=body.recebimentoId||null,despesaId=body.despesaId||null,valor=n(body.valor);if(!movimentoId||(!recebimentoId&&!despesaId)||valor<=0)return resp({erro:"Conciliação incompleta."},400);const{error}=await sb.from("conciliacoes").insert({movimento_id:movimentoId,recebimento_id:recebimentoId,despesa_id:despesaId,valor_conciliado:valor,conciliado_por:usuario});if(error)throw error;const{data:mov}=await sb.from("movimentos_bancarios").select("id,conciliado,valor").eq("id",movimentoId).maybeSingle();return resp({ok:true,movimento:mov});}
+    case"configListar":return resp(await opcoes());
+    case"categoriaSalvar":{const x=body.registro??{};const payload={empresa_id:x.empresa_id||null,nome:texto(x.nome),tipo:texto(x.tipo)||"AMBOS",ativa:x.ativa!==false,updated_at:iso()};if(!payload.nome)return resp({erro:"Informe o nome."},400);const q=x.id?sb.from("categorias_financeiras").update(payload).eq("id",x.id):sb.from("categorias_financeiras").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"contaSalvar":{const x=body.registro??{};const payload={empresa_id:x.empresa_id,nome:texto(x.nome),banco:texto(x.banco)||null,agencia:texto(x.agencia)||null,conta:texto(x.conta)||null,saldo_inicial:n(x.saldo_inicial),ativa:x.ativa!==false,updated_at:iso()};if(!payload.empresa_id||!payload.nome)return resp({erro:"Informe empresa e nome da conta."},400);const q=x.id?sb.from("contas_bancarias").update(payload).eq("id",x.id):sb.from("contas_bancarias").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"centroSalvar":{const x=body.registro??{};const payload={empresa_id:x.empresa_id,nome:texto(x.nome),ativo:x.ativo!==false,updated_at:iso()};if(!payload.empresa_id||!payload.nome)return resp({erro:"Informe empresa e nome."},400);const q=x.id?sb.from("centros_custo").update(payload).eq("id",x.id):sb.from("centros_custo").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"formaSalvar":{const x=body.registro??{};const payload={empresa_id:x.empresa_id||null,nome:texto(x.nome),ativa:x.ativa!==false,updated_at:iso()};if(!payload.nome)return resp({erro:"Informe o nome."},400);const q=x.id?sb.from("formas_pagamento").update(payload).eq("id",x.id):sb.from("formas_pagamento").insert({...payload,created_at:iso()});const{data,error}=await q.select("*").maybeSingle();if(error)throw error;return resp({item:data});}
+    case"omieEstado":return resp({ligado:!!OMIE_KEY&&!!OMIE_SECRET});
+    case"omieSincronizarPagina":{const tipo=texto(body.tipo).toUpperCase(),pagina=Math.max(1,n(body.pagina)||1),de=texto(body.de),ate=texto(body.ate);if(!["RECEBER","PAGAR"].includes(tipo))return resp({erro:"Tipo Omie inválido."},400);const{data:empresa,error:ee}=await sb.from("empresas").select("*").eq("usa_omie",true).eq("ativa",true).maybeSingle();if(ee)throw ee;if(!empresa)return resp({erro:"Empresa MinasLab com Omie ativa não encontrada."},500);const receber=tipo==="RECEBER",modulo=receber?"financas/contareceber":"financas/contapagar",call=receber?"ListarContasReceber":"ListarContasPagar";const param:Record<string,unknown>={pagina,registros_por_pagina:100,apenas_importado_api:"N"};if(de)param.filtrar_por_data_de=isoParaBR(de);if(ate)param.filtrar_por_data_ate=isoParaBR(ate);const r=await omie(modulo,call,param);if((r as any).vazio)return resp({ok:true,tipo,pagina,paginas:0,proxima:null,inseridos:0,atualizados:0,vazio:true});const lista=((r as any)[receber?"conta_receber_cadastro":"conta_pagar_cadastro"]??[]) as Record<string,any>[];let inseridos=0,atualizados=0;for(const t of lista){const idOmie=texto(t.codigo_lancamento_omie);if(!idOmie)continue;const venc=brParaISO(t.data_vencimento),valor=n(t.valor_documento),pago=n(t.valor_pago),so=texto(t.status_titulo),pessoa=texto(t.razao_social)||texto(t.nome_fantasia)||`Omie ${texto(t.codigo_cliente_fornecedor)}`;const comum={empresa_id:empresa.id,cnpj_cpf:texto(t.cnpj_cpf)||null,descricao:texto(t.observacao)||texto(t.numero_documento)||null,data_vencimento:venc||null,data_pagamento:brParaISO(t.data_pagamento)||null,categoria_texto:texto(t.codigo_categoria)||null,forma_pagamento:texto(t.codigo_tipo_documento)||null,origem:"OMIE",id_omie:idOmie,data_sincronizacao_omie:iso(),status_omie:so,codigo_lancamento_integracao:texto(t.codigo_lancamento_integracao)||null,numero_parcela:texto(t.numero_parcela)||null,dados_omie:t,ultimo_evento_omie:iso(),updated_at:iso()};if(receber){const st=statusReceber(valor,pago,so,venc),payload={...comum,cliente:pessoa,valor_previsto:valor,valor_recebido:st.recebido,valor_pendente:st.pendente,status:st.status,numero_nf:texto(t.numero_documento_fiscal)||texto(t.numero_documento)||null};const{data:ja}=await sb.from("recebimentos").select("id").eq("empresa_id",empresa.id).eq("id_omie",idOmie).maybeSingle();if(ja){const{error}=await sb.from("recebimentos").update(payload).eq("id",ja.id);if(error)throw error;atualizados++;}else{const{error}=await sb.from("recebimentos").insert({...payload,apagado:false,created_by:"omie",updated_by:"omie",created_at:iso()});if(error)throw error;inseridos++;}}else{const st=statusPagar(valor,pago,so,venc),payload={...comum,fornecedor:pessoa,valor_original:valor,valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_lancamento:brParaISO(t.data_emissao)||null,centro_custo:texto(t.codigo_projeto)||null};const{data:ja}=await sb.from("despesas").select("id").eq("empresa_id",empresa.id).eq("id_omie",idOmie).maybeSingle();if(ja){const{error}=await sb.from("despesas").update(payload).eq("id",ja.id);if(error)throw error;atualizados++;}else{const{error}=await sb.from("despesas").insert({...payload,apagado:false,created_by:"omie",updated_by:"omie",created_at:iso()});if(error)throw error;inseridos++;}}}const paginas=n((r as any).total_de_paginas)||1;await sb.from("omie_sync").insert({empresa_id:empresa.id,tipo:receber?"RECEBIMENTOS":"DESPESAS",fonte:call,status:"CONCLUIDO",pagina_atual:pagina,total_paginas:paginas,inseridos,atualizados,ignorados:Math.max(lista.length-inseridos-atualizados,0),erros:0,mensagem:`Página ${pagina}/${paginas}`,iniciado_em:iso(),finalizado_em:iso(),detalhes:{de,ate}});return resp({ok:true,tipo,pagina,paginas,proxima:pagina<paginas?pagina+1:null,lidos:lista.length,inseridos,atualizados});}
+    default:return resp({erro:`Ação desconhecida: ${action}`},400);
+  }}catch(e){console.error("[ml-financeiro]",e);return resp({erro:e instanceof Error?e.message:"Falha interna."},500);}
 });
