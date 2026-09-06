@@ -6,4 +6,5 @@ export const SYNC = `${API}/ml-sync`;
 export const FINANCEIRO = `${API}/ml-financeiro`;
 export const FINANCEIRO_ARQUIVOS = `${API}/ml-financeiro-arquivos`;
 export const FINANCEIRO_OMIE_PREVIEW = `${API}/ml-financeiro-omie-preview`;
+export const FINANCEIRO_C6 = `${API}/ml-financeiro-c6`;
 export const OMIE = `${API}/ml-omie`;
