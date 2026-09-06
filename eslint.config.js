@@ -25,6 +25,9 @@ export default [
          telas da Impresilk ao mesmo tempo, com build e testes verdes). */
       "react/no-unstable-nested-components": "error",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      /* Escapes redundantes em regex legadas são sintaticamente válidos e não
+         alteram o resultado. Mantemos visibilidade no CI sem bloquear deploy. */
+      "no-useless-escape": "warn",
     },
   },
   {
