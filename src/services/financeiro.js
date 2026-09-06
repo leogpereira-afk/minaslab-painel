@@ -1,4 +1,4 @@
-import { FINANCEIRO, FINANCEIRO_ARQUIVOS } from "../lib/api.js";
+import { FINANCEIRO, FINANCEIRO_ARQUIVOS, FINANCEIRO_OMIE_PREVIEW } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
 async function chamarUrl(url, action, corpo = {}) {
@@ -6,6 +6,17 @@ async function chamarUrl(url, action, corpo = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...corpo }),
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(body?.erro || mensagemDoStatus(resp.status));
+  return body || {};
+}
+
+async function chamarPreview(corpo = {}) {
+  const resp = await comCracha(FINANCEIRO_OMIE_PREVIEW, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(corpo),
   });
   const body = await resp.json().catch(() => null);
   if (!resp.ok) throw new Error(body?.erro || mensagemDoStatus(resp.status));
@@ -50,4 +61,5 @@ export const finCentroSalvar = (registro) => chamar("centroSalvar", { registro }
 export const finFormaSalvar = (registro) => chamar("formaSalvar", { registro }).then((r) => r.item);
 
 export const finOmieEstado = () => chamar("omieEstado");
+export const finOmiePreviaPagina = (tipo, de, ate, pagina = 1) => chamarPreview({ tipo, de, ate, pagina });
 export const finOmieSincronizarPagina = (tipo, de, ate, pagina = 1) => chamar("omieSincronizarPagina", { tipo, de, ate, pagina });
