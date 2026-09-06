@@ -1,8 +1,8 @@
-import { FINANCEIRO } from "../lib/api.js";
+import { FINANCEIRO, FINANCEIRO_ARQUIVOS } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
-async function chamar(action, corpo = {}) {
-  const resp = await comCracha(FINANCEIRO, {
+async function chamarUrl(url, action, corpo = {}) {
+  const resp = await comCracha(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...corpo }),
@@ -11,6 +11,9 @@ async function chamar(action, corpo = {}) {
   if (!resp.ok) throw new Error(body?.erro || mensagemDoStatus(resp.status));
   return body || {};
 }
+
+const chamar = (action, corpo = {}) => chamarUrl(FINANCEIRO, action, corpo);
+const chamarArquivos = (action, corpo = {}) => chamarUrl(FINANCEIRO_ARQUIVOS, action, corpo);
 
 export const financeiroOpcoes = () => chamar("opcoes");
 export const financeiroDashboard = (filtros = {}) => chamar("dashboard", filtros);
@@ -28,6 +31,13 @@ export const finDespesaExcluir = (id) => chamar("despesaExcluir", { id });
 export const finNotasListar = (empresaId = "") => chamar("notasListar", { empresaId }).then((r) => r.itens || []);
 export const finNotaSalvar = (registro) => chamar("notaSalvar", { registro }).then((r) => r.item);
 export const finNotaExcluir = (id) => chamar("notaExcluir", { id });
+
+export const finArquivosEstado = () => chamarArquivos("estado");
+export const finArquivoUpload = (empresaId, categoria, arquivo) => chamarArquivos("upload", { empresaId, categoria, ...arquivo });
+export const finArquivoUrl = (path, nome = "") => chamarArquivos("urlAssinada", { path, nome }).then((r) => r.url);
+export const finNotaSalvarXml = (registro) => chamarArquivos("salvarNotaXml", { registro }).then((r) => r.item);
+export const finEmailEstado = () => chamarArquivos("emailEstado");
+export const finEmailEnviar = (notaId, email, assunto = "", mensagem = "") => chamarArquivos("emailEnviar", { notaId, email, assunto, mensagem });
 
 export const finMovimentosListar = (empresaId = "") => chamar("movimentosListar", { empresaId }).then((r) => r.itens || []);
 export const finMovimentosImportar = (empresaId, contaBancariaId, itens) => chamar("movimentosImportar", { empresaId, contaBancariaId, itens });
