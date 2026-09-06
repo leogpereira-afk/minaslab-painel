@@ -1,1 +1,80 @@
-import { BrowserRouter,Routes,Route,Navigate } from "react-router-dom"; import { AppProvider } from "./context/AppContext.jsx"; import Layout from "./components/Layout.jsx"; import Login from "./pages/Login.jsx"; import Home from "./pages/Home.jsx"; import ModulePage from "./pages/ModulePage.jsx"; import FinanceiroDashboard from "./pages/FinanceiroDashboard.jsx"; import Recebimentos from "./pages/Recebimentos.jsx"; import Despesas from "./pages/Despesas.jsx"; import NotasFiscais from "./pages/NotasFiscais.jsx"; import EmitirNfse from "./pages/EmitirNfse.jsx"; import ConciliacaoBancaria from "./pages/ConciliacaoBancaria.jsx"; import FluxoCaixa from "./pages/FluxoCaixa.jsx"; import ConfigFinanceiro from "./pages/ConfigFinanceiro.jsx"; import ClientesFinanceiro from "./pages/ClientesFinanceiro.jsx"; import { obterSessao } from "./lib/sessao.js"; function Protegida(){return obterSessao()?<Layout/>:<Navigate to="/login" replace/>} export default function App(){return <BrowserRouter><AppProvider><Routes><Route path="/login" element={<Login/>}/><Route element={<Protegida/>}><Route path="/" element={<Home/>}/><Route path="/financas" element={<FinanceiroDashboard/>}/><Route path="/financas/recebimentos" element={<Recebimentos/>}/><Route path="/financas/despesas" element={<Despesas/>}/><Route path="/financas/notas" element={<NotasFiscais/>}/><Route path="/financas/notas/emitir" element={<EmitirNfse/>}/><Route path="/financas/conciliacao" element={<ConciliacaoBancaria/>}/><Route path="/financas/fluxo" element={<FluxoCaixa/>}/><Route path="/financas/config" element={<ConfigFinanceiro/>}/><Route path="/financas/clientes" element={<ClientesFinanceiro/>}/><Route path="/:modulo" element={<ModulePage/>}/></Route></Routes></AppProvider></BrowserRouter>}
+// As rotas do painel. Modulo novo: entra AQUI e no MODULOS do Layout — e em
+// nenhum outro lugar (lista copiada falha calada).
+
+import { lazy, Suspense, useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import Layout from "./components/Layout.jsx";
+import { CarregandoModulo } from "./components/ui.jsx";
+import { getSessao, aoMudarSessao, podeAbrir } from "./lib/sessao.js";
+
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Home = lazy(() => import("./pages/Home.jsx"));
+const Calendario = lazy(() => import("./pages/Calendario.jsx"));
+const Compromissos = lazy(() => import("./pages/Compromissos.jsx"));
+const Licitacoes = lazy(() => import("./pages/Licitacoes.jsx"));
+const Marketing = lazy(() => import("./pages/Marketing.jsx"));
+const Compras = lazy(() => import("./pages/Compras.jsx"));
+const Manutencoes = lazy(() => import("./pages/Manutencoes.jsx"));
+const Laboratorio = lazy(() => import("./pages/Laboratorio.jsx"));
+const RH = lazy(() => import("./pages/RH.jsx"));
+const Ponto = lazy(() => import("./pages/Ponto.jsx"));
+const Financas = lazy(() => import("./pages/Financas.jsx"));
+const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard.jsx"));
+const Recebimentos = lazy(() => import("./pages/RecebimentosFinanceiro.jsx"));
+const Despesas = lazy(() => import("./pages/Despesas.jsx"));
+const NotasFiscais = lazy(() => import("./pages/NotasFiscais.jsx"));
+const EmitirNfse = lazy(() => import("./pages/EmitirNfse.jsx"));
+const ClientesFinanceiro = lazy(() => import("./pages/ClientesFinanceiro.jsx"));
+const Extrato = lazy(() => import("./pages/Extrato.jsx"));
+const FluxoCaixa = lazy(() => import("./pages/FluxoCaixa.jsx"));
+const ConfigFinanceiro = lazy(() => import("./pages/ConfigFinanceiro.jsx"));
+const CurvaAbc = lazy(() => import("./pages/CurvaAbc.jsx"));
+const Acessos = lazy(() => import("./pages/Acessos.jsx"));
+
+function Guarda({ modulo, children }) {
+  const sessao = getSessao();
+  const location = useLocation();
+  if (!sessao) return <Navigate to="/entrar" replace state={{ de: location.pathname }} />;
+  if (modulo && !podeAbrir(modulo, sessao)) return <Navigate to="/" replace />;
+  return children;
+}
+
+export default function App() {
+  const [, setVersao] = useState(0);
+  useEffect(() => aoMudarSessao(() => setVersao((v) => v + 1)), []);
+
+  return (
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <Suspense fallback={<div className="p-8"><CarregandoModulo /></div>}>
+        <Routes>
+          <Route path="/entrar" element={<Login />} />
+          <Route element={<Guarda><Layout /></Guarda>}>
+            <Route path="/" element={<Home />} />
+            <Route path="/calendario" element={<Calendario />} />
+            <Route path="/compromissos" element={<Compromissos />} />
+            <Route path="/licitacoes" element={<Licitacoes />} />
+            <Route path="/marketing" element={<Marketing />} />
+            <Route path="/compras" element={<Compras />} />
+            <Route path="/manutencoes" element={<Manutencoes />} />
+            <Route path="/laboratorio" element={<Laboratorio />} />
+            <Route path="/rh" element={<Guarda modulo="rh"><RH /></Guarda>} />
+            <Route path="/ponto" element={<Guarda modulo="ponto"><Ponto /></Guarda>} />
+            <Route path="/financas" element={<Guarda modulo="financas"><Financas /></Guarda>} />
+            <Route path="/financas/dashboard" element={<Guarda modulo="financas"><FinanceiroDashboard /></Guarda>} />
+            <Route path="/financas/recebimentos" element={<Guarda modulo="financas"><Recebimentos /></Guarda>} />
+            <Route path="/financas/despesas" element={<Guarda modulo="financas"><Despesas /></Guarda>} />
+            <Route path="/financas/notas-fiscais" element={<Guarda modulo="financas"><NotasFiscais /></Guarda>} />
+            <Route path="/financas/notas-fiscais/emitir" element={<Guarda modulo="financas"><EmitirNfse /></Guarda>} />
+            <Route path="/financas/clientes" element={<Guarda modulo="financas"><ClientesFinanceiro /></Guarda>} />
+            <Route path="/financas/extrato" element={<Guarda modulo="financas"><Extrato /></Guarda>} />
+            <Route path="/financas/fluxo-caixa" element={<Guarda modulo="financas"><FluxoCaixa /></Guarda>} />
+            <Route path="/financas/configuracoes" element={<Guarda modulo="financas"><ConfigFinanceiro /></Guarda>} />
+            <Route path="/curva-abc" element={<Guarda modulo="curva-abc"><CurvaAbc /></Guarda>} />
+            <Route path="/acessos" element={<Guarda modulo="acessos"><Acessos /></Guarda>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  );
+}
