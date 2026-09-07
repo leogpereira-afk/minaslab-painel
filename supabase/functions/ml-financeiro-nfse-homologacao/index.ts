@@ -88,19 +88,27 @@ function assinar(xml:string,keyPem:string,certPem:string){
   const check=new SignedXml({publicCert:certPem});check.loadSignature(node);if(!check.checkSignature(signed))throw new Error(`Assinatura XML inválida: ${(check.validationErrors||[]).join("; ")}`);return signed;
 }
 async function sha256(texto:string){const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(texto));return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()}
-async function gzipB64(texto:string){const cs=new CompressionStream("gzip");const writer=cs.writable.getWriter();await writer.write(new TextEncoder().encode(texto));await writer.close();const bytes=new Uint8Array(await new Response(cs.readable).arrayBuffer());let bin="";for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(bin)}
+async function gzipB64(texto:string){const entrada=new TextEncoder().encode(texto);const stream=new Blob([entrada]).stream().pipeThrough(new CompressionStream("gzip"));const bytes=new Uint8Array(await new Response(stream).arrayBuffer());let bin="";for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(bin)}
 
 async function chamarGateway(idDps:string,payload:string){
   const base=String(Deno.env.get("NFSE_GATEWAY_URL")||"").replace(/\/$/,"");
   const token=String(Deno.env.get("NFSE_GATEWAY_TOKEN")||"");
   if(!base||!token)throw new Error("Gateway NFS-e não configurado no Supabase.");
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),65000);
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
   try{
     const resp=await fetch(`${base}/v1/emitir-homologacao`,{method:"POST",headers:{"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({idDps,dpsXmlGZipB64:payload}),signal:controller.signal});
     const body=await resp.json().catch(()=>({erro:`Gateway respondeu HTTP ${resp.status} sem JSON.`}));
     if(!resp.ok)throw new Error(body?.erro||`Gateway respondeu HTTP ${resp.status}.`);
     return body;
-  }finally{clearTimeout(timer)}
+  }catch(e){if(e instanceof DOMException&&e.name==="AbortError")throw new Error("O gateway NFS-e não respondeu em até 45 segundos. Não repita a emissão antes de consultar a DPS na SEFIN.");throw e}finally{clearTimeout(timer)}
+}
+
+async function marcarEtapa(sb:any,nota:any,etapa:string,extras:any={}){
+  const atuais=nota.nfse_dados||{};
+  const tentativa={...(atuais.homologacaoTentativa||{}),etapa,atualizadoEm:new Date().toISOString(),...extras};
+  nota.nfse_dados={...atuais,homologacaoTentativa:tentativa};
+  const {error}=await sb.from("notas_fiscais").update({nfse_dados:nota.nfse_dados,updated_at:new Date().toISOString()}).eq("id",nota.id);
+  if(error)throw error;
 }
 
 Deno.serve(async(req)=>{
@@ -110,26 +118,38 @@ Deno.serve(async(req)=>{
   let b:any={};try{b=await req.json()}catch{return json({erro:"JSON inválido."},400)}
   if(b.action!=="emitirHomologacao")return json({erro:"Ação inválida."},400);
   const id=String(b.id||"");if(!id)return json({erro:"Rascunho não informado."},400);
+  let sb:any=null;let nota:any=null;
   try{
-    const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const {data:nota,error}=await sb.from("notas_fiscais").select("*,cliente:clientes_financeiro(*)").eq("id",id).eq("origem","NFSE_NACIONAL").eq("apagado",false).maybeSingle();
-    if(error)throw error;if(!nota)throw new Error("Rascunho NFS-e não encontrado.");
+    sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const q=await sb.from("notas_fiscais").select("*,cliente:clientes_financeiro(*)").eq("id",id).eq("origem","NFSE_NACIONAL").eq("apagado",false).maybeSingle();
+    if(q.error)throw q.error;nota=q.data;if(!nota)throw new Error("Rascunho NFS-e não encontrado.");
     if(nota.status_fiscal!=="RASCUNHO"&&nota.status_fiscal!=="REJEITADA")throw new Error(`A nota está em ${nota.status_fiscal} e não pode ser transmitida em homologação.`);
     if(nota.nfse_dados?.homologacao?.autorizada)throw new Error("Este rascunho já possui NFS-e autorizada em homologação. Nova transmissão bloqueada.");
 
+    await marcarEtapa(sb,nota,"MONTANDO_DPS",{iniciadaEm:new Date().toISOString(),transmitiu:false});
     const a1=abrirA1();const montado=await montarXml(nota);
     if(nota.nfse_dps_id&&nota.nfse_dps_id!==montado.idDps)throw new Error("O ID da DPS mudou desde a pré-validação. Salve e pré-valide novamente.");
-    const xmlAssinado=assinar(montado.xml,a1.keyPem,a1.certPem);const hash=await sha256(xmlAssinado);const payload=await gzipB64(xmlAssinado);
+    await marcarEtapa(sb,nota,"ASSINANDO_DPS",{idDps:montado.idDps});
+    const xmlAssinado=assinar(montado.xml,a1.keyPem,a1.certPem);const hash=await sha256(xmlAssinado);
+    await marcarEtapa(sb,nota,"COMPACTANDO_DPS",{idDps:montado.idDps,hashSha256:hash});
+    const payload=await gzipB64(xmlAssinado);
+    await marcarEtapa(sb,nota,"CHAMANDO_GATEWAY",{idDps:montado.idDps,payloadBytes:payload.length});
     const gateway=await chamarGateway(montado.idDps,payload);
+    await marcarEtapa(sb,nota,"RESPOSTA_GATEWAY",{idDps:montado.idDps,statusHttp:gateway?.statusHttp??null,statusHead:gateway?.statusHead??null,transmitiu:!!gateway?.transmitiu});
+
     const resp=gateway?.resposta||{};
     const sucesso=Boolean(gateway?.ok&&gateway?.statusHttp>=200&&gateway?.statusHttp<300);
     const chave=String(resp?.chaveAcesso||"");
     const autorizada=sucesso&&Boolean(chave||resp?.nfseXmlGZipB64||resp?.idDps);
     const resumoResposta={tipoAmbiente:resp?.tipoAmbiente??null,versaoAplicativo:resp?.versaoAplicativo??null,dataHoraProcessamento:resp?.dataHoraProcessamento??null,idDps:resp?.idDps??montado.idDps,chaveAcesso:chave||null,alertas:resp?.alertas??null,erros:resp?.erros??null};
     const atuais=nota.nfse_dados||{};
-    const dados={...atuais,tributacao:{...(atuais.tributacao||{}),ibsCbs:montado.ibs},dpsAssinada:{...(atuais.dpsAssinada||{}),idDps:montado.idDps,serie:montado.serie,nDPS:montado.nDPS,hashSha256:hash,assinaturaValida:true,ambiente:"HOMOLOGACAO",geradoEm:new Date().toISOString(),ibsCbsIncluido:true,ibsCbs:montado.ibs},homologacao:{autorizada,statusHttp:gateway?.statusHttp??null,statusHead:gateway?.statusHead??null,transmitiu:!!gateway?.transmitiu,resposta:resumoResposta,testadoEm:new Date().toISOString()}};
+    const dados={...atuais,tributacao:{...(atuais.tributacao||{}),ibsCbs:montado.ibs},dpsAssinada:{...(atuais.dpsAssinada||{}),idDps:montado.idDps,serie:montado.serie,nDPS:montado.nDPS,hashSha256:hash,assinaturaValida:true,ambiente:"HOMOLOGACAO",geradoEm:new Date().toISOString(),ibsCbsIncluido:true,ibsCbs:montado.ibs},homologacao:{autorizada,statusHttp:gateway?.statusHttp??null,statusHead:gateway?.statusHead??null,transmitiu:!!gateway?.transmitiu,resposta:resumoResposta,testadoEm:new Date().toISOString()},homologacaoTentativa:{...(atuais.homologacaoTentativa||{}),etapa:"FINALIZADA",atualizadoEm:new Date().toISOString(),autorizada,transmitiu:!!gateway?.transmitiu,statusHttp:gateway?.statusHttp??null}};
     const {error:upErr}=await sb.from("notas_fiscais").update({nfse_dps_id:montado.idDps,nfse_dados:dados,updated_at:new Date().toISOString()}).eq("id",nota.id);if(upErr)throw upErr;
     if(!sucesso)return json({ok:false,ambiente:"HOMOLOGACAO",transmitiu:!!gateway?.transmitiu,statusHttp:gateway?.statusHttp??null,resposta:resumoResposta,erro:"A SEFIN rejeitou a DPS em homologação. O rascunho foi preservado e nenhum recebimento foi criado."},422);
     return json({ok:true,ambiente:"HOMOLOGACAO",autorizada,transmitiu:true,statusHttp:gateway.statusHttp,chaveAcesso:chave||null,resposta:resumoResposta,mensagem:autorizada?"NFS-e autorizada em HOMOLOGAÇÃO. Nenhum recebimento real foi criado.":"A SEFIN processou a DPS em HOMOLOGAÇÃO. Confira a resposta técnica antes de qualquer produção."});
-  }catch(e){return json({erro:erroTexto(e),ambiente:"HOMOLOGACAO",transmitiu:false},409)}
+  }catch(e){
+    if(sb&&nota){try{await marcarEtapa(sb,nota,"ERRO",{erro:erroTexto(e),transmitiu:nota?.nfse_dados?.homologacaoTentativa?.transmitiu||false})}catch{}
+    }
+    return json({erro:erroTexto(e),ambiente:"HOMOLOGACAO",transmitiu:false},409)
+  }
 });
