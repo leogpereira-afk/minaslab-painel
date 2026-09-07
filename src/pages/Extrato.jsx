@@ -98,9 +98,14 @@ function dataCsv(v) {
 }
 
 function numeroCsv(v) {
-  const s = String(v || "").trim();
+  const s = String(v || "").trim().replace(/\s/g, "");
   if (!s) return 0;
-  return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+  if (s.includes(",") && s.includes(".")) {
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+    return Number(s.replace(/,/g, "")) || 0;
+  }
+  if (s.includes(",")) return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+  return Number(s) || 0;
 }
 
 function parseC6CSV(t) {
