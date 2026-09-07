@@ -28,11 +28,11 @@ function abrirA1(){
 }
 
 async function headSefin(idDps:string,a1:{certPem:string,keyPem:string}){
-  const client=Deno.createHttpClient({cert:a1.certPem,key:a1.keyPem});
+  const client=Deno.createHttpClient({cert:a1.certPem,key:a1.keyPem,http1:true,http2:false});
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),20000);
   try{
     const resp=await fetch(`https://sefin.producaorestrita.nfse.gov.br/SefinNacional/dps/${encodeURIComponent(idDps)}`,{
-      method:"HEAD",client,signal:controller.signal,headers:{"User-Agent":"MinasLab-Financeiro/1.0","Accept":"application/json"}
+      method:"HEAD",client,signal:controller.signal,headers:{"User-Agent":"MinasLab-Financeiro/1.0","Accept":"application/json","Connection":"close"}
     } as any);
     return {status:resp.status};
   }catch(e){
@@ -55,10 +55,10 @@ Deno.serve(async(req)=>{
     if(!nota.nfse_dps_id)throw new Error("A DPS ainda não foi preparada/assinada.");
     const a1=abrirA1();const r=await headSefin(nota.nfse_dps_id,a1);
     const chegou=r.status>0;const existe=r.status===200;
-    const teste={ok:chegou,statusHttp:r.status,existeDpsNoSefin:existe,ambiente:"HOMOLOGACAO",endpoint:"SEFIN_NACIONAL_PRODUCAO_RESTRITA",testadoEm:new Date().toISOString(),metodo:"HEAD",transmitiu:false};
+    const teste={ok:chegou,statusHttp:r.status,existeDpsNoSefin:existe,ambiente:"HOMOLOGACAO",endpoint:"SEFIN_NACIONAL_PRODUCAO_RESTRITA",testadoEm:new Date().toISOString(),metodo:"HEAD",http:"1.1",transmitiu:false};
     const dados={...(nota.nfse_dados||{}),sefinTeste:teste};
     const {error:upErr}=await sb.from("notas_fiscais").update({nfse_dados:dados,updated_at:new Date().toISOString()}).eq("id",id);if(upErr)throw upErr;
-    if(existe)return json({ok:false,statusHttp:r.status,existeDpsNoSefin:true,mtls:true,ambiente:"HOMOLOGACAO",transmitiu:false,erro:"A SEFIN informou que esta DPS já existe no ambiente restrito. Emissão permanece bloqueada para evitar duplicidade."},409);
-    return json({ok:true,statusHttp:r.status,existeDpsNoSefin:false,mtls:true,ambiente:"HOMOLOGACAO",transmitiu:false,mensagem:`Conexão mTLS com a SEFIN Nacional alcançada (HTTP ${r.status}). Nenhuma NFS-e foi transmitida.`});
+    if(existe)return json({ok:false,statusHttp:r.status,existeDpsNoSefin:true,mtls:true,http:"1.1",ambiente:"HOMOLOGACAO",transmitiu:false,erro:"A SEFIN informou que esta DPS já existe no ambiente restrito. Emissão permanece bloqueada para evitar duplicidade."},409);
+    return json({ok:true,statusHttp:r.status,existeDpsNoSefin:false,mtls:true,http:"1.1",ambiente:"HOMOLOGACAO",transmitiu:false,mensagem:`Conexão mTLS HTTP/1.1 com a SEFIN Nacional alcançada (HTTP ${r.status}). Nenhuma NFS-e foi transmitida.`});
   }catch(e){return json({erro:erroTexto(e)},409)}
 });
