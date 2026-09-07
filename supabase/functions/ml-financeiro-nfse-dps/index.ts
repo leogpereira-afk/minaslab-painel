@@ -1,0 +1,107 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import forge from "npm:node-forge@1.3.1";
+import { SignedXml } from "npm:xml-crypto@6.1.2";
+import { DOMParser } from "npm:@xmldom/xmldom@0.9.8";
+
+const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
+const digits=(v:any)=>String(v||"").replace(/\D/g,"");
+const esc=(v:any)=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+const money=(v:any)=>Number(v||0).toFixed(2);
+const cidadeIbge=(cidade:any)=>String(cidade||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase()==="MONTES CLAROS"?"3143302":"";
+
+async function auth(req:Request){
+  const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
+  if(!t)return null;const p=t.split(".");if(p.length!==3)return null;
+  try{const s=p[1].replace(/-/g,"+").replace(/_/g,"/");const x=JSON.parse(atob(s+"=".repeat((4-s.length%4)%4)));if(x.exp&&x.exp*1000<Date.now())return null;return x}catch{return null}
+}
+
+function abrirA1(){
+  const b64=String(Deno.env.get("MLAB_NFSE_CERT_PFX_B64")||"").replace(/\s/g,"");
+  const senha=String(Deno.env.get("MLAB_NFSE_CERT_PASSWORD")||"");
+  if(!b64||!senha)throw new Error("Certificado A1 e/ou senha não configurados.");
+  const bin=atob(b64);
+  const asn1=forge.asn1.fromDer(forge.util.createBuffer(bin,"raw"));
+  const p12=forge.pkcs12.pkcs12FromAsn1(asn1,false,senha);
+  const certBags=p12.getBags({bagType:forge.pki.oids.certBag})[forge.pki.oids.certBag]||[];
+  const cert=certBags.find((x:any)=>x.cert)?.cert;
+  const shrouded=p12.getBags({bagType:forge.pki.oids.pkcs8ShroudedKeyBag})[forge.pki.oids.pkcs8ShroudedKeyBag]||[];
+  const plain=p12.getBags({bagType:forge.pki.oids.keyBag})[forge.pki.oids.keyBag]||[];
+  const key=[...shrouded,...plain].find((x:any)=>x.key)?.key;
+  if(!cert||!key)throw new Error("O A1 foi aberto, mas certificado e chave privada não puderam ser extraídos.");
+  return {certPem:forge.pki.certificateToPem(cert),keyPem:forge.pki.privateKeyToPem(key)};
+}
+
+function horarioBrasil(){
+  const d=new Date(Date.now()-3*60*60*1000);return d.toISOString().slice(0,19)+"-03:00";
+}
+
+async function numeroDps(id:string){
+  const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(id));
+  const hex=Array.from(new Uint8Array(h)).slice(0,6).map(x=>x.toString(16).padStart(2,"0")).join("");
+  return (BigInt("0x"+hex)%999999999999999n+1n).toString();
+}
+
+function documentoXml(doc:string){return doc.length===14?`<CNPJ>${doc}</CNPJ>`:`<CPF>${doc}</CPF>`}
+
+async function montarXml(nota:any){
+  const cnpjPrest=digits(nota.cnpj_emitente);
+  const im=digits(Deno.env.get("MLAB_NFSE_INSCRICAO_MUNICIPAL"));
+  const cMun=digits(Deno.env.get("MLAB_NFSE_MUNICIPIO_IBGE"));
+  const serie=digits(Deno.env.get("MLAB_NFSE_DPS_SERIE")||"70000").slice(-5)||"70000";
+  const nDPS=await numeroDps(nota.id);
+  const idDps=`DPS${cMun}2${cnpjPrest.padStart(14,"0")}${serie.padStart(5,"0")}${nDPS.padStart(15,"0")}`;
+  const cliente=nota.cliente||{};const docToma=digits(cliente.cnpj_cpf);
+  const cMunToma=cidadeIbge(cliente.cidade);
+  const dados=nota.nfse_dados||{};const serv=dados.servico||{};const trib=dados.tributacao||{};
+  const cTribNac=digits(serv.codigo);const cNBS=digits(serv.nbs);
+  const erros:string[]=[];
+  if(cnpjPrest.length!==14)erros.push("CNPJ da M Lab inválido para montar a DPS.");
+  if(!im)erros.push("Inscrição Municipal da M Lab não configurada.");
+  if(cMun.length!==7)erros.push("Município IBGE da M Lab não configurado corretamente.");
+  if(![11,14].includes(docToma.length))erros.push("CPF/CNPJ do tomador inválido.");
+  if(cTribNac.length!==6)erros.push("Código nacional do serviço deve resultar em 6 dígitos.");
+  if(cNBS&&cNBS.length!==9)erros.push("NBS deve resultar em 9 dígitos.");
+  if(cliente.cep&&digits(cliente.cep).length!==8)erros.push("CEP do tomador deve possuir 8 dígitos.");
+  if(cliente.cidade&&!cMunToma)erros.push("O município IBGE do tomador ainda não está mapeado para esta cidade.");
+  if(erros.length)throw new Error(erros.join(" "));
+
+  const endToma=(cMunToma&&cliente.cep&&cliente.logradouro&&cliente.numero&&cliente.bairro)?`<end><endNac><cMun>${cMunToma}</cMun><CEP>${digits(cliente.cep)}</CEP></endNac><xLgr>${esc(cliente.logradouro)}</xLgr><nro>${esc(cliente.numero)}</nro>${cliente.complemento?`<xCpl>${esc(cliente.complemento)}</xCpl>`:""}<xBairro>${esc(cliente.bairro)}</xBairro></end>`:"";
+  const contato=`${cliente.telefone?`<fone>${digits(cliente.telefone)}</fone>`:""}${cliente.email?`<email>${esc(cliente.email)}</email>`:""}`;
+  const xml=`<?xml version="1.0" encoding="UTF-8"?><DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01"><infDPS Id="${idDps}"><tpAmb>2</tpAmb><dhEmi>${horarioBrasil()}</dhEmi><verAplic>MINASLAB-1.0</verAplic><serie>${Number(serie)}</serie><nDPS>${nDPS}</nDPS><dCompet>${nota.data_emissao}</dCompet><tpEmit>1</tpEmit><cLocEmi>${cMun}</cLocEmi><prest><CNPJ>${cnpjPrest}</CNPJ><IM>${im}</IM><regTrib><opSimpNac>3</opSimpNac><regApTribSN>1</regApTribSN><regEspTrib>0</regEspTrib></regTrib></prest><toma>${documentoXml(docToma)}<xNome>${esc(cliente.nome)}</xNome>${endToma}${contato}</toma><serv><locPrest><cLocPrestacao>${cMun}</cLocPrestacao></locPrest><cServ><cTribNac>${cTribNac}</cTribNac>${cNBS?`<cNBS>${cNBS}</cNBS>`:""}<xDescServ>${esc(serv.descricao)}</xDescServ><cIntContrib>${esc(nota.id.slice(0,20))}</cIntContrib></cServ></serv><valores><vServPrest><vServ>${money(nota.valor_total)}</vServ></vServPrest><trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>${trib.issRetido?2:1}</tpRetISSQN></tribMun><totTrib><indTotTrib>0</indTotTrib></totTrib></trib></valores></infDPS></DPS>`;
+  return {xml,idDps,serie:String(Number(serie)),nDPS,cTribNac,cNBS};
+}
+
+function assinar(xml:string,keyPem:string,certPem:string){
+  const sig=new SignedXml({privateKey:keyPem,publicCert:certPem,canonicalizationAlgorithm:"http://www.w3.org/TR/2001/REC-xml-c14n-20010315",signatureAlgorithm:"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"});
+  sig.addReference({xpath:"//*[local-name(.)='infDPS']",transforms:["http://www.w3.org/2000/09/xmldsig#enveloped-signature","http://www.w3.org/TR/2001/REC-xml-c14n-20010315"],digestAlgorithm:"http://www.w3.org/2001/04/xmlenc#sha256"});
+  sig.computeSignature(xml,{location:{reference:"//*[local-name(.)='infDPS']",action:"after"}});
+  const signed=sig.getSignedXml();
+  const doc=new DOMParser().parseFromString(signed,"text/xml");
+  const node=doc.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#","Signature")[0];
+  if(!node)throw new Error("A assinatura XML não foi gerada.");
+  const check=new SignedXml({publicCert:certPem});check.loadSignature(node);const valida=check.checkSignature(signed);
+  if(!valida)throw new Error(`A assinatura XML foi criada, mas não passou na verificação local: ${(check.validationErrors||[]).join("; ")}`);
+  return signed;
+}
+
+async function sha256(texto:string){const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(texto));return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()}
+
+Deno.serve(async(req)=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
+  if(!await auth(req))return json({erro:"Sessão inválida."},401);
+  if((Deno.env.get("MLAB_NFSE_AMBIENTE")||"HOMOLOGACAO").toUpperCase()!=="HOMOLOGACAO")return json({erro:"Validação de DPS bloqueada fora de HOMOLOGAÇÃO."},409);
+  let b:any={};try{b=await req.json()}catch{return json({erro:"JSON inválido."},400)}
+  if(b.action!=="validarDps")return json({erro:"Ação inválida."},400);
+  const id=String(b.id||b.registro?.id||"");if(!id)return json({erro:"Salve o rascunho antes de validar a DPS assinada."},400);
+  try{
+    const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const {data:nota,error}=await sb.from("notas_fiscais").select("*,cliente:clientes_financeiro(*)").eq("id",id).eq("origem","NFSE_NACIONAL").eq("apagado",false).maybeSingle();
+    if(error)throw error;if(!nota)throw new Error("Rascunho NFS-e não encontrado.");if(nota.status_fiscal!=="RASCUNHO"&&nota.status_fiscal!=="REJEITADA")throw new Error(`A nota está em ${nota.status_fiscal} e não pode ser preparada como rascunho.`);
+    const a1=abrirA1();const montado=await montarXml(nota);const xmlAssinado=assinar(montado.xml,a1.keyPem,a1.certPem);const hash=await sha256(xmlAssinado);
+    const atual={...(nota.nfse_dados||{}),dpsAssinada:{idDps:montado.idDps,serie:montado.serie,nDPS:montado.nDPS,hashSha256:hash,assinaturaValida:true,ambiente:"HOMOLOGACAO",schemaReferencia:"NFSe-ESQUEMAS_XSD-PRODREST-v1.01-20260727",geradoEm:new Date().toISOString(),ibsCbsIncluido:false}};
+    const {error:upErr}=await sb.from("notas_fiscais").update({nfse_dps_id:montado.idDps,nfse_dados:atual,updated_at:new Date().toISOString()}).eq("id",nota.id);if(upErr)throw upErr;
+    return json({valido:true,ambiente:"HOMOLOGACAO",cliente:nota.cliente,assinatura:{valida:true,idDps:montado.idDps,serie:montado.serie,nDPS:montado.nDPS,hashSha256:hash},layout:{dps:"1.01",schemaReferencia:"NFSe-ESQUEMAS_XSD-PRODREST-v1.01-20260727",ibsCbsIncluido:false},transmitido:false,mensagem:"DPS gerada e assinatura A1 validada localmente. Nenhuma NFS-e foi transmitida."});
+  }catch(e){return json({erro:e instanceof Error?e.message:String(e)},409)}
+});
