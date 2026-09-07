@@ -18,8 +18,9 @@ function pag(b: any) { const limite = Math.min(100, Math.max(10, Number(b.limite
 function periodoMes(b: any) { let de = txt(b.de), ate = txt(b.ate); const ano = Number(b.ano), mes = Number(b.mes); if (!de && !ate && ano && mes >= 1 && mes <= 12) { const mm = String(mes).padStart(2, "0"), ultimo = new Date(ano, mes, 0).getDate(); de = `${ano}-${mm}-01`; ate = `${ano}-${mm}-${String(ultimo).padStart(2, "0")}`; } else if (!de && !ate && ano && !mes) { de = `${ano}-01-01`; ate = `${ano}-12-31`; } return { de, ate }; }
 function buscaLike(v: string) { return v.replace(/[%_]/g, m => `\\${m}`); }
 
-function filtrosBase(q: any, a: string, empresa: string, status: string, busca: string, de: string, ate: string) {
+function filtrosBase(q: any, a: string, empresa: string, status: string, busca: string, de: string, ate: string, contaId = "") {
   if (empresa) q = q.eq("empresa_id", empresa);
+  if (a === "movimentos" && contaId) q = q.eq("conta_bancaria_id", contaId);
   if (a === "recebimentos" || a === "despesas") {
     if (status) q = q.eq("status", status);
     if (de) q = q.gte("data_vencimento", de);
@@ -44,14 +45,14 @@ function filtrosBase(q: any, a: string, empresa: string, status: string, busca: 
   return q;
 }
 
-async function resumo(a: string, empresa: string, status: string, busca: string, de: string, ate: string) {
+async function resumo(a: string, empresa: string, status: string, busca: string, de: string, ate: string, contaId = "") {
   let q: any;
   if (a === "recebimentos") q = sb.from("recebimentos").select("valor_previsto,valor_recebido,valor_pendente,status").eq("apagado", false);
   else if (a === "despesas") q = sb.from("despesas").select("valor_original,valor_pago,valor_pendente,status").eq("apagado", false);
   else if (a === "notas") q = sb.from("notas_fiscais").select("valor_total,pdf_url,xml_url,status_fiscal,origem").eq("apagado", false);
   else if (a === "movimentos") q = sb.from("movimentos_bancarios").select("tipo,valor,conciliado");
   else return null;
-  q = filtrosBase(q, a, empresa, status, busca, de, ate);
+  q = filtrosBase(q, a, empresa, status, busca, de, ate, contaId);
   const r = await q;
   if (r.error) throw r.error;
   const d = r.data || [];
@@ -65,7 +66,7 @@ Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (!await auth(req)) return json({ erro: "Sessão inválida ou sem permissão." }, 401);
   try {
-    const b = await req.json(), a = txt(b.action), { limite, pagina, ini, fim } = pag(b), { de, ate } = periodoMes(b), empresa = txt(b.empresaId), status = txt(b.status).toUpperCase(), busca = txt(b.busca);
+    const b = await req.json(), a = txt(b.action), { limite, pagina, ini, fim } = pag(b), { de, ate } = periodoMes(b), empresa = txt(b.empresaId), contaId = txt(b.contaId), status = txt(b.status).toUpperCase(), busca = txt(b.busca);
     let q: any;
     if (a === "recebimentos") q = sb.from("recebimentos").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),baixas:baixas_recebimentos(*)", { count: "exact" }).eq("apagado", false);
     else if (a === "despesas") q = sb.from("despesas").select("*,empresa:empresas(id,nome),categoria:categorias_financeiras(id,nome),conta_bancaria:contas_bancarias(id,nome),centro:centros_custo(id,nome),baixas:baixas_despesas(*)", { count: "exact" }).eq("apagado", false);
@@ -79,12 +80,12 @@ Deno.serve(async req => {
       const r = await q.range(ini, fim); if (r.error) throw r.error; const total = Number(r.count || 0); return json({ itens: r.data || [], pagina, limite, total, paginas: Math.max(1, Math.ceil(total / limite)), de, ate });
     } else return json({ erro: "Ação inválida." }, 400);
 
-    q = filtrosBase(q, a, empresa, status, busca, de, ate);
+    q = filtrosBase(q, a, empresa, status, busca, de, ate, contaId);
     if (a === "recebimentos" || a === "despesas") q = q.order("data_vencimento", { ascending: false, nullsFirst: false });
     else if (a === "notas") q = q.order("data_emissao", { ascending: false, nullsFirst: false });
     else q = q.order("data_movimento", { ascending: false });
 
-    const [r, cards] = await Promise.all([q.range(ini, fim), resumo(a, empresa, status, busca, de, ate)]);
+    const [r, cards] = await Promise.all([q.range(ini, fim), resumo(a, empresa, status, busca, de, ate, contaId)]);
     if (r.error) throw r.error;
     const total = Number(r.count || 0);
     return json({ itens: r.data || [], pagina, limite, total, paginas: Math.max(1, Math.ceil(total / limite)), de, ate, resumo: cards });
