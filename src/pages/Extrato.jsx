@@ -2,24 +2,399 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Upload, RefreshCw, Search, Link2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finMovimentosPagina, finMovimentosImportar, finRecebimentosListar, finDespesasListar, finConciliar } from "../services/financeiro.js";
-const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});const dataBR=v=>{if(!v)return"—";const p=String(v).slice(0,10).split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:v};const soDigitos=v=>String(v||"").replace(/\D/g,"");const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-function tag(bloco,nome){const m=bloco.match(new RegExp(`<${nome}>([^<\r\n]+)`,`i`));return m?m[1].trim():""}function dataOfx(v){const m=String(v||"").match(/^(\d{4})(\d{2})(\d{2})/);return m?`${m[1]}-${m[2]}-${m[3]}`:""}function lerContaOFX(t){return{banco:tag(t,"BANKID"),agencia:tag(t,"BRANCHID"),conta:tag(t,"ACCTID"),tipo:tag(t,"ACCTTYPE")}}function parseOFX(t){return String(t||"").split(/<STMTTRN>/i).slice(1).map(b=>{const valor=Number(tag(b,"TRNAMT").replace(",","."))||0;const memo=tag(b,"MEMO"),name=tag(b,"NAME"),descricao=[name,memo].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(" · ");return{data_movimento:dataOfx(tag(b,"DTPOSTED")),descricao:descricao||memo||name,tipo:valor>=0?"CREDITO":"DEBITO",valor,fitid:tag(b,"FITID"),documento:tag(b,"CHECKNUM"),origem:"OFX"}}).filter(x=>x.data_movimento&&x.valor!==0)}function detectarContaOFX(meta,contas,empresaId){const cs=(contas||[]).filter(c=>c.empresa_id===empresaId);if(cs.length===1)return cs[0];const co=soDigitos(meta?.conta),ba=soDigitos(meta?.banco),ag=soDigitos(meta?.agencia);const pc=cs.filter(c=>co&&soDigitos(c.conta)===co);if(pc.length===1)return pc[0];const p=cs.filter(c=>(!ba||soDigitos(c.banco)===ba)&&(!co||soDigitos(c.conta)===co)&&(!ag||soDigitos(c.agencia)===ag));return p.length===1?p[0]:null}
-function csvLinha(l){const out=[];let s="",q=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'){if(q&&l[i+1]==='"'){s+='"';i++}else q=!q}else if(c===','&&!q){out.push(s.trim());s=""}else s+=c}out.push(s.trim());return out}
-function dataCsv(v){const m=String(v||"").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?`${m[3]}-${m[2]}-${m[1]}`:""}
-function parseC6CSV(t){const texto=String(t||"").replace(/^\uFEFF/,""),linhas=texto.split(/\r?\n/),hi=linhas.findIndex(l=>/Data Lançamento/i.test(l)&&/Entrada\(R\$\)/i.test(l)&&/Saída\(R\$\)/i.test(l));if(hi<0)throw new Error("CSV do C6 não reconhecido. Não encontrei o cabeçalho do extrato.");const cab=csvLinha(linhas[hi]).map(x=>x.trim()),ix=n=>cab.findIndex(c=>c.toLowerCase()===n.toLowerCase()),iData=ix("Data Lançamento"),iTitulo=ix("Título"),iDesc=ix("Descrição"),iEntrada=ix("Entrada(R$)"),iSaida=ix("Saída(R$)"),iSaldo=ix("Saldo do Dia(R$)");const ocorr=new Map(),itens=[];let saldoFinal=null;for(const l of linhas.slice(hi+1)){if(!l.trim())continue;const c=csvLinha(l),data=dataCsv(c[iData]),titulo=String(c[iTitulo]||"").trim(),desc=String(c[iDesc]||"").trim(),entrada=Number(String(c[iEntrada]||"0").replace(/\./g,".").replace(",","."))||0,saida=Number(String(c[iSaida]||"0").replace(/\./g,".").replace(",","."))||0;if(!data||(!entrada&&!saida))continue;const tipo=entrada>0?"CREDITO":"DEBITO",valor=entrada>0?entrada:-saida,descricao=[titulo,desc].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(" · ");const base=`${data}|${titulo}|${desc}|${entrada.toFixed(2)}|${saida.toFixed(2)}`,n=(ocorr.get(base)||0)+1;ocorr.set(base,n);itens.push({data_movimento:data,descricao,tipo,valor,fitid:`C6CSV|${base}|${n}`,documento:titulo||null,origem:"CSV_C6"});if(iSaldo>=0){const sv=Number(String(c[iSaldo]||"").replace(/\./g,".").replace(",","."));if(Number.isFinite(sv))saldoFinal=sv}}const mc=texto.match(/Agência:\s*([\d.-]+)\s*\/\s*Conta:\s*([\d.-]+)/i);return{itens,meta:{agencia:mc?.[1]||"",conta:mc?.[2]||"",banco:"C6"},saldoFinal}}
-function categoriaMov(m){const nomes=(m.conciliacoes||[]).flatMap(c=>[c?.recebimento?.categoria?.nome,c?.despesa?.categoria?.nome]).filter(Boolean);return[...new Set(nomes)].join(" / ")||"—"}
-export default function Extrato(){const navigate=useNavigate(),csvRef=useRef(null),ofxRef=useRef(null);const[op,setOp]=useState({empresas:[],contas:[]}),[empresa,setEmpresa]=useState(""),[conta,setConta]=useState(""),[itens,setItens]=useState([]),[receber,setReceber]=useState([]),[pagar,setPagar]=useState([]),[busca,setBusca]=useState(""),[status,setStatus]=useState(""),[tipoMovimento,setTipoMovimento]=useState(""),[ano,setAno]=useState(""),[mes,setMes]=useState(""),[pagina,setPagina]=useState(1),[limite,setLimite]=useState(25),[meta,setMeta]=useState({total:0,paginas:1}),[resumo,setResumo]=useState({entradas:0,saidas:0,conciliados:0,pendentes:0}),[erro,setErro]=useState(""),[aviso,setAviso]=useState(""),[loading,setLoading]=useState(true),[conciliando,setConciliando]=useState(null),[carregandoCandidatos,setCarregandoCandidatos]=useState(false);
-async function carregar(p=pagina){setLoading(true);setErro("");try{const[o,m]=await Promise.all([financeiroOpcoes(),finMovimentosPagina({empresaId:empresa,contaId:conta,busca,status,tipoMovimento,ano:ano?Number(ano):null,mes:mes?Number(mes):null,pagina:p,limite})]);setOp(o);setItens(m.itens||[]);setMeta({total:m.total||0,paginas:m.paginas||1});setResumo(m.resumo||{entradas:0,saidas:0,conciliados:0,pendentes:0});setPagina(m.pagina||p)}catch(e){setErro(e.message)}finally{setLoading(false)}}useEffect(()=>{const t=setTimeout(()=>carregar(1),250);return()=>clearTimeout(t)},[empresa,conta,busca,status,tipoMovimento,ano,mes,limite]);
-const saldoResumo=Number(resumo.entradas||0)-Number(resumo.saidas||0);
-const candidatos=mov=>{const fonte=mov.tipo==="CREDITO"?receber:pagar;return fonte.filter(x=>x.status!=="CANCELADO"&&Number(x.valor_pendente||0)>0&&Math.abs(Number(x.valor_pendente||0)-Math.abs(Number(mov.valor||0)))<0.01).map(x=>{const dataRef=x.importacao_origem==="C6_BOLETOS"&&x.c6_data_credito?x.c6_data_credito:x.data_vencimento;const a=new Date(`${dataRef||"1900-01-01"}T00:00:00`),b=new Date(`${mov.data_movimento}T00:00:00`);const dias=Math.abs(a-b)/86400000;return{x,dias,dataRef,forte:x.importacao_origem==="C6_BOLETOS"&&!!x.c6_data_credito}}).filter(y=>y.dias<=3).sort((a,b)=>Number(b.forte)-Number(a.forte)||a.dias-b.dias).slice(0,8)};
-async function abrirConciliacao(m){setConciliando(m);setCarregandoCandidatos(true);try{const[r,d]=await Promise.all([finRecebimentosListar(empresa),finDespesasListar(empresa)]);setReceber(r);setPagar(d)}catch(e){setErro(e.message)}finally{setCarregandoCandidatos(false)}}
-function abrirImportacao(ref){if(!empresa){setErro("Selecione a empresa antes de importar o extrato.");return}setErro("");ref.current?.click()}
-async function importar(e){const f=e.target.files?.[0];if(!f)return;if(!empresa){setErro("Selecione a empresa antes de importar.");return}try{setErro("");setAviso("");const t=await f.text(),isCsv=f.name.toLowerCase().endsWith(".csv");let dados,metaConta;if(isCsv){const c=parseC6CSV(t);dados=c.itens;metaConta=c.meta}else{dados=parseOFX(t);metaConta=lerContaOFX(t)}if(!dados.length)throw new Error("Nenhuma movimentação válida encontrada no arquivo.");const detectada=conta?op.contas.find(c=>c.id===conta):detectarContaOFX(metaConta,op.contas,empresa);if(!detectada)throw new Error(`Não foi possível identificar com segurança a conta do extrato${metaConta.conta?` (conta ${metaConta.conta})`:""}. Selecione a conta bancária antes de importar.`);setConta(detectada.id);const r=await finMovimentosImportar(empresa,detectada.id,dados);setAviso(`${isCsv?"CSV C6":"OFX"} importado na conta ${detectada.nome}: ${r?.inseridos||0} novos, ${r?.ignorados||0} já existentes.`);await carregar(1)}catch(ex){setErro(ex.message)}finally{e.target.value=""}}async function conciliar(mov,dest){try{await finConciliar(mov.id,{recebimentoId:mov.tipo==="CREDITO"?dest.id:null,despesaId:mov.tipo==="DEBITO"?dest.id:null,valor:Math.min(Math.abs(Number(mov.valor||0)),Number(dest.valor_pendente||0))});setConciliando(null);await carregar(pagina)}catch(ex){setErro(ex.message)}}
-return <div className="space-y-5"><div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={()=>navigate("/financas")}><ArrowLeft size={18}/></button><PageTitle titulo="Extrato Bancário" descricao="Movimentação bancária, importação CSV/OFX e conciliação financeira."/></div>
-<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Entradas</p><p className="mt-1 text-xl font-bold text-emerald-700">{moeda(resumo.entradas)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Saídas</p><p className="mt-1 text-xl font-bold text-rose-700">{moeda(resumo.saidas)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Resultado</p><p className={`mt-1 text-xl font-bold ${saldoResumo>=0?"text-emerald-700":"text-rose-700"}`}>{moeda(saldoResumo)}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Conciliados</p><p className="mt-1 text-xl font-bold">{resumo.conciliados}</p></div><div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Pendentes</p><p className="mt-1 text-xl font-bold text-amber-700">{resumo.pendentes}</p></div></div>
-<div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-7"><label><span className="label">Empresa</span><select className="input" value={empresa} onChange={e=>{setEmpresa(e.target.value);setConta("");setAviso("")}}><option value="">Todas</option>{op.empresas.map(x=><option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Conta</span><select className="input" value={conta} onChange={e=>setConta(e.target.value)}><option value="">Todas / detectar arquivo</option>{op.contas.filter(c=>!empresa||c.empresa_id===empresa).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label><span className="label">Tipo</span><select className="input" value={tipoMovimento} onChange={e=>setTipoMovimento(e.target.value)}><option value="">Crédito e Débito</option><option value="CREDITO">CRÉDITO</option><option value="DEBITO">DÉBITO</option></select></label><label><span className="label">Situação</span><select className="input" value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todas</option><option>PENDENTE</option><option>CONCILIADO</option></select></label><label><span className="label">Ano</span><select className="input" value={ano} onChange={e=>setAno(e.target.value)}><option value="">Todos</option>{[2023,2024,2025,2026,2027].map(x=><option key={x}>{x}</option>)}</select></label><label><span className="label">Mês</span><select className="input" value={mes} onChange={e=>setMes(e.target.value)} disabled={!ano}><option value="">Todos</option>{MESES.map((x,i)=><option key={x} value={i+1}>{x}</option>)}</select></label><label><span className="label">Pesquisar</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input className="input pl-9" value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Nome, descrição ou documento"/></div></label></div><div className="flex flex-wrap gap-2"><button className="btn-outline" onClick={()=>carregar(pagina)}><RefreshCw size={15}/>Atualizar</button><button className="btn-primary" onClick={()=>abrirImportacao(csvRef)}><Upload size={16}/>Importar CSV C6</button><button className="btn-outline" onClick={()=>abrirImportacao(ofxRef)}><Upload size={16}/>Importar OFX</button><input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importar}/><input ref={ofxRef} type="file" accept=".ofx,application/x-ofx" className="hidden" onChange={importar}/></div>{!empresa&&<div className="text-xs text-slate-500">Selecione a empresa antes de importar um arquivo. Para a M Lab / C6, prefira o CSV.</div>}{erro&&<div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}{aviso&&<div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{aviso}</div>}
-<div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Descrição / Favorecido</th><th className="px-4 py-3">Categoria</th><th className="px-4 py-3">Conta</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3">Situação</th><th></th></tr></thead><tbody>{loading?<tr><td colSpan="9" className="p-8 text-center text-slate-500">Carregando...</td></tr>:itens.length===0?<tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhuma movimentação.</td></tr>:itens.map(m=><tr key={m.id} className="border-t"><td className="px-4 py-3">{dataBR(m.data_movimento)}</td><td className="px-4 py-3"><div className="font-medium">{m.descricao||"—"}</div><div className="text-xs text-slate-500">{m.fitid?`ID ${m.fitid}`:m.documento||""}</div></td><td className="px-4 py-3">{categoriaMov(m)}</td><td className="px-4 py-3">{m.conta?.nome||"—"}</td><td className="px-4 py-3 text-xs font-semibold">{m.origem||"—"}</td><td className={`px-4 py-3 font-semibold ${m.tipo==="CREDITO"?"text-emerald-700":"text-rose-700"}`}>{m.tipo}</td><td className="px-4 py-3 text-right font-semibold">{moeda(m.valor)}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${m.conciliado?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700"}`}>{m.conciliado?"CONCILIADO":"PENDENTE"}</span></td><td className="px-4 py-3 text-right">{!m.conciliado&&<button className="btn-outline py-1.5" onClick={()=>abrirConciliacao(m)}><Link2 size={14}/>Conciliar</button>}</td></tr>)}</tbody></table></div>
-<div className="flex flex-col gap-2 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm text-slate-500">{meta.total} movimentos · página {pagina} de {meta.paginas}</div><div className="flex items-center gap-2"><select className="input h-9 w-24" value={limite} onChange={e=>setLimite(Number(e.target.value))}><option>25</option><option>50</option><option>100</option></select><button className="btn-outline h-9" disabled={pagina<=1} onClick={()=>carregar(pagina-1)}><ChevronLeft size={15}/>Anterior</button><button className="btn-outline h-9" disabled={pagina>=meta.paginas} onClick={()=>carregar(pagina+1)}>Próxima<ChevronRight size={15}/></button></div></div>
-{conciliando&&<div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"><div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-4 flex items-start justify-between"><div><h2 className="font-bold">Conciliar {moeda(conciliando.valor)}</h2><p className="text-sm text-slate-500">O sistema procura títulos por valor e data. A conciliação múltipla será usada quando um único débito quitar mais de uma despesa.</p></div><button className="btn-ghost" onClick={()=>setConciliando(null)}>Fechar</button></div><div className="space-y-2">{carregandoCandidatos?<p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Buscando títulos candidatos...</p>:candidatos(conciliando).length===0?<p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhum candidato automático. Use a busca/conciliação múltipla quando o movimento corresponder a vários títulos.</p>:candidatos(conciliando).map(({x,dataRef,forte})=><button key={x.id} onClick={()=>conciliar(conciliando,x)} className="w-full rounded-xl border p-3 text-left hover:bg-slate-50"><div className="flex justify-between gap-3"><span className="font-medium">{x.cliente||x.fornecedor}</span><span className="font-semibold">{moeda(x.valor_pendente)}</span></div><div className="mt-1 text-xs text-slate-500">{forte?`Crédito C6 ${dataBR(dataRef)}`:`Vencimento ${dataBR(dataRef)}`} · {x.importacao_origem||x.origem}</div></button>)}</div></div></div>}</div>
+import {
+  financeiroOpcoes,
+  finMovimentosPagina,
+  finMovimentosImportar,
+  finRecebimentosListar,
+  finDespesasListar,
+  finConciliar,
+} from "../services/financeiro.js";
+
+const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dataBR = (v) => {
+  if (!v) return "—";
+  const p = String(v).slice(0, 10).split("-");
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v;
+};
+const soDigitos = (v) => String(v || "").replace(/\D/g, "");
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function tag(bloco, nome) {
+  const m = bloco.match(new RegExp(`<${nome}>([^<\\r\\n]+)`, "i"));
+  return m ? m[1].trim() : "";
+}
+
+function dataOfx(v) {
+  const m = String(v || "").match(/^(\d{4})(\d{2})(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+}
+
+function lerContaOFX(t) {
+  return { banco: tag(t, "BANKID"), agencia: tag(t, "BRANCHID"), conta: tag(t, "ACCTID"), tipo: tag(t, "ACCTTYPE") };
+}
+
+function parseOFX(t) {
+  return String(t || "")
+    .split(/<STMTTRN>/i)
+    .slice(1)
+    .map((b) => {
+      const valor = Number(tag(b, "TRNAMT").replace(",", ".")) || 0;
+      const memo = tag(b, "MEMO");
+      const name = tag(b, "NAME");
+      const descricao = [name, memo].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" · ");
+      return {
+        data_movimento: dataOfx(tag(b, "DTPOSTED")),
+        descricao: descricao || memo || name,
+        tipo: valor >= 0 ? "CREDITO" : "DEBITO",
+        valor,
+        fitid: tag(b, "FITID"),
+        documento: tag(b, "CHECKNUM"),
+        origem: "OFX",
+      };
+    })
+    .filter((x) => x.data_movimento && x.valor !== 0);
+}
+
+function detectarContaOFX(meta, contas, empresaId) {
+  const cs = (contas || []).filter((c) => c.empresa_id === empresaId);
+  if (cs.length === 1) return cs[0];
+  const co = soDigitos(meta?.conta);
+  const ba = soDigitos(meta?.banco);
+  const ag = soDigitos(meta?.agencia);
+  const pc = cs.filter((c) => co && soDigitos(c.conta) === co);
+  if (pc.length === 1) return pc[0];
+  const p = cs.filter((c) => (!ba || soDigitos(c.banco) === ba) && (!co || soDigitos(c.conta) === co) && (!ag || soDigitos(c.agencia) === ag));
+  return p.length === 1 ? p[0] : null;
+}
+
+function csvLinha(linha) {
+  const out = [];
+  let s = "";
+  let q = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (c === '"') {
+      if (q && linha[i + 1] === '"') {
+        s += '"';
+        i++;
+      } else {
+        q = !q;
+      }
+    } else if (c === "," && !q) {
+      out.push(s.trim());
+      s = "";
+    } else {
+      s += c;
+    }
+  }
+  out.push(s.trim());
+  return out;
+}
+
+function dataCsv(v) {
+  const m = String(v || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+function numeroCsv(v) {
+  const s = String(v || "").trim();
+  if (!s) return 0;
+  return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+}
+
+function parseC6CSV(t) {
+  const texto = String(t || "").replace(/^\uFEFF/, "");
+  const linhas = texto.split(/\r?\n/);
+  const hi = linhas.findIndex((l) => /Data Lançamento/i.test(l) && /Entrada\(R\$\)/i.test(l) && /Saída\(R\$\)/i.test(l));
+  if (hi < 0) throw new Error("CSV do C6 não reconhecido. Não encontrei o cabeçalho do extrato.");
+
+  const cab = csvLinha(linhas[hi]).map((x) => x.trim());
+  const ix = (n) => cab.findIndex((c) => c.toLowerCase() === n.toLowerCase());
+  const iData = ix("Data Lançamento");
+  const iTitulo = ix("Título");
+  const iDesc = ix("Descrição");
+  const iEntrada = ix("Entrada(R$)");
+  const iSaida = ix("Saída(R$)");
+
+  const ocorr = new Map();
+  const itens = [];
+
+  for (const l of linhas.slice(hi + 1)) {
+    if (!l.trim()) continue;
+    const c = csvLinha(l);
+    const data = dataCsv(c[iData]);
+    const titulo = String(c[iTitulo] || "").trim();
+    const desc = String(c[iDesc] || "").trim();
+    const entrada = numeroCsv(c[iEntrada]);
+    const saida = numeroCsv(c[iSaida]);
+    if (!data || (!entrada && !saida)) continue;
+
+    const tipo = entrada > 0 ? "CREDITO" : "DEBITO";
+    const valor = entrada > 0 ? entrada : -saida;
+    const descricao = [titulo, desc].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" · ");
+    const base = `${data}|${titulo}|${desc}|${entrada.toFixed(2)}|${saida.toFixed(2)}`;
+    const n = (ocorr.get(base) || 0) + 1;
+    ocorr.set(base, n);
+
+    itens.push({
+      data_movimento: data,
+      descricao,
+      tipo,
+      valor,
+      fitid: `C6CSV|${base}|${n}`,
+      documento: titulo || null,
+      origem: "CSV_C6",
+    });
+  }
+
+  const mc = texto.match(/Agência:\s*([\d.-]+)\s*\/\s*Conta:\s*([\d.-]+)/i);
+  return { itens, meta: { agencia: mc?.[1] || "", conta: mc?.[2] || "", banco: "C6" } };
+}
+
+function categoriaMov(m) {
+  const nomes = (m.conciliacoes || [])
+    .flatMap((c) => [c?.recebimento?.categoria?.nome, c?.despesa?.categoria?.nome])
+    .filter(Boolean);
+  return [...new Set(nomes)].join(" / ") || "—";
+}
+
+export default function Extrato() {
+  const navigate = useNavigate();
+  const csvRef = useRef(null);
+  const ofxRef = useRef(null);
+  const [op, setOp] = useState({ empresas: [], contas: [] });
+  const [empresa, setEmpresa] = useState("");
+  const [conta, setConta] = useState("");
+  const [itens, setItens] = useState([]);
+  const [receber, setReceber] = useState([]);
+  const [pagar, setPagar] = useState([]);
+  const [busca, setBusca] = useState("");
+  const [status, setStatus] = useState("");
+  const [tipoMovimento, setTipoMovimento] = useState("");
+  const [ano, setAno] = useState("");
+  const [mes, setMes] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const [limite, setLimite] = useState(25);
+  const [meta, setMeta] = useState({ total: 0, paginas: 1 });
+  const [resumo, setResumo] = useState({ entradas: 0, saidas: 0, conciliados: 0, pendentes: 0 });
+  const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [conciliando, setConciliando] = useState(null);
+  const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
+
+  async function carregar(p = pagina) {
+    setLoading(true);
+    setErro("");
+    try {
+      const [o, m] = await Promise.all([
+        financeiroOpcoes(),
+        finMovimentosPagina({ empresaId: empresa, contaId: conta, busca, status, tipoMovimento, ano: ano ? Number(ano) : null, mes: mes ? Number(mes) : null, pagina: p, limite }),
+      ]);
+      setOp(o);
+      setItens(m.itens || []);
+      setMeta({ total: m.total || 0, paginas: m.paginas || 1 });
+      setResumo(m.resumo || { entradas: 0, saidas: 0, conciliados: 0, pendentes: 0 });
+      setPagina(m.pagina || p);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => carregar(1), 250);
+    return () => clearTimeout(t);
+  }, [empresa, conta, busca, status, tipoMovimento, ano, mes, limite]);
+
+  const saldoResumo = Number(resumo.entradas || 0) - Number(resumo.saidas || 0);
+
+  const candidatos = (mov) => {
+    const fonte = mov.tipo === "CREDITO" ? receber : pagar;
+    return fonte
+      .filter((x) => x.status !== "CANCELADO" && Number(x.valor_pendente || 0) > 0 && Math.abs(Number(x.valor_pendente || 0) - Math.abs(Number(mov.valor || 0))) < 0.01)
+      .map((x) => {
+        const dataRef = x.importacao_origem === "C6_BOLETOS" && x.c6_data_credito ? x.c6_data_credito : x.data_vencimento;
+        const a = new Date(`${dataRef || "1900-01-01"}T00:00:00`);
+        const b = new Date(`${mov.data_movimento}T00:00:00`);
+        const dias = Math.abs(a - b) / 86400000;
+        return { x, dias, dataRef, forte: x.importacao_origem === "C6_BOLETOS" && !!x.c6_data_credito };
+      })
+      .filter((y) => y.dias <= 3)
+      .sort((a, b) => Number(b.forte) - Number(a.forte) || a.dias - b.dias)
+      .slice(0, 8);
+  };
+
+  async function abrirConciliacao(m) {
+    setConciliando(m);
+    setCarregandoCandidatos(true);
+    try {
+      const [r, d] = await Promise.all([finRecebimentosListar(empresa), finDespesasListar(empresa)]);
+      setReceber(r);
+      setPagar(d);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregandoCandidatos(false);
+    }
+  }
+
+  function abrirImportacao(ref) {
+    if (!empresa) {
+      setErro("Selecione a empresa antes de importar o extrato.");
+      return;
+    }
+    setErro("");
+    ref.current?.click();
+  }
+
+  async function importar(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!empresa) {
+      setErro("Selecione a empresa antes de importar.");
+      return;
+    }
+
+    try {
+      setErro("");
+      setAviso("");
+      const t = await f.text();
+      const isCsv = f.name.toLowerCase().endsWith(".csv");
+      const parsed = isCsv ? parseC6CSV(t) : { itens: parseOFX(t), meta: lerContaOFX(t) };
+      const dados = parsed.itens;
+      const metaConta = parsed.meta;
+      if (!dados.length) throw new Error("Nenhuma movimentação válida encontrada no arquivo.");
+
+      const detectada = conta ? op.contas.find((c) => c.id === conta) : detectarContaOFX(metaConta, op.contas, empresa);
+      if (!detectada) {
+        throw new Error(`Não foi possível identificar com segurança a conta do extrato${metaConta.conta ? ` (conta ${metaConta.conta})` : ""}. Selecione a conta bancária antes de importar.`);
+      }
+
+      setConta(detectada.id);
+      const r = await finMovimentosImportar(empresa, detectada.id, dados);
+      setAviso(`${isCsv ? "CSV C6" : "OFX"} importado na conta ${detectada.nome}: ${r?.inseridos || 0} novos, ${r?.ignorados || 0} já existentes.`);
+      await carregar(1);
+    } catch (ex) {
+      setErro(ex.message);
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  async function conciliar(mov, dest) {
+    try {
+      await finConciliar(mov.id, {
+        recebimentoId: mov.tipo === "CREDITO" ? dest.id : null,
+        despesaId: mov.tipo === "DEBITO" ? dest.id : null,
+        valor: Math.min(Math.abs(Number(mov.valor || 0)), Number(dest.valor_pendente || 0)),
+      });
+      setConciliando(null);
+      await carregar(pagina);
+    } catch (ex) {
+      setErro(ex.message);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <button className="btn-ghost h-9 w-9 p-0" onClick={() => navigate("/financas")}><ArrowLeft size={18} /></button>
+        <PageTitle titulo="Extrato Bancário" descricao="Movimentação bancária, importação CSV/OFX e conciliação financeira." />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Entradas</p><p className="mt-1 text-xl font-bold text-emerald-700">{moeda(resumo.entradas)}</p></div>
+        <div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Saídas</p><p className="mt-1 text-xl font-bold text-rose-700">{moeda(resumo.saidas)}</p></div>
+        <div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Resultado</p><p className={`mt-1 text-xl font-bold ${saldoResumo >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{moeda(saldoResumo)}</p></div>
+        <div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Conciliados</p><p className="mt-1 text-xl font-bold">{resumo.conciliados}</p></div>
+        <div className="rounded-2xl border bg-white p-4"><p className="text-xs uppercase text-slate-500">Pendentes</p><p className="mt-1 text-xl font-bold text-amber-700">{resumo.pendentes}</p></div>
+      </div>
+
+      <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-7">
+        <label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => { setEmpresa(e.target.value); setConta(""); setAviso(""); }}><option value="">Todas</option>{op.empresas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label>
+        <label><span className="label">Conta</span><select className="input" value={conta} onChange={(e) => setConta(e.target.value)}><option value="">Todas / detectar arquivo</option>{op.contas.filter((c) => !empresa || c.empresa_id === empresa).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></label>
+        <label><span className="label">Tipo</span><select className="input" value={tipoMovimento} onChange={(e) => setTipoMovimento(e.target.value)}><option value="">Crédito e Débito</option><option value="CREDITO">CRÉDITO</option><option value="DEBITO">DÉBITO</option></select></label>
+        <label><span className="label">Situação</span><select className="input" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Todas</option><option>PENDENTE</option><option>CONCILIADO</option></select></label>
+        <label><span className="label">Ano</span><select className="input" value={ano} onChange={(e) => setAno(e.target.value)}><option value="">Todos</option>{[2023, 2024, 2025, 2026, 2027].map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label><span className="label">Mês</span><select className="input" value={mes} onChange={(e) => setMes(e.target.value)} disabled={!ano}><option value="">Todos</option>{MESES.map((x, i) => <option key={x} value={i + 1}>{x}</option>)}</select></label>
+        <label><span className="label">Pesquisar</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className="input pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, descrição ou documento" /></div></label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-outline" onClick={() => carregar(pagina)}><RefreshCw size={15} />Atualizar</button>
+        <button className="btn-primary" onClick={() => abrirImportacao(csvRef)}><Upload size={16} />Importar CSV C6</button>
+        <button className="btn-outline" onClick={() => abrirImportacao(ofxRef)}><Upload size={16} />Importar OFX</button>
+        <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importar} />
+        <input ref={ofxRef} type="file" accept=".ofx,application/x-ofx" className="hidden" onChange={importar} />
+      </div>
+
+      {!empresa && <div className="text-xs text-slate-500">Selecione a empresa antes de importar um arquivo. Para a M Lab / C6, prefira o CSV.</div>}
+      {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
+      {aviso && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{aviso}</div>}
+
+      <div className="overflow-x-auto rounded-2xl border bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Descrição / Favorecido</th><th className="px-4 py-3">Categoria</th><th className="px-4 py-3">Conta</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3">Situação</th><th /></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="9" className="p-8 text-center text-slate-500">Carregando...</td></tr>
+            ) : itens.length === 0 ? (
+              <tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhuma movimentação.</td></tr>
+            ) : (
+              itens.map((m) => (
+                <tr key={m.id} className="border-t">
+                  <td className="px-4 py-3">{dataBR(m.data_movimento)}</td>
+                  <td className="px-4 py-3"><div className="font-medium">{m.descricao || "—"}</div><div className="text-xs text-slate-500">{m.fitid ? `ID ${m.fitid}` : m.documento || ""}</div></td>
+                  <td className="px-4 py-3">{categoriaMov(m)}</td>
+                  <td className="px-4 py-3">{m.conta?.nome || "—"}</td>
+                  <td className="px-4 py-3 text-xs font-semibold">{m.origem || "—"}</td>
+                  <td className={`px-4 py-3 font-semibold ${m.tipo === "CREDITO" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{moeda(m.valor)}</td>
+                  <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${m.conciliado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{m.conciliado ? "CONCILIADO" : "PENDENTE"}</span></td>
+                  <td className="px-4 py-3 text-right">{!m.conciliado && <button className="btn-outline py-1.5" onClick={() => abrirConciliacao(m)}><Link2 size={14} />Conciliar</button>}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-slate-500">{meta.total} movimentos · página {pagina} de {meta.paginas}</div>
+        <div className="flex items-center gap-2">
+          <select className="input h-9 w-24" value={limite} onChange={(e) => setLimite(Number(e.target.value))}><option>25</option><option>50</option><option>100</option></select>
+          <button className="btn-outline h-9" disabled={pagina <= 1} onClick={() => carregar(pagina - 1)}><ChevronLeft size={15} />Anterior</button>
+          <button className="btn-outline h-9" disabled={pagina >= meta.paginas} onClick={() => carregar(pagina + 1)}>Próxima<ChevronRight size={15} /></button>
+        </div>
+      </div>
+
+      {conciliando && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div><h2 className="font-bold">Conciliar {moeda(conciliando.valor)}</h2><p className="text-sm text-slate-500">O sistema procura títulos por valor e data. A conciliação múltipla será usada quando um único débito quitar mais de uma despesa.</p></div>
+              <button className="btn-ghost" onClick={() => setConciliando(null)}>Fechar</button>
+            </div>
+            <div className="space-y-2">
+              {carregandoCandidatos ? (
+                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Buscando títulos candidatos...</p>
+              ) : candidatos(conciliando).length === 0 ? (
+                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhum candidato automático. Use a busca/conciliação múltipla quando o movimento corresponder a vários títulos.</p>
+              ) : (
+                candidatos(conciliando).map(({ x, dataRef, forte }) => (
+                  <button key={x.id} onClick={() => conciliar(conciliando, x)} className="w-full rounded-xl border p-3 text-left hover:bg-slate-50">
+                    <div className="flex justify-between gap-3"><span className="font-medium">{x.cliente || x.fornecedor}</span><span className="font-semibold">{moeda(x.valor_pendente)}</span></div>
+                    <div className="mt-1 text-xs text-slate-500">{forte ? `Crédito C6 ${dataBR(dataRef)}` : `Vencimento ${dataBR(dataRef)}`} · {x.importacao_origem || x.origem}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
