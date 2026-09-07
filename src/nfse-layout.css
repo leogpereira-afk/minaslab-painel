@@ -1,33 +1,37 @@
 /* Ajustes visuais exclusivos da tela Emitir NFS-e M Lab.
    Mantém a lógica e os campos existentes; apenas reorganiza a grade. */
 
+/* A faixa superior fica exclusivamente para o cliente.
+   Emissão, vencimento, forma de pagamento e totais já existem na segunda aba. */
+[class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: end !important;
+}
+
+[class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] > :nth-child(n+2) {
+  display: none !important;
+}
+
+[class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] > :first-child {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Renomeia visualmente a aba Financeiro para Pagamento sem alterar a chave interna. */
+[class~="overflow-x-auto"][class~="border-y"] > button:nth-child(2) {
+  font-size: 0 !important;
+}
+
+[class~="overflow-x-auto"][class~="border-y"] > button:nth-child(2)::after {
+  content: "Pagamento";
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
 @media (min-width: 1024px) {
   /* Painel principal + coluna de ações */
   [class~="xl:grid-cols-[1fr_220px]"] {
     grid-template-columns: minmax(0, 1fr) 240px !important;
-  }
-
-  /* Cabeçalho: Cliente + Emissão + Vencimento + Pagamento.
-     O resumo duplicado do topo fica oculto porque o mesmo valor já existe no painel lateral. */
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] {
-    grid-template-columns: minmax(300px, 2fr) repeat(3, minmax(145px, 1fr)) !important;
-    align-items: end !important;
-    gap: 14px !important;
-  }
-
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] > :last-child {
-    display: none !important;
-  }
-
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] > * {
-    min-width: 0;
-  }
-
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] .input,
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] select,
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] input {
-    min-width: 0;
-    width: 100%;
   }
 
   /* Linha de serviço organizada em duas linhas regulares. */
@@ -78,10 +82,6 @@
 @media (min-width: 1280px) {
   [class~="xl:grid-cols-[1fr_220px]"] {
     grid-template-columns: minmax(0, 1fr) 250px !important;
-  }
-
-  [class~="lg:grid-cols-[1.5fr_.72fr_.72fr_.72fr_1fr]"] {
-    grid-template-columns: minmax(360px, 2.2fr) repeat(3, minmax(160px, 1fr)) !important;
   }
 }
 
