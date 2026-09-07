@@ -99,7 +99,7 @@ function requestSefin({ method, path, body = null, headers = {} }) {
       timeout: 25000,
       headers: {
         accept: 'application/json',
-        'user-agent': 'MinasLab-NFSe-Gateway/1.1',
+        'user-agent': 'MinasLab-NFSe-Gateway/1.2',
         connection: 'close',
         ...(payload ? { 'content-length': payload.length } : {}),
         ...headers
@@ -127,7 +127,7 @@ async function lerJson(req) {
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
-    if (total > 1024 * 1024) throw new Error('Corpo da requisição excede 1 MB.');
+    if (total > 4 * 1024 * 1024) throw new Error('Corpo da requisição excede 4 MB.');
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -146,13 +146,17 @@ async function handle(req, res) {
       erros: cfg.erros
     });
   }
+
   if (!autorizado(req)) return json(res, 401, { erro: 'Não autorizado.' });
+
   if (req.method === 'POST' && req.url === '/v1/testar-conexao') {
     if (AMBIENTE !== 'HOMOLOGACAO') return json(res, 409, { erro: 'Teste bloqueado fora de HOMOLOGAÇÃO.' });
     try {
       const { idDps } = await lerJson(req);
       if (!idDps) return json(res, 400, { erro: 'idDps é obrigatório.' });
+      console.log(`[NFSE] HEAD DPS ${idDps}`);
       const r = await requestSefin({ method: 'HEAD', path: `/dps/${encodeURIComponent(String(idDps))}` });
+      console.log(`[NFSE] HEAD DPS ${idDps} -> HTTP ${r.status}`);
       return json(res, 200, {
         ok: true,
         ambiente: AMBIENTE,
@@ -163,6 +167,7 @@ async function handle(req, res) {
         transmitiu: false
       });
     } catch (e) {
+      console.error('[NFSE] Falha HEAD', e);
       return json(res, 502, {
         ok: false,
         ambiente: AMBIENTE,
@@ -172,9 +177,77 @@ async function handle(req, res) {
       });
     }
   }
-  if (req.method === 'POST' && req.url === '/v1/emitir') {
-    return json(res, 423, { erro: 'Emissão bloqueada. O gateway está apenas em fase de homologação mTLS.', transmitiu: false });
+
+  if (req.method === 'POST' && req.url === '/v1/emitir-homologacao') {
+    if (AMBIENTE !== 'HOMOLOGACAO') return json(res, 409, { erro: 'Transmissão de homologação bloqueada fora de HOMOLOGAÇÃO.', transmitiu: false });
+    try {
+      const { idDps, dpsXmlGZipB64 } = await lerJson(req);
+      if (!idDps) return json(res, 400, { erro: 'idDps é obrigatório.', transmitiu: false });
+      if (!dpsXmlGZipB64 || typeof dpsXmlGZipB64 !== 'string') return json(res, 400, { erro: 'dpsXmlGZipB64 é obrigatório.', transmitiu: false });
+      if (dpsXmlGZipB64.length > 3_500_000) return json(res, 413, { erro: 'Payload DPS excede o limite de segurança.', transmitiu: false });
+
+      console.log(`[NFSE] Pré-checagem HEAD antes do POST ${idDps}`);
+      const pre = await requestSefin({ method: 'HEAD', path: `/dps/${encodeURIComponent(String(idDps))}` });
+      console.log(`[NFSE] Pré-checagem ${idDps} -> HTTP ${pre.status}`);
+      if (pre.status === 200) {
+        return json(res, 409, {
+          ok: false,
+          ambiente: AMBIENTE,
+          statusHead: pre.status,
+          existeDpsNoSefin: true,
+          transmitiu: false,
+          erro: 'A DPS já existe na SEFIN de homologação. POST bloqueado para evitar duplicidade.'
+        });
+      }
+      if (pre.status !== 404) {
+        return json(res, 409, {
+          ok: false,
+          ambiente: AMBIENTE,
+          statusHead: pre.status,
+          existeDpsNoSefin: false,
+          transmitiu: false,
+          erro: `Pré-checagem da SEFIN retornou HTTP ${pre.status}; transmissão bloqueada.`
+        });
+      }
+
+      const corpo = JSON.stringify({ dpsXmlGZipB64 });
+      console.log(`[NFSE] POST /nfse HOMOLOGACAO ${idDps}`);
+      const r = await requestSefin({
+        method: 'POST',
+        path: '/nfse',
+        body: corpo,
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+      console.log(`[NFSE] POST /nfse ${idDps} -> HTTP ${r.status}`);
+      return json(res, 200, {
+        ok: r.status >= 200 && r.status < 300,
+        ambiente: AMBIENTE,
+        mtls: true,
+        http: '1.1',
+        statusHttp: r.status,
+        statusHead: pre.status,
+        transmitiu: true,
+        resposta: r.body
+      });
+    } catch (e) {
+      console.error('[NFSE] Falha POST homologação', e);
+      return json(res, 502, {
+        ok: false,
+        ambiente: AMBIENTE,
+        transmitiu: false,
+        erro: e instanceof Error ? e.message : String(e),
+        codigo: e?.code || null
+      });
+    }
   }
+
+  if (req.method === 'POST' && req.url === '/v1/emitir') {
+    return json(res, 423, {
+      erro: 'Emissão de produção bloqueada. O gateway só permite transmissão no ambiente de homologação.',
+      transmitiu: false
+    });
+  }
+
   return json(res, 404, { erro: 'Rota não encontrada.' });
 }
 
