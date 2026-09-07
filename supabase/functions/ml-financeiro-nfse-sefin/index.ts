@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import forge from "npm:node-forge@1.3.1";
+import tls from "node:tls";
 
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
@@ -27,18 +28,26 @@ function abrirA1(){
   return {certPem:certs.map((c:any)=>forge.pki.certificateToPem(c)).join("\n"),keyPem:forge.pki.privateKeyToPem(key)};
 }
 
-async function headSefin(idDps:string,a1:{certPem:string,keyPem:string}){
-  const client=Deno.createHttpClient({cert:a1.certPem,key:a1.keyPem,http1:true,http2:false});
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),20000);
-  try{
-    const resp=await fetch(`https://sefin.producaorestrita.nfse.gov.br/SefinNacional/dps/${encodeURIComponent(idDps)}`,{
-      method:"HEAD",client,signal:controller.signal,headers:{"User-Agent":"MinasLab-Financeiro/1.0","Accept":"application/json","Connection":"close"}
-    } as any);
-    return {status:resp.status};
-  }catch(e){
-    if((e as any)?.name==="AbortError")throw new Error("Timeout ao conectar à SEFIN Nacional.");
-    throw e;
-  }finally{clearTimeout(timer);client.close()}
+function headSefinHttp11(idDps:string,a1:{certPem:string,keyPem:string}){
+  return new Promise<{status:number,alpn:string}>((resolve,reject)=>{
+    let resolvido=false;let buffer="";
+    const enc=encodeURIComponent(idDps);
+    const caminhos=[`/SefinNacional/dps/${enc}`,`/API/SefinNacional/dps/${enc}`];
+    const tentar=(idx:number)=>{
+      const socket=tls.connect({host:"sefin.producaorestrita.nfse.gov.br",port:443,servername:"sefin.producaorestrita.nfse.gov.br",cert:a1.certPem,key:a1.keyPem,rejectUnauthorized:true,ALPNProtocols:["http/1.1"]},()=>{
+        const alpn=socket.alpnProtocol||"http/1.1";
+        const req=`HEAD ${caminhos[idx]} HTTP/1.1\r\nHost: sefin.producaorestrita.nfse.gov.br\r\nUser-Agent: MinasLab-Financeiro/1.0\r\nAccept: application/json\r\nConnection: close\r\n\r\n`;
+        socket.write(req);
+        (socket as any)._ml_alpn=alpn;
+      });
+      const timer=setTimeout(()=>socket.destroy(new Error("Timeout ao conectar à SEFIN Nacional.")),20000);
+      socket.setEncoding("utf8");
+      socket.on("data",d=>{buffer+=d;const m=buffer.match(/^HTTP\/1\.[01]\s+(\d{3})/);if(m&&!resolvido){const status=Number(m[1]);clearTimeout(timer);socket.end();if((status===404||status===405)&&idx===0){buffer="";tentar(1);return}resolvido=true;resolve({status,alpn:(socket as any)._ml_alpn||"http/1.1"});}});
+      socket.on("error",e=>{clearTimeout(timer);if(!resolvido)reject(e)});
+      socket.on("close",()=>{clearTimeout(timer);if(!resolvido&&buffer){const m=buffer.match(/^HTTP\/1\.[01]\s+(\d{3})/);if(m){resolvido=true;resolve({status:Number(m[1]),alpn:(socket as any)._ml_alpn||"http/1.1"});}}});
+    };
+    tentar(0);
+  });
 }
 
 Deno.serve(async(req)=>{
@@ -53,12 +62,12 @@ Deno.serve(async(req)=>{
     const {data:nota,error}=await sb.from("notas_fiscais").select("id,status_fiscal,nfse_dps_id,nfse_dados").eq("id",id).eq("origem","NFSE_NACIONAL").eq("apagado",false).maybeSingle();
     if(error)throw error;if(!nota)throw new Error("Rascunho NFS-e não encontrado.");
     if(!nota.nfse_dps_id)throw new Error("A DPS ainda não foi preparada/assinada.");
-    const a1=abrirA1();const r=await headSefin(nota.nfse_dps_id,a1);
+    const a1=abrirA1();const r=await headSefinHttp11(nota.nfse_dps_id,a1);
     const chegou=r.status>0;const existe=r.status===200;
-    const teste={ok:chegou,statusHttp:r.status,existeDpsNoSefin:existe,ambiente:"HOMOLOGACAO",endpoint:"SEFIN_NACIONAL_PRODUCAO_RESTRITA",testadoEm:new Date().toISOString(),metodo:"HEAD",http:"1.1",transmitiu:false};
+    const teste={ok:chegou,statusHttp:r.status,existeDpsNoSefin:existe,ambiente:"HOMOLOGACAO",endpoint:"SEFIN_NACIONAL_PRODUCAO_RESTRITA",testadoEm:new Date().toISOString(),metodo:"HEAD",http:"1.1",alpn:r.alpn,transmitiu:false};
     const dados={...(nota.nfse_dados||{}),sefinTeste:teste};
     const {error:upErr}=await sb.from("notas_fiscais").update({nfse_dados:dados,updated_at:new Date().toISOString()}).eq("id",id);if(upErr)throw upErr;
-    if(existe)return json({ok:false,statusHttp:r.status,existeDpsNoSefin:true,mtls:true,http:"1.1",ambiente:"HOMOLOGACAO",transmitiu:false,erro:"A SEFIN informou que esta DPS já existe no ambiente restrito. Emissão permanece bloqueada para evitar duplicidade."},409);
-    return json({ok:true,statusHttp:r.status,existeDpsNoSefin:false,mtls:true,http:"1.1",ambiente:"HOMOLOGACAO",transmitiu:false,mensagem:`Conexão mTLS HTTP/1.1 com a SEFIN Nacional alcançada (HTTP ${r.status}). Nenhuma NFS-e foi transmitida.`});
+    if(existe)return json({ok:false,statusHttp:r.status,existeDpsNoSefin:true,mtls:true,http:"1.1",alpn:r.alpn,ambiente:"HOMOLOGACAO",transmitiu:false,erro:"A SEFIN informou que esta DPS já existe no ambiente restrito. Emissão permanece bloqueada para evitar duplicidade."},409);
+    return json({ok:true,statusHttp:r.status,existeDpsNoSefin:false,mtls:true,http:"1.1",alpn:r.alpn,ambiente:"HOMOLOGACAO",transmitiu:false,mensagem:`Conexão mTLS HTTP/1.1 com a SEFIN Nacional alcançada (HTTP ${r.status}). Nenhuma NFS-e foi transmitida.`});
   }catch(e){return json({erro:erroTexto(e)},409)}
 });
