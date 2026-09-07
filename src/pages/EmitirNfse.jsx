@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, FilePlus2, Save, Search, ShieldCheck, UserPlus, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { finClientesListar, finNfseEmitir, finNfseEstado, finNfseListar, finNfsePreparar, finNfseRascunhoSalvar } from "../services/financeiro.js";
+import { finClientesListar, finNfseEmitir, finNfseEstado, finNfseListar, finNfsePreparar, finNfseRascunhoSalvar, finNfseVerificarCertificado } from "../services/financeiro.js";
 
 const hoje=()=>new Date().toISOString().slice(0,10);
 const vazio=()=>({id:"",cliente_id:"",data_emissao:hoje(),data_vencimento:"",valor_total:"",codigo_servico:"",nbs:"",servico_descricao:"",aliquota_iss:"",iss_retido:false,regime_especial:"",forma_pagamento:"BOLETO",observacao:"",cliente:null});
 const clienteNovo=()=>({nome:"",nome_fantasia:"",cnpj_cpf:"",inscricao_estadual:"",inscricao_municipal:"",email:"",telefone:"",cep:"",logradouro:"",numero:"",complemento:"",bairro:"",cidade:"",uf:"MG"});
 const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const dataBR=v=>{const p=String(v||"").slice(0,10).split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:"—"};
+const dataHoraBR=v=>v?new Date(v).toLocaleString("pt-BR"):"—";
 
 export default function EmitirNfse(){
   const navigate=useNavigate();
@@ -24,6 +25,8 @@ export default function EmitirNfse(){
   const [carregando,setCarregando]=useState(true);
   const [salvando,setSalvando]=useState(false);
   const [emitindo,setEmitindo]=useState(false);
+  const [verificando,setVerificando]=useState(false);
+  const [verificacao,setVerificacao]=useState(null);
   const [preparacao,setPreparacao]=useState(null);
 
   async function carregar(){setCarregando(true);setErro("");try{const [e,c,r]=await Promise.all([finNfseEstado(),finClientesListar(""),finNfseListar()]);setEstado(e);setClientes(c);setRascunhos(r);}catch(ex){setErro(ex.message)}finally{setCarregando(false)}}
@@ -34,6 +37,7 @@ export default function EmitirNfse(){
 
   function limpar(){setForm(vazio());setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setOk("");setErro("")}
   function registro(){return {...form,cliente_id:novoCliente?"":form.cliente_id,cliente:novoCliente?cliente:null,valor_total:Number(form.valor_total||0)}}
+  async function verificarA1(){setVerificando(true);setErro("");setOk("");try{const r=await finNfseVerificarCertificado();setVerificacao(r);setEstado(x=>({...x,...r}));setOk("Certificado A1 aberto com sucesso. Arquivo, senha e validade foram conferidos no servidor.")}catch(ex){setVerificacao(null);setErro(ex.message)}finally{setVerificando(false)}}
   async function preparar(){setErro("");setOk("");try{const r=await finNfsePreparar(registro());setPreparacao(r);setOk("Pré-validação concluída. Nenhuma nota foi emitida.")}catch(ex){setPreparacao(null);setErro(ex.message)}}
   async function salvar(){setSalvando(true);setErro("");setOk("");try{const r=await finNfseRascunhoSalvar(registro());setForm(v=>({...v,id:r.item.id,cliente_id:r.cliente.id,cliente:null}));setNovoCliente(false);setCliente(clienteNovo());setOk("Rascunho salvo. O cliente foi vinculado ao cadastro central da M Lab.");await carregar();}catch(ex){setErro(ex.message)}finally{setSalvando(false)}}
   async function emitir(){if(!form.id){setErro("Salve o rascunho antes de emitir.");return}if(!confirm(`Transmitir esta NFS-e no ambiente ${estado?.ambiente||"HOMOLOGACAO"}?`))return;setEmitindo(true);setErro("");setOk("");try{const r=await finNfseEmitir(form.id);setOk(r.mensagem||"NFS-e transmitida.");await carregar();}catch(ex){setErro(ex.message)}finally{setEmitindo(false)}}
@@ -43,8 +47,9 @@ export default function EmitirNfse(){
     <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={()=>navigate("/financas/notas-fiscais")}><ArrowLeft size={18}/></button><PageTitle titulo="Emitir NFS-e — M Lab" descricao="Cliente central, rascunho fiscal, pré-validação e emissão pelo Emissor Nacional."/></div>
 
     <div className={`rounded-2xl border p-4 ${estado?.configurado?"border-emerald-200 bg-emerald-50":"border-amber-200 bg-amber-50"}`}>
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 font-semibold">{estado?.configurado?<CheckCircle2 size={18}/>:<XCircle size={18}/>}Integração NFS-e Nacional · {estado?.ambiente||"HOMOLOGACAO"}</div><p className="mt-1 text-sm">Empresa emissora: <b>{estado?.empresa?.nome||"M Lab"}</b> · CNPJ {estado?.empresa?.cnpj||"—"}</p></div><div className="text-xs">{estado?.configurado?"Certificado/dados fiscais configurados":"Aguardando certificado A1 e dados fiscais nos Secrets"}</div></div>
-      {!estado?.configurado&&<div className="mt-3 grid gap-1 text-xs sm:grid-cols-2 lg:grid-cols-5">{estado?.requisitos&&Object.entries(estado.requisitos).map(([k,v])=><span key={k} className={v?"text-emerald-700":"text-amber-800"}>{v?"✓":"○"} {k}</span>)}</div>}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 font-semibold">{estado?.configurado?<CheckCircle2 size={18}/>:<XCircle size={18}/>}Integração NFS-e Nacional · {estado?.ambiente||"HOMOLOGACAO"}</div><p className="mt-1 text-sm">Empresa emissora: <b>{estado?.empresa?.nome||"M Lab"}</b> · CNPJ {estado?.empresa?.cnpj||"—"}</p></div><div className="flex items-center gap-2"><div className="text-xs">{estado?.configurado?"Certificado/dados fiscais configurados":"Aguardando certificado A1 e dados fiscais nos Secrets"}</div><button type="button" className="btn-outline h-9 px-3 text-xs" disabled={verificando} onClick={verificarA1}>{verificando?"Verificando...":"Verificar A1"}</button></div></div>
+      <div className="mt-3 grid gap-1 text-xs sm:grid-cols-2 lg:grid-cols-5">{estado?.requisitos&&Object.entries(estado.requisitos).map(([k,v])=><span key={k} className={v?"text-emerald-700":"text-amber-800"}>{v?"✓":"○"} {k}</span>)}</div>
+      {verificacao?.certificado?.valido&&<div className="mt-3 rounded-xl border border-emerald-200 bg-white/80 p-3 text-xs text-slate-700"><div className="font-semibold text-emerald-700">A1 válido e senha confirmada no servidor</div><div className="mt-1">Titular: <b>{verificacao.certificado.titular||"—"}</b></div><div>Validade: {dataHoraBR(verificacao.certificado.validoDe)} até {dataHoraBR(verificacao.certificado.validoAte)}</div><div className="mt-1 break-all text-[11px] text-slate-500">Fingerprint SHA-256: {verificacao.certificado.fingerprintSha256}</div></div>}
       <div className="mt-3 flex items-start gap-2 rounded-xl bg-white/70 p-3 text-xs text-slate-700"><ShieldCheck size={16} className="mt-0.5 shrink-0"/><span>Produção permanece bloqueada até homologação aprovada. Salvar rascunhos e cadastrar clientes não emite documento fiscal.</span></div>
     </div>
 
