@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import forge from "npm:node-forge@1.3.1";
 
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
@@ -17,6 +18,28 @@ function validarFiscal(r:any,cliente:any){
   if(!(Number(r.valor_total)>0))erros.push("Valor da nota deve ser maior que zero.");
   if(!r.data_vencimento)erros.push("Vencimento do recebimento é obrigatório.");
   return erros;
+}
+
+async function verificarA1(){
+  const b64=String(Deno.env.get("MLAB_NFSE_CERT_PFX_B64")||"").replace(/\s/g,"");
+  const senha=String(Deno.env.get("MLAB_NFSE_CERT_PASSWORD")||"");
+  if(!b64||!senha)return {valido:false,erro:"Certificado A1 e/ou senha não configurados."};
+  try{
+    const bin=atob(b64);
+    const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    const asn1=forge.asn1.fromDer(forge.util.createBuffer(bin,"raw"));
+    const p12=forge.pkcs12.pkcs12FromAsn1(asn1,false,senha);
+    const certBags=p12.getBags({bagType:forge.pki.oids.certBag})[forge.pki.oids.certBag]||[];
+    const cert=certBags.find((x:any)=>x.cert)?.cert;
+    if(!cert)return {valido:false,erro:"O arquivo PFX foi aberto, mas nenhum certificado foi encontrado."};
+    const attrs=cert.subject?.attributes||[];
+    const attr=(nome:string)=>attrs.find((a:any)=>a.shortName===nome||a.name===nome)?.value||null;
+    const agora=new Date();
+    const notBefore=new Date(cert.validity.notBefore);const notAfter=new Date(cert.validity.notAfter);
+    const hash=await crypto.subtle.digest("SHA-256",bytes);
+    const fingerprint=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
+    return {valido:agora>=notBefore&&agora<=notAfter,senhaValida:true,certificadoLegivel:true,titular:attr("CN")||attr("commonName"),organizacao:attr("O")||attr("organizationName"),numeroSerie:cert.serialNumber||null,validoDe:notBefore.toISOString(),validoAte:notAfter.toISOString(),expirado:agora>notAfter,aindaNaoValido:agora<notBefore,fingerprintSha256:fingerprint};
+  }catch(e){return {valido:false,senhaValida:false,certificadoLegivel:false,erro:"Não foi possível abrir o PFX com a senha configurada. Verifique se o arquivo A1 e a senha correspondem.",detalhe:e instanceof Error?e.message:String(e)};}
 }
 
 Deno.serve(async(req)=>{
@@ -40,6 +63,11 @@ Deno.serve(async(req)=>{
     if(!mlab)return json({erro:"Empresa M Lab não encontrada ou inativa."},409);
 
     if(b.action==="estado")return json({ambiente,configurado,requisitos,transmissaoAtiva,producaoLiberada:Deno.env.get("MLAB_NFSE_PRODUCAO_LIBERADA")==="SIM",empresa:{id:mlab.id,nome:mlab.nome,cnpj:mlab.cnpj},modo:"SEGURO_RASCUNHO"});
+
+    if(b.action==="verificarCertificado"){
+      const certificado=await verificarA1();
+      return json({ambiente,configurado,requisitos,empresa:{id:mlab.id,nome:mlab.nome,cnpj:mlab.cnpj},certificado,transmissaoAtiva,producaoLiberada:Deno.env.get("MLAB_NFSE_PRODUCAO_LIBERADA")==="SIM"},certificado.valido?200:409);
+    }
 
     if(b.action==="listar"){
       const {data,error}=await sb.from("notas_fiscais").select("*,cliente:clientes_financeiro(*)").eq("empresa_id",mlab.id).eq("origem","NFSE_NACIONAL").eq("apagado",false).order("created_at",{ascending:false}).limit(300);
