@@ -263,6 +263,21 @@ async function handle(req, res) {
     }
   }
 
+  const mConsulta = req.method === 'GET' && req.url?.match(/^\/v1\/consultar-nfse\/([0-9]{50})$/);
+  if (mConsulta) {
+    const chave = mConsulta[1];
+    if (AMBIENTE === 'PRODUCAO') {
+      const bloqueio = bloqueioProducao();
+      if (bloqueio) return json(res, 423, { erro: bloqueio });
+    }
+    try {
+      const r = await requestSefin({ method: 'GET', path: `/nfse/${encodeURIComponent(chave)}`, headers: { accept: 'application/json' } });
+      return json(res, r.status >= 200 && r.status < 300 ? 200 : 502, { ok: r.status >= 200 && r.status < 300, ambiente: AMBIENTE, statusHttp: r.status, chaveAcesso: chave, resposta: r.body });
+    } catch (e) {
+      return json(res, 502, { erro: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   const mDanfse = req.method === 'GET' && req.url?.match(/^\/v1\/danfse\/([0-9]{50})$/);
   if (mDanfse) {
     const chave = mDanfse[1];
