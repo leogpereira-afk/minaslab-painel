@@ -48,7 +48,7 @@ async function resumo(a: string, empresa: string, status: string, busca: string,
   let q: any;
   if (a === "recebimentos") q = sb.from("recebimentos").select("valor_previsto,valor_recebido,valor_pendente,status").eq("apagado", false);
   else if (a === "despesas") q = sb.from("despesas").select("valor_original,valor_pago,valor_pendente,status").eq("apagado", false);
-  else if (a === "notas") q = sb.from("notas_fiscais").select("valor_total,pdf_url,xml_url,status_fiscal").eq("apagado", false);
+  else if (a === "notas") q = sb.from("notas_fiscais").select("valor_total,pdf_url,xml_url,status_fiscal,origem").eq("apagado", false);
   else if (a === "movimentos") q = sb.from("movimentos_bancarios").select("tipo,valor,conciliado");
   else return null;
   q = filtrosBase(q, a, empresa, status, busca, de, ate);
@@ -57,7 +57,7 @@ async function resumo(a: string, empresa: string, status: string, busca: string,
   const d = r.data || [];
   if (a === "recebimentos") return d.reduce((s: any, x: any) => ({ previsto: s.previsto + num(x.valor_previsto), recebido: s.recebido + num(x.valor_recebido), pendente: s.pendente + num(x.valor_pendente) }), { previsto: 0, recebido: 0, pendente: 0 });
   if (a === "despesas") return d.reduce((s: any, x: any) => ({ total: s.total + num(x.valor_original), pago: s.pago + num(x.valor_pago), pendente: s.pendente + num(x.valor_pendente) }), { total: 0, pago: 0, pendente: 0 });
-  if (a === "notas") return d.reduce((s: any, x: any) => ({ total: s.total + 1, valor: s.valor + num(x.valor_total), comPdf: s.comPdf + (x.pdf_url ? 1 : 0), semPdf: s.semPdf + (x.pdf_url ? 0 : 1), comXml: s.comXml + (x.xml_url ? 1 : 0), autorizadas: s.autorizadas + (String(x.status_fiscal || "").toUpperCase() === "AUTORIZADA" ? 1 : 0), canceladas: s.canceladas + (String(x.status_fiscal || "").toUpperCase() === "CANCELADA" ? 1 : 0) }), { total: 0, valor: 0, comPdf: 0, semPdf: 0, comXml: 0, autorizadas: 0, canceladas: 0 });
+  if (a === "notas") return d.reduce((s: any, x: any) => { const origem = String(x.origem || "").toUpperCase(); const exigePdfLocal = origem !== "OMIE"; return ({ total: s.total + 1, valor: s.valor + num(x.valor_total), comPdf: s.comPdf + (x.pdf_url ? 1 : 0), semPdf: s.semPdf + (!x.pdf_url && exigePdfLocal ? 1 : 0), comXml: s.comXml + (x.xml_url ? 1 : 0), autorizadas: s.autorizadas + (String(x.status_fiscal || "").toUpperCase() === "AUTORIZADA" ? 1 : 0), canceladas: s.canceladas + (String(x.status_fiscal || "").toUpperCase() === "CANCELADA" ? 1 : 0) }); }, { total: 0, valor: 0, comPdf: 0, semPdf: 0, comXml: 0, autorizadas: 0, canceladas: 0 });
   return d.reduce((s: any, x: any) => { const v = Math.abs(num(x.valor)); if (String(x.tipo).toUpperCase() === "CREDITO") s.entradas += v; else s.saidas += v; if (x.conciliado) s.conciliados++; else s.pendentes++; return s; }, { entradas: 0, saidas: 0, conciliados: 0, pendentes: 0 });
 }
 
