@@ -17,6 +17,7 @@ function validarFiscal(r:any,cliente:any){
   if(!String(r.codigo_servico||"").trim())erros.push("Código nacional do serviço é obrigatório.");
   if(!(Number(r.valor_total)>0))erros.push("Valor da nota deve ser maior que zero.");
   if(!r.data_vencimento)erros.push("Vencimento do recebimento é obrigatório.");
+  const aliqSn=Number(r.aliquota_simples_nacional??2.01);if(!(aliqSn>0&&aliqSn<=100))erros.push("Alíquota do Simples Nacional inválida.");
   return erros;
 }
 
@@ -85,7 +86,7 @@ Deno.serve(async(req)=>{
 
     if(b.action==="preparar"||b.action==="rascunhoSalvar"){
       const reg=b.registro||{};const cliente=await resolverCliente(reg);const erros=validarFiscal(reg,cliente);if(erros.length)return json({valido:false,erros},400);
-      const dados={versaoLayout:"v1.01-20260209",servico:{codigo:String(reg.codigo_servico||"").trim(),nbs:String(reg.nbs||"").trim()||null,descricao:String(reg.servico_descricao||"").trim()},tributacao:{aliquotaIss:reg.aliquota_iss===""||reg.aliquota_iss==null?null:Number(reg.aliquota_iss),issRetido:Boolean(reg.iss_retido),regimeEspecial:reg.regime_especial||null,ibsCbs:reg.ibs_cbs||null},financeiro:{vencimento:reg.data_vencimento,formaPagamento:reg.forma_pagamento||null},observacao:reg.observacao||null,preparadoEm:new Date().toISOString()};
+      const dados={versaoLayout:"v1.01-20260727",servico:{codigo:String(reg.codigo_servico||"").trim(),nbs:String(reg.nbs||"").trim()||null,descricao:String(reg.servico_descricao||"").trim()},tributacao:{aliquotaIss:reg.aliquota_iss===""||reg.aliquota_iss==null?null:Number(reg.aliquota_iss),aliquotaSimplesNacional:Number(reg.aliquota_simples_nacional??2.01),issRetido:Boolean(reg.iss_retido),regimeEspecial:reg.regime_especial||null,ibsCbs:reg.ibs_cbs||null},financeiro:{vencimento:reg.data_vencimento,formaPagamento:reg.forma_pagamento||null},observacao:reg.observacao||null,preparadoEm:new Date().toISOString()};
       if(b.action==="preparar")return json({valido:true,ambiente,empresa:mlab,cliente,dados,alertas:configurado?[]:["Credenciais do certificado/dados fiscais ainda não estão completas no Supabase."]});
       const payload:any={empresa_id:mlab.id,tipo:"SAIDA",cliente_id:cliente.id,cnpj_emitente:mlab.cnpj,nome_emitente:mlab.nome,cnpj_destinatario:cliente.cnpj_cpf,nome_destinatario:cliente.nome,email_destino:cliente.email||null,data_emissao:reg.data_emissao||hoje(),data_vencimento:reg.data_vencimento,valor_total:Number(reg.valor_total),origem:"NFSE_NACIONAL",status_fiscal:"RASCUNHO",nfse_ambiente:ambiente,nfse_dados:dados,observacao:reg.observacao||null,updated_at:new Date().toISOString()};
       let res:any;
@@ -101,7 +102,7 @@ Deno.serve(async(req)=>{
       if(!configurado)return json({erro:"A emissão fiscal está pronta no sistema, mas faltam configurar certificado A1 e/ou dados fiscais nos Secrets do Supabase.",requisitos},409);
       if(ambiente==="PRODUCAO"&&Deno.env.get("MLAB_NFSE_PRODUCAO_LIBERADA")!=="SIM")return json({erro:"Produção bloqueada. Faça e aprove primeiro a homologação."},409);
       if(!transmissaoAtiva)return json({erro:"Certificado/dados fiscais podem estar configurados, mas a transmissão permanece bloqueada até o teste de homologação da DPS assinada.",ambiente},409);
-      return json({erro:"Bloqueio técnico de segurança: a transmissão direta ao Emissor Nacional só será liberada após validar o XML DPS v1.01/20260209 assinado com o A1 da M Lab no ambiente de produção restrita. Nenhuma NFS-e foi emitida."},409);
+      return json({erro:"Bloqueio técnico de segurança: a transmissão direta ao Emissor Nacional só será liberada após validar o XML DPS assinado com o A1 da M Lab. Nenhuma NFS-e foi emitida por esta função."},409);
     }
 
     return json({erro:"Ação inválida."},400);
