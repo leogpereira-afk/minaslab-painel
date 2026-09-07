@@ -69,11 +69,15 @@ export default function FinanceiroDashboard() {
     const totalPagar=desAbertas.reduce((s,d)=>s+Number(d.valor_pendente||0),0);
     const contas=(opcoes.contas||[]).filter(c=>!empresaId||c.empresa_id===empresaId);
     const saldoInicial=contas.reduce((s,c)=>s+Number(c.saldo_inicial||0),0);
+    const saldoCalculado=saldoInicial+totalRecebido-totalPago;
+    const saldoRealDisponivel=contas.length>0&&contas.every(c=>c.saldo_atual!==null&&c.saldo_atual!==undefined);
+    const saldoBancario=saldoRealDisponivel?contas.reduce((s,c)=>s+Number(c.saldo_atual||0),0):null;
     const hoje=isoLocal(new Date());
     const vencidos=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<hoje).reduce((s,r)=>s+Number(r.valor_pendente||0),0);
     const baseInad=totalRecebido+totalReceber;
     const valorNotas=notas.filter(n=>noPeriodo(n.data_emissao,de,ate)).reduce((s,n)=>s+Number(n.valor_total||0),0);
-    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoAtual:saldoInicial+totalRecebido-totalPago,saldoProjetado:saldoInicial+totalRecebido-totalPago+totalReceber-totalPagar,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,saldoInicial};
+    const baseProjecao=saldoRealDisponivel?saldoBancario:saldoCalculado;
+    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoCalculado,saldoProjetado:baseProjecao+totalReceber-totalPagar,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,saldoInicial};
   },[recebimentos,despesas,notas,opcoes.contas,empresaId,de,ate]);
 
   const serie = useMemo(() => {
@@ -110,8 +114,8 @@ export default function FinanceiroDashboard() {
       <Card titulo="A Receber" valor={moeda(dados.totalReceber)} subtitulo="Saldo aberto até o fim do período" Icone={TrendingUp} destaque="text-sky-700"/>
       <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Pagamentos realizados no período" Icone={ArrowUpCircle} destaque="text-rose-700"/>
       <Card titulo="A Pagar" valor={moeda(dados.totalPagar)} subtitulo="Saldo aberto até o fim do período" Icone={Wallet} destaque="text-amber-700"/>
-      <Card titulo="Saldo Atual" valor={moeda(dados.saldoAtual)} subtitulo="Saldo inicial + recebido - pago" Icone={Wallet}/>
-      <Card titulo="Saldo Projetado" valor={moeda(dados.saldoProjetado)} subtitulo="Inclui pendências a receber e pagar" Icone={TrendingUp}/>
+      <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real informado nas contas bancárias":"Saldo real ainda não informado nas contas bancárias"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
+      <Card titulo="Saldo Projetado" valor={moeda(dados.saldoProjetado)} subtitulo={dados.saldoRealDisponivel?"Saldo bancário + pendências a receber e pagar":"Projeção contábil; aguarda saldo bancário real"} Icone={TrendingUp}/>
       <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo="Títulos vencidos sobre a carteira" Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"}/>
       <Card titulo="Notas no período" valor={moeda(dados.notas)} subtitulo="Valor total por data de emissão" Icone={FileText}/>
     </div>
