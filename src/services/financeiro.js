@@ -13,7 +13,7 @@ export const finListaPaginada=(tipo,f={})=>chamarListas(tipo,f);
 export const finRecebimentosPagina=f=>chamarListas("recebimentos",f);
 export const finDespesasPagina=f=>chamarListas("despesas",f);
 export const finNotasPagina=f=>chamarListas("notas",f);
-export const finMovimentosPagina=f=>chamarListas("movimentos",f);
+export const finMovimentosPagina=f=>chamarListas("movimentos",f).then(r=>({...r,itens:(r.itens||[]).map(m=>{const nome=String(m?.dados_omie?.cDesCategoria||m?.dados_omie?.cCodCategoria||"").trim();if(!nome)return m;const cats=(m.conciliacoes||[]).flatMap(c=>[c?.recebimento?.categoria?.nome,c?.despesa?.categoria?.nome]).filter(Boolean);if(cats.includes(nome))return m;return{...m,conciliacoes:[...(m.conciliacoes||[]),{somente_categoria_omie:true,valor_conciliado:0,recebimento:{categoria:{nome}}}]}})}));
 export const finRecebimentosListar=(empresaId="")=>chamar("recebimentosListar",{empresaId}).then(r=>r.itens||[]);
 export const finRecebimentoSalvar=r=>chamar("recebimentoSalvar",{registro:r}).then(x=>x.item);
 export const finRecebimentoBaixar=(id,valor,dataPagamento,extras={})=>chamar("recebimentoBaixar",{id,valor,dataPagamento,...extras}).then(r=>r.item);
