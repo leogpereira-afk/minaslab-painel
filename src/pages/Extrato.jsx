@@ -18,6 +18,7 @@ const dataBR = (v) => {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v;
 };
 const soDigitos = (v) => String(v || "").replace(/\D/g, "");
+const normaliza = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function tag(bloco, nome) {
@@ -78,15 +79,11 @@ function csvLinha(linha) {
       if (q && linha[i + 1] === '"') {
         s += '"';
         i++;
-      } else {
-        q = !q;
-      }
+      } else q = !q;
     } else if (c === "," && !q) {
       out.push(s.trim());
       s = "";
-    } else {
-      s += c;
-    }
+    } else s += c;
   }
   out.push(s.trim());
   return out;
@@ -121,7 +118,6 @@ function parseC6CSV(t) {
   const iDesc = ix("Descrição");
   const iEntrada = ix("Entrada(R$)");
   const iSaida = ix("Saída(R$)");
-
   const ocorr = new Map();
   const itens = [];
 
@@ -134,23 +130,13 @@ function parseC6CSV(t) {
     const entrada = numeroCsv(c[iEntrada]);
     const saida = numeroCsv(c[iSaida]);
     if (!data || (!entrada && !saida)) continue;
-
     const tipo = entrada > 0 ? "CREDITO" : "DEBITO";
     const valor = entrada > 0 ? entrada : -saida;
     const descricao = [titulo, desc].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" · ");
     const base = `${data}|${titulo}|${desc}|${entrada.toFixed(2)}|${saida.toFixed(2)}`;
     const n = (ocorr.get(base) || 0) + 1;
     ocorr.set(base, n);
-
-    itens.push({
-      data_movimento: data,
-      descricao,
-      tipo,
-      valor,
-      fitid: `C6CSV|${base}|${n}`,
-      documento: titulo || null,
-      origem: "CSV_C6",
-    });
+    itens.push({ data_movimento: data, descricao, tipo, valor, fitid: `C6CSV|${base}|${n}`, documento: titulo || null, origem: "CSV_C6" });
   }
 
   const mc = texto.match(/Agência:\s*([\d.-]+)\s*\/\s*Conta:\s*([\d.-]+)/i);
@@ -158,11 +144,20 @@ function parseC6CSV(t) {
 }
 
 function categoriaMov(m) {
-  const nomes = (m.conciliacoes || [])
-    .flatMap((c) => [c?.recebimento?.categoria?.nome, c?.despesa?.categoria?.nome])
-    .filter(Boolean);
+  const nomes = (m.conciliacoes || []).flatMap((c) => [c?.recebimento?.categoria?.nome, c?.despesa?.categoria?.nome]).filter(Boolean);
   return [...new Set(nomes)].join(" / ") || "—";
 }
+
+function valorTitulo(x, tipo) {
+  return Math.max(0, Number(tipo === "CREDITO" ? x.valor_previsto : x.valor_original) || 0);
+}
+function conciliadoTitulo(x) { return Math.max(0, Number(x.valor_conciliado || 0)); }
+function restanteTitulo(x, tipo) { return Math.max(0, valorTitulo(x, tipo) - conciliadoTitulo(x)); }
+function conciliadoMov(m) { return (m.conciliacoes || []).reduce((s, c) => s + Number(c?.valor_conciliado || 0), 0); }
+function restanteMov(m) { return Math.max(0, Math.abs(Number(m?.valor || 0)) - conciliadoMov(m)); }
+function nomeTitulo(x) { return x.cliente || x.fornecedor || "Sem nome"; }
+function docTitulo(x) { return x.numero_nf || x.cnpj_cpf || x.codigo_lancamento_integracao || ""; }
+function dataTitulo(x) { return x.c6_data_credito || x.data_pagamento || x.data_vencimento || x.data_lancamento || ""; }
 
 export default function Extrato() {
   const navigate = useNavigate();
@@ -188,6 +183,9 @@ export default function Extrato() {
   const [loading, setLoading] = useState(true);
   const [conciliando, setConciliando] = useState(null);
   const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
+  const [buscaConciliacao, setBuscaConciliacao] = useState("");
+  const [selecionados, setSelecionados] = useState([]);
+  const [salvandoConciliacao, setSalvandoConciliacao] = useState(false);
 
   async function carregar(p = pagina) {
     setLoading(true);
@@ -202,11 +200,8 @@ export default function Extrato() {
       setMeta({ total: m.total || 0, paginas: m.paginas || 1 });
       setResumo(m.resumo || { entradas: 0, saidas: 0, conciliados: 0, pendentes: 0 });
       setPagina(m.pagina || p);
-    } catch (e) {
-      setErro(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setErro(e.message); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => {
@@ -216,41 +211,97 @@ export default function Extrato() {
 
   const saldoResumo = Number(resumo.entradas || 0) - Number(resumo.saidas || 0);
 
-  const candidatos = (mov) => {
+  function titulosDisponiveis(mov) {
     const fonte = mov.tipo === "CREDITO" ? receber : pagar;
+    const termo = normaliza(buscaConciliacao);
+    const restante = restanteMov(mov);
     return fonte
-      .filter((x) => x.status !== "CANCELADO" && Number(x.valor_pendente || 0) > 0 && Math.abs(Number(x.valor_pendente || 0) - Math.abs(Number(mov.valor || 0))) < 0.01)
-      .map((x) => {
-        const dataRef = x.importacao_origem === "C6_BOLETOS" && x.c6_data_credito ? x.c6_data_credito : x.data_vencimento;
-        const a = new Date(`${dataRef || "1900-01-01"}T00:00:00`);
-        const b = new Date(`${mov.data_movimento}T00:00:00`);
-        const dias = Math.abs(a - b) / 86400000;
-        return { x, dias, dataRef, forte: x.importacao_origem === "C6_BOLETOS" && !!x.c6_data_credito };
+      .filter((x) => String(x.status || "").toUpperCase() !== "CANCELADO" && restanteTitulo(x, mov.tipo) > 0.005)
+      .filter((x) => {
+        if (!termo) return true;
+        const texto = normaliza([nomeTitulo(x), x.cnpj_cpf, x.descricao, x.numero_nf, x.observacao, x.categoria_texto, x.forma_pagamento, dataTitulo(x), valorTitulo(x, mov.tipo).toFixed(2)].filter(Boolean).join(" "));
+        return texto.includes(termo);
       })
-      .filter((y) => y.dias <= 3)
-      .sort((a, b) => Number(b.forte) - Number(a.forte) || a.dias - b.dias)
-      .slice(0, 8);
-  };
+      .map((x) => {
+        const vr = restanteTitulo(x, mov.tipo);
+        const dm = new Date(`${mov.data_movimento}T00:00:00`);
+        const dt = new Date(`${dataTitulo(x) || "1900-01-01"}T00:00:00`);
+        const dias = Math.abs(dm - dt) / 86400000;
+        const descricaoMov = normaliza(`${mov.descricao || ""} ${mov.documento || ""}`);
+        const nome = normaliza(nomeTitulo(x));
+        const doc = normaliza(docTitulo(x));
+        let score = 0;
+        if (Math.abs(vr - restante) < 0.01) score += 5;
+        if (dias <= 3) score += 3;
+        else if (dias <= 7) score += 1;
+        if (nome && descricaoMov.includes(nome)) score += 5;
+        if (doc && doc.length >= 2 && descricaoMov.includes(doc)) score += 3;
+        return { x, vr, dias, score };
+      })
+      .sort((a, b) => b.score - a.score || a.dias - b.dias || a.vr - b.vr)
+      .slice(0, buscaConciliacao ? 100 : 40);
+  }
 
   async function abrirConciliacao(m) {
+    if (!empresa) {
+      setErro("Selecione uma empresa para conciliar com segurança.");
+      return;
+    }
     setConciliando(m);
+    setBuscaConciliacao("");
+    setSelecionados([]);
     setCarregandoCandidatos(true);
     try {
       const [r, d] = await Promise.all([finRecebimentosListar(empresa), finDespesasListar(empresa)]);
       setReceber(r);
       setPagar(d);
-    } catch (e) {
-      setErro(e.message);
-    } finally {
-      setCarregandoCandidatos(false);
-    }
+    } catch (e) { setErro(e.message); }
+    finally { setCarregandoCandidatos(false); }
+  }
+
+  function fecharConciliacao() {
+    setConciliando(null);
+    setBuscaConciliacao("");
+    setSelecionados([]);
+  }
+
+  function alternarTitulo(id) {
+    setSelecionados((atual) => atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]);
+  }
+
+  async function conciliarSelecionados() {
+    if (!conciliando || !selecionados.length) return;
+    const fonte = conciliando.tipo === "CREDITO" ? receber : pagar;
+    let restante = restanteMov(conciliando);
+    if (restante <= 0.005) return;
+    setSalvandoConciliacao(true);
+    setErro("");
+    try {
+      let feitos = 0;
+      for (const id of selecionados) {
+        if (restante <= 0.005) break;
+        const dest = fonte.find((x) => x.id === id);
+        if (!dest) continue;
+        const disponivel = restanteTitulo(dest, conciliando.tipo);
+        const valor = Math.min(restante, disponivel);
+        if (valor <= 0.005) continue;
+        await finConciliar(conciliando.id, {
+          recebimentoId: conciliando.tipo === "CREDITO" ? dest.id : null,
+          despesaId: conciliando.tipo === "DEBITO" ? dest.id : null,
+          valor,
+        });
+        restante -= valor;
+        feitos++;
+      }
+      setAviso(`${feitos} título(s) conciliado(s).${restante > 0.005 ? ` Restante do movimento: ${moeda(restante)}.` : " Movimento totalmente conciliado."}`);
+      fecharConciliacao();
+      await carregar(pagina);
+    } catch (ex) { setErro(ex.message); }
+    finally { setSalvandoConciliacao(false); }
   }
 
   function abrirImportacao(ref) {
-    if (!empresa) {
-      setErro("Selecione a empresa antes de importar o extrato.");
-      return;
-    }
+    if (!empresa) { setErro("Selecione a empresa antes de importar o extrato."); return; }
     setErro("");
     ref.current?.click();
   }
@@ -258,50 +309,31 @@ export default function Extrato() {
   async function importar(e) {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (!empresa) {
-      setErro("Selecione a empresa antes de importar.");
-      return;
-    }
-
+    if (!empresa) { setErro("Selecione a empresa antes de importar."); return; }
     try {
-      setErro("");
-      setAviso("");
+      setErro(""); setAviso("");
       const t = await f.text();
       const isCsv = f.name.toLowerCase().endsWith(".csv");
       const parsed = isCsv ? parseC6CSV(t) : { itens: parseOFX(t), meta: lerContaOFX(t) };
       const dados = parsed.itens;
       const metaConta = parsed.meta;
       if (!dados.length) throw new Error("Nenhuma movimentação válida encontrada no arquivo.");
-
       const detectada = conta ? op.contas.find((c) => c.id === conta) : detectarContaOFX(metaConta, op.contas, empresa);
-      if (!detectada) {
-        throw new Error(`Não foi possível identificar com segurança a conta do extrato${metaConta.conta ? ` (conta ${metaConta.conta})` : ""}. Selecione a conta bancária antes de importar.`);
-      }
-
+      if (!detectada) throw new Error(`Não foi possível identificar com segurança a conta do extrato${metaConta.conta ? ` (conta ${metaConta.conta})` : ""}. Selecione a conta bancária antes de importar.`);
       setConta(detectada.id);
       const r = await finMovimentosImportar(empresa, detectada.id, dados);
       setAviso(`${isCsv ? "CSV C6" : "OFX"} importado na conta ${detectada.nome}: ${r?.inseridos || 0} novos, ${r?.ignorados || 0} já existentes.`);
       await carregar(1);
-    } catch (ex) {
-      setErro(ex.message);
-    } finally {
-      e.target.value = "";
-    }
+    } catch (ex) { setErro(ex.message); }
+    finally { e.target.value = ""; }
   }
 
-  async function conciliar(mov, dest) {
-    try {
-      await finConciliar(mov.id, {
-        recebimentoId: mov.tipo === "CREDITO" ? dest.id : null,
-        despesaId: mov.tipo === "DEBITO" ? dest.id : null,
-        valor: Math.min(Math.abs(Number(mov.valor || 0)), Number(dest.valor_pendente || 0)),
-      });
-      setConciliando(null);
-      await carregar(pagina);
-    } catch (ex) {
-      setErro(ex.message);
-    }
-  }
+  const listaConciliacao = conciliando ? titulosDisponiveis(conciliando) : [];
+  const selecionadosValor = conciliando ? selecionados.reduce((s, id) => {
+    const fonte = conciliando.tipo === "CREDITO" ? receber : pagar;
+    const x = fonte.find((t) => t.id === id);
+    return s + (x ? restanteTitulo(x, conciliando.tipo) : 0);
+  }, 0) : 0;
 
   return (
     <div className="space-y-5">
@@ -336,7 +368,7 @@ export default function Extrato() {
         <input ref={ofxRef} type="file" accept=".ofx,application/x-ofx" className="hidden" onChange={importar} />
       </div>
 
-      {!empresa && <div className="text-xs text-slate-500">Selecione a empresa antes de importar um arquivo. Para a M Lab / C6, prefira o CSV.</div>}
+      {!empresa && <div className="text-xs text-slate-500">Selecione a empresa antes de importar ou conciliar. Para a M Lab / C6, prefira o CSV.</div>}
       {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
       {aviso && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{aviso}</div>}
 
@@ -344,25 +376,19 @@ export default function Extrato() {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Descrição / Favorecido</th><th className="px-4 py-3">Categoria</th><th className="px-4 py-3">Conta</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3">Situação</th><th /></tr></thead>
           <tbody>
-            {loading ? (
-              <tr><td colSpan="9" className="p-8 text-center text-slate-500">Carregando...</td></tr>
-            ) : itens.length === 0 ? (
-              <tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhuma movimentação.</td></tr>
-            ) : (
-              itens.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="px-4 py-3">{dataBR(m.data_movimento)}</td>
-                  <td className="px-4 py-3"><div className="font-medium">{m.descricao || "—"}</div><div className="text-xs text-slate-500">{m.fitid ? `ID ${m.fitid}` : m.documento || ""}</div></td>
-                  <td className="px-4 py-3">{categoriaMov(m)}</td>
-                  <td className="px-4 py-3">{m.conta?.nome || "—"}</td>
-                  <td className="px-4 py-3 text-xs font-semibold">{m.origem || "—"}</td>
-                  <td className={`px-4 py-3 font-semibold ${m.tipo === "CREDITO" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo}</td>
-                  <td className="px-4 py-3 text-right font-semibold">{moeda(m.valor)}</td>
-                  <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${m.conciliado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{m.conciliado ? "CONCILIADO" : "PENDENTE"}</span></td>
-                  <td className="px-4 py-3 text-right">{!m.conciliado && <button className="btn-outline py-1.5" onClick={() => abrirConciliacao(m)}><Link2 size={14} />Conciliar</button>}</td>
-                </tr>
-              ))
-            )}
+            {loading ? <tr><td colSpan="9" className="p-8 text-center text-slate-500">Carregando...</td></tr> : itens.length === 0 ? <tr><td colSpan="9" className="p-8 text-center text-slate-500">Nenhuma movimentação.</td></tr> : itens.map((m) => (
+              <tr key={m.id} className="border-t">
+                <td className="px-4 py-3">{dataBR(m.data_movimento)}</td>
+                <td className="px-4 py-3"><div className="font-medium">{m.descricao || "—"}</div><div className="text-xs text-slate-500">{m.fitid ? `ID ${m.fitid}` : m.documento || ""}</div></td>
+                <td className="px-4 py-3">{categoriaMov(m)}</td>
+                <td className="px-4 py-3">{m.conta?.nome || "—"}</td>
+                <td className="px-4 py-3 text-xs font-semibold">{m.origem || "—"}</td>
+                <td className={`px-4 py-3 font-semibold ${m.tipo === "CREDITO" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo}</td>
+                <td className="px-4 py-3 text-right font-semibold">{moeda(m.valor)}</td>
+                <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${m.conciliado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{m.conciliado ? "CONCILIADO" : `PENDENTE${conciliadoMov(m) > 0 ? ` · ${moeda(restanteMov(m))}` : ""}`}</span></td>
+                <td className="px-4 py-3 text-right">{!m.conciliado && <button className="btn-outline py-1.5" onClick={() => abrirConciliacao(m)}><Link2 size={14} />Conciliar</button>}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -378,24 +404,46 @@ export default function Extrato() {
 
       {conciliando && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between">
-              <div><h2 className="font-bold">Conciliar {moeda(conciliando.valor)}</h2><p className="text-sm text-slate-500">O sistema procura títulos por valor e data. A conciliação múltipla será usada quando um único débito quitar mais de uma despesa.</p></div>
-              <button className="btn-ghost" onClick={() => setConciliando(null)}>Fechar</button>
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-bold">Conciliar {moeda(conciliando.valor)}</h2>
+                <p className="text-sm text-slate-500">{dataBR(conciliando.data_movimento)} · {conciliando.descricao || conciliando.documento || "Movimento bancário"}</p>
+              </div>
+              <button className="btn-ghost" onClick={fecharConciliacao} disabled={salvandoConciliacao}>Fechar</button>
             </div>
-            <div className="space-y-2">
-              {carregandoCandidatos ? (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Buscando títulos candidatos...</p>
-              ) : candidatos(conciliando).length === 0 ? (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhum candidato automático. Use a busca/conciliação múltipla quando o movimento corresponder a vários títulos.</p>
-              ) : (
-                candidatos(conciliando).map(({ x, dataRef, forte }) => (
-                  <button key={x.id} onClick={() => conciliar(conciliando, x)} className="w-full rounded-xl border p-3 text-left hover:bg-slate-50">
-                    <div className="flex justify-between gap-3"><span className="font-medium">{x.cliente || x.fornecedor}</span><span className="font-semibold">{moeda(x.valor_pendente)}</span></div>
-                    <div className="mt-1 text-xs text-slate-500">{forte ? `Crédito C6 ${dataBR(dataRef)}` : `Vencimento ${dataBR(dataRef)}`} · {x.importacao_origem || x.origem}</div>
-                  </button>
-                ))
-              )}
+
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Valor do movimento</div><div className="font-bold">{moeda(Math.abs(Number(conciliando.valor || 0)))}</div></div>
+              <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Já conciliado</div><div className="font-bold text-emerald-700">{moeda(conciliadoMov(conciliando))}</div></div>
+              <div className="rounded-xl bg-amber-50 p-3"><div className="text-xs text-amber-700">Restante</div><div className="font-bold text-amber-800">{moeda(restanteMov(conciliando))}</div></div>
+            </div>
+
+            <label className="mb-4 block">
+              <span className="label">Pesquisar título</span>
+              <div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input autoFocus className="input pl-9" value={buscaConciliacao} onChange={(e) => setBuscaConciliacao(e.target.value)} placeholder="Cliente/fornecedor, NF, CNPJ/CPF, descrição, data ou valor" /></div>
+            </label>
+
+            {carregandoCandidatos ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Buscando títulos...</p> : listaConciliacao.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhum título disponível para este movimento. Ele pode permanecer pendente sem criar lançamento artificial.</p> : (
+              <div className="space-y-2">
+                {listaConciliacao.map(({ x, vr, score }) => {
+                  const marcado = selecionados.includes(x.id);
+                  return <label key={x.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${marcado ? "border-blue-400 bg-blue-50" : "hover:bg-slate-50"}`}>
+                    <input type="checkbox" className="mt-1" checked={marcado} onChange={() => alternarTitulo(x.id)} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{nomeTitulo(x)}</span><span className="font-semibold">{moeda(vr)}</span></div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                        <span>{docTitulo(x) ? `NF/Doc ${docTitulo(x)}` : "Sem documento"}</span><span>Data {dataBR(dataTitulo(x))}</span><span>Status {x.status || "—"}</span><span>{x.importacao_origem || x.origem || "MANUAL"}</span>{score >= 5 && <span className="font-semibold text-emerald-700">Sugestão forte</span>}
+                      </div>
+                    </div>
+                  </label>;
+                })}
+              </div>
+            )}
+
+            <div className="sticky bottom-0 mt-5 flex flex-col gap-3 border-t bg-white pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-600">Selecionados: <strong>{selecionados.length}</strong> · disponível nos títulos: <strong>{moeda(selecionadosValor)}</strong> · movimento restante: <strong>{moeda(restanteMov(conciliando))}</strong></div>
+              <button className="btn-primary" disabled={!selecionados.length || salvandoConciliacao || restanteMov(conciliando) <= 0.005} onClick={conciliarSelecionados}>{salvandoConciliacao ? "Conciliando..." : "Confirmar conciliação"}</button>
             </div>
           </div>
         </div>
