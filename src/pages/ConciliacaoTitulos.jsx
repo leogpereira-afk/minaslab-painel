@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, CheckCircle2, Landmark, Search, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finRecebimentosPagina, finDespesasPagina, finMovimentosPagina, finConciliar } from "../services/financeiro.js";
+import { financeiroOpcoes, finRecebimentosPagina, finDespesasPagina, finMovimentosPagina, finConciliar, finRecebimentosListar, finDespesasListar } from "../services/financeiro.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBR = (v) => {
@@ -32,9 +32,14 @@ function Modal({ titulo, onClose, children }) {
 
 export default function ConciliacaoTitulos() {
   const navigate = useNavigate();
-  const [tipo, setTipo] = useState("RECEBIMENTO");
+  const [params] = useSearchParams();
+  const abriuDireto = useRef(false);
+  const tipoInicial = String(params.get("tipo") || "RECEBIMENTO").toUpperCase() === "DESPESA" ? "DESPESA" : "RECEBIMENTO";
+  const empresaInicial = params.get("empresaId") || "";
+  const tituloDiretoId = params.get("tituloId") || "";
+  const [tipo, setTipo] = useState(tipoInicial);
   const [op, setOp] = useState({ empresas: [] });
-  const [empresa, setEmpresa] = useState("");
+  const [empresa, setEmpresa] = useState(empresaInicial);
   const [busca, setBusca] = useState("");
   const [itens, setItens] = useState([]);
   const [meta, setMeta] = useState({ total: 0, paginas: 1, pagina: 1 });
@@ -64,14 +69,34 @@ export default function ConciliacaoTitulos() {
 
   useEffect(() => { const t = setTimeout(() => carregar(1), 250); return () => clearTimeout(t); }, [tipo, empresa, busca]);
 
-  async function abrir(x) {
+  async function abrir(x, tipoForcado = tipo) {
     if (!x?.empresa_id) { setErro("Este título não possui empresa vinculada."); return; }
     setTitulo(x); setSelecionados([]); setBuscaMov(""); setCarregandoMov(true); setErro(""); setOk("");
     try {
-      const r = await finMovimentosPagina({ empresaId: x.empresa_id, status: "PENDENTE", tipoMovimento: tipo === "RECEBIMENTO" ? "CREDITO" : "DEBITO", pagina: 1, limite: 100 });
+      const r = await finMovimentosPagina({ empresaId: x.empresa_id, status: "PENDENTE", tipoMovimento: tipoForcado === "RECEBIMENTO" ? "CREDITO" : "DEBITO", pagina: 1, limite: 100 });
       setMovimentos(r.itens || []);
     } catch (e) { setErro(e.message); setTitulo(null); } finally { setCarregandoMov(false); }
   }
+
+  useEffect(() => {
+    if (!tituloDiretoId || abriuDireto.current) return;
+    abriuDireto.current = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const lista = tipoInicial === "RECEBIMENTO" ? await finRecebimentosListar(empresaInicial) : await finDespesasListar(empresaInicial);
+        const alvo = (lista || []).find((x) => String(x.id) === String(tituloDiretoId));
+        if (!alvo) throw new Error("Não foi possível localizar o título selecionado para conciliação.");
+        setTipo(tipoInicial);
+        setEmpresa(alvo.empresa_id || empresaInicial);
+        await abrir(alvo, tipoInicial);
+      } catch (e) {
+        setErro(e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [tituloDiretoId, tipoInicial, empresaInicial]);
 
   const candidatos = useMemo(() => {
     if (!titulo) return [];
@@ -133,7 +158,7 @@ export default function ConciliacaoTitulos() {
   }
 
   return <div className="space-y-5">
-    <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={() => navigate("/financas/bancos")}><ArrowLeft size={18}/></button><PageTitle titulo="Conciliação por Títulos" descricao="Selecione primeiro o recebimento ou a despesa e depois vincule os lançamentos bancários compatíveis." /></div>
+    <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={() => navigate(tipo === "RECEBIMENTO" ? "/financas/recebimentos" : "/financas/despesas")}><ArrowLeft size={18}/></button><PageTitle titulo="Conciliação por Títulos" descricao="Selecione primeiro o recebimento ou a despesa e depois vincule os lançamentos bancários compatíveis." /></div>
 
     <div className="grid gap-3 sm:grid-cols-2">
       <button type="button" onClick={() => setTipo("RECEBIMENTO")} className={`rounded-2xl border p-4 text-left transition ${tipo === "RECEBIMENTO" ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200" : "bg-white hover:bg-slate-50"}`}><div className="flex items-center gap-3"><ArrowDownCircle className="text-emerald-700"/><div><div className="font-bold">Recebimentos</div><div className="text-sm text-slate-500">Conferir créditos bancários contra contas a receber.</div></div></div></button>
@@ -145,7 +170,7 @@ export default function ConciliacaoTitulos() {
     {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
     {ok && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{ok}</div>}
 
-    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">{tipo === "RECEBIMENTO" ? "Cliente" : "Fornecedor"}</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3 text-right">Já conciliado</th><th className="px-4 py-3 text-right">A conciliar</th><th className="px-4 py-3">Status</th><th/></tr></thead><tbody>{loading ? <tr><td colSpan="8" className="p-8 text-center text-slate-500">Carregando...</td></tr> : itens.length === 0 ? <tr><td colSpan="8" className="p-8 text-center text-slate-500">Nenhum título encontrado.</td></tr> : itens.map((x) => { const restante = restanteTitulo(x, tipo); const cancelado = String(x.status || "").toUpperCase() === "CANCELADO"; return <tr key={x.id} className="border-t"><td className="px-4 py-3">{x.empresa?.nome || "—"}</td><td className="px-4 py-3"><div className="font-medium">{nomeTitulo(x, tipo) || "—"}</div><div className="text-xs text-slate-500">{documentoTitulo(x) || x.descricao || ""}</div></td><td className="px-4 py-3">{dataBR(x.data_vencimento)}</td><td className="px-4 py-3 text-right">{moeda(valorTitulo(x, tipo))}</td><td className="px-4 py-3 text-right text-emerald-700">{moeda(conciliadoTitulo(x))}</td><td className="px-4 py-3 text-right font-semibold">{moeda(restante)}</td><td className="px-4 py-3">{String(x.status || "—").toUpperCase()}</td><td className="px-4 py-3 text-right"><button className="btn-outline py-1.5" disabled={cancelado || restante <= 0.005} onClick={() => abrir(x)}><Landmark size={14}/>{restante <= 0.005 ? "Conciliado" : "Conciliar"}</button></td></tr>; })}</tbody></table></div>
+    <div className="overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">{tipo === "RECEBIMENTO" ? "Cliente" : "Fornecedor"}</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3 text-right">Valor</th><th className="px-4 py-3 text-right">Já conciliado</th><th className="px-4 py-3 text-right">A conciliar</th><th className="px-4 py-3">Status</th><th/></tr></thead><tbody>{loading ? <tr><td colSpan="8" className="p-8 text-center text-slate-500">Carregando...</td></tr> : itens.length === 0 ? <tr><td colSpan="8" className="p-8 text-center text-slate-500">Nenhum título encontrado.</td></tr> : itens.map((x) => { const restante = restanteTitulo(x, tipo); const cancelado = String(x.status || "").toUpperCase() === "CANCELADO"; return <tr key={x.id} className="border-t"><td className="px-4 py-3">{x.empresa?.nome || "—"}</td><td className="px-4 py-3"><div className="font-medium">{nomeTitulo(x, tipo) || "—"}</div><div className="text-xs text-slate-500">{documentoTitulo(x) || x.descricao || ""}</div></td><td className="px-4 py-3">{dataBR(x.data_vencimento)}</td><td className="px-4 py-3 text-right">{moeda(valorTitulo(x, tipo))}</td><td className="px-4 py-3 text-right text-emerald-700">{moeda(conciliadoTitulo(x))}</td><td className="px-4 py-3 text-right font-semibold">{moeda(restante)}</td><td className="px-4 py-3">{String(x.status || "—").toUpperCase()}</td><td className="px-4 py-3 text-right"><button className="btn-outline py-1.5" disabled={cancelado || restante <= 0.005} onClick={() => abrir(x)}><Landmark size={14}/>{restante <= 0.005 ? "Conciliado" : "Conciliar com extrato"}</button></td></tr>; })}</tbody></table></div>
 
     <div className="flex items-center justify-between rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">{meta.total} títulos · página {pagina} de {meta.paginas}</span><div className="flex gap-2"><button className="btn-outline h-9" disabled={pagina <= 1} onClick={() => carregar(pagina - 1)}>Anterior</button><button className="btn-outline h-9" disabled={pagina >= meta.paginas} onClick={() => carregar(pagina + 1)}>Próxima</button></div></div>
 
