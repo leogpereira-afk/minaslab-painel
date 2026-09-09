@@ -79,12 +79,17 @@ export default function FinanceiroDashboard() {
     const hoje=isoLocal(new Date());
     const recebimentosVencidos=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<hoje);
     const despesasVencidas=despesas.filter(d=>d.status!=="CANCELADO"&&Number(d.valor_pendente)>0&&d.data_vencimento&&String(d.data_vencimento).slice(0,10)<hoje);
+    const recebimentosAVencer=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)>=hoje&&String(r.data_vencimento).slice(0,10)<=ate);
+    const despesasAVencer=despesas.filter(d=>d.status!=="CANCELADO"&&Number(d.valor_pendente)>0&&d.data_vencimento&&String(d.data_vencimento).slice(0,10)>=hoje&&String(d.data_vencimento).slice(0,10)<=ate);
     const vencidos=recebimentosVencidos.reduce((s,r)=>s+Number(r.valor_pendente||0),0);
-    const baseInad=totalRecebido+totalReceber;
+    const despesasVencidasValor=despesasVencidas.reduce((s,d)=>s+Number(d.valor_pendente||0),0);
+    const aVencer=recebimentosAVencer.reduce((s,r)=>s+Number(r.valor_pendente||0),0);
+    const aPagarVencer=despesasAVencer.reduce((s,d)=>s+Number(d.valor_pendente||0),0);
+    const baseInad=totalRecebido+vencidos;
     const notasPeriodo=notas.filter(n=>noPeriodo(n.data_emissao,de,ate));
     const valorNotas=notasPeriodo.reduce((s,n)=>s+Number(n.valor_total||0),0);
     const saldoProjetado=saldoRealDisponivel?saldoBancario+totalReceber-totalPagar:null;
-    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,recebimentosVencidos:recebimentosVencidos.length,despesasVencidas:despesasVencidas.length,notasQuantidade:notasPeriodo.length,contas};
+    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,inadimplenciaValor:vencidos,notas:valorNotas,recebimentosVencidos:recebimentosVencidos.length,despesasVencidas:despesasVencidas.length,recebimentosAVencer:recebimentosAVencer.length,despesasAVencer:despesasAVencer.length,recebimentosAVencerValor:aVencer,despesasAVencerValor:aPagarVencer,despesasVencidasValor,notasQuantidade:notasPeriodo.length,contas};
   },[recebimentos,despesas,notas,movimentos,opcoes.contas,opcoes.empresas,empresaId,de,ate]);
 
   const serie = useMemo(() => {
@@ -132,16 +137,18 @@ export default function FinanceiroDashboard() {
       <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real das contas ativas":"Há conta ou empresa ativa sem saldo informado"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"} onClick={()=>navigate("/financas/extrato")}/>
       <Card titulo="A Receber" valor={moeda(dados.totalReceber)} subtitulo="Saldo aberto até o fim do período" Icone={TrendingUp} destaque="text-sky-700" onClick={()=>navigate("/financas/recebimentos")}/>
       <Card titulo="A Pagar" valor={moeda(dados.totalPagar)} subtitulo="Saldo aberto até o fim do período" Icone={Wallet} destaque="text-amber-700" onClick={()=>navigate("/financas/despesas")}/>
-      <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo={`${dados.recebimentosVencidos} recebimento(s) vencido(s)`} Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"} onClick={()=>navigate("/financas/recebimentos")}/>
+      <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo={`${dados.recebimentosVencidos} vencido(s) · ${moeda(dados.inadimplenciaValor)}`} Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"}/>
     </div>
 
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Atenção financeira</h2><p className="text-xs text-slate-500">Pendências que merecem acompanhamento.</p></div><AlertTriangle size={19} className="text-amber-600"/></div>
-        <div className="space-y-2">
-          <button type="button" onClick={()=>navigate("/financas/recebimentos")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Recebimentos vencidos</p><p className="text-xs text-slate-500">{dados.recebimentosVencidos} título(s) em atraso</p></div><ChevronRight size={16} className="text-slate-400"/></button>
-          <button type="button" onClick={()=>navigate("/financas/despesas")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Despesas vencidas</p><p className="text-xs text-slate-500">{dados.despesasVencidas} título(s) pendente(s)</p></div><ChevronRight size={16} className="text-slate-400"/></button>
-          <button type="button" onClick={()=>navigate("/financas/notas-fiscais")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Notas fiscais no período</p><p className="text-xs text-slate-500">{dados.notasQuantidade} nota(s) · {moeda(dados.notas)}</p></div><ChevronRight size={16} className="text-slate-400"/></button>
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Atenção financeira</h2><p className="text-xs text-slate-500">A vencer e vencidos ficam separados para não misturar atraso com compromissos futuros.</p></div><AlertTriangle size={19} className="text-amber-600"/></div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 py-3"><p className="text-sm font-medium text-slate-800">Recebimentos a vencer</p><p className="mt-1 text-xs text-slate-500">{dados.recebimentosAVencer} título(s) · {moeda(dados.recebimentosAVencerValor)}</p></div>
+          <div className="rounded-xl border border-red-100 bg-red-50/40 px-4 py-3"><p className="text-sm font-medium text-slate-800">Recebimentos vencidos</p><p className="mt-1 text-xs text-slate-500">{dados.recebimentosVencidos} título(s) · {moeda(dados.inadimplenciaValor)}</p></div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 py-3"><p className="text-sm font-medium text-slate-800">Despesas a vencer</p><p className="mt-1 text-xs text-slate-500">{dados.despesasAVencer} título(s) · {moeda(dados.despesasAVencerValor)}</p></div>
+          <div className="rounded-xl border border-rose-100 bg-rose-50/40 px-4 py-3"><p className="text-sm font-medium text-slate-800">Despesas vencidas</p><p className="mt-1 text-xs text-slate-500">{dados.despesasVencidas} título(s) · {moeda(dados.despesasVencidasValor)}</p></div>
+          <button type="button" onClick={()=>navigate("/financas/notas-fiscais")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50 sm:col-span-2"><div><p className="text-sm font-medium text-slate-800">Notas fiscais no período</p><p className="text-xs text-slate-500">{dados.notasQuantidade} nota(s) · {moeda(dados.notas)}</p></div><ChevronRight size={16} className="text-slate-400"/></button>
         </div>
       </div>
 
