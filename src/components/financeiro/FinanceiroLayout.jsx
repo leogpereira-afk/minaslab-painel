@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, ReceiptText, UploadCloud, Ban, Link2, WalletCards, Users, BarChart3, ChevronDown, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, ReceiptText, UploadCloud, Ban, Users, BarChart3, ChevronDown, MoreHorizontal } from "lucide-react";
 import "./financeiro-redesign.css";
 
 const principais = [
@@ -15,7 +15,7 @@ const maisOpcoes = [
   { label: "Notas Fiscais", to: "/financas/notas-fiscais", icon: FileText, descricao: "Documentos fiscais, emissão, XML/PDF e cancelamentos." },
   { label: "Clientes", to: "/financas/clientes", icon: Users, descricao: "Cadastro financeiro isolado de clientes MinasLab e M Lab." },
   { label: "Relatórios", to: "/financas/relatorios", icon: BarChart3, descricao: "Exportações financeiras por banco, conta ou consolidado." },
-  { label: "Configurações", to: "/financas/configuracoes", icon: Settings, descricao: "Cadastros auxiliares, contas, categorias e integração Omie." },
+  { label: "Configurações", to: "/financas/configuracoes", icon: Settings, descricao: "Categorias, contas bancárias, centros de custo, formas de pagamento e Omie." },
 ];
 
 const fiscal = [
@@ -23,11 +23,6 @@ const fiscal = [
   { label: "Emitir NFS-e", to: "/financas/notas-fiscais/emitir", icon: ReceiptText, descricao: "Emissão da M Lab pelo fluxo fiscal já homologado." },
   { label: "Importar histórico", to: "/financas/notas-fiscais/importar-historico", icon: UploadCloud, descricao: "Importação de XMLs já emitidos sem duplicação." },
   { label: "Cancelamento", to: "/financas/notas-fiscais/cancelar", icon: Ban, descricao: "Cancelamento fiscal com histórico e proteção do financeiro." },
-];
-
-const bancos = [
-  { label: "Extrato & Conciliação", to: "/financas/extrato", icon: Link2, descricao: "Movimentos, filtros, candidatos, importação OFX/CSV e conciliação." },
-  { label: "Contas bancárias", to: "/financas/configuracoes", icon: WalletCards, descricao: "Cadastros, vínculos por empresa e saldos informados." },
 ];
 
 export default function FinanceiroLayout() {
@@ -56,7 +51,6 @@ export default function FinanceiroLayout() {
             <p className="mt-1 text-sm text-slate-500">Gestão integrada de MinasLab e M Lab.</p>
           </div>
           {emFiscal && <button type="button" className="btn-primary self-start lg:self-auto" onClick={() => navigate("/financas/notas-fiscais/emitir")}><ReceiptText size={16}/> Emitir NFS-e</button>}
-          {emBancos && <button type="button" className="btn-primary self-start lg:self-auto" onClick={() => navigate("/financas/extrato")}><Landmark size={16}/> Abrir extrato</button>}
         </div>
 
         <nav className="flex items-center gap-1 px-3 py-2" aria-label="Navegação interna do Financeiro">
@@ -95,13 +89,6 @@ export default function FinanceiroLayout() {
         <div className="mb-3 px-2 pt-1"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central Fiscal</p><p className="mt-1 text-sm text-slate-500">Ações fiscais específicas, sem repetir os demais módulos financeiros.</p></div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           {fiscal.map(({ label, to, end, icon: Icon, descricao }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}><div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16}/>{label}</div><p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p></NavLink>)}
-        </div>
-      </section>}
-
-      {emBancos && <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="mb-3 px-2 pt-1"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central Bancária</p><p className="mt-1 text-sm text-slate-500">Somente os acessos bancários essenciais, sem duplicar importação e conciliação em cards separados.</p></div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {bancos.map(({ label, to, icon: Icon, descricao }) => <NavLink key={label} to={to} className="rounded-xl border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:bg-slate-50"><div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16}/>{label}</div><p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p></NavLink>)}
         </div>
       </section>}
 
