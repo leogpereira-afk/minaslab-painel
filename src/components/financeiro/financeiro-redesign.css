@@ -10,7 +10,9 @@
   gap: 1rem;
 }
 
-.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div {
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div {
   position: relative;
   overflow: hidden;
   border-color: rgb(226 232 240);
@@ -19,7 +21,9 @@
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div::before {
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div::before,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div::before,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
@@ -52,7 +56,16 @@
   padding: .2rem 0;
 }
 
-.financeiro-shell > .space-y-5 > .overflow-x-auto.rounded-2xl.border.bg-white {
+.financeiro-shell > .space-y-5 > .overflow-x-auto.rounded-2xl.border.bg-white,
+.financeiro-shell > .space-y-5 > .rounded-2xl.border.border-slate-200.bg-white,
+.financeiro-shell > .space-y-5 > .rounded-2xl.border.bg-white {
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-5.xl\:grid-cols-2 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-5.lg\:grid-cols-2 > div {
   border-color: rgb(226 232 240);
   border-radius: 1rem;
   box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
