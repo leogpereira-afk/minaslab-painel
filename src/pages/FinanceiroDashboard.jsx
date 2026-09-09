@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp, AlertTriangle, FileText, RefreshCw } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp, AlertTriangle, FileText, RefreshCw, Landmark, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import { financeiroOpcoes, finRecebimentosListar, finDespesasListar, finNotasListar } from "../services/financeiro.js";
@@ -17,10 +17,10 @@ function periodoRapido(tipo){
  return{de:`${h.getFullYear()}-01-01`,ate:`${h.getFullYear()}-12-31`};
 }
 
-function Card({ titulo, valor, subtitulo, Icone, destaque = "text-slate-900" }) {
-  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p><p className={`mt-2 text-2xl font-bold ${destaque}`}>{valor}</p>{subtitulo && <p className="mt-1 text-xs text-slate-500">{subtitulo}</p>}</div><span className="rounded-xl bg-slate-50 p-2.5 text-slate-600"><Icone size={20}/></span></div>
-  </div>;
+function Card({ titulo, valor, subtitulo, Icone, destaque = "text-slate-900", onClick }) {
+  const corpo = <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p><p className={`mt-2 text-2xl font-bold ${destaque}`}>{valor}</p>{subtitulo && <p className="mt-1 text-xs text-slate-500">{subtitulo}</p>}</div><span className="rounded-xl bg-slate-50 p-2.5 text-slate-600"><Icone size={20}/></span></div>;
+  if (!onClick) return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">{corpo}</div>;
+  return <button type="button" onClick={onClick} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md">{corpo}<div className="mt-3 flex items-center gap-1 text-xs font-medium text-teal-700">Ver detalhes <ChevronRight size={13}/></div></button>;
 }
 
 function realizadoRecebimento(r,de,ate){
@@ -74,11 +74,14 @@ export default function FinanceiroDashboard() {
     const saldoRealDisponivel=todasEmpresasTemConta&&contas.length>0&&contas.every(c=>c.saldo_atual!==null&&c.saldo_atual!==undefined);
     const saldoBancario=saldoRealDisponivel?contas.reduce((s,c)=>s+Number(c.saldo_atual||0),0):null;
     const hoje=isoLocal(new Date());
-    const vencidos=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<hoje).reduce((s,r)=>s+Number(r.valor_pendente||0),0);
+    const recebimentosVencidos=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<hoje);
+    const despesasVencidas=despesas.filter(d=>d.status!=="CANCELADO"&&Number(d.valor_pendente)>0&&d.data_vencimento&&String(d.data_vencimento).slice(0,10)<hoje);
+    const vencidos=recebimentosVencidos.reduce((s,r)=>s+Number(r.valor_pendente||0),0);
     const baseInad=totalRecebido+totalReceber;
-    const valorNotas=notas.filter(n=>noPeriodo(n.data_emissao,de,ate)).reduce((s,n)=>s+Number(n.valor_total||0),0);
+    const notasPeriodo=notas.filter(n=>noPeriodo(n.data_emissao,de,ate));
+    const valorNotas=notasPeriodo.reduce((s,n)=>s+Number(n.valor_total||0),0);
     const saldoProjetado=saldoRealDisponivel?saldoBancario+totalReceber-totalPagar:null;
-    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas};
+    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,recebimentosVencidos:recebimentosVencidos.length,despesasVencidas:despesasVencidas.length,notasQuantidade:notasPeriodo.length,contas};
   },[recebimentos,despesas,notas,opcoes.contas,opcoes.empresas,empresaId,de,ate]);
 
   const serie = useMemo(() => {
@@ -108,9 +111,9 @@ export default function FinanceiroDashboard() {
   const minSaldo=Math.min(0,...evolucao.map(x=>x.saldo)),maxSaldo=Math.max(1,...evolucao.map(x=>x.saldo));
 
   return <div className="space-y-5">
-    <div className="flex items-center gap-3"><button className="btn-ghost h-9 w-9 p-0" onClick={()=>navigate("/financas")}><ArrowLeft size={18}/></button><PageTitle titulo="Dashboard Financeiro" descricao="MinasLab + M Lab, com realizado por data de pagamento e integração Omie exclusiva da MinasLab." /></div>
+    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><PageTitle titulo="Visão Geral Financeira" descricao="Posição financeira consolidada, alertas e principais movimentos de MinasLab e M Lab."/><button type="button" className="btn-outline self-start" onClick={()=>navigate("/financas/extrato")}><Landmark size={15}/> Bancos & Conciliação</button></div>
 
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap gap-2"><button className="btn-outline" onClick={()=>aplicarRapido("mes")}>Este mês</button><button className="btn-outline" onClick={()=>aplicarRapido("anterior")}>Mês anterior</button><button className="btn-outline" onClick={()=>aplicarRapido("3meses")}>Últimos 3 meses</button><button className="btn-outline" onClick={()=>aplicarRapido("ano")}>Ano atual</button></div>
       <div className="grid gap-3 md:grid-cols-4">
         <label className="block"><span className="label">Empresa</span><select className="input" value={empresaId} onChange={e=>setEmpresaId(e.target.value)}><option value="">Consolidado</option>{(opcoes.empresas||[]).map(e=><option key={e.id} value={e.id}>{e.nome}</option>)}</select></label>
@@ -122,14 +125,34 @@ export default function FinanceiroDashboard() {
     {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Card titulo="Total Recebido" valor={moeda(dados.totalRecebido)} subtitulo="Baixas realizadas no período" Icone={ArrowDownCircle} destaque="text-emerald-700"/>
-      <Card titulo="A Receber" valor={moeda(dados.totalReceber)} subtitulo="Saldo aberto até o fim do período" Icone={TrendingUp} destaque="text-sky-700"/>
-      <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Pagamentos realizados no período" Icone={ArrowUpCircle} destaque="text-rose-700"/>
-      <Card titulo="A Pagar" valor={moeda(dados.totalPagar)} subtitulo="Saldo aberto até o fim do período" Icone={Wallet} destaque="text-amber-700"/>
-      <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real das contas bancárias ativas":"Saldo incompleto: há conta/empresa ativa sem saldo informado"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
-      <Card titulo="Saldo Projetado" valor={dados.saldoRealDisponivel?moeda(dados.saldoProjetado):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo bancário atual + pendências a receber e pagar":"Projeção indisponível até completar os saldos bancários"} Icone={TrendingUp} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
-      <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo="Títulos vencidos sobre a carteira" Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"}/>
-      <Card titulo="Notas no período" valor={moeda(dados.notas)} subtitulo="Valor total por data de emissão" Icone={FileText}/>
+      <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real das contas ativas":"Há conta ou empresa ativa sem saldo informado"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"} onClick={()=>navigate("/financas/extrato")}/>
+      <Card titulo="A Receber" valor={moeda(dados.totalReceber)} subtitulo="Saldo aberto até o fim do período" Icone={TrendingUp} destaque="text-sky-700" onClick={()=>navigate("/financas/recebimentos")}/>
+      <Card titulo="A Pagar" valor={moeda(dados.totalPagar)} subtitulo="Saldo aberto até o fim do período" Icone={Wallet} destaque="text-amber-700" onClick={()=>navigate("/financas/despesas")}/>
+      <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo={`${dados.recebimentosVencidos} recebimento(s) vencido(s)`} Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"} onClick={()=>navigate("/financas/recebimentos")}/>
+    </div>
+
+    <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Atenção financeira</h2><p className="text-xs text-slate-500">Pendências que merecem acompanhamento.</p></div><AlertTriangle size={19} className="text-amber-600"/></div>
+        <div className="space-y-2">
+          <button type="button" onClick={()=>navigate("/financas/recebimentos")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Recebimentos vencidos</p><p className="text-xs text-slate-500">{dados.recebimentosVencidos} título(s) em atraso</p></div><ChevronRight size={16} className="text-slate-400"/></button>
+          <button type="button" onClick={()=>navigate("/financas/despesas")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Despesas vencidas</p><p className="text-xs text-slate-500">{dados.despesasVencidas} título(s) pendente(s)</p></div><ChevronRight size={16} className="text-slate-400"/></button>
+          <button type="button" onClick={()=>navigate("/financas/notas-fiscais")} className="flex w-full items-center justify-between rounded-xl border border-slate-100 px-4 py-3 text-left hover:bg-slate-50"><div><p className="text-sm font-medium text-slate-800">Notas fiscais no período</p><p className="text-xs text-slate-500">{dados.notasQuantidade} nota(s) · {moeda(dados.notas)}</p></div><ChevronRight size={16} className="text-slate-400"/></button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">Contas bancárias</h2><p className="text-xs text-slate-500">Saldos cadastrados no Financeiro.</p></div><Landmark size={19} className="text-teal-700"/></div>
+        {dados.contas.length===0?<p className="py-8 text-center text-sm text-slate-500">Nenhuma conta ativa para o filtro atual.</p>:<div className="space-y-3">{dados.contas.map(c=><div key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{c.nome||c.banco||"Conta bancária"}</p><p className="text-xs text-slate-500">{c.banco||c.tipo||"Conta ativa"}</p></div><p className={`shrink-0 text-sm font-semibold ${c.saldo_atual===null||c.saldo_atual===undefined?"text-amber-700":"text-slate-900"}`}>{c.saldo_atual===null||c.saldo_atual===undefined?"A informar":moeda(c.saldo_atual)}</p></div>)}</div>}
+        <button type="button" className="mt-4 flex items-center gap-1 text-sm font-medium text-teal-700" onClick={()=>navigate("/financas/extrato")}>Abrir bancos e conciliação <ChevronRight size={14}/></button>
+      </div>
+    </div>
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Card titulo="Total Recebido" valor={moeda(dados.totalRecebido)} subtitulo="Baixas realizadas no período" Icone={ArrowDownCircle} destaque="text-emerald-700" onClick={()=>navigate("/financas/recebimentos")}/>
+      <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Pagamentos realizados no período" Icone={ArrowUpCircle} destaque="text-rose-700" onClick={()=>navigate("/financas/despesas")}/>
+      <Card titulo="Saldo Projetado" valor={dados.saldoRealDisponivel?moeda(dados.saldoProjetado):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo atual + receber - pagar":"Complete os saldos bancários"} Icone={TrendingUp} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
+      <Card titulo="Notas no período" valor={moeda(dados.notas)} subtitulo={`${dados.notasQuantidade} documento(s) fiscal(is)`} Icone={FileText} onClick={()=>navigate("/financas/notas-fiscais")}/>
     </div>
 
     <div className="grid gap-5 xl:grid-cols-2">
