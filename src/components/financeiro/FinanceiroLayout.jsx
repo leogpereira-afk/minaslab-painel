@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, Plus } from "lucide-react";
+import "./financeiro-redesign.css";
 
 const itens = [
   { label: "Visão Geral", to: "/financas", end: true, icon: LayoutDashboard },
@@ -14,7 +15,7 @@ const itens = [
 export default function FinanceiroLayout() {
   const navigate = useNavigate();
   return (
-    <div className="space-y-5">
+    <div className="financeiro-shell space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
