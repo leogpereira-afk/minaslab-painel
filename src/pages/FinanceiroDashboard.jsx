@@ -67,18 +67,19 @@ export default function FinanceiroDashboard() {
     const totalPago=despesas.reduce((s,d)=>s+realizadoDespesa(d,de,ate),0);
     const totalReceber=recAbertos.reduce((s,r)=>s+Number(r.valor_pendente||0),0);
     const totalPagar=desAbertas.reduce((s,d)=>s+Number(d.valor_pendente||0),0);
-    const contas=(opcoes.contas||[]).filter(c=>!empresaId||c.empresa_id===empresaId);
-    const saldoInicial=contas.reduce((s,c)=>s+Number(c.saldo_inicial||0),0);
-    const saldoCalculado=saldoInicial+totalRecebido-totalPago;
-    const saldoRealDisponivel=contas.length>0&&contas.every(c=>c.saldo_atual!==null&&c.saldo_atual!==undefined);
+    const empresasAtivas=(opcoes.empresas||[]).filter(e=>e.ativa!==false&&(!empresaId||e.id===empresaId));
+    const contas=(opcoes.contas||[]).filter(c=>c.ativa!==false&&(!empresaId||c.empresa_id===empresaId));
+    const empresasComConta=new Set(contas.map(c=>c.empresa_id));
+    const todasEmpresasTemConta=empresasAtivas.length>0&&empresasAtivas.every(e=>empresasComConta.has(e.id));
+    const saldoRealDisponivel=todasEmpresasTemConta&&contas.length>0&&contas.every(c=>c.saldo_atual!==null&&c.saldo_atual!==undefined);
     const saldoBancario=saldoRealDisponivel?contas.reduce((s,c)=>s+Number(c.saldo_atual||0),0):null;
     const hoje=isoLocal(new Date());
     const vencidos=recebimentos.filter(r=>r.status!=="CANCELADO"&&Number(r.valor_pendente)>0&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<hoje).reduce((s,r)=>s+Number(r.valor_pendente||0),0);
     const baseInad=totalRecebido+totalReceber;
     const valorNotas=notas.filter(n=>noPeriodo(n.data_emissao,de,ate)).reduce((s,n)=>s+Number(n.valor_total||0),0);
-    const baseProjecao=saldoRealDisponivel?saldoBancario:saldoCalculado;
-    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoCalculado,saldoProjetado:baseProjecao+totalReceber-totalPagar,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,saldoInicial};
-  },[recebimentos,despesas,notas,opcoes.contas,empresaId,de,ate]);
+    const saldoProjetado=saldoRealDisponivel?saldoBancario+totalReceber-totalPagar:null;
+    return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas};
+  },[recebimentos,despesas,notas,opcoes.contas,opcoes.empresas,empresaId,de,ate]);
 
   const serie = useMemo(() => {
     const mapa=new Map();
@@ -92,7 +93,18 @@ export default function FinanceiroDashboard() {
   const categorias=useMemo(()=>{const m=new Map();for(const d of despesas){const v=realizadoDespesa(d,de,ate);if(!v)continue;const nome=d.categoria?.nome||d.categoria_texto||"Sem categoria";m.set(nome,(m.get(nome)||0)+v)}return[...m.entries()].map(([nome,valor])=>({nome,valor})).sort((a,b)=>b.valor-a.valor).slice(0,8)},[despesas,de,ate]);
   const maxCat=Math.max(1,...categorias.map(x=>x.valor));
 
-  const evolucao=useMemo(()=>{const mov=[];for(const r of recebimentos){const bs=(r.baixas||[]).filter(b=>!b.estornada);if(bs.length)bs.forEach(b=>{if(noPeriodo(b.data_pagamento,de,ate))mov.push({data:String(b.data_pagamento).slice(0,10),valor:Number(b.valor||0)})});else if(r.origem==="OMIE"&&noPeriodo(r.data_pagamento,de,ate))mov.push({data:String(r.data_pagamento).slice(0,10),valor:Number(r.valor_recebido||0)})}for(const d of despesas){const bs=(d.baixas||[]).filter(b=>!b.estornada);if(bs.length)bs.forEach(b=>{if(noPeriodo(b.data_pagamento,de,ate))mov.push({data:String(b.data_pagamento).slice(0,10),valor:-Number(b.valor||0)})});else if(d.origem==="OMIE"&&noPeriodo(d.data_pagamento,de,ate))mov.push({data:String(d.data_pagamento).slice(0,10),valor:-Number(d.valor_pago||0)})}const porDia=new Map();mov.forEach(x=>porDia.set(x.data,(porDia.get(x.data)||0)+x.valor));let saldo=dados.saldoInicial;return[...porDia.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([data,delta])=>{saldo+=delta;return{data,saldo}})},[recebimentos,despesas,de,ate,dados.saldoInicial]);
+  const evolucao=useMemo(()=>{
+    if(!dados.saldoRealDisponivel)return[];
+    const hoje=isoLocal(new Date());
+    const limite=ate>=hoje?ate:hoje;
+    const porDia=new Map();
+    for(const r of recebimentos){if(r.status==="CANCELADO"||Number(r.valor_pendente||0)<=0||!r.data_vencimento)continue;const data=String(r.data_vencimento).slice(0,10);if(data>=hoje&&data<=limite)porDia.set(data,(porDia.get(data)||0)+Number(r.valor_pendente||0));}
+    for(const d of despesas){if(d.status==="CANCELADO"||Number(d.valor_pendente||0)<=0||!d.data_vencimento)continue;const data=String(d.data_vencimento).slice(0,10);if(data>=hoje&&data<=limite)porDia.set(data,(porDia.get(data)||0)-Number(d.valor_pendente||0));}
+    let saldo=Number(dados.saldoBancario||0);
+    const pontos=[{data:hoje,saldo}];
+    for(const [data,delta] of [...porDia.entries()].sort(([a],[b])=>a.localeCompare(b))){saldo+=delta;pontos.push({data,saldo});}
+    return pontos;
+  },[recebimentos,despesas,ate,dados.saldoRealDisponivel,dados.saldoBancario]);
   const minSaldo=Math.min(0,...evolucao.map(x=>x.saldo)),maxSaldo=Math.max(1,...evolucao.map(x=>x.saldo));
 
   return <div className="space-y-5">
@@ -114,8 +126,8 @@ export default function FinanceiroDashboard() {
       <Card titulo="A Receber" valor={moeda(dados.totalReceber)} subtitulo="Saldo aberto até o fim do período" Icone={TrendingUp} destaque="text-sky-700"/>
       <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Pagamentos realizados no período" Icone={ArrowUpCircle} destaque="text-rose-700"/>
       <Card titulo="A Pagar" valor={moeda(dados.totalPagar)} subtitulo="Saldo aberto até o fim do período" Icone={Wallet} destaque="text-amber-700"/>
-      <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real informado nas contas bancárias":"Saldo real ainda não informado nas contas bancárias"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
-      <Card titulo="Saldo Projetado" valor={moeda(dados.saldoProjetado)} subtitulo={dados.saldoRealDisponivel?"Saldo bancário + pendências a receber e pagar":"Projeção contábil; aguarda saldo bancário real"} Icone={TrendingUp}/>
+      <Card titulo="Saldo Bancário" valor={dados.saldoRealDisponivel?moeda(dados.saldoBancario):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo real das contas bancárias ativas":"Saldo incompleto: há conta/empresa ativa sem saldo informado"} Icone={Wallet} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
+      <Card titulo="Saldo Projetado" valor={dados.saldoRealDisponivel?moeda(dados.saldoProjetado):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo bancário atual + pendências a receber e pagar":"Projeção indisponível até completar os saldos bancários"} Icone={TrendingUp} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
       <Card titulo="Inadimplência" valor={pct(dados.inadimplencia)} subtitulo="Títulos vencidos sobre a carteira" Icone={AlertTriangle} destaque={Number(dados.inadimplencia)>0?"text-red-700":"text-emerald-700"}/>
       <Card titulo="Notas no período" valor={moeda(dados.notas)} subtitulo="Valor total por data de emissão" Icone={FileText}/>
     </div>
@@ -125,6 +137,6 @@ export default function FinanceiroDashboard() {
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4"><h2 className="font-semibold text-slate-900">Despesas por categoria</h2><p className="text-xs text-slate-500">Composição das despesas pagas no período.</p></div>{categorias.length===0?<p className="py-8 text-center text-sm text-slate-500">Sem despesas realizadas.</p>:<div className="space-y-3">{categorias.map(x=><div key={x.nome}><div className="mb-1 flex justify-between gap-3 text-xs"><span className="truncate text-slate-600">{x.nome}</span><span className="font-medium">{moeda(x.valor)}</span></div><div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-slate-700" style={{width:`${x.valor/maxCat*100}%`}}/></div></div>)}</div>}</div>
     </div>
 
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4"><h2 className="font-semibold text-slate-900">Evolução do saldo diário</h2><p className="text-xs text-slate-500">Saldo acumulado a partir das baixas efetivas no período.</p></div>{evolucao.length===0?<p className="py-8 text-center text-sm text-slate-500">Sem baixas para montar a evolução.</p>:<div className="flex h-48 items-end gap-1 overflow-x-auto border-b border-slate-200 pb-1">{evolucao.map(x=>{const faixa=Math.max(maxSaldo-minSaldo,1),h=Math.max(4,Math.abs(x.saldo-minSaldo)/faixa*170);return <div key={x.data} className="group relative flex min-w-3 flex-1 items-end justify-center" title={`${x.data.split("-").reverse().join("/")} · ${moeda(x.saldo)}`}><div className="w-full max-w-6 rounded-t bg-sky-500" style={{height:`${h}px`}}/><span className="pointer-events-none absolute -top-6 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">{moeda(x.saldo)}</span></div>})}</div>}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4"><h2 className="font-semibold text-slate-900">Projeção do saldo</h2><p className="text-xs text-slate-500">Parte do saldo bancário atual e considera somente pendências futuras por vencimento.</p></div>{!dados.saldoRealDisponivel?<p className="py-8 text-center text-sm text-amber-700">Projeção indisponível enquanto houver saldo bancário não informado.</p>:evolucao.length<=1?<p className="py-8 text-center text-sm text-slate-500">Sem pendências futuras para montar a projeção.</p>:<div className="flex h-48 items-end gap-1 overflow-x-auto border-b border-slate-200 pb-1">{evolucao.map(x=>{const faixa=Math.max(maxSaldo-minSaldo,1),h=Math.max(4,Math.abs(x.saldo-minSaldo)/faixa*170);return <div key={x.data} className="group relative flex min-w-3 flex-1 items-end justify-center" title={`${x.data.split("-").reverse().join("/")} · ${moeda(x.saldo)}`}><div className="w-full max-w-6 rounded-t bg-sky-500" style={{height:`${h}px`}}/><span className="pointer-events-none absolute -top-6 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">{moeda(x.saldo)}</span></div>})}</div>}</div>
   </div>;
 }
