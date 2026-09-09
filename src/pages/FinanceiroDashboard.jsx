@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp, AlertTriangle, FileText, RefreshCw, Landmark, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finRecebimentosListar, finDespesasListar, finNotasListar } from "../services/financeiro.js";
+import { financeiroOpcoes, finRecebimentosListar, finDespesasListar, finNotasListar, finMovimentosListar } from "../services/financeiro.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pct = (v) => `${Number(v || 0).toFixed(1).replace(".", ",")}%`;
@@ -23,18 +23,16 @@ function Card({ titulo, valor, subtitulo, Icone, destaque = "text-slate-900", on
   return <button type="button" onClick={onClick} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md">{corpo}<div className="mt-3 flex items-center gap-1 text-xs font-medium text-teal-700">Ver detalhes <ChevronRight size={13}/></div></button>;
 }
 
-function realizadoRecebimento(r,de,ate){
+function realizadoRecebimentoManual(r,de,ate){
  const baixas=(r.baixas||[]).filter(b=>!b.estornada&&noPeriodo(b.data_pagamento,de,ate));
- if(baixas.length)return baixas.reduce((s,b)=>s+Number(b.valor||0),0);
- if(r.origem==="OMIE"&&noPeriodo(r.data_pagamento,de,ate))return Number(r.valor_recebido||0);
- return 0;
+ return baixas.reduce((s,b)=>s+Number(b.valor||0),0);
 }
-function realizadoDespesa(d,de,ate){
+function realizadoDespesaManual(d,de,ate){
  const baixas=(d.baixas||[]).filter(b=>!b.estornada&&noPeriodo(b.data_pagamento,de,ate));
- if(baixas.length)return baixas.reduce((s,b)=>s+Number(b.valor||0),0);
- if(d.origem==="OMIE"&&noPeriodo(d.data_pagamento,de,ate))return Number(d.valor_pago||0);
- return 0;
+ return baixas.reduce((s,b)=>s+Number(b.valor||0),0);
 }
+const movimentoOmieRecebido=m=>String(m?.origem||'').toUpperCase()==='OMIE'&&String(m?.tipo||'').toUpperCase()==='CREDITO'&&String(m?.dados_omie?.cOrigem||'')==='Conta Recebida';
+const movimentoOmiePago=m=>String(m?.origem||'').toUpperCase()==='OMIE'&&String(m?.tipo||'').toUpperCase()==='DEBITO'&&String(m?.dados_omie?.cOrigem||'')==='Conta Paga';
 
 export default function FinanceiroDashboard() {
   const navigate = useNavigate();
@@ -46,14 +44,15 @@ export default function FinanceiroDashboard() {
   const [recebimentos,setRecebimentos]=useState([]);
   const [despesas,setDespesas]=useState([]);
   const [notas,setNotas]=useState([]);
+  const [movimentos,setMovimentos]=useState([]);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
 
   async function carregar() {
     setCarregando(true); setErro("");
     try {
-      const [o,r,d,n] = await Promise.all([financeiroOpcoes(),finRecebimentosListar(empresaId),finDespesasListar(empresaId),finNotasListar(empresaId)]);
-      setOpcoes(o);setRecebimentos(r);setDespesas(d);setNotas(n);
+      const [o,r,d,n,m] = await Promise.all([financeiroOpcoes(),finRecebimentosListar(empresaId),finDespesasListar(empresaId),finNotasListar(empresaId),finMovimentosListar(empresaId)]);
+      setOpcoes(o);setRecebimentos(r);setDespesas(d);setNotas(n);setMovimentos(m);
     } catch (e) { setErro(e.message || "Falha ao carregar o dashboard."); }
     finally { setCarregando(false); }
   }
@@ -63,8 +62,12 @@ export default function FinanceiroDashboard() {
   const dados=useMemo(()=>{
     const recAbertos=recebimentos.filter(r=>r.status!=="CANCELADO"&&r.data_vencimento&&String(r.data_vencimento).slice(0,10)<=ate);
     const desAbertas=despesas.filter(d=>d.status!=="CANCELADO"&&d.data_vencimento&&String(d.data_vencimento).slice(0,10)<=ate);
-    const totalRecebido=recebimentos.reduce((s,r)=>s+realizadoRecebimento(r,de,ate),0);
-    const totalPago=despesas.reduce((s,d)=>s+realizadoDespesa(d,de,ate),0);
+    const manualRecebido=recebimentos.filter(r=>String(r.origem||'').toUpperCase()!=='OMIE').reduce((s,r)=>s+realizadoRecebimentoManual(r,de,ate),0);
+    const manualPago=despesas.filter(d=>String(d.origem||'').toUpperCase()!=='OMIE').reduce((s,d)=>s+realizadoDespesaManual(d,de,ate),0);
+    const omieRecebido=movimentos.filter(m=>movimentoOmieRecebido(m)&&noPeriodo(m.data_movimento,de,ate)).reduce((s,m)=>s+Number(m.valor||0),0);
+    const omiePago=movimentos.filter(m=>movimentoOmiePago(m)&&noPeriodo(m.data_movimento,de,ate)).reduce((s,m)=>s+Number(m.valor||0),0);
+    const totalRecebido=manualRecebido+omieRecebido;
+    const totalPago=manualPago+omiePago;
     const totalReceber=recAbertos.reduce((s,r)=>s+Number(r.valor_pendente||0),0);
     const totalPagar=desAbertas.reduce((s,d)=>s+Number(d.valor_pendente||0),0);
     const empresasAtivas=(opcoes.empresas||[]).filter(e=>e.ativa!==false&&(!empresaId||e.id===empresaId));
@@ -82,18 +85,19 @@ export default function FinanceiroDashboard() {
     const valorNotas=notasPeriodo.reduce((s,n)=>s+Number(n.valor_total||0),0);
     const saldoProjetado=saldoRealDisponivel?saldoBancario+totalReceber-totalPagar:null;
     return{totalRecebido,totalPago,totalReceber,totalPagar,saldoBancario,saldoRealDisponivel,saldoProjetado,inadimplencia:baseInad>0?vencidos/baseInad*100:0,notas:valorNotas,recebimentosVencidos:recebimentosVencidos.length,despesasVencidas:despesasVencidas.length,notasQuantidade:notasPeriodo.length,contas};
-  },[recebimentos,despesas,notas,opcoes.contas,opcoes.empresas,empresaId,de,ate]);
+  },[recebimentos,despesas,notas,movimentos,opcoes.contas,opcoes.empresas,empresaId,de,ate]);
 
   const serie = useMemo(() => {
     const mapa=new Map();
     const add=(data,campo,valor)=>{if(!noPeriodo(data,de,ate))return;const k=String(data).slice(0,7);const a=mapa.get(k)||{mes:k,entradas:0,saidas:0};a[campo]+=Number(valor||0);mapa.set(k,a)};
-    for(const r of recebimentos){const baixas=(r.baixas||[]).filter(b=>!b.estornada);if(baixas.length)baixas.forEach(b=>add(b.data_pagamento,"entradas",b.valor));else if(r.origem==="OMIE")add(r.data_pagamento,"entradas",r.valor_recebido)}
-    for(const d of despesas){const baixas=(d.baixas||[]).filter(b=>!b.estornada);if(baixas.length)baixas.forEach(b=>add(b.data_pagamento,"saidas",b.valor));else if(d.origem==="OMIE")add(d.data_pagamento,"saidas",d.valor_pago)}
+    for(const r of recebimentos.filter(x=>String(x.origem||'').toUpperCase()!=='OMIE')){for(const b of (r.baixas||[]).filter(b=>!b.estornada))add(b.data_pagamento,"entradas",b.valor)}
+    for(const d of despesas.filter(x=>String(x.origem||'').toUpperCase()!=='OMIE')){for(const b of (d.baixas||[]).filter(b=>!b.estornada))add(b.data_pagamento,"saidas",b.valor)}
+    for(const m of movimentos){if(movimentoOmieRecebido(m))add(m.data_movimento,"entradas",m.valor);else if(movimentoOmiePago(m))add(m.data_movimento,"saidas",m.valor)}
     return[...mapa.values()].sort((a,b)=>a.mes.localeCompare(b.mes));
-  },[recebimentos,despesas,de,ate]);
+  },[recebimentos,despesas,movimentos,de,ate]);
   const maxSerie=Math.max(1,...serie.flatMap(x=>[x.entradas,x.saidas]));
 
-  const categorias=useMemo(()=>{const m=new Map();for(const d of despesas){const v=realizadoDespesa(d,de,ate);if(!v)continue;const nome=d.categoria?.nome||d.categoria_texto||"Sem categoria";m.set(nome,(m.get(nome)||0)+v)}return[...m.entries()].map(([nome,valor])=>({nome,valor})).sort((a,b)=>b.valor-a.valor).slice(0,8)},[despesas,de,ate]);
+  const categorias=useMemo(()=>{const m=new Map();for(const d of despesas.filter(x=>String(x.origem||'').toUpperCase()!=='OMIE')){const v=realizadoDespesaManual(d,de,ate);if(!v)continue;const nome=d.categoria?.nome||d.categoria_texto||"Sem categoria";m.set(nome,(m.get(nome)||0)+v)}for(const x of movimentos.filter(mv=>movimentoOmiePago(mv)&&noPeriodo(mv.data_movimento,de,ate))){const nome=x?.dados_omie?.cDesCategoria||x?.dados_omie?.cCodCategoria||"Sem categoria";m.set(nome,(m.get(nome)||0)+Number(x.valor||0))}return[...m.entries()].map(([nome,valor])=>({nome,valor})).sort((a,b)=>b.valor-a.valor).slice(0,8)},[despesas,movimentos,de,ate]);
   const maxCat=Math.max(1,...categorias.map(x=>x.valor));
 
   const evolucao=useMemo(()=>{
@@ -149,8 +153,8 @@ export default function FinanceiroDashboard() {
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Card titulo="Total Recebido" valor={moeda(dados.totalRecebido)} subtitulo="Baixas realizadas no período" Icone={ArrowDownCircle} destaque="text-emerald-700" onClick={()=>navigate("/financas/recebimentos")}/>
-      <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Pagamentos realizados no período" Icone={ArrowUpCircle} destaque="text-rose-700" onClick={()=>navigate("/financas/despesas")}/>
+      <Card titulo="Total Recebido" valor={moeda(dados.totalRecebido)} subtitulo="Baixas manuais + Conta Recebida Omie no período" Icone={ArrowDownCircle} destaque="text-emerald-700" onClick={()=>navigate("/financas/recebimentos")}/>
+      <Card titulo="Total Pago" valor={moeda(dados.totalPago)} subtitulo="Baixas manuais + Conta Paga Omie no período" Icone={ArrowUpCircle} destaque="text-rose-700" onClick={()=>navigate("/financas/despesas")}/>
       <Card titulo="Saldo Projetado" valor={dados.saldoRealDisponivel?moeda(dados.saldoProjetado):"A informar"} subtitulo={dados.saldoRealDisponivel?"Saldo atual + receber - pagar":"Complete os saldos bancários"} Icone={TrendingUp} destaque={dados.saldoRealDisponivel?"text-slate-900":"text-amber-700"}/>
       <Card titulo="Notas no período" valor={moeda(dados.notas)} subtitulo={`${dados.notasQuantidade} documento(s) fiscal(is)`} Icone={FileText} onClick={()=>navigate("/financas/notas-fiscais")}/>
     </div>
