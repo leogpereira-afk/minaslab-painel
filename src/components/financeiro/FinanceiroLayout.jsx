@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, ReceiptText, UploadCloud, Ban, Users, BarChart3, ChevronDown, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, ReceiptText, UploadCloud, Ban, Users, BarChart3, ChevronDown, MoreHorizontal, ListChecks } from "lucide-react";
 import "./financeiro-redesign.css";
 
 const principais = [
@@ -25,13 +25,18 @@ const fiscal = [
   { label: "Cancelamento", to: "/financas/notas-fiscais/cancelar", icon: Ban, descricao: "Cancelamento fiscal com histórico e proteção do financeiro." },
 ];
 
+const bancario = [
+  { label: "Extrato bancário", to: "/financas/bancos", end: true, icon: Landmark, descricao: "Importe OFX/CSV e concilie partindo do movimento bancário." },
+  { label: "Conciliação por títulos", to: "/financas/conciliacao-titulos", icon: ListChecks, descricao: "Estilo Omie: escolha primeiro o recebimento ou a despesa e depois o movimento bancário." },
+];
+
 export default function FinanceiroLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const menuRef = useRef(null);
   const [maisAberto, setMaisAberto] = useState(false);
   const emFiscal = location.pathname.startsWith("/financas/notas-fiscais");
-  const emBancos = location.pathname === "/financas/bancos" || location.pathname.startsWith("/financas/extrato");
+  const emBancos = location.pathname === "/financas/bancos" || location.pathname.startsWith("/financas/extrato") || location.pathname.startsWith("/financas/conciliacao-titulos");
   const emMais = maisOpcoes.some((x) => location.pathname === x.to || location.pathname.startsWith(`${x.to}/`)) || location.pathname.startsWith("/financas/plano-contas");
 
   useEffect(() => setMaisAberto(false), [location.pathname]);
@@ -89,6 +94,13 @@ export default function FinanceiroLayout() {
         <div className="mb-3 px-2 pt-1"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central Fiscal</p><p className="mt-1 text-sm text-slate-500">Ações fiscais específicas, sem repetir os demais módulos financeiros.</p></div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           {fiscal.map(({ label, to, end, icon: Icon, descricao }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}><div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16}/>{label}</div><p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p></NavLink>)}
+        </div>
+      </section>}
+
+      {emBancos && <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="mb-3 px-2 pt-1"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central Bancária</p><p className="mt-1 text-sm text-slate-500">Concilie pelo extrato ou partindo diretamente dos recebimentos e despesas.</p></div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {bancario.map(({ label, to, end, icon: Icon, descricao }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}><div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16}/>{label}</div><p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p></NavLink>)}
         </div>
       </section>}
 
