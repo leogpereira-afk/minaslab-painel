@@ -9,12 +9,12 @@ const principais = [
   { label: "Contas a Pagar", to: "/financas/contas-a-pagar", icon: ArrowUpCircle },
   { label: "Movimentação da Conta", to: "/financas/movimentacao-conta", icon: Landmark },
   { label: "Conciliação", to: "/financas/conciliacao", icon: ListChecks },
-  { label: "Notas Fiscais", to: "/financas/notas-fiscais", icon: FileText },
-  { label: "Fluxo de Caixa", to: "/financas/fluxo-caixa", icon: LineChart },
-  { label: "Configurações", to: "/financas/configuracoes", icon: Settings },
 ];
 
 const maisOpcoes = [
+  { label: "Notas Fiscais", to: "/financas/notas-fiscais", icon: FileText, descricao: "Notas emitidas e recebidas, XML, PDF e vínculo financeiro." },
+  { label: "Fluxo de Caixa", to: "/financas/fluxo-caixa", icon: LineChart, descricao: "Previsto e realizado, entradas, saídas e projeção financeira." },
+  { label: "Configurações", to: "/financas/configuracoes", icon: Settings, descricao: "Contas, categorias e demais configurações do Financeiro." },
   { label: "Clientes", to: "/financas/clientes", icon: Users, descricao: "Cadastro financeiro isolado de clientes MinasLab e M Lab." },
   { label: "Relatórios", to: "/financas/relatorios", icon: BarChart3, descricao: "Exportações financeiras por banco, conta ou consolidado." },
 ];
@@ -49,7 +49,7 @@ export default function FinanceiroLayout() {
   const [maisAberto, setMaisAberto] = useState(false);
   const emFiscal = location.pathname.startsWith("/financas/notas-fiscais");
   const emBancos = ["/financas/movimentacao-conta", "/financas/bancos", "/financas/extrato", "/financas/conciliacao"].includes(location.pathname) || location.pathname.startsWith("/financas/conciliacao-titulos");
-  const emMais = maisOpcoes.some((x) => location.pathname === x.to || location.pathname.startsWith(`${x.to}/`));
+  const emMais = maisOpcoes.some((x) => rotaAtiva(location, x.label, x.to) || location.pathname.startsWith(`${x.to}/`));
 
   useEffect(() => setMaisAberto(false), [location.pathname]);
   useEffect(() => {
@@ -71,21 +71,21 @@ export default function FinanceiroLayout() {
         </div>
 
         <div className="flex items-center gap-2 px-3 py-2">
-          <nav className="min-w-0 flex-1 overflow-x-auto" aria-label="Navegação interna do Financeiro">
-            <div className="flex min-w-max items-center gap-1">
+          <nav className="min-w-0 flex-1" aria-label="Navegação interna do Financeiro">
+            <div className="flex min-w-0 items-center gap-1">
               {principais.map(({ label, to, end, icon: Icon }) => {
                 const ativo = rotaAtiva(location, label, to);
                 return <NavLink
                   key={to}
                   to={to}
                   end={end}
-                  className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  className={`flex min-w-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition ${
                     ativo
                       ? "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
-                  <Icon size={16}/><span>{label}</span>
+                  <Icon size={16} className="shrink-0"/><span className="hidden xl:inline">{label}</span><span className="xl:hidden">{label === "Movimentação da Conta" ? "Movimentação" : label}</span>
                 </NavLink>;
               })}
             </div>
@@ -95,7 +95,7 @@ export default function FinanceiroLayout() {
             <button type="button" onClick={() => setMaisAberto((v) => !v)} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${emMais ? "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
               <MoreHorizontal size={16}/> Mais <ChevronDown size={14} className={`transition ${maisAberto ? "rotate-180" : ""}`}/>
             </button>
-            {maisAberto && <div className="absolute right-0 z-40 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+            {maisAberto && <div className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
               {maisOpcoes.map(({ label, to, icon: Icon, descricao }) => <button key={to} type="button" onClick={() => navigate(to)} className="flex w-full gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50">
                 <span className="mt-0.5 rounded-lg bg-slate-50 p-2 text-slate-600"><Icon size={16}/></span>
                 <span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{descricao}</span></span>
