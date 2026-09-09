@@ -31,6 +31,21 @@
   background: rgb(13 148 136 / 0.45);
 }
 
+.financeiro-shell .financeiro-kpi-valor,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div p.text-xl.font-bold,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div p.text-xl.font-bold,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div p.text-xl.font-bold {
+  font-size: clamp(1.05rem, 1.55vw, 1.35rem);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+
+.financeiro-shell .financeiro-kpi-valor {
+  font-size: clamp(1.35rem, 2.2vw, 1.8rem);
+}
+
 .financeiro-shell > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4 {
   border-color: rgb(226 232 240);
   border-radius: 1rem;
@@ -109,6 +124,10 @@
 
 .financeiro-shell .input {
   border-radius: .75rem;
+}
+
+.config-omie-only > .space-y-5 > .grid.gap-5.xl\:grid-cols-2 {
+  display: none;
 }
 
 @media (max-width: 767px) {
