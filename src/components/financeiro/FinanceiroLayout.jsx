@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, Plus, ReceiptText, UploadCloud, Ban, Link2, WalletCards } from "lucide-react";
+import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, Plus, ReceiptText, UploadCloud, Ban, Link2, WalletCards, BookOpen, Tags, PlugZap } from "lucide-react";
 import "./financeiro-redesign.css";
 
 const itens = [
@@ -26,11 +26,20 @@ const bancos = [
   { label: "Contas bancárias", to: "/financas/configuracoes", icon: WalletCards, descricao: "Cadastros, vínculos por empresa e saldos informados." },
 ];
 
+const configuracoes = [
+  { label: "Cadastros financeiros", to: "/financas/configuracoes", end: true, icon: Tags, descricao: "Categorias, contas bancárias, centros de custo e formas de pagamento." },
+  { label: "Plano de Contas", to: "/financas/plano-contas", icon: BookOpen, descricao: "Estrutura oficial por fluxo, agrupamento, grupo e conta." },
+  { label: "Integração Omie", to: "/financas/configuracoes", icon: PlugZap, descricao: "Pré-validação e sincronização seletiva da MinasLab." },
+  { label: "Contas bancárias", to: "/financas/configuracoes", icon: WalletCards, descricao: "Contas por empresa, dados bancários, saldo inicial e situação." },
+];
+
 export default function FinanceiroLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const emFiscal = location.pathname.startsWith("/financas/notas-fiscais");
   const emBancos = location.pathname === "/financas/bancos" || location.pathname.startsWith("/financas/extrato");
+  const emConfig = location.pathname.startsWith("/financas/configuracoes") || location.pathname.startsWith("/financas/plano-contas");
+
   return (
     <div className="financeiro-shell space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -40,8 +49,12 @@ export default function FinanceiroLayout() {
             <h1 className="mt-1 text-2xl font-bold text-slate-900">Financeiro</h1>
             <p className="mt-1 text-sm text-slate-500">Gestão integrada de MinasLab e M Lab.</p>
           </div>
-          <button type="button" className="btn-primary self-start lg:self-auto" onClick={() => navigate(emFiscal ? "/financas/notas-fiscais/emitir" : emBancos ? "/financas/extrato" : "/financas/recebimentos")}>
-            <Plus size={16} /> {emFiscal ? "Emitir NFS-e" : emBancos ? "Abrir extrato" : "Novo lançamento"}
+          <button
+            type="button"
+            className="btn-primary self-start lg:self-auto"
+            onClick={() => navigate(emFiscal ? "/financas/notas-fiscais/emitir" : emBancos ? "/financas/extrato" : emConfig ? "/financas/configuracoes" : "/financas/recebimentos")}
+          >
+            <Plus size={16} /> {emFiscal ? "Emitir NFS-e" : emBancos ? "Abrir extrato" : emConfig ? "Abrir cadastros" : "Novo lançamento"}
           </button>
         </div>
 
@@ -53,7 +66,7 @@ export default function FinanceiroLayout() {
               end={end}
               className={({ isActive }) =>
                 `flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  isActive || (label === "Bancos & Conciliação" && emBancos)
+                  isActive || (label === "Bancos & Conciliação" && emBancos) || (label === "Configurações" && emConfig)
                     ? "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`
@@ -91,6 +104,23 @@ export default function FinanceiroLayout() {
           </div>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             {bancos.map(({ label, to, end, icon: Icon, descricao }) => (
+              <NavLink key={`${label}-${to}`} to={to} end={end} className={({ isActive }) => `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}>
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16} />{label}</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p>
+              </NavLink>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {emConfig && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 px-2 pt-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central de Configurações</p>
+            <p className="mt-1 text-sm text-slate-500">Cadastros, plano de contas e integrações organizados sem alterar suas regras.</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {configuracoes.map(({ label, to, end, icon: Icon, descricao }) => (
               <NavLink key={`${label}-${to}`} to={to} end={end} className={({ isActive }) => `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}>
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16} />{label}</div>
                 <p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p>
