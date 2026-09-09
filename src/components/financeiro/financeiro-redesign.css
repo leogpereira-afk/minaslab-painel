@@ -1,0 +1,124 @@
+.financeiro-shell > .space-y-5 > .flex.items-center.gap-3 {
+  align-items: flex-start;
+}
+
+.financeiro-shell > .space-y-5 > .flex.items-center.gap-3 > .btn-ghost:first-child {
+  display: none;
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 {
+  gap: 1rem;
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  padding: 1.1rem 1.15rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div::before,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div::before,
+.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: rgb(13 148 136 / 0.45);
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4 {
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4::before {
+  content: "Filtros e pesquisa";
+  grid-column: 1 / -1;
+  font-size: .72rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgb(100 116 139);
+  margin-bottom: -.15rem;
+}
+
+.financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2,
+.financeiro-shell > .space-y-5 > .flex.gap-2 {
+  justify-content: flex-end;
+  padding: .2rem 0;
+}
+
+.financeiro-shell > .space-y-5 > .overflow-x-auto.rounded-2xl.border.bg-white,
+.financeiro-shell > .space-y-5 > .rounded-2xl.border.border-slate-200.bg-white,
+.financeiro-shell > .space-y-5 > .rounded-2xl.border.bg-white {
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
+}
+
+.financeiro-shell > .space-y-5 > .grid.gap-5.xl\:grid-cols-2 > div,
+.financeiro-shell > .space-y-5 > .grid.gap-5.lg\:grid-cols-2 > div {
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.05);
+}
+
+.financeiro-shell > .space-y-5 table thead {
+  background: rgb(248 250 252);
+}
+
+.financeiro-shell > .space-y-5 table thead th {
+  font-weight: 700;
+  letter-spacing: .055em;
+  color: rgb(71 85 105);
+  white-space: nowrap;
+}
+
+.financeiro-shell > .space-y-5 table tbody tr {
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+
+.financeiro-shell > .space-y-5 table tbody tr:hover {
+  background: rgb(248 250 252 / .8);
+  box-shadow: inset 3px 0 0 rgb(20 184 166 / .45);
+}
+
+.financeiro-shell > .space-y-5 table tbody td {
+  vertical-align: middle;
+}
+
+.financeiro-shell > .space-y-5 > .flex.flex-col.gap-2.rounded-xl.border.bg-white.p-3 {
+  border-color: rgb(226 232 240);
+  border-radius: 1rem;
+  background: rgb(248 250 252 / .6);
+}
+
+.financeiro-shell .btn-primary,
+.financeiro-shell .btn-outline,
+.financeiro-shell .btn-ghost {
+  border-radius: .75rem;
+}
+
+.financeiro-shell .input {
+  border-radius: .75rem;
+}
+
+@media (max-width: 767px) {
+  .financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2,
+  .financeiro-shell > .space-y-5 > .flex.gap-2 {
+    justify-content: stretch;
+  }
+
+  .financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2 > button,
+  .financeiro-shell > .space-y-5 > .flex.gap-2 > button {
+    flex: 1 1 auto;
+  }
+}
