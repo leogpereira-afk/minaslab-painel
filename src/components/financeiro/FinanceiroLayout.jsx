@@ -1,5 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, Plus } from "lucide-react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, LineChart, Settings, Plus, ReceiptText, UploadCloud, Ban } from "lucide-react";
 import "./financeiro-redesign.css";
 
 const itens = [
@@ -12,8 +12,17 @@ const itens = [
   { label: "Configurações", to: "/financas/configuracoes", icon: Settings },
 ];
 
+const fiscal = [
+  { label: "Todas as notas", to: "/financas/notas-fiscais", end: true, icon: FileText, descricao: "Notas emitidas e recebidas, XML, PDF e vínculo financeiro." },
+  { label: "Emitir NFS-e", to: "/financas/notas-fiscais/emitir", icon: ReceiptText, descricao: "Emissão da M Lab pelo fluxo fiscal já homologado." },
+  { label: "Importar histórico", to: "/financas/notas-fiscais/importar-historico", icon: UploadCloud, descricao: "Importação de XMLs já emitidos sem duplicação." },
+  { label: "Cancelamento", to: "/financas/notas-fiscais/cancelar", icon: Ban, descricao: "Cancelamento fiscal com histórico e proteção do financeiro." },
+];
+
 export default function FinanceiroLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const emFiscal = location.pathname.startsWith("/financas/notas-fiscais");
   return (
     <div className="financeiro-shell space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -23,8 +32,8 @@ export default function FinanceiroLayout() {
             <h1 className="mt-1 text-2xl font-bold text-slate-900">Financeiro</h1>
             <p className="mt-1 text-sm text-slate-500">Gestão integrada de MinasLab e M Lab.</p>
           </div>
-          <button type="button" className="btn-primary self-start lg:self-auto" onClick={() => navigate("/financas/recebimentos")}>
-            <Plus size={16} /> Novo lançamento
+          <button type="button" className="btn-primary self-start lg:self-auto" onClick={() => navigate(emFiscal ? "/financas/notas-fiscais/emitir" : "/financas/recebimentos")}>
+            <Plus size={16} /> {emFiscal ? "Emitir NFS-e" : "Novo lançamento"}
           </button>
         </div>
 
@@ -48,6 +57,30 @@ export default function FinanceiroLayout() {
           ))}
         </nav>
       </section>
+
+      {emFiscal && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 px-2 pt-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Central Fiscal</p>
+            <p className="mt-1 text-sm text-slate-500">Notas, emissão, histórico e cancelamento reunidos no mesmo espaço.</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {fiscal.map(({ label, to, end, icon: Icon, descricao }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `rounded-xl border p-3 transition ${isActive ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`
+                }
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16} />{label}</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{descricao}</p>
+              </NavLink>
+            ))}
+          </div>
+        </section>
+      )}
 
       <Outlet />
     </div>
