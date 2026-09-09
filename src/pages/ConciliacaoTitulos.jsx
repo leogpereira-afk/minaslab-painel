@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, CheckCircle2, Landmark, Search, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finRecebimentosPagina, finDespesasPagina, finMovimentosPagina, finConciliar, finRecebimentosListar, finDespesasListar } from "../services/financeiro.js";
+import { financeiroOpcoes, finMovimentosPagina, finConciliar, finRecebimentosListar, finDespesasListar } from "../services/financeiro.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBR = (v) => {
@@ -41,6 +41,7 @@ export default function ConciliacaoTitulos() {
   const [op, setOp] = useState({ empresas: [] });
   const [empresa, setEmpresa] = useState(empresaInicial);
   const [busca, setBusca] = useState("");
+  const [situacao, setSituacao] = useState("A_CONCILIAR");
   const [itens, setItens] = useState([]);
   const [meta, setMeta] = useState({ total: 0, paginas: 1, pagina: 1 });
   const [pagina, setPagina] = useState(1);
@@ -57,17 +58,32 @@ export default function ConciliacaoTitulos() {
   async function carregar(p = pagina) {
     setLoading(true); setErro("");
     try {
-      const opts = await financeiroOpcoes();
+      const [opts, lista] = await Promise.all([
+        financeiroOpcoes(),
+        tipo === "RECEBIMENTO" ? finRecebimentosListar(empresa) : finDespesasListar(empresa),
+      ]);
       setOp(opts || { empresas: [] });
-      const f = { empresaId: empresa, busca, pagina: p, limite: 25 };
-      const r = tipo === "RECEBIMENTO" ? await finRecebimentosPagina(f) : await finDespesasPagina(f);
-      setItens(r.itens || []);
-      setMeta({ total: r.total || 0, paginas: r.paginas || 1, pagina: r.pagina || p });
-      setPagina(r.pagina || p);
+      const termo = normaliza(busca);
+      const filtrados = (lista || []).filter((x) => {
+        const cancelado = String(x.status || "").toUpperCase() === "CANCELADO";
+        const restante = restanteTitulo(x, tipo);
+        const conciliado = restante <= 0.005 || x.conciliado === true;
+        if (situacao === "A_CONCILIAR" && (conciliado || cancelado)) return false;
+        if (situacao === "CONCILIADO" && !conciliado) return false;
+        if (!termo) return true;
+        return normaliza(`${nomeTitulo(x, tipo)} ${documentoTitulo(x)} ${x.descricao || ""} ${x.cnpj_cpf || ""}`).includes(termo);
+      });
+      const limite = 25;
+      const paginas = Math.max(1, Math.ceil(filtrados.length / limite));
+      const paginaValida = Math.min(Math.max(1, p), paginas);
+      const ini = (paginaValida - 1) * limite;
+      setItens(filtrados.slice(ini, ini + limite));
+      setMeta({ total: filtrados.length, paginas, pagina: paginaValida });
+      setPagina(paginaValida);
     } catch (e) { setErro(e.message); } finally { setLoading(false); }
   }
 
-  useEffect(() => { const t = setTimeout(() => carregar(1), 250); return () => clearTimeout(t); }, [tipo, empresa, busca]);
+  useEffect(() => { const t = setTimeout(() => carregar(1), 250); return () => clearTimeout(t); }, [tipo, empresa, busca, situacao]);
 
   async function abrir(x, tipoForcado = tipo) {
     if (!x?.empresa_id) { setErro("Este título não possui empresa vinculada."); return; }
@@ -90,11 +106,7 @@ export default function ConciliacaoTitulos() {
         setTipo(tipoInicial);
         setEmpresa(alvo.empresa_id || empresaInicial);
         await abrir(alvo, tipoInicial);
-      } catch (e) {
-        setErro(e.message);
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { setErro(e.message); } finally { setLoading(false); }
     })();
   }, [tituloDiretoId, tipoInicial, empresaInicial]);
 
@@ -165,7 +177,11 @@ export default function ConciliacaoTitulos() {
       <button type="button" onClick={() => setTipo("DESPESA")} className={`rounded-2xl border p-4 text-left transition ${tipo === "DESPESA" ? "border-rose-300 bg-rose-50 ring-1 ring-rose-200" : "bg-white hover:bg-slate-50"}`}><div className="flex items-center gap-3"><ArrowUpCircle className="text-rose-700"/><div><div className="font-bold">Despesas</div><div className="text-sm text-slate-500">Conferir débitos bancários contra contas a pagar.</div></div></div></button>
     </div>
 
-    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[220px_1fr]"><label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => setEmpresa(e.target.value)}><option value="">Todas</option>{op.empresas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label><label><span className="label">Pesquisar título</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input className="input pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={tipo === "RECEBIMENTO" ? "Cliente, CNPJ, NF ou descrição" : "Fornecedor, CNPJ, documento ou descrição"}/></div></label></div>
+    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[220px_220px_1fr]">
+      <label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => setEmpresa(e.target.value)}><option value="">Todas</option>{op.empresas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label>
+      <label><span className="label">Situação da conciliação</span><select className="input" value={situacao} onChange={(e) => setSituacao(e.target.value)}><option value="">Todos</option><option value="A_CONCILIAR">A conciliar</option><option value="CONCILIADO">Conciliados</option></select></label>
+      <label><span className="label">Pesquisar título</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input className="input pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={tipo === "RECEBIMENTO" ? "Cliente, CNPJ, NF ou descrição" : "Fornecedor, CNPJ, documento ou descrição"}/></div></label>
+    </div>
 
     {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
     {ok && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{ok}</div>}
