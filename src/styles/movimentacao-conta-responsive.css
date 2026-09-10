@@ -1,0 +1,81 @@
+/* Movimentação da Conta — ajuste responsivo sem rolagem horizontal em desktop/notebook */
+@media (min-width: 768px) {
+  .movimentacao-conta-table-wrap {
+    overflow-x: visible !important;
+  }
+
+  .movimentacao-conta-table {
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  .movimentacao-conta-table th,
+  .movimentacao-conta-table td {
+    min-width: 0;
+  }
+
+  .movimentacao-conta-table th:nth-child(1),
+  .movimentacao-conta-table td:nth-child(1) { width: 10%; }
+  .movimentacao-conta-table th:nth-child(2),
+  .movimentacao-conta-table td:nth-child(2) { width: 31%; }
+  .movimentacao-conta-table th:nth-child(3),
+  .movimentacao-conta-table td:nth-child(3) { width: 11%; }
+  .movimentacao-conta-table th:nth-child(4),
+  .movimentacao-conta-table td:nth-child(4) { width: 9%; }
+  .movimentacao-conta-table th:nth-child(5),
+  .movimentacao-conta-table td:nth-child(5) { width: 12%; }
+  .movimentacao-conta-table th:nth-child(6),
+  .movimentacao-conta-table td:nth-child(6) { width: 11%; }
+  .movimentacao-conta-table th:nth-child(7),
+  .movimentacao-conta-table td:nth-child(7) { width: 10%; }
+  .movimentacao-conta-table th:nth-child(8),
+  .movimentacao-conta-table td:nth-child(8) { width: 6%; }
+
+  .movimentacao-conta-table td:nth-child(2),
+  .movimentacao-conta-table td:nth-child(3) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Em larguras menores, prioriza o que é operacional e evita obrigar o usuário a arrastar a tela. */
+@media (max-width: 1180px) {
+  .movimentacao-conta-table th:nth-child(3),
+  .movimentacao-conta-table td:nth-child(3),
+  .movimentacao-conta-table th:nth-child(6),
+  .movimentacao-conta-table td:nth-child(6) {
+    display: none;
+  }
+
+  .movimentacao-conta-table th:nth-child(1),
+  .movimentacao-conta-table td:nth-child(1) { width: 12%; }
+  .movimentacao-conta-table th:nth-child(2),
+  .movimentacao-conta-table td:nth-child(2) { width: 36%; }
+  .movimentacao-conta-table th:nth-child(4),
+  .movimentacao-conta-table td:nth-child(4) { width: 11%; }
+  .movimentacao-conta-table th:nth-child(5),
+  .movimentacao-conta-table td:nth-child(5) { width: 16%; }
+  .movimentacao-conta-table th:nth-child(7),
+  .movimentacao-conta-table td:nth-child(7) { width: 17%; }
+  .movimentacao-conta-table th:nth-child(8),
+  .movimentacao-conta-table td:nth-child(8) { width: 8%; }
+}
+
+@media (max-width: 860px) {
+  .movimentacao-conta-table th:nth-child(4),
+  .movimentacao-conta-table td:nth-child(4) {
+    display: none;
+  }
+
+  .movimentacao-conta-table th:nth-child(1),
+  .movimentacao-conta-table td:nth-child(1) { width: 16%; }
+  .movimentacao-conta-table th:nth-child(2),
+  .movimentacao-conta-table td:nth-child(2) { width: 39%; }
+  .movimentacao-conta-table th:nth-child(5),
+  .movimentacao-conta-table td:nth-child(5) { width: 19%; }
+  .movimentacao-conta-table th:nth-child(7),
+  .movimentacao-conta-table td:nth-child(7) { width: 18%; }
+  .movimentacao-conta-table th:nth-child(8),
+  .movimentacao-conta-table td:nth-child(8) { width: 8%; }
+}
