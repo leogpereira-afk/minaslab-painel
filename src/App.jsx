@@ -28,7 +28,7 @@ const CancelarNfse = lazy(() => import("./pages/CancelarNfse.jsx"));
 const ImportarNfseHistorico = lazy(() => import("./pages/ImportarNfseHistorico.jsx"));
 const ClientesFinanceiro = lazy(() => import("./pages/ClientesFinanceiro.jsx"));
 const RelatoriosFinanceiro = lazy(() => import("./pages/RelatoriosFinanceiro.jsx"));
-const MovimentacaoConta = lazy(() => import("./pages/MovimentacaoConta.jsx"));
+const MovimentacaoConta = lazy(() => import("./pages/MovimentacaoContaNova.jsx"));
 const Extrato = lazy(() => import("./pages/Extrato.jsx"));
 const ConciliacaoTitulos = lazy(() => import("./pages/ConciliacaoTitulos.jsx"));
 const FluxoCaixa = lazy(() => import("./pages/FluxoCaixa.jsx"));
