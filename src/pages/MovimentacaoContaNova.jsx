@@ -8,9 +8,11 @@ import { API } from "../lib/api.js";
 import { comCracha } from "../lib/sessao.js";
 import { nomeMovimento } from "../lib/movimentoNome.js";
 
+const FILTROS_STORAGE_KEY="financeiro.movimentacao.filtros";
 const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const dataBR=v=>{if(!v)return"—";const p=String(v).slice(0,10).split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:v};
 const soDigitos=v=>String(v||"").replace(/\D/g,"");
+function lerFiltrosSalvos(iniMes,fimMes){try{const s=JSON.parse(sessionStorage.getItem(FILTROS_STORAGE_KEY)||"{}");return{empresa:s.empresa||"",conta:s.conta||"",busca:s.busca||"",status:s.status||"",tipoMovimento:s.tipoMovimento||"",de:s.de||iniMes,ate:s.ate||fimMes}}catch{return{empresa:"",conta:"",busca:"",status:"",tipoMovimento:"",de:iniMes,ate:fimMes}}}
 function tag(b,n){const m=b.match(new RegExp(`<${n}>([^<\\r\\n]+)`,"i"));return m?m[1].trim():""}
 function dataOfx(v){const m=String(v||"").match(/^(\d{4})(\d{2})(\d{2})/);return m?`${m[1]}-${m[2]}-${m[3]}`:""}
 function lerContaOFX(t){return{banco:tag(t,"BANKID"),agencia:tag(t,"BRANCHID"),conta:tag(t,"ACCTID")}}
@@ -25,13 +27,15 @@ async function carregarExtrato(f){const r=await comCracha(`${API}/ml-financeiro-
 export default function MovimentacaoContaNova(){
  const navigate=useNavigate(),ofxRef=useRef(null);
  const hoje=new Date(),iniMes=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}-01`,fimMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).toISOString().slice(0,10);
- const [op,setOp]=useState({empresas:[],contas:[]}),[empresa,setEmpresa]=useState(""),[conta,setConta]=useState(""),[itens,setItens]=useState([]);
- const [busca,setBusca]=useState(""),[status,setStatus]=useState(""),[tipoMovimento,setTipoMovimento]=useState(""),[de,setDe]=useState(iniMes),[ate,setAte]=useState(fimMes),[deRasc,setDeRasc]=useState(iniMes),[ateRasc,setAteRasc]=useState(fimMes),[periodoAberto,setPeriodoAberto]=useState(false);
+ const filtrosIniciais=lerFiltrosSalvos(iniMes,fimMes);
+ const [op,setOp]=useState({empresas:[],contas:[]}),[empresa,setEmpresa]=useState(filtrosIniciais.empresa),[conta,setConta]=useState(filtrosIniciais.conta),[itens,setItens]=useState([]);
+ const [busca,setBusca]=useState(filtrosIniciais.busca),[status,setStatus]=useState(filtrosIniciais.status),[tipoMovimento,setTipoMovimento]=useState(filtrosIniciais.tipoMovimento),[de,setDe]=useState(filtrosIniciais.de),[ate,setAte]=useState(filtrosIniciais.ate),[deRasc,setDeRasc]=useState(filtrosIniciais.de),[ateRasc,setAteRasc]=useState(filtrosIniciais.ate),[periodoAberto,setPeriodoAberto]=useState(false);
  const [pagina,setPagina]=useState(1),[meta,setMeta]=useState({total:0,paginas:1}),[resumo,setResumo]=useState({entradas:0,saidas:0}),[saldoAtual,setSaldoAtual]=useState(null),[loading,setLoading]=useState(true),[erro,setErro]=useState(""),[aviso,setAviso]=useState(""),[importando,setImportando]=useState(false);
  const [detalhe,setDetalhe]=useState(null),[menu,setMenu]=useState(null),[resolver,setResolver]=useState(null),[classe,setClasse]=useState(""),[relacionadoId,setRelacionadoId]=useState(""),[contrapartidas,setContrapartidas]=useState([]),[salvando,setSalvando]=useState(false);
  const limite=8;
  async function carregar(p=1){setLoading(true);setErro("");try{const[o,m]=await Promise.all([financeiroOpcoes(),carregarExtrato({empresaId:empresa,contaId:conta,busca,status,tipoMovimento,de,ate,pagina:p,limite})]);setOp(o||{empresas:[],contas:[]});setItens(m.itens||[]);setMeta({total:m.total||0,paginas:m.paginas||1});setResumo(m.resumo||{entradas:0,saidas:0});setSaldoAtual(m.saldoAtual??null);setPagina(m.pagina||p)}catch(e){setErro(e.message)}finally{setLoading(false)}}
  useEffect(()=>{const t=setTimeout(()=>carregar(1),180);return()=>clearTimeout(t)},[empresa,conta,busca,status,tipoMovimento,de,ate]);
+ useEffect(()=>{try{sessionStorage.setItem(FILTROS_STORAGE_KEY,JSON.stringify({empresa,conta,busca,status,tipoMovimento,de,ate}))}catch{}},[empresa,conta,busca,status,tipoMovimento,de,ate]);
  useEffect(()=>{if(!empresa||conta||!op.contas?.length)return;const cs=op.contas.filter(c=>c.empresa_id===empresa);if(cs.length===1)setConta(cs[0].id)},[empresa,conta,op.contas]);
  const empresaSelecionada=useMemo(()=>op.empresas.find(x=>x.id===empresa),[op.empresas,empresa]);
  const contasEmpresa=useMemo(()=>op.contas.filter(c=>!empresa||c.empresa_id===empresa),[op.contas,empresa]);
