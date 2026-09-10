@@ -1,81 +1,102 @@
-/* Movimentação da Conta — ajuste responsivo sem rolagem horizontal em desktop/notebook */
+/* Movimentação da Conta — tabela adaptativa. Evita obrigar o usuário a reduzir o zoom
+   ou arrastar horizontalmente para alcançar Situação/Ações. */
+
 @media (min-width: 768px) {
-  .movimentacao-conta-table-wrap {
+  div:has(> table[class*="min-w-[1050px]"]) {
     overflow-x: visible !important;
   }
 
-  .movimentacao-conta-table {
-    width: 100%;
+  table[class*="min-w-[1050px]"] {
+    width: 100% !important;
     min-width: 0 !important;
     table-layout: fixed;
   }
 
-  .movimentacao-conta-table th,
-  .movimentacao-conta-table td {
+  table[class*="min-w-[1050px]"] th,
+  table[class*="min-w-[1050px]"] td {
     min-width: 0;
   }
 
-  .movimentacao-conta-table th:nth-child(1),
-  .movimentacao-conta-table td:nth-child(1) { width: 10%; }
-  .movimentacao-conta-table th:nth-child(2),
-  .movimentacao-conta-table td:nth-child(2) { width: 31%; }
-  .movimentacao-conta-table th:nth-child(3),
-  .movimentacao-conta-table td:nth-child(3) { width: 11%; }
-  .movimentacao-conta-table th:nth-child(4),
-  .movimentacao-conta-table td:nth-child(4) { width: 9%; }
-  .movimentacao-conta-table th:nth-child(5),
-  .movimentacao-conta-table td:nth-child(5) { width: 12%; }
-  .movimentacao-conta-table th:nth-child(6),
-  .movimentacao-conta-table td:nth-child(6) { width: 11%; }
-  .movimentacao-conta-table th:nth-child(7),
-  .movimentacao-conta-table td:nth-child(7) { width: 10%; }
-  .movimentacao-conta-table th:nth-child(8),
-  .movimentacao-conta-table td:nth-child(8) { width: 6%; }
+  table[class*="min-w-[1050px]"] th:nth-child(1),
+  table[class*="min-w-[1050px]"] td:nth-child(1) { width: 10%; }
+  table[class*="min-w-[1050px]"] th:nth-child(2),
+  table[class*="min-w-[1050px]"] td:nth-child(2) { width: 29%; }
+  table[class*="min-w-[1050px]"] th:nth-child(3),
+  table[class*="min-w-[1050px]"] td:nth-child(3) { width: 11%; }
+  table[class*="min-w-[1050px]"] th:nth-child(4),
+  table[class*="min-w-[1050px]"] td:nth-child(4) { width: 9%; }
+  table[class*="min-w-[1050px]"] th:nth-child(5),
+  table[class*="min-w-[1050px]"] td:nth-child(5) { width: 13%; }
+  table[class*="min-w-[1050px]"] th:nth-child(6),
+  table[class*="min-w-[1050px]"] td:nth-child(6) { width: 11%; }
+  table[class*="min-w-[1050px]"] th:nth-child(7),
+  table[class*="min-w-[1050px]"] td:nth-child(7) { width: 12%; }
+  table[class*="min-w-[1050px]"] th:nth-child(8),
+  table[class*="min-w-[1050px]"] td:nth-child(8) { width: 5%; }
 
-  .movimentacao-conta-table td:nth-child(2),
-  .movimentacao-conta-table td:nth-child(3) {
+  table[class*="min-w-[1050px]"] td:nth-child(2),
+  table[class*="min-w-[1050px]"] td:nth-child(3) {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  table[class*="min-w-[1050px]"] td:nth-child(2) button {
+    width: 100%;
+    max-width: 100% !important;
+  }
 }
 
-/* Em larguras menores, prioriza o que é operacional e evita obrigar o usuário a arrastar a tela. */
-@media (max-width: 1180px) {
-  .movimentacao-conta-table th:nth-child(3),
-  .movimentacao-conta-table td:nth-child(3),
-  .movimentacao-conta-table th:nth-child(6),
-  .movimentacao-conta-table td:nth-child(6) {
+/* Notebook/tela estreita: Documento e Saldo continuam no detalhe do lançamento,
+   mas saem da grade principal para manter Situação e Ações sempre visíveis. */
+@media (min-width: 768px) and (max-width: 1180px) {
+  table[class*="min-w-[1050px]"] th:nth-child(3),
+  table[class*="min-w-[1050px]"] td:nth-child(3),
+  table[class*="min-w-[1050px]"] th:nth-child(6),
+  table[class*="min-w-[1050px]"] td:nth-child(6) {
     display: none;
   }
 
-  .movimentacao-conta-table th:nth-child(1),
-  .movimentacao-conta-table td:nth-child(1) { width: 12%; }
-  .movimentacao-conta-table th:nth-child(2),
-  .movimentacao-conta-table td:nth-child(2) { width: 36%; }
-  .movimentacao-conta-table th:nth-child(4),
-  .movimentacao-conta-table td:nth-child(4) { width: 11%; }
-  .movimentacao-conta-table th:nth-child(5),
-  .movimentacao-conta-table td:nth-child(5) { width: 16%; }
-  .movimentacao-conta-table th:nth-child(7),
-  .movimentacao-conta-table td:nth-child(7) { width: 17%; }
-  .movimentacao-conta-table th:nth-child(8),
-  .movimentacao-conta-table td:nth-child(8) { width: 8%; }
+  table[class*="min-w-[1050px]"] th:nth-child(1),
+  table[class*="min-w-[1050px]"] td:nth-child(1) { width: 12%; }
+  table[class*="min-w-[1050px]"] th:nth-child(2),
+  table[class*="min-w-[1050px]"] td:nth-child(2) { width: 39%; }
+  table[class*="min-w-[1050px]"] th:nth-child(4),
+  table[class*="min-w-[1050px]"] td:nth-child(4) { width: 10%; }
+  table[class*="min-w-[1050px]"] th:nth-child(5),
+  table[class*="min-w-[1050px]"] td:nth-child(5) { width: 16%; }
+  table[class*="min-w-[1050px]"] th:nth-child(7),
+  table[class*="min-w-[1050px]"] td:nth-child(7) { width: 16%; }
+  table[class*="min-w-[1050px]"] th:nth-child(8),
+  table[class*="min-w-[1050px]"] td:nth-child(8) { width: 7%; }
+
+  table[class*="min-w-[1050px]"] th,
+  table[class*="min-w-[1050px]"] td {
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+  }
 }
 
-@media (max-width: 860px) {
-  .movimentacao-conta-table th:nth-child(4),
-  .movimentacao-conta-table td:nth-child(4) {
+@media (min-width: 768px) and (max-width: 900px) {
+  table[class*="min-w-[1050px]"] th:nth-child(4),
+  table[class*="min-w-[1050px]"] td:nth-child(4) {
     display: none;
   }
 
-  .movimentacao-conta-table th:nth-child(1),
-  .movimentacao-conta-table td:nth-child(1) { width: 16%; }
-  .movimentacao-conta-table th:nth-child(2),
-  .movimentacao-conta-table td:nth-child(2) { width: 39%; }
-  .movimentacao-conta-table th:nth-child(5),
-  .movimentacao-conta-table td:nth-child(5) { width: 19%; }
-  .movimentacao-conta-table th:nth-child(7),
-  .movimentacao-conta-table td:nth-child(7) { width: 18%; }
-  .movimentacao-conta-table th:nth-child(8),
-  .movimentacao-conta-table td:nth-child(8) { width: 8%; }
+  table[class*="min-w-[1050px]"] th:nth-child(1),
+  table[class*="min-w-[1050px]"] td:nth-child(1) { width: 15%; }
+  table[class*="min-w-[1050px]"] th:nth-child(2),
+  table[class*="min-w-[1050px]"] td:nth-child(2) { width: 43%; }
+  table[class*="min-w-[1050px]"] th:nth-child(5),
+  table[class*="min-w-[1050px]"] td:nth-child(5) { width: 18%; }
+  table[class*="min-w-[1050px]"] th:nth-child(7),
+  table[class*="min-w-[1050px]"] td:nth-child(7) { width: 17%; }
+  table[class*="min-w-[1050px]"] th:nth-child(8),
+  table[class*="min-w-[1050px]"] td:nth-child(8) { width: 7%; }
+}
+
+/* No celular, a rolagem horizontal continua como fallback seguro. */
+@media (max-width: 767px) {
+  table[class*="min-w-[1050px]"] {
+    min-width: 820px !important;
+  }
 }
