@@ -35,7 +35,7 @@ export default function MovimentacaoContaNova(){
  const limite=8;
  async function carregar(p=1){setLoading(true);setErro("");try{const[o,m]=await Promise.all([financeiroOpcoes(),carregarExtrato({empresaId:empresa,contaId:conta,busca,status,tipoMovimento,de,ate,pagina:p,limite})]);setOp(o||{empresas:[],contas:[]});setItens(m.itens||[]);setMeta({total:m.total||0,paginas:m.paginas||1});setResumo(m.resumo||{entradas:0,saidas:0});setSaldoAtual(m.saldoAtual??null);setPagina(m.pagina||p)}catch(e){setErro(e.message)}finally{setLoading(false)}}
  useEffect(()=>{const t=setTimeout(()=>carregar(1),180);return()=>clearTimeout(t)},[empresa,conta,busca,status,tipoMovimento,de,ate]);
- useEffect(()=>{try{sessionStorage.setItem(FILTROS_STORAGE_KEY,JSON.stringify({empresa,conta,busca,status,tipoMovimento,de,ate}))}catch{}},[empresa,conta,busca,status,tipoMovimento,de,ate]);
+ useEffect(()=>{try{sessionStorage.setItem(FILTROS_STORAGE_KEY,JSON.stringify({empresa,conta,busca,status,tipoMovimento,de,ate}))}catch{void 0}},[empresa,conta,busca,status,tipoMovimento,de,ate]);
  useEffect(()=>{if(!empresa||conta||!op.contas?.length)return;const cs=op.contas.filter(c=>c.empresa_id===empresa);if(cs.length===1)setConta(cs[0].id)},[empresa,conta,op.contas]);
  const empresaSelecionada=useMemo(()=>op.empresas.find(x=>x.id===empresa),[op.empresas,empresa]);
  const contasEmpresa=useMemo(()=>op.contas.filter(c=>!empresa||c.empresa_id===empresa),[op.contas,empresa]);
