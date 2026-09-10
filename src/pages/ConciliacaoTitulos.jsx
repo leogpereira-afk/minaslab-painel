@@ -20,6 +20,10 @@ const restanteTitulo = (x, tipo) => Math.max(0, valorTitulo(x, tipo) - conciliad
 const nomeTitulo = (x, tipo) => tipo === "RECEBIMENTO" ? x?.cliente : x?.fornecedor;
 const documentoTitulo = (x) => x?.numero_nf || x?.cnpj_cpf || x?.documento || "";
 const dataTitulo = (x) => x?.data_pagamento || x?.data_vencimento || x?.data_lancamento || "";
+const mesAtual = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
 
 function Modal({ titulo, onClose, children }) {
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
@@ -42,6 +46,7 @@ export default function ConciliacaoTitulos() {
   const [empresa, setEmpresa] = useState(empresaInicial);
   const [busca, setBusca] = useState("");
   const [situacao, setSituacao] = useState("A_CONCILIAR");
+  const [periodo, setPeriodo] = useState(mesAtual());
   const [itens, setItens] = useState([]);
   const [meta, setMeta] = useState({ total: 0, paginas: 1, pagina: 1 });
   const [pagina, setPagina] = useState(1);
@@ -70,6 +75,7 @@ export default function ConciliacaoTitulos() {
         const conciliado = restante <= 0.005 || x.conciliado === true;
         if (situacao === "A_CONCILIAR" && (conciliado || cancelado)) return false;
         if (situacao === "CONCILIADO" && !conciliado) return false;
+        if (periodo && !String(dataTitulo(x) || "").slice(0, 7).startsWith(periodo)) return false;
         if (!termo) return true;
         return normaliza(`${nomeTitulo(x, tipo)} ${documentoTitulo(x)} ${x.descricao || ""} ${x.cnpj_cpf || ""}`).includes(termo);
       });
@@ -83,7 +89,7 @@ export default function ConciliacaoTitulos() {
     } catch (e) { setErro(e.message); } finally { setLoading(false); }
   }
 
-  useEffect(() => { const t = setTimeout(() => carregar(1), 250); return () => clearTimeout(t); }, [tipo, empresa, busca, situacao]);
+  useEffect(() => { const t = setTimeout(() => carregar(1), 250); return () => clearTimeout(t); }, [tipo, empresa, busca, situacao, periodo]);
 
   async function abrir(x, tipoForcado = tipo) {
     if (!x?.empresa_id) { setErro("Este título não possui empresa vinculada."); return; }
@@ -105,6 +111,8 @@ export default function ConciliacaoTitulos() {
         if (!alvo) throw new Error("Não foi possível localizar o título selecionado para conciliação.");
         setTipo(tipoInicial);
         setEmpresa(alvo.empresa_id || empresaInicial);
+        const dataAlvo = String(dataTitulo(alvo) || "").slice(0, 7);
+        if (dataAlvo) setPeriodo(dataAlvo);
         await abrir(alvo, tipoInicial);
       } catch (e) { setErro(e.message); } finally { setLoading(false); }
     })();
@@ -177,9 +185,10 @@ export default function ConciliacaoTitulos() {
       <button type="button" onClick={() => setTipo("DESPESA")} className={`rounded-2xl border p-4 text-left transition ${tipo === "DESPESA" ? "border-rose-300 bg-rose-50 ring-1 ring-rose-200" : "bg-white hover:bg-slate-50"}`}><div className="flex items-center gap-3"><ArrowUpCircle className="text-rose-700"/><div><div className="font-bold">Despesas</div><div className="text-sm text-slate-500">Conferir débitos bancários contra contas a pagar.</div></div></div></button>
     </div>
 
-    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[220px_220px_1fr]">
+    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[200px_190px_180px_1fr]">
       <label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => setEmpresa(e.target.value)}><option value="">Todas</option>{op.empresas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label>
       <label><span className="label">Situação da conciliação</span><select className="input" value={situacao} onChange={(e) => setSituacao(e.target.value)}><option value="">Todos</option><option value="A_CONCILIAR">A conciliar</option><option value="CONCILIADO">Conciliados</option></select></label>
+      <label><span className="label">Mês</span><div className="flex gap-2"><input className="input" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)}/>{periodo && <button type="button" className="btn-ghost h-10 px-2 text-xs" onClick={() => setPeriodo("")} title="Mostrar todos os meses">Todos</button>}</div></label>
       <label><span className="label">Pesquisar título</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input className="input pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={tipo === "RECEBIMENTO" ? "Cliente, CNPJ, NF ou descrição" : "Fornecedor, CNPJ, documento ou descrição"}/></div></label>
     </div>
 
