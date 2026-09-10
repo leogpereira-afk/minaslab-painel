@@ -8,7 +8,34 @@ const dataBR=v=>{const p=String(v||"").slice(0,10).split("-");return p.length===
 const vazio={empresa_id:"",tipo:"SAIDA",numero_nf:"",chave_acesso:"",cnpj_emitente:"",cnpj_destinatario:"",nome_emitente:"",nome_destinatario:"",data_emissao:"",data_vencimento:"",valor_total:"",email_destino:"",xml_url:"",pdf_url:"",observacao:"",origem:"MANUAL"};
 const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 function tag(root,nome){return root?.getElementsByTagName(nome)?.[0]?.textContent?.trim()||""}
-function lerXML(text){const doc=new DOMParser().parseFromString(text,"application/xml");if(doc.querySelector("parsererror"))throw new Error("XML inválido.");const emit=doc.getElementsByTagName("emit")?.[0],dest=doc.getElementsByTagName("dest")?.[0],inf=doc.getElementsByTagName("infNFe")?.[0],emis=tag(doc,"dhEmi")||tag(doc,"dEmi"),chaveTag=tag(doc,"chNFe"),chaveId=String(inf?.getAttribute("Id")||"").replace(/^NFe/i,"");return{numero_nf:tag(doc,"nNF"),chave_acesso:chaveTag||chaveId,cnpj_emitente:tag(emit,"CNPJ")||tag(emit,"CPF"),cnpj_destinatario:tag(dest,"CNPJ")||tag(dest,"CPF"),nome_emitente:tag(emit,"xNome"),nome_destinatario:tag(dest,"xNome"),data_emissao:emis?emis.slice(0,10):"",valor_total:Number(tag(doc,"vNF")||0),email_destino:tag(dest,"email"),origem:"XML"}}
+function lerXML(text){
+ const doc=new DOMParser().parseFromString(text,"application/xml");
+ if(doc.querySelector("parsererror"))throw new Error("XML inválido.");
+ const infNFSe=doc.getElementsByTagName("infNFSe")?.[0];
+ if(infNFSe){
+  const emit=infNFSe.getElementsByTagName("emit")?.[0];
+  const toma=infNFSe.getElementsByTagName("toma")?.[0];
+  const infDPS=infNFSe.getElementsByTagName("infDPS")?.[0];
+  const chave=String(infNFSe.getAttribute("Id")||"").replace(/^NFS/i,"");
+  const emis=tag(infDPS,"dhEmi")||tag(infNFSe,"dhProc")||tag(infDPS,"dCompet");
+  const valor=tag(infNFSe,"vTotNF")||tag(infNFSe,"vLiq")||tag(infDPS,"vServ");
+  return{
+   numero_nf:tag(infNFSe,"nNFSe"),
+   chave_acesso:chave,
+   cnpj_emitente:tag(emit,"CNPJ")||tag(emit,"CPF"),
+   cnpj_destinatario:tag(toma,"CNPJ")||tag(toma,"CPF"),
+   nome_emitente:tag(emit,"xNome"),
+   nome_destinatario:tag(toma,"xNome"),
+   data_emissao:emis?emis.slice(0,10):"",
+   valor_total:Number(valor||0),
+   email_destino:tag(toma,"email"),
+   observacao:tag(infDPS,"xDescServ"),
+   origem:"XML"
+  };
+ }
+ const emit=doc.getElementsByTagName("emit")?.[0],dest=doc.getElementsByTagName("dest")?.[0],inf=doc.getElementsByTagName("infNFe")?.[0],emis=tag(doc,"dhEmi")||tag(doc,"dEmi"),chaveTag=tag(doc,"chNFe"),chaveId=String(inf?.getAttribute("Id")||"").replace(/^NFe/i,"");
+ return{numero_nf:tag(doc,"nNF"),chave_acesso:chaveTag||chaveId,cnpj_emitente:tag(emit,"CNPJ")||tag(emit,"CPF"),cnpj_destinatario:tag(dest,"CNPJ")||tag(dest,"CPF"),nome_emitente:tag(emit,"xNome"),nome_destinatario:tag(dest,"xNome"),data_emissao:emis?emis.slice(0,10):"",valor_total:Number(tag(doc,"vNF")||0),email_destino:tag(dest,"email"),origem:"XML"};
+}
 async function arquivoBase64(file){const bytes=new Uint8Array(await file.arrayBuffer());let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(bin)}
 function Modal({titulo,onClose,children,largura="max-w-3xl"}){return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"><div className={`max-h-[92vh] w-full ${largura} overflow-hidden rounded-2xl bg-white shadow-2xl`}><div className="flex items-center justify-between border-b px-5 py-4"><h2 className="font-bold">{titulo}</h2><button className="btn-ghost h-9 w-9 p-0" onClick={onClose}><X size={18}/></button></div><div className="max-h-[calc(92vh-68px)] overflow-y-auto p-5">{children}</div></div></div>}
 function Campo({rotulo,valor,mono=false}){return <div className="rounded-xl border bg-slate-50/70 p-3"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{rotulo}</div><div className={`mt-1 break-words text-sm font-medium text-slate-800 ${mono?"font-mono text-xs":""}`}>{valor||"—"}</div></div>}
