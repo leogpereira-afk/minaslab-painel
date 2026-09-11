@@ -1,0 +1,40 @@
+name: Temp NFS-e Email Selector
+on:
+  push:
+    branches: [financeiro/nfse-email-fiscal]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: financeiro/nfse-email-fiscal
+      - name: Patch EmitirNfse
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/EmitirNfse.jsx')
+          s=p.read_text()
+          s=s.replace('forma_pagamento:"BOLETO",observacao:"",cliente:null});','forma_pagamento:"BOLETO",email_nfse:"",observacao:"",cliente:null});')
+          s=s.replace('const dataHoraBR=v=>v?new Date(v).toLocaleString("pt-BR"):"—";','const dataHoraBR=v=>v?new Date(v).toLocaleString("pt-BR"):"—";\nconst emailsValidos=v=>[...new Set(String(v||"").split(/[;,\\s]+/).map(x=>x.trim()).filter(x=>/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(x)))];')
+          s=s.replace('const clienteEmUso=novoCliente?cliente:selecionado;','const clienteEmUso=novoCliente?cliente:selecionado;\n  const emailsCliente=useMemo(()=>emailsValidos(clienteEmUso?.email),[clienteEmUso?.email]);')
+          s=s.replace('function registro(){const c=calcularItem(form);return {...form,cliente_id:novoCliente?"":form.cliente_id,cliente:novoCliente?cliente:null,quantidade:c.quantidade,valor_unitario:c.valorUnitario,desconto_percentual:c.desconto,valor_total:c.total,aliquota_simples_nacional:Number(form.aliquota_simples_nacional||2.01)}}','function registro(){const c=calcularItem(form);return {...form,cliente_id:novoCliente?"":form.cliente_id,cliente:novoCliente?cliente:null,email_nfse:form.email_nfse||"",quantidade:c.quantidade,valor_unitario:c.valorUnitario,desconto_percentual:c.desconto,valor_total:c.total,aliquota_simples_nacional:Number(form.aliquota_simples_nacional||2.01)}}')
+          s=s.replace('function escolherCliente(x){setForm(v=>({...v,cliente_id:x.id}));','function escolherCliente(x){const es=emailsValidos(x.email);setForm(v=>({...v,cliente_id:x.id,email_nfse:es.length===1?es[0]:""}));')
+          s=s.replace('async function preparar(){\n    if(!form.id)', 'async function preparar(){\n    if(emailsCliente.length>1&&!form.email_nfse){setAba("email");setErro("Selecione o e-mail que será utilizado na NFS-e.");return}\n    if(!form.id)')
+          s=s.replace('async function emitir(){if(!form.id)', 'async function emitir(){if(emailsCliente.length>1&&!form.email_nfse){setAba("email");setErro("Selecione o e-mail que será utilizado na NFS-e.");return}if(!form.id)')
+          s=s.replace('forma_pagamento:d.financeiro?.formaPagamento||"BOLETO",observacao:x.observacao||"",cliente:null}', 'forma_pagamento:d.financeiro?.formaPagamento||"BOLETO",email_nfse:x.email_destino||"",observacao:x.observacao||"",cliente:null}')
+          old='{aba==="email"&&<div><h3 className="font-bold">E-mail ao Cliente</h3><p className="mt-2 text-sm text-slate-600">Destinatário fiscal: <b>{clienteEmUso?.email||"não informado"}</b></p><div className="mt-4 rounded-xl border bg-slate-50 p-4 text-sm text-slate-600">O envio será feito somente depois da autorização e do salvamento do XML/PDF. O rascunho não envia e-mail.</div></div>}'
+          new='{aba==="email"&&<div><h3 className="font-bold">E-mail da NFS-e</h3><p className="mt-2 text-sm text-slate-600">A DPS Nacional aceita somente um e-mail. Selecione qual contato fiscal será usado nesta nota.</p>{emailsCliente.length>1?<div className="mt-4 max-w-xl"><span className="label">E-mail que será enviado na NFS-e *</span><select className="input" value={form.email_nfse||""} onChange={e=>{setForm(v=>({...v,email_nfse:e.target.value}));setPreparacao(null)}}><option value="">Selecione um e-mail...</option>{emailsCliente.map(e=><option key={e} value={e}>{e}</option>)}</select><p className="mt-2 text-xs text-amber-700">Este cliente possui {emailsCliente.length} e-mails cadastrados. Apenas o selecionado será enviado na DPS.</p></div>:<div className="mt-4 rounded-xl border bg-slate-50 p-4 text-sm text-slate-700">E-mail fiscal: <b>{emailsCliente[0]||"não informado"}</b></div>}<div className="mt-4 rounded-xl border bg-slate-50 p-4 text-sm text-slate-600">Os demais e-mails permanecem no cadastro do cliente. O rascunho não envia e-mail.</div></div>}'
+          if old not in s: raise SystemExit('bloco email nao encontrado')
+          s=s.replace(old,new)
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/EmitirNfse.jsx
+          git commit -m "Financeiro: selecionar email fiscal da NFS-e"
+          git push
