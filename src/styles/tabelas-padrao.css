@@ -1,0 +1,123 @@
+/* Padrão visual único das grades do sistema — referência: Serviços Gerados. */
+:root {
+  --table-font-size: 12px;
+  --table-head-font-size: 10px;
+  --table-filter-font-size: 11px;
+  --table-row-height: 34px;
+  --table-cell-x: 8px;
+  --table-cell-y: 6px;
+}
+
+/* Todas as tabelas operacionais passam a usar a mesma densidade e tipografia. */
+main table:not(.table-legacy) {
+  font-size: var(--table-font-size);
+  line-height: 1.25;
+}
+
+main table:not(.table-legacy) thead th {
+  padding: var(--table-cell-y) var(--table-cell-x);
+  font-size: var(--table-head-font-size);
+  font-weight: 700;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+  color: #64748b;
+  vertical-align: top;
+}
+
+main table:not(.table-legacy) tbody td {
+  padding: var(--table-cell-y) var(--table-cell-x);
+  min-height: var(--table-row-height);
+  vertical-align: middle;
+}
+
+main table:not(.table-legacy) tbody tr {
+  border-top: 1px solid #edf2f2;
+}
+
+main table:not(.table-legacy) tbody tr:hover {
+  background: rgba(248, 250, 252, .78);
+}
+
+/* Mesmo desenho compacto usado nos filtros de Serviços Gerados. */
+.table-filter,
+.filtro-coluna {
+  width: 100%;
+  min-width: 72px;
+  height: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 8px;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: var(--table-filter-font-size);
+  font-weight: 400;
+  color: #334155;
+  outline: none;
+}
+
+.table-filter:focus,
+.filtro-coluna:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, .12);
+}
+
+.table-filter::placeholder,
+.filtro-coluna::placeholder {
+  color: #94a3b8;
+}
+
+select.table-filter,
+select.filtro-coluna {
+  padding-right: 24px;
+}
+
+.table-filter-row th {
+  padding-top: 0 !important;
+  padding-bottom: 7px !important;
+  background: #fff;
+}
+
+.table-filter-label {
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-toolbar-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.table-pagination-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Mantém formulários/modais legíveis; o padrão compacto vale para grades. */
+main table:not(.table-legacy) button,
+main table:not(.table-legacy) input,
+main table:not(.table-legacy) select {
+  font-size: inherit;
+}
+
+@media (max-width: 768px) {
+  main table:not(.table-legacy) {
+    font-size: 11px;
+  }
+  main table:not(.table-legacy) thead th {
+    font-size: 9px;
+  }
+}
