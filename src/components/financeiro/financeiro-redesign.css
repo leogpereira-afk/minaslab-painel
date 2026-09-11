@@ -130,6 +130,67 @@
   display: none;
 }
 
+/* Tabelas operacionais: a rolagem horizontal fica sempre ao alcance do usuário.
+   O cabeçalho e a coluna de ações permanecem visíveis durante a navegação. */
+.financeiro-shell .overflow-x-auto:has(> table) {
+  max-width: 100%;
+  max-height: min(68vh, 680px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.financeiro-shell .overflow-x-auto:has(> table) > table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.financeiro-shell .overflow-x-auto:has(> table) > table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: rgb(248 250 252);
+  box-shadow: 0 1px 0 rgb(226 232 240);
+}
+
+.financeiro-shell .overflow-x-auto:has(> table) > table thead th:last-child,
+.financeiro-shell .overflow-x-auto:has(> table) > table tbody td:last-child:not([colspan]) {
+  position: sticky;
+  right: 0;
+  z-index: 11;
+  background: white;
+  box-shadow: -8px 0 12px -12px rgb(15 23 42 / .55);
+}
+
+.financeiro-shell .overflow-x-auto:has(> table) > table thead th:last-child {
+  z-index: 13;
+  background: rgb(248 250 252);
+}
+
+.financeiro-shell .overflow-x-auto:has(> table) > table tbody tr:hover td:last-child:not([colspan]) {
+  background: rgb(248 250 252);
+}
+
+/* Receber, Pagar e Notas usavam Ano + Mês. O período central substitui os dois. */
+.financeiro-periodo-listas > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4 > label:nth-last-child(-n+2) {
+  display: none;
+}
+
+/* Conciliação por títulos: o campo mensal antigo é substituído pelo mesmo De/Até. */
+.financeiro-periodo-conciliacao label:has(input[type="month"]) {
+  display: none;
+}
+
+/* Fluxo de Caixa já possui De/Até no cabeçalho; remove somente o filtro mensal redundante da tabela. */
+.financeiro-fluxo .rounded-2xl.border.bg-white.p-4 > .mb-4.flex.flex-col.gap-3 > label:nth-of-type(2) {
+  display: none;
+}
+
+.financeiro-periodo-bar .input {
+  min-height: 2.5rem;
+}
+
 @media (max-width: 767px) {
   .financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2,
   .financeiro-shell > .space-y-5 > .flex.gap-2 {
@@ -139,5 +200,9 @@
   .financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2 > button,
   .financeiro-shell > .space-y-5 > .flex.gap-2 > button {
     flex: 1 1 auto;
+  }
+
+  .financeiro-shell .overflow-x-auto:has(> table) {
+    max-height: 62vh;
   }
 }
