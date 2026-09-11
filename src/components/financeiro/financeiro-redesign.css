@@ -172,6 +172,25 @@
   background: rgb(248 250 252);
 }
 
+/* Receber, Pagar e Notas usavam Ano + Mês. O período central substitui os dois. */
+.financeiro-periodo-listas > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4 > label:nth-last-child(-n+2) {
+  display: none;
+}
+
+/* Conciliação por títulos: o campo mensal antigo é substituído pelo mesmo De/Até. */
+.financeiro-periodo-conciliacao label:has(input[type="month"]) {
+  display: none;
+}
+
+/* Fluxo de Caixa já possui De/Até no cabeçalho; remove somente o filtro mensal redundante da tabela. */
+.financeiro-fluxo .rounded-2xl.border.bg-white.p-4 > .mb-4.flex.flex-col.gap-3 > label:nth-of-type(2) {
+  display: none;
+}
+
+.financeiro-periodo-bar .input {
+  min-height: 2.5rem;
+}
+
 @media (max-width: 767px) {
   .financeiro-shell > .space-y-5 > .flex.flex-wrap.gap-2,
   .financeiro-shell > .space-y-5 > .flex.gap-2 {
