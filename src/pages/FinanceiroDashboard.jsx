@@ -5,7 +5,7 @@ import { financeiroOpcoes, finRecebimentosListar, finDespesasListar, finNotasLis
 import { nomeMovimento } from "../lib/movimentoNome.js";
 
 const moeda=(v)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-const hoje=()=>new Date().toISOString().slice(0,10);
+const hoje=()=>{const partes=Object.fromEntries(new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));return `${partes.year}-${partes.month}-${partes.day}`};
 const dataBR=(v)=>String(v||"").slice(0,10).split("-").reverse().join("/")||"—";
 const nomeEmpresa=(x)=>String(x?.nome||"").trim();
 const ehMLab=(x)=>/^m\s*lab$/i.test(nomeEmpresa(x));
