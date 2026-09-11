@@ -1,0 +1,26 @@
+name: Validacao temporaria Servicos Gerados
+on: push
+permissions:
+  contents: write
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/financeiro/servicos-contrato-espacamento'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: financeiro/servicos-contrato-espacamento
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Remover workflow temporario
+        if: success()
+        run: |
+          git rm .github/workflows/temp-validate-servicos.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: remove validacao temporaria"
+          git push origin HEAD:financeiro/servicos-contrato-espacamento
