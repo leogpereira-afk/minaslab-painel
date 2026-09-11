@@ -1,0 +1,43 @@
+name: Ajuste temporario Servicos Gerados
+on: push
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/financeiro/servicos-contrato-espacamento'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: financeiro/servicos-contrato-espacamento
+      - name: Aplicar ajuste
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/pages/ServicosGerados.jsx')
+          s=p.read_text()
+          s=s.replace('const filtrosVazios={os:"",empresa:', 'const filtrosVazios={contrato:"",os:"",empresa:')
+          s=s.replace('const colunasOk=(!filtros.os||texto(x.os_numero)', 'const colunasOk=(!filtros.contrato||texto(x.contrato_proposta).includes(texto(filtros.contrato)))&&(!filtros.os||texto(x.os_numero)')
+          s=s.replace('w-full min-w-[1420px] text-xs', 'w-full min-w-[1320px] text-[11px]')
+          s=s.replace('<tr className="uppercase"><th className="px-3 py-2">OS</th>', '<tr className="uppercase"><th className="w-[105px] px-2 py-2">Contrato</th><th className="w-[115px] px-2 py-2">OS</th>')
+          s=s.replace('<tr className="border-t border-slate-200 bg-white align-top"><th className="p-1.5"><div className="relative"><Filter size={11} className="absolute left-2 top-2 text-slate-400"/><input className={`${filtroInput} pl-6`} placeholder="OS"', '<tr className="border-t border-slate-200 bg-white align-top"><th className="p-1"><div className="relative"><Filter size={11} className="absolute left-2 top-2 text-slate-400"/><input className={`${filtroInput} pl-6`} placeholder="Contrato" value={filtros.contrato} onChange={e=>setFiltros({...filtros,contrato:e.target.value})}/></div></th><th className="p-1"><div className="relative"><Filter size={11} className="absolute left-2 top-2 text-slate-400"/><input className={`${filtroInput} pl-6`} placeholder="OS"')
+          s=s.replace('<tbody>{itensPagina.map(x=><tr key={x.id} className={`border-t hover:bg-slate-50 ${x.status_faturamento', '<tbody>{itensPagina.map(x=><tr key={x.id} className={`border-t hover:bg-slate-50 ${x.status_faturamento')
+          needle='<td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-800">{x.os_numero}'
+          s=s.replace(needle, '<td className="max-w-[105px] truncate whitespace-nowrap px-2 py-2 text-slate-600" title={x.contrato_proposta}>{x.contrato_proposta||"—"}</td><td className="whitespace-nowrap px-2 py-2 font-semibold text-slate-800">{x.os_numero}')
+          s=s.replace('className="whitespace-nowrap px-3 py-2">{x.empresa?.nome', 'className="whitespace-nowrap px-2 py-2">{x.empresa?.nome')
+          s=s.replace('className="max-w-[220px] truncate px-3 py-2" title={x.cliente}', 'className="max-w-[210px] truncate px-2 py-2" title={x.cliente}')
+          s=s.replace('className="whitespace-nowrap px-3 py-2">{x.numero_nf', 'className="whitespace-nowrap px-2 py-2">{x.numero_nf')
+          s=s.replace('className="px-3 py-2"><Pill', 'className="px-2 py-2"><Pill')
+          s=s.replace('className="whitespace-nowrap px-3 py-2">{data(', 'className="whitespace-nowrap px-2 py-2">{data(')
+          s=s.replace('className="whitespace-nowrap px-3 py-2 font-semibold">{moeda', 'className="whitespace-nowrap px-2 py-2 font-semibold">{moeda')
+          s=s.replace('className="max-w-[130px] truncate px-3 py-2 text-[10px]', 'className="max-w-[110px] truncate px-2 py-2 text-[10px]')
+          s=s.replace('className="px-3 py-2 text-right"><button', 'className="px-2 py-2 text-right"><button')
+          s=s.replace('colSpan="11"', 'colSpan="12"')
+          p.write_text(s)
+          PY
+          git rm .github/workflows/temp-servicos-contrato.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/ServicosGerados.jsx
+          git commit -m "feat: adiciona contrato e compacta grade de serviços"
+          git push origin HEAD:financeiro/servicos-contrato-espacamento
