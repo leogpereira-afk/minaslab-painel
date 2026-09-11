@@ -1,19 +1,22 @@
 name: Temp NFS-e Rejeicao UI
 on:
-  workflow_dispatch:
+  push:
+    branches: [financeiro/nfse-rejeicao-reenvio]
 permissions:
   contents: write
 jobs:
   patch:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create branch and patch
+        with:
+          ref: financeiro/nfse-rejeicao-reenvio
+      - name: Patch EmitirNfse
         shell: python
         run: |
           import subprocess
           from pathlib import Path
-          subprocess.run(['git','checkout','-b','financeiro/nfse-rejeicao-reenvio'],check=True)
           p=Path('src/pages/EmitirNfse.jsx')
           s=p.read_text()
           s=s.replace('const [prevalidando,setPrevalidando]=useState(false);','const [prevalidando,setPrevalidando]=useState(false);\n  const [rejeicaoModal,setRejeicaoModal]=useState(null);')
@@ -31,8 +34,10 @@ jobs:
           if anchor not in s: raise SystemExit('modal anchor not found')
           s=s.replace(anchor,modal+'\n'+anchor)
           p.write_text(s)
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','src/pages/EmitirNfse.jsx'],check=True)
-          subprocess.run(['git','commit','-m','Financeiro: detalhar rejeicao e permitir reenvio NFS-e'],check=True)
-          subprocess.run(['git','push','-u','origin','financeiro/nfse-rejeicao-reenvio'],check=True)
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/EmitirNfse.jsx
+          git commit -m "Financeiro: detalhar rejeicao e permitir reenvio NFS-e"
+          git push
