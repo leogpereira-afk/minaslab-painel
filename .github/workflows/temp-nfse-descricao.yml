@@ -1,0 +1,32 @@
+name: Ajuste temporario descricao NFS-e
+on:
+  push:
+    branches: [main]
+jobs:
+  patch-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Aplicar ajuste
+        run: python scripts/temp_patch_nfse_descricao.py
+      - name: Validar build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit do ajuste
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/EmitirNfse.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: preencher descricao da nfse com contrato e os"
+          git push
