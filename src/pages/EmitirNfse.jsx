@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, CheckCircle2, FilePlus2, Save, Search, ShieldCheck, UserPlus, X, XCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import { finClientesListar, finNfseEmitir, finNfseEmitirProducao, finNfseEstado, finNfseListar, finNfsePreparar, finNfseRascunhoSalvar, finNfseVerificarCertificado } from "../services/financeiro.js";
+import { servicoGeradoVincularNfse } from "../services/servicosGerados.js";
 
 const hoje=()=>new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
 const vazio=()=>({id:"",cliente_id:"",data_emissao:hoje(),data_vencimento:"",quantidade:"1",valor_unitario:"",desconto_percentual:"0",valor_total:"",codigo_servico:"170202",nbs:"118064000",servico_descricao:"",aliquota_iss:"",aliquota_simples_nacional:"2.01",iss_retido:false,regime_especial:"",forma_pagamento:"BOLETO",observacao:"",cliente:null});
@@ -25,6 +26,9 @@ function calcularItem(f){
 
 export default function EmitirNfse(){
   const navigate=useNavigate();
+  const location=useLocation();
+  const origemServico=location.state?.servicoGerado||null;
+  const [origemAplicada,setOrigemAplicada]=useState(false);
   const [estado,setEstado]=useState(null);
   const [clientes,setClientes]=useState([]);
   const [rascunhos,setRascunhos]=useState([]);
@@ -47,6 +51,7 @@ export default function EmitirNfse(){
 
   async function carregar(){setCarregando(true);setErro("");try{const [e,c,r]=await Promise.all([finNfseEstado(),finClientesListar(""),finNfseListar()]);setEstado(e);setClientes(c);setRascunhos(r)}catch(ex){setErro(ex.message)}finally{setCarregando(false)}}
   useEffect(()=>{carregar()},[]);
+  useEffect(()=>{if(!origemServico||origemAplicada||!clientes.length)return;const dig=v=>String(v||"").replace(/\D/g,"");const achado=clientes.find(c=>dig(c.cnpj_cpf)===dig(origemServico.cnpj_cpf));const valor=String(Number(origemServico.valor_faturar||origemServico.valor_original||0)||"");setForm(v=>({...v,cliente_id:achado?.id||"",data_vencimento:origemServico.data_vencimento||"",valor_unitario:valor,valor_total:valor,forma_pagamento:origemServico.forma_pagamento||v.forma_pagamento,servico_descricao:origemServico.servico||v.servico_descricao,observacao:[origemServico.observacao,`OS ${origemServico.os_numero}`].filter(Boolean).join(" · ")}));if(!achado){setNovoCliente(true);setCliente(c=>({...c,nome:origemServico.cliente||"",cnpj_cpf:origemServico.cnpj_cpf||""}))}setOrigemAplicada(true);setOk(`Dados carregados da OS ${origemServico.os_numero}. Confira cliente, serviço e tributação antes de emitir.`)},[clientes,origemServico,origemAplicada]);
 
   const item=useMemo(()=>calcularItem(form),[form.quantidade,form.valor_unitario,form.desconto_percentual]);
   const clientesFiltrados=useMemo(()=>{const q=busca.trim().toLowerCase();if(!q)return clientes.slice(0,120);return clientes.filter(x=>`${x.nome||""} ${x.nome_fantasia||""} ${x.cnpj_cpf||""} ${x.email||""}`.toLowerCase().includes(q)).slice(0,120)},[clientes,busca]);
@@ -65,7 +70,7 @@ export default function EmitirNfse(){
   async function verificarA1(){setVerificando(true);setErro("");setOk("");try{const r=await finNfseVerificarCertificado();setVerificacao(r);setEstado(x=>({...x,...r}));setOk("Certificado A1 aberto com sucesso. Arquivo, senha e validade foram conferidos no servidor.")}catch(ex){setVerificacao(null);setErro(ex.message)}finally{setVerificando(false)}}
   async function preparar(){setErro("");setOk("");try{const r=await finNfsePreparar(registro());setPreparacao(r);setOk("Pré-validação concluída. Nenhuma nota foi emitida.")}catch(ex){setPreparacao(null);setErro(ex.message)}}
   async function salvar(){setSalvando(true);setErro("");setOk("");try{const r=await finNfseRascunhoSalvar(registro());setForm(v=>({...v,id:r.item.id,cliente_id:r.cliente.id,cliente:null,valor_total:String(r.item.valor_total??v.valor_total)}));setNovoCliente(false);setCliente(clienteNovo());setOk("Rascunho salvo. O cliente foi vinculado ao cadastro central da M Lab.");await carregar()}catch(ex){setErro(ex.message)}finally{setSalvando(false)}}
-  async function emitir(){if(!form.id){setErro("Salve o rascunho antes de emitir.");return}if(producao&&!producaoLiberada){setErro("A produção continua bloqueada. As travas de liberação e transmissão ainda não estão ativas.");return}const texto=producao?`ATENÇÃO: esta ação emitirá uma NFS-e REAL em PRODUÇÃO no valor de ${moeda(item.total)} para ${clienteEmUso?.nome||"o cliente selecionado"}. Deseja continuar?`:`Transmitir esta NFS-e em HOMOLOGAÇÃO? Nenhum recebimento real será criado.`;if(!confirm(texto))return;setEmitindo(true);setErro("");setOk("");try{const r=producao?await finNfseEmitirProducao(form.id):await finNfseEmitir(form.id);setOk(r.mensagem||(producao?"NFS-e de produção processada.":"NFS-e transmitida em homologação."));await carregar()}catch(ex){setErro(ex.message)}finally{setEmitindo(false)}}
+  async function emitir(){if(!form.id){setErro("Salve o rascunho antes de emitir.");return}if(producao&&!producaoLiberada){setErro("A produção continua bloqueada. As travas de liberação e transmissão ainda não estão ativas.");return}const texto=producao?`ATENÇÃO: esta ação emitirá uma NFS-e REAL em PRODUÇÃO no valor de ${moeda(item.total)} para ${clienteEmUso?.nome||"o cliente selecionado"}. Deseja continuar?`:`Transmitir esta NFS-e em HOMOLOGAÇÃO? Nenhum recebimento real será criado.`;if(!confirm(texto))return;setEmitindo(true);setErro("");setOk("");try{const r=producao?await finNfseEmitirProducao(form.id):await finNfseEmitir(form.id);if(producao&&r.autorizada&&origemServico?.id){await servicoGeradoVincularNfse(origemServico.id,form.id);setOk(`NFS-e ${r.numeroNf||""} autorizada. A OS ${origemServico.os_numero} foi atualizada para Faturado e vinculada à Conta a Receber.`)}else setOk(r.mensagem||(producao?"NFS-e de produção processada.":"NFS-e transmitida em homologação."));await carregar()}catch(ex){setErro(ex.message)}finally{setEmitindo(false)}}
   function editar(x){const d=x.nfse_dados||{},s=d.servico||{};const qtd=String(s.quantidade??1),vu=String(s.valorUnitario??x.valor_total??""),desc=String(s.descontoPercentual??0);setForm({id:x.id,cliente_id:x.cliente_id||"",data_emissao:x.data_emissao||hoje(),data_vencimento:x.data_vencimento||"",quantidade:qtd,valor_unitario:vu,desconto_percentual:desc,valor_total:String(x.valor_total??""),codigo_servico:s.codigo||"170202",nbs:s.nbs||"118064000",servico_descricao:s.descricao||"",aliquota_iss:d.tributacao?.aliquotaIss??"",aliquota_simples_nacional:String(d.tributacao?.aliquotaSimplesNacional??"2.01"),iss_retido:!!d.tributacao?.issRetido,regime_especial:d.tributacao?.regimeEspecial||"",forma_pagamento:d.financeiro?.formaPagamento||"BOLETO",observacao:x.observacao||"",cliente:null});setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setAba("servico");window.scrollTo({top:0,behavior:"smooth"})}
 
   return <div className="space-y-5">
