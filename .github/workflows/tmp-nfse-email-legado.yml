@@ -1,0 +1,31 @@
+name: Temp NFS-e Email Legado
+on:
+  push:
+    branches: [financeiro/nfse-email-rejeitada-legado]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: financeiro/nfse-email-rejeitada-legado
+      - name: Patch
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/EmitirNfse.jsx')
+          s=p.read_text()
+          old='function editar(x){const d=x.nfse_dados||{},s=d.servico||{};const qtd=String(s.quantidade??1),vu=String(s.valorUnitario??x.valor_total??""),desc=String(s.descontoPercentual??0);setForm({id:x.id,cliente_id:x.cliente_id||"",data_emissao:x.data_emissao||hoje(),data_vencimento:x.data_vencimento||"",quantidade:qtd,valor_unitario:vu,desconto_percentual:desc,valor_total:String(x.valor_total??""),codigo_servico:s.codigo||"170202",nbs:s.nbs||"118064000",servico_descricao:s.descricao||"",aliquota_iss:d.tributacao?.aliquotaIss??"",aliquota_simples_nacional:String(d.tributacao?.aliquotaSimplesNacional??"2.01"),iss_retido:!!d.tributacao?.issRetido,regime_especial:d.tributacao?.regimeEspecial||"",forma_pagamento:d.financeiro?.formaPagamento||"BOLETO",email_nfse:x.email_destino||"",observacao:x.observacao||"",cliente:null});setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setAba("servico");window.scrollTo({top:0,behavior:"smooth"})}'
+          new='function editar(x){const d=x.nfse_dados||{},s=d.servico||{};const qtd=String(s.quantidade??1),vu=String(s.valorUnitario??x.valor_total??""),desc=String(s.descontoPercentual??0);const emails=emailsValidos(x.cliente?.email||"");const salvo=emailsValidos(x.email_destino||"");const emailFiscal=salvo.length===1&&emails.includes(salvo[0])?salvo[0]:(emails.length===1?emails[0]:"");setForm({id:x.id,cliente_id:x.cliente_id||"",data_emissao:x.data_emissao||hoje(),data_vencimento:x.data_vencimento||"",quantidade:qtd,valor_unitario:vu,desconto_percentual:desc,valor_total:String(x.valor_total??""),codigo_servico:s.codigo||"170202",nbs:s.nbs||"118064000",servico_descricao:s.descricao||"",aliquota_iss:d.tributacao?.aliquotaIss??"",aliquota_simples_nacional:String(d.tributacao?.aliquotaSimplesNacional??"2.01"),iss_retido:!!d.tributacao?.issRetido,regime_especial:d.tributacao?.regimeEspecial||"",forma_pagamento:d.financeiro?.formaPagamento||"BOLETO",email_nfse:emailFiscal,observacao:x.observacao||"",cliente:null});setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setAba("servico");window.scrollTo({top:0,behavior:"smooth"})}'
+          if old not in s: raise SystemExit('editar marker not found')
+          p.write_text(s.replace(old,new))
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/EmitirNfse.jsx
+          git commit -m "Financeiro: normalizar email fiscal de nota rejeitada"
+          git push
