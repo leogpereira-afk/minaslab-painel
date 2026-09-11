@@ -1,10 +1,10 @@
-import { FINANCEIRO_SERVICOS, FINANCEIRO_SERVICOS_IMPORT, FINANCEIRO_SERVICOS_EMPRESA, FINANCEIRO_SERVICOS_FATURAR } from "../lib/api.js";
+import { FINANCEIRO_SERVICOS, FINANCEIRO_SERVICOS_LISTAR, FINANCEIRO_SERVICOS_IMPORT, FINANCEIRO_SERVICOS_EMPRESA, FINANCEIRO_SERVICOS_FATURAR } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
 function erroTexto(v){if(v==null)return"";if(typeof v==="string")return v.trim();if(v instanceof Error)return v.message||String(v);if(typeof v==="object"){for(const k of["erro","message","mensagem","details"]){const s=erroTexto(v[k]);if(s)return s}}return String(v)}
 async function chamarUrl(url,corpo={}){const resp=await comCracha(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});const body=await resp.json().catch(()=>null);if(!resp.ok)throw new Error(erroTexto(body)||mensagemDoStatus(resp.status));return body||{}}
 const chamar=(action,corpo={})=>chamarUrl(FINANCEIRO_SERVICOS,{action,...corpo});
-export const servicosGeradosListar=(filtros={})=>chamar("listar",{filtros});
+export const servicosGeradosListar=(filtros={})=>chamarUrl(FINANCEIRO_SERVICOS_LISTAR,{filtros});
 export const servicoGeradoSalvar=registro=>chamar("salvar",{registro}).then(r=>r.item);
 export const servicoParticularidadeSalvar=registro=>chamar("particularidadeSalvar",{registro}).then(r=>r.item);
 export const servicosGeradosSincronizar=()=>chamar("sincronizarPagamentos");
