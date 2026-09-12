@@ -32,7 +32,7 @@
 //   aoRegistrarAcontecimento   abre o lançamento no histórico
 // ============================================================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Pencil, UserMinus, AlertTriangle,
@@ -43,6 +43,7 @@ import { situacaoFerias, situacaoExperiencia, inicioDoHistorico } from "../../li
 import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadastro.js";
 import { radarExames, tempoDeCasa, chipVenc } from "./uteis.js";
 import { Card, Empty } from "../ui.jsx";
+import { dataDe, resultadoDe, tipoDe, rotuloTipo, metaResultado } from "../../lib/rhExamesApresentacao.js";
 
 const txt = (v) => String(v ?? "").trim();
 const ehData = (v) => /^\d{4}-\d{2}-\d{2}$/.test(txt(v));
@@ -81,7 +82,7 @@ function Dado({ rotulo, valor }) {
   return (
     <div className="min-w-0">
       <p className="label mb-0.5">{rotulo}</p>
-      <p className="truncate text-sm text-slate-800">{txt(valor) || "—"}</p>
+      <p className="break-words whitespace-pre-wrap text-sm text-slate-800">{txt(valor) || "—"}</p>
     </div>
   );
 }
@@ -90,6 +91,7 @@ function Contagem({ n, rotulo, aoAbrir }) {
   const Comp = aoAbrir ? "button" : "div";
   return (
     <Comp
+      type={aoAbrir ? "button" : undefined}
       onClick={aoAbrir}
       className={clsx(
         "flex items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 text-left",
@@ -122,6 +124,10 @@ export default function FichaPessoa({
   aoEditar, aoDesligar, aoEfetivar, aoIrParaAba, aoRegistrarAcontecimento,
 }) {
   const [aba, setAba] = useState("resumo");
+  const tituloRef = useRef(null);
+  useEffect(() => {
+    tituloRef.current?.focus();
+  }, [pessoa?.id]);
 
   const vm = useMemo(() => {
     if (!pessoa) return null;
@@ -231,13 +237,13 @@ export default function FichaPessoa({
       <Card>
         <div className="flex flex-wrap items-start gap-4">
           <Iniciais nome={pessoa.nome} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-40">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-xl font-bold text-slate-900">{txt(pessoa.nome) || "sem nome"}</h1>
+              <h2 ref={tituloRef} tabIndex={-1} className="min-w-0 max-w-full break-words font-display text-xl font-bold text-slate-900">{txt(pessoa.nome) || "sem nome"}</h2>
               <span className={desligado ? "chip" : "chip-ok"}>{desligado ? "Desligado" : "Ativo"}</span>
               {pessoa.batePonto === false && <span className="chip">não bate ponto</span>}
             </div>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <p className="mt-0.5 break-words text-sm text-slate-500">
               {txt(pessoa.cargo) || "cargo não informado"}
               {txt(pessoa.setor) && ` · ${txt(pessoa.setor)}`}
             </p>
@@ -265,7 +271,7 @@ export default function FichaPessoa({
             </p>
           </div>
           {editavel && (
-            <div className="sem-impressao flex shrink-0 flex-wrap gap-2">
+            <div className="sem-impressao flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
               <button type="button" className="btn-outline" onClick={aoEditar}>
                 <Pencil size={15} /> Editar
               </button>
@@ -465,11 +471,11 @@ export default function FichaPessoa({
             <Empty>Nenhum exame registrado para esta pessoa.</Empty>
           ) : (
             <ul className="divide-y" style={{ borderColor: "var(--fio-lista)" }}>
-              {[...exames].sort((x, y) => String(y.data).localeCompare(String(x.data))).map((e) => (
+              {[...exames].sort((x, y) => dataDe(y).localeCompare(dataDe(x))).map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                  <span className="tnum w-24 shrink-0 text-slate-500">{ehData(e.data) ? dataLonga(e.data) : "—"}</span>
-                  <span className="min-w-0 flex-1 truncate text-slate-800">{txt(e.exame) || txt(e.tipo) || "—"}</span>
-                  <span className="chip">{e.resultado || "—"}</span>
+                  <span className="tnum w-24 shrink-0 text-slate-500">{ehData(dataDe(e)) ? dataLonga(dataDe(e)) : "—"}</span>
+                  <span className="min-w-0 flex-1 break-words text-slate-800">{txt(e.exame) || rotuloTipo(tipoDe(e))}</span>
+                  <span className={metaResultado(resultadoDe(e)).chip}>{metaResultado(resultadoDe(e)).rotulo}</span>
                 </li>
               ))}
             </ul>

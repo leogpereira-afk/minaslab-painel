@@ -65,21 +65,32 @@ export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEs
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <button type="button" onClick={() => mudarMes(-1)} className="btn-ghost h-9 w-9 p-0" title="Mês anterior">
+      <div className="mb-3 flex items-center justify-between gap-1">
+        <button type="button" onClick={() => mudarMes(-1)} className="btn-ghost h-11 w-11 shrink-0 p-0" aria-label="Mês anterior" title="Mês anterior">
           <ChevronLeft size={18} />
         </button>
-        <span className="font-display text-base font-semibold capitalize text-slate-900">
+        <span aria-live="polite" aria-atomic="true" className="text-center font-display text-base font-semibold capitalize text-slate-900">
           {MESES_LONGOS[mes - 1]} de {ano}
         </span>
-        <button type="button" onClick={() => mudarMes(1)} className="btn-ghost h-9 w-9 p-0" title="Próximo mês">
+        <button type="button" onClick={() => mudarMes(1)} className="btn-ghost h-11 w-11 shrink-0 p-0" aria-label="Próximo mês" title="Próximo mês">
           <ChevronRight size={18} />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <button
+        type="button"
+        className="btn-outline mb-3 min-h-11 w-full"
+        onClick={() => {
+          setAncora(hoje.slice(0, 7));
+          aoEscolherDia?.(hoje);
+        }}
+      >
+        Ir para hoje
+      </button>
+
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1" role="group" aria-label="Escolher dia do calendário">
         {DIAS_SEMANA.map((d) => (
-          <span key={d} className="pb-1 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span key={d} aria-hidden="true" className="pb-1 text-center font-display text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             {d}
           </span>
         ))}
@@ -94,9 +105,11 @@ export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEs
               type="button"
               onClick={() => aoEscolherDia?.(escolhido ? null : diaISO)}
               aria-pressed={escolhido}
+              aria-current={ehHoje ? "date" : undefined}
+              aria-label={`${new Date(diaISO + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${ehHoje ? ", hoje" : ""}, ${eventos.length === 0 ? "sem eventos" : `${eventos.length} ${eventos.length === 1 ? "evento" : "eventos"}`}`}
               title={eventos.map((e) => e.rotulo).join("\n") || undefined}
               className={clsx(
-                "flex min-h-[52px] flex-col items-center gap-1 rounded-xl border p-1.5 pt-2 text-sm transition-all sm:min-h-[60px]",
+                "flex min-h-[52px] min-w-0 flex-col items-center gap-1 rounded-xl border px-0.5 py-2 text-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand sm:min-h-[60px]",
                 escolhido
                   ? "border-brand bg-brand-50 ring-2 ring-brand"
                   : "hover:border-brand-300 hover:bg-brand-50/50",
@@ -112,15 +125,15 @@ export default function CalendarioMes({ eventosPorDia = {}, diaSelecionado, aoEs
               >
                 {Number(diaISO.slice(8, 10))}
               </span>
-              {/* Ate 4 pontos; acima disso, o numero diz quantos tem. */}
+              {/* O total não disputa largura com as cores nos dias cheios. */}
               {eventos.length > 0 && (
-                <span className="flex items-center gap-0.5">
-                  {eventos.slice(0, 4).map((e, j) => (
-                    <span key={j} className={clsx("h-1.5 w-1.5 rounded-full", PONTO[e.cor] || PONTO.neutral)} />
-                  ))}
-                  {eventos.length > 4 && (
-                    <span className="font-display text-[10px] font-semibold text-slate-500">+{eventos.length - 4}</span>
-                  )}
+                <span aria-hidden="true" className="flex max-w-full flex-col items-center gap-0.5">
+                  <span className="flex flex-wrap justify-center gap-0.5">
+                    {eventos.slice(0, 4).map((evento, indice) => (
+                      <span key={indice} className={clsx("h-1 w-1 shrink-0 rounded-full sm:h-1.5 sm:w-1.5", PONTO[evento.cor] || PONTO.neutral)} />
+                    ))}
+                  </span>
+                  <span className="font-display text-[10px] font-semibold text-slate-600">{eventos.length}</span>
                 </span>
               )}
             </button>

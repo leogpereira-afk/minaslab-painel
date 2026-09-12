@@ -35,6 +35,7 @@ import { salvar, apagar, carregarColecoes } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataCurta, dataLonga, diaLocalISO, diasEntre, paraNumero } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
+import { filtrarPessoasPorNome } from "../lib/rhApresentacao.js";
 import { cadenciaDe, cadenciaDaPessoa } from "../lib/rh/feedbackCadencia.js";
 import { situacaoExperiencia } from "../lib/rh/clt.js";
 import { feriasEmCurso } from "../lib/rh/ferias.js";
@@ -134,6 +135,7 @@ export default function RH() {
 
   const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, exames, historico }
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [aba, setAba] = useState("pessoas");
   const [busca, setBusca] = useState("");
@@ -149,8 +151,9 @@ export default function RH() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
-    carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
+    return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
       .then((r) => {
         setDados({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico });
         setErro(null);
@@ -161,7 +164,8 @@ export default function RH() {
         // existe) — sem este aviso, a recarga que falha deixava a tela velha
         // em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -192,10 +196,8 @@ export default function RH() {
       .filter((p) => p.ativo === false)
       .sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
 
-    const q = norm(busca).trim();
-    const visiveis = q
-      ? ativos.filter((p) => norm(p.nome).includes(q) || norm(p.apelido).includes(q))
-      : ativos;
+    const visiveis = filtrarPessoasPorNome(ativos, busca);
+    const desligadosVisiveis = filtrarPessoasPorNome(desligados, busca);
 
     // A mesma âncora da lib: meia-noite LOCAL do hojeISO — new Date("AAAA-MM-DD")
     // seria meia-noite UTC e o dia voltaria um no Brasil.
@@ -306,6 +308,7 @@ export default function RH() {
     return {
       ativos,
       desligados,
+      desligadosVisiveis,
       visiveis,
       linhasFerias,
       vencimentos,
@@ -602,7 +605,7 @@ export default function RH() {
   // total do arquivo divergiria do cartão "No quadro" e a conversa passaria a
   // ser sobre qual dos dois números está certo.
   const baixarPessoas = () => {
-    const visiveisAgora = [...vm.visiveis, ...(verDesligados ? vm.desligados : [])];
+    const visiveisAgora = [...vm.visiveis, ...(verDesligados ? vm.desligadosVisiveis : [])];
     if (visiveisAgora.length === 0) {
       setAviso({ tipo: "erro", texto: "Não há ninguém neste recorte para baixar." });
       return;
@@ -626,6 +629,14 @@ export default function RH() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
+          <span>Não foi possível atualizar os dados. A tela mostra a última carga disponível.</span>
+          <button type="button" className="btn-outline" onClick={recarregar} disabled={atualizando}>
+            {atualizando ? "Atualizando..." : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="RH"
         descricao="O quadro da MinasLab: quem trabalha aqui, férias, feedback, exames e o radar de NR e treinamento."
@@ -657,7 +668,7 @@ export default function RH() {
             {/* O ponto não mora mais aqui. Quem vier procurar na casa velha sai
                 daqui direto para a nova, em vez de achar uma cópia parada. */}
             <Link to="/ponto" className="btn-outline">
-              <Clock size={16} strokeWidth={2.5} /> Ponto: virou módulo próprio
+              <Clock size={16} strokeWidth={2.5} /> Ir para o Ponto
             </Link>
           </div>
         }
@@ -672,6 +683,7 @@ export default function RH() {
           onClick={() => {
             setAba("pessoas");
             setVerDesligados(false);
+            setBusca("");
           }}
           ativo={aba === "pessoas"}
         />
@@ -708,7 +720,7 @@ export default function RH() {
 
       {/* Cinco abas não cabem na largura do celular. Sem o overflow aqui, a
           PÁGINA INTEIRA passava a rolar de lado. */}
-      <div className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
+      <div role="group" aria-label="Seções do RH" className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented
           opcoes={[
             { valor: "pessoas", rotulo: "Pessoas" },
@@ -726,6 +738,7 @@ export default function RH() {
         <AbaPessoas
           ativos={vm.ativos}
           desligados={vm.desligados}
+          desligadosVisiveis={vm.desligadosVisiveis}
           visiveis={vm.visiveis}
           historico={dados.historico}
           hojeISO={hojeISO}

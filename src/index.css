@@ -91,14 +91,14 @@ textarea {
     @apply transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover;
   }
   .input {
-    @apply w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-all duration-200 focus:border-brand-400 focus:ring-4 focus:ring-brand-100/70 placeholder:text-slate-400;
-    border-color: #cfdada;
+    @apply min-w-0 w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-all duration-200 focus:border-brand-700 focus:ring-4 focus:ring-brand-100/70 placeholder:text-slate-500;
+    border-color: #829497;
   }
   .select {
     @apply input pr-9 font-display;
   }
   .label {
-    @apply mb-1.5 block font-display text-xs font-semibold uppercase tracking-wide text-slate-500;
+    @apply mb-1.5 block font-display text-xs font-semibold tracking-wide text-slate-600;
   }
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 font-display text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50;
@@ -317,4 +317,95 @@ textarea {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Padrão de navegação, listas e formulários — revisão de setembro/2026. */
+.skip-link{position:fixed;top:8px;left:8px;z-index:120;transform:translateY(-160%);padding:12px 18px;border-radius:10px;background:#fff;color:#115e59;border:2px solid #0f766e}
+.skip-link:focus{transform:none}
+#conteudo-principal:focus{outline:none}
+.page-title>div:first-child{min-width:0;flex:1 1 240px}
+.page-title p{font-size:14px;line-height:1.6}
+.page-actions,.page-actions>div{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;min-width:0}
+.stat-value{overflow-wrap:anywhere;line-height:1.25}
+.btn-outline:disabled,.btn-ghost:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-primary,.btn-outline,.btn-ghost{min-height:40px}
+.input,.select{min-height:44px;max-width:100%}
+.segmented button{min-height:36px;white-space:normal}
+.menu-item[aria-current="page"]{font-weight:650}
+.modal-overlay{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,36,43,.46);overscroll-behavior:contain}
+.modal-panel{display:flex;flex-direction:column;min-width:0;width:100%;max-height:calc(100dvh - 40px);border:1px solid #d5dfe0;border-radius:20px;background:#fff;box-shadow:0 22px 70px #0f242b33;outline:none}
+.modal-heading{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--hairline)}
+.modal-heading h2{overflow-wrap:anywhere;min-width:0}
+.modal-content{padding:20px;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.modal-content form{min-width:0}
+.modal-content .grid>*{min-width:0}
+.modal-content form>.flex:last-child{flex-wrap:wrap}
+.modal-drawer{justify-content:flex-start;padding:0}
+.modal-drawer .modal-panel{height:100dvh;max-height:100dvh;border-radius:0 20px 20px 0}
+.modal-drawer .modal-content{display:flex;flex-direction:column;flex:1;padding:4px 0 0}
+.ranking-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;align-items:center;border-bottom:1px solid var(--fio-lista)}
+.ranking-name{grid-column:1;grid-row:1;overflow-wrap:anywhere;line-height:1.45}
+.ranking-value{grid-column:2;grid-row:1;white-space:nowrap}
+.ranking-supports{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;min-width:0}
+.ranking-supports:empty{display:none}
+.ranking-row[aria-expanded]{cursor:pointer}
+.ranking-row[aria-expanded] .ranking-name::after{content:' ›';font-weight:700;color:#0f766e}
+.ranking-row[aria-expanded="true"] .ranking-name::after{content:' ⌄'}
+@media(min-width:1024px){
+ .ranking-row{display:flex;gap:16px}
+ .ranking-name{flex:1}
+ .ranking-supports{display:flex;flex-wrap:nowrap;gap:12px}
+ .ranking-supports>span{width:76px;text-align:right;overflow-wrap:anywhere}
+ .ranking-value{flex:0 0 112px}
+}
+@media(max-width:640px){
+ .btn-primary,.btn-outline,.btn-ghost,.segmented button{min-height:44px}
+ .page-actions{width:100%}
+ .page-actions>.btn-primary,.page-actions>.btn-outline{flex:1}
+ .card{border-radius:16px}
+ .stat-card{padding:14px}
+ .stat-card .label{font-size:12px;line-height:1.5}
+ .stat-card p:last-child{font-size:12px;line-height:1.5}
+ .modal-overlay{padding:8px}
+ .modal-panel{max-height:calc(100dvh - 16px);border-radius:16px}
+ .modal-heading{padding:12px 14px}
+ .modal-content{padding:16px 14px}
+ .modal-drawer{padding:0}
+ .input,.select{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+ .card-hover:hover{transform:none}
+}
+@media print{
+ .skip-link,.modal-heading button{display:none!important}
+ .modal-overlay{position:static;background:transparent;padding:0;display:block}
+ .modal-panel{max-height:none;width:100%;max-width:none;border:0;border-radius:0;box-shadow:none}
+ .modal-content{overflow:visible;max-height:none;padding:0}
+ body:has(.modal-overlay) #root{display:none!important}
+ .ranking-row{break-inside:avoid}
+}
+@media print{.explicacao-recolhivel>div{display:block!important}.explicacao-recolhivel::details-content{content-visibility:visible!important}.explicacao-recolhivel summary{list-style:none}}
+
+/* Ponto: a equipe é o conteúdo principal; os totais ajudam a conferir o mês. */
+.ponto-mes-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.ponto-resumo .stat-card{display:flex;flex-direction:column;justify-content:flex-start;padding:16px}
+.ponto-resumo .stat-card>div:first-child{width:100%}
+.ponto-resumo .stat-value{font-size:26px}
+.ponto-resumo .stat-card>p:last-child{font-size:12px;line-height:1.5}
+.ponto-mes-lista .ranking-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px}
+.ponto-mes-lista .ranking-bar{display:none}
+.ponto-mes-lista .ranking-supports{flex-wrap:wrap;gap:4px 14px}
+.ponto-mes-lista .ranking-supports>span{width:auto;text-align:left}
+.ponto-mes-lista .ranking-value{flex:none}
+.ponto-mes-lista>details{margin:12px 0 0}
+.ponto-filtros h2::first-letter{text-transform:uppercase}
+@media(min-width:1200px){
+ .ponto-mes-layout{grid-template-columns:minmax(0,1fr) 260px}
+ .ponto-resumo{grid-template-columns:minmax(0,1fr)}
+}
+@media print{
+ .ponto-mes-layout{display:block}
+ .ponto-resumo{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:16px}
 }

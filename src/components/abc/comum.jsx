@@ -147,19 +147,33 @@ export function useSecoes(chave, padrao) {
  * a razão, que o clique não fez nada. O defeito não é o painel não abrir; é
  * ele abrir onde ninguém está olhando.
  *
- * Rola só quando a chave MUDA para algo. Fechar (chave nula) não mexe na
- * página: puxar o olho de volta para cima ao fechar seria um solavanco que
- * ninguém pediu.
+ * Ao abrir, move também o foco para o histórico. Ao fechar pelo detalhe,
+ * devolve o foco à linha de origem, se ela ainda existir. Trocar de aba
+ * não interfere no foco da navegação.
  *
  * `block: "start"` e não "center": o detalhe é alto (mês a mês + ano a ano +
  * lista de documentos) e centralizá-lo esconderia o próprio título. E respeita
  * quem pediu menos movimento no sistema — rolagem suave em quem tem enjoo de
  * movimento é o tipo de gentileza que vira mal-estar.
  */
-export function useRolarAoAbrir(chaveAberta) {
+export function useRolarAoAbrir(chaveAberta, painelAberto = true) {
   const alvo = useRef(null);
+  const origem = useRef(null);
+  const detalheAnterior = useRef(null);
   useEffect(() => {
-    if (!chaveAberta || !alvo.current) return;
+    if (!chaveAberta) {
+      if (origem.current?.isConnected &&
+          (document.activeElement === document.body || detalheAnterior.current?.contains(document.activeElement))) {
+        origem.current.focus();
+      }
+      origem.current = null;
+      detalheAnterior.current = null;
+      return;
+    }
+    if (!painelAberto || !alvo.current) return;
+    if (!alvo.current.contains(document.activeElement)) origem.current = document.activeElement;
+    detalheAnterior.current = alvo.current;
+    alvo.current.focus({ preventScroll: true });
     let suave = true;
     try {
       suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -167,7 +181,7 @@ export function useRolarAoAbrir(chaveAberta) {
       // Navegador sem matchMedia: rola suave, que é o padrão da casa.
     }
     alvo.current.scrollIntoView({ behavior: suave ? "smooth" : "auto", block: "start" });
-  }, [chaveAberta]);
+  }, [chaveAberta, painelAberto]);
   return alvo;
 }
 
@@ -312,10 +326,8 @@ export function SemVenda({ vendas, clientes, anoTexto, recorte, unidade = "venda
         <div className="max-w-xl space-y-2">
           <p className="font-display text-base font-semibold text-slate-700">Nada veio do Omie ainda.</p>
           <p>
-            O ERP da MinasLab é o Omie, e a ponte que traz as vendas (a função <code>ml-omie</code>) só
-            trabalha depois que a direção grava os segredos do aplicativo no servidor. Até lá,{" "}
-            <code>fin_vendas</code> e <code>fin_clientes</code> ficam vazias — é isto que esta tela está
-            lendo: zero registro, não zero venda.
+            Nenhum cliente ou título a receber foi carregado do Omie. Confira a importação com a
+            direção. A ausência de registros não significa que não houve faturamento.
           </p>
           <p className="text-slate-400">
             Nenhum número de exemplo aparece aqui de propósito. No dia da primeira importação, a curva se
@@ -334,9 +346,8 @@ export function SemVenda({ vendas, clientes, anoTexto, recorte, unidade = "venda
             {plural(totalClientes, "cliente veio", "clientes vieram")} do Omie, e nenhuma venda.
           </p>
           <p>
-            O cadastro importou e as notas/O.S. não: ou a importação de vendas ainda não rodou, ou o
-            período que ela pediu não tinha nenhuma. Sem venda não há curva — classificar quem não comprou
-            devolveria uma fila de zeros que parece resultado.
+            O cadastro foi carregado, mas nenhum título a receber chegou ao painel. Confira a
+            importação e o período consultado com a direção. Sem títulos não há curva para mostrar.
           </p>
         </div>
       </Empty>
@@ -457,7 +468,7 @@ export function CartoesDaCurva({ faixas, unidade, classeVista, aoEscolherClasse,
               </span>
               <span className="block text-xs text-slate-500">
                 {vazia
-                  ? `nenhum ${unidade.um} nesta faixa`
+                  ? `sem ${unidade.varios} nesta faixa`
                   : `${plural(f.quantidade, unidade.um, unidade.varios)} · ${pct(f.participacao) ?? "—"} do valor`}
               </span>
               {!vazia && f.id !== "C" && (
@@ -476,7 +487,7 @@ export function CartoesDaCurva({ faixas, unidade, classeVista, aoEscolherClasse,
       </div>
 
       {partes.length > 0 && (
-        <div className="sem-impressao grid grid-cols-2 gap-3">
+        <div className="sem-impressao grid grid-cols-1 gap-3 sm:grid-cols-2">
           {partes.map((p) => {
             const vazia = p.quantidade === 0;
             const Comp = vazia ? "div" : "button";
@@ -506,7 +517,7 @@ export function CartoesDaCurva({ faixas, unidade, classeVista, aoEscolherClasse,
                 </span>
                 <span className="block text-xs text-slate-500">
                   {vazia
-                    ? `nenhum ${unidade.um} aqui`
+                    ? `sem ${unidade.varios} aqui`
                     : `${plural(p.quantidade, unidade.um, unidade.varios)} · ${pct(p.participacao) ?? "—"} do valor`}
                 </span>
                 {!vazia && p.corte !== null && (
@@ -562,13 +573,15 @@ export function ComportamentoNoTempo({ itens, anoPadrao, um, varios }) {
     <div>
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
           <span className="font-display text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Mês a mês{todosOsAnos ? ` de ${ano}` : ""}
+            Mês a mês de {ano}
           </span>
           {/* O filtro do topo em pílulas é o mesmo de toda a casa
               (components/lista.jsx) — desenhar outro aqui faria a mesma
               escolha ter duas caras na mesma tela. */}
           {disponiveis.length > 1 && (
-            <Pilulas opcoes={disponiveis} valor={ano} aoEscolher={setAnoDosMeses} />
+            <div role="group" aria-label="Ano do histórico mensal">
+              <Pilulas opcoes={disponiveis} valor={ano} aoEscolher={setAnoDosMeses} />
+            </div>
           )}
         </div>
         {meses.meses.map((m) => (
@@ -623,7 +636,7 @@ export function ComportamentoNoTempo({ itens, anoPadrao, um, varios }) {
    folha e a tela discordariam no dia em que uma das duas mudasse. */
 export function AcoesDoRecorte({ aoBaixarPlanilha }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <button
         type="button"
         className="btn-outline"

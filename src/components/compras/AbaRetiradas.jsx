@@ -31,10 +31,10 @@ function LinhaRetirada({ mv }) {
       <PackageMinus size={16} strokeWidth={2.2} className="shrink-0 text-warn-700" />
 
       <span className="min-w-0 flex-1 basis-40">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {mv.produtoNome || "(produto sem nome carimbado)"}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {mv.motivo || "sem motivo registrado"}
           {mv.obs ? ` · ${mv.obs}` : ""}
         </span>
@@ -46,7 +46,7 @@ function LinhaRetirada({ mv }) {
 
       {/* Saída sem quem é uma lacuna, não um dado neutro: aparece em warn para
           cobrar o registro. */}
-      <span className="w-40 shrink-0 truncate text-right text-sm">
+      <span className="max-w-full break-words text-sm sm:w-40 sm:text-right">
         {mv.pessoaNome ? (
           <span className="text-slate-700">{mv.pessoaNome}</span>
         ) : (
@@ -70,8 +70,10 @@ export function ModalRetirada({ form, setForm, produtos, equipe, resumo, salvand
   return (
     <Modal titulo="Registrar retirada" aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -94,13 +96,15 @@ export function ModalRetirada({ form, setForm, produtos, equipe, resumo, salvand
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="rt-qtd">Quantidade{prod ? ` (${prod.unidade || "un"})` : ""}</label>
             <input
               id="rt-qtd" type="text" inputMode="decimal" className="input"
+              aria-describedby="rt-qtd-ajuda" aria-invalid={!!form.quantidade.trim() && (q === null || q <= 0)}
               value={form.quantidade} onChange={setCampo("quantidade")}
             />
+            <p id="rt-qtd-ajuda" className="mt-1 text-xs text-slate-600">Informe uma quantidade maior que zero.</p>
           </div>
           <div>
             <label className="label" htmlFor="rt-pessoa">Quem levou</label>
@@ -138,7 +142,7 @@ export function ModalRetirada({ form, setForm, produtos, equipe, resumo, salvand
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.produtoId || q === null || q <= 0 || !form.data}>
             {salvando ? "Gravando..." : "Registrar retirada"}
@@ -256,7 +260,7 @@ export default function AbaRetiradas({
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard rotulo="Retiradas no mês" valor={String(vm.noMes)} tom="neutral" icone={PackageMinus} />
         <StatCard rotulo="Pessoas no mês" valor={String(vm.pessoasMes)} sub="com nome registrado" tom="neutral" icone={Users} />
         <StatCard rotulo="Produtos no mês" valor={String(vm.produtosMes)} tom="neutral" icone={Package} />
@@ -271,20 +275,27 @@ export default function AbaRetiradas({
         />
       </div>
 
+      {(busca || pessoa || produto) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: Busca, pessoa ou produto.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => { setBusca(""); setPessoa(""); setProduto(""); }}>Limpar filtros</button>
+        </div>
+      )}
+
       <Card>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="grid w-full min-w-0 gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-end">
             <div className="relative">
               <label className="label" htmlFor="rt-busca">Buscar</label>
               <Search size={15} className="pointer-events-none absolute left-3 top-[2.15rem] text-slate-400" />
               <input
-                id="rt-busca" type="search" className="input w-56 pl-9" placeholder="produto, pessoa, O.S."
+                id="rt-busca" type="search" className="input w-full min-w-0 sm:w-56 pl-9" placeholder="produto, pessoa, O.S."
                 value={busca} onChange={(e) => setBusca(e.target.value)}
               />
             </div>
             <div>
               <label className="label" htmlFor="rt-quem">Quem</label>
-              <select id="rt-quem" className="select w-44" value={pessoa} onChange={(e) => setPessoa(e.target.value)}>
+              <select id="rt-quem" className="select w-full min-w-0 sm:w-44" value={pessoa} onChange={(e) => setPessoa(e.target.value)}>
                 <option value="">Todos</option>
                 {vm.pessoas.map((p) => (
                   <option key={p.id} value={p.id}>{p.nome}</option>
@@ -294,7 +305,7 @@ export default function AbaRetiradas({
             </div>
             <div>
               <label className="label" htmlFor="rt-produto">Produto</label>
-              <select id="rt-produto" className="select w-52" value={produto} onChange={(e) => setProduto(e.target.value)}>
+              <select id="rt-produto" className="select w-full min-w-0 sm:w-52" value={produto} onChange={(e) => setProduto(e.target.value)}>
                 <option value="">Todos</option>
                 {vm.prods.map((p) => (
                   <option key={p.id} value={p.id}>{p.nome}</option>

@@ -60,10 +60,10 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
 
       <span className="min-w-0 flex-1 basis-48">
         <span className="flex items-center gap-2">
-          <span className="truncate font-display text-sm font-semibold text-slate-900">{conta.usuario}</span>
+          <span className="min-w-0 break-words font-display text-sm font-semibold text-slate-900">{conta.usuario}</span>
           {minha && <span className="chip-brand">você</span>}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {conta.nome || "sem nome"} · criada em {conta.criado_em ? dataLonga(conta.criado_em) : "sem registro"}
         </span>
       </span>
@@ -76,7 +76,8 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
           type="button"
           onClick={() => aoRedefinir(conta)}
           title="Redefinir senha"
-          className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          aria-label={`Redefinir senha de ${conta.usuario}`}
+          className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
         >
           <KeyRound size={15} />
         </button>
@@ -87,7 +88,8 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
             type="button"
             onClick={() => aoAlternarAtiva(conta)}
             title={ativa ? "Desativar" : "Reativar"}
-            className={`grid h-8 w-8 place-items-center rounded-lg ${
+            aria-label={`${ativa ? "Desativar" : "Reativar"} conta ${conta.usuario}`}
+            className={`grid h-10 w-10 place-items-center rounded-lg ${
               ativa
                 ? "text-slate-500 hover:bg-bad-50 hover:text-bad-700"
                 : "text-slate-500 hover:bg-ok-50 hover:text-ok-700"
@@ -101,7 +103,7 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
   );
 }
 
-function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
+function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
   if (!form) return null;
   return (
     <Modal titulo="Criar conta" aberto={!!form} aoFechar={aoFechar}>
@@ -111,7 +113,9 @@ function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
           aoSalvar();
         }}
         className="space-y-4"
+        aria-busy={salvando}
       >
+        {erro && <p role="alert" className="rounded-xl bg-bad-50 p-3 text-sm text-bad-800 break-words">{erro}</p>}
         <div>
           <label className="label" htmlFor="ac-usuario">Usuário (é o login)</label>
           <input
@@ -119,11 +123,15 @@ function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
             type="text"
             className="input"
             autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            aria-describedby="ac-usuario-ajuda"
             value={form.usuario}
             onChange={(e) => setForm({ ...form, usuario: normalizarUsuario(e.target.value) })}
             autoFocus
             required
           />
+          <p id="ac-usuario-ajuda" className="mt-1 text-xs text-slate-600">Use letras sem acentos, números, ponto, hífen ou sublinhado. Espaços são removidos.</p>
         </div>
         <div>
           <label className="label" htmlFor="ac-nome">Nome</label>
@@ -141,25 +149,27 @@ function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <select
             id="ac-papel"
             className="select"
+            aria-describedby="ac-papel-ajuda"
             value={form.papel}
             onChange={(e) => setForm({ ...form, papel: e.target.value })}
           >
             {PAPEIS.map((p) => (
               <option key={p.valor} value={p.valor}>
-                {p.rotulo} — {p.desc}
+                {p.rotulo}
               </option>
             ))}
           </select>
+          <p id="ac-papel-ajuda" className="mt-1 text-xs text-slate-600">{papelDe(form.papel).desc}</p>
         </div>
         <div>
           <label className="label" htmlFor="ac-senha">Senha inicial</label>
           {/* type="text" de propósito: a direção precisa LER a senha para
               entregar. Quem digita às escondidas é quem entra, não quem cria. */}
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
             <input
               id="ac-senha"
               type="text"
-              className="input"
+              className="input min-w-0"
               autoComplete="off"
               value={form.senha}
               onChange={(e) => setForm({ ...form, senha: e.target.value })}
@@ -170,7 +180,7 @@ function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
             </button>
           </div>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button
             type="submit"
@@ -185,7 +195,7 @@ function FormNovaConta({ form, setForm, salvando, aoSalvar, aoFechar }) {
   );
 }
 
-function FormRedefinirSenha({ alvo, setAlvo, salvando, aoSalvar, aoFechar }) {
+function FormRedefinirSenha({ alvo, setAlvo, salvando, erro, aoSalvar, aoFechar }) {
   if (!alvo) return null;
   return (
     <Modal titulo={`Redefinir senha de ${alvo.usuario}`} aberto={!!alvo} aoFechar={aoFechar}>
@@ -195,14 +205,17 @@ function FormRedefinirSenha({ alvo, setAlvo, salvando, aoSalvar, aoFechar }) {
           aoSalvar();
         }}
         className="space-y-4"
+        aria-busy={salvando}
       >
+        {erro && <p role="alert" className="rounded-xl bg-bad-50 p-3 text-sm text-bad-800 break-words">{erro}</p>}
         <div>
           <label className="label" htmlFor="ac-nova-senha">Nova senha</label>
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
             <input
               id="ac-nova-senha"
               type="text"
-              className="input"
+              className="input min-w-0"
+              aria-describedby="ac-nova-senha-ajuda"
               autoComplete="off"
               value={alvo.senha}
               onChange={(e) => setAlvo({ ...alvo, senha: e.target.value })}
@@ -213,9 +226,9 @@ function FormRedefinirSenha({ alvo, setAlvo, salvando, aoSalvar, aoFechar }) {
               <Dices size={15} /> Gerar
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-slate-500">A senha atual deixa de valer na hora.</p>
+          <p id="ac-nova-senha-ajuda" className="mt-1.5 text-xs text-slate-500">A senha atual deixa de valer na hora.</p>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !alvo.senha}>
             {salvando ? "Gravando..." : "Redefinir"}
@@ -242,13 +255,14 @@ function ModalSenhaEntregue({ info, aoFechar }) {
   return (
     <Modal titulo={`Senha de ${info.usuario}`} aberto={!!info} aoFechar={aoFechar}>
       <Card className="border-2 border-brand-300 bg-brand-50/60 text-center">
-        <p className="font-display text-2xl font-bold tracking-wide text-slate-900">{info.senha}</p>
+        <p className="break-all select-text font-display text-2xl font-bold tracking-wide text-slate-900">{info.senha}</p>
         <button type="button" className="btn-outline mx-auto mt-3" onClick={copiar}>
           {copiado === "ok" ? <Check size={15} className="text-ok-600" /> : <Copy size={15} />}
           {copiado === "ok" ? "Copiada!" : "Copiar"}
         </button>
+        {copiado === "ok" && <p role="status" className="sr-only">Senha copiada.</p>}
         {copiado === "falhou" && (
-          <p className="mt-2 text-xs text-bad-700">Não consegui copiar — anote à mão.</p>
+          <p role="alert" className="mt-2 text-xs text-bad-700">Não consegui copiar — selecione a senha e copie manualmente, ou anote à mão.</p>
         )}
       </Card>
       <p className="mt-4 text-sm text-slate-600">
@@ -271,6 +285,7 @@ export default function Acessos() {
   const [alvoSenha, setAlvoSenha] = useState(null); // { usuario, senha }
   const [senhaEntregue, setSenhaEntregue] = useState(null); // { usuario, senha }
   const [salvando, setSalvando] = useState(false);
+  const [erroFormulario, setErroFormulario] = useState(null);
 
   const recarregar = useCallback(() => {
     contasListar()
@@ -279,11 +294,7 @@ export default function Acessos() {
         setErro(null);
       })
       .catch((e) => {
-        setErro(e.message);
-        // Depois da primeira carga boa o ErroModulo não aparece mais (vm
-        // existe) — sem este aviso, a recarga que falha deixava a lista velha
-        // em silêncio.
-        setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
+        setErro(e.message || "Não foi possível carregar as contas.");
       });
   }, []);
 
@@ -307,10 +318,13 @@ export default function Acessos() {
     };
   }, [contas]);
 
-  const abrirNova = (predef) =>
+  const abrirNova = (predef) => {
+    setErroFormulario(null);
     setFormNova({ usuario: "", nome: "", papel: "equipe", senha: "", ...predef });
+  };
 
   const criar = async () => {
+    setErroFormulario(null);
     setSalvando(true);
     try {
       // Só os 4 campos crus — nada da tela vai junto.
@@ -326,13 +340,14 @@ export default function Acessos() {
       setSenhaEntregue({ usuario: dados.usuario, senha: dados.senha });
       recarregar();
     } catch (e) {
-      setAviso({ tipo: "erro", texto: e.message });
+      setErroFormulario(e.message || "Não foi possível criar a conta. Tente novamente.");
     } finally {
       setSalvando(false);
     }
   };
 
   const redefinir = async () => {
+    setErroFormulario(null);
     setSalvando(true);
     try {
       await contaSenha(alvoSenha.usuario, alvoSenha.senha);
@@ -342,7 +357,7 @@ export default function Acessos() {
       setSenhaEntregue(entregue);
       recarregar();
     } catch (e) {
-      setAviso({ tipo: "erro", texto: e.message });
+      setErroFormulario(e.message || "Não foi possível redefinir a senha. Tente novamente.");
     } finally {
       setSalvando(false);
     }
@@ -378,6 +393,11 @@ export default function Acessos() {
           </button>
         }
       />
+
+      {erro && <div role="alert" className="mb-4 rounded-xl bg-bad-50 p-3 text-sm text-bad-800">
+        <p>Não foi possível atualizar as contas. A lista exibida é da última carga.</p>
+        <button type="button" className="btn-outline mt-2" onClick={recarregar}>Tentar novamente</button>
+      </div>}
 
       {vm.lista.length === 0 ? (
         /* Primeiro acesso: quem está aqui entrou com a senha-mestra. O caminho
@@ -416,7 +436,7 @@ export default function Acessos() {
                 key={c.usuario}
                 conta={c}
                 minha={c.usuario === sessao?.usuario}
-                aoRedefinir={(conta) => setAlvoSenha({ usuario: conta.usuario, senha: "" })}
+                aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
                 aoAlternarAtiva={alternarAtiva}
               />
             ))}
@@ -450,6 +470,7 @@ export default function Acessos() {
         form={formNova}
         setForm={setFormNova}
         salvando={salvando}
+        erro={erroFormulario}
         aoSalvar={criar}
         aoFechar={() => setFormNova(null)}
       />
@@ -457,6 +478,7 @@ export default function Acessos() {
         alvo={alvoSenha}
         setAlvo={setAlvoSenha}
         salvando={salvando}
+        erro={erroFormulario}
         aoSalvar={redefinir}
         aoFechar={() => setAlvoSenha(null)}
       />

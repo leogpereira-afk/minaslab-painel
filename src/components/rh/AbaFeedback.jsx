@@ -162,6 +162,7 @@ function LinhaFeedback({ l, aberta, aoAlternar, editavel, acoes }) {
                   onClick={() => acoes.apagarConversa(c)}
                   className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
                   title="Apagar este registro"
+                  aria-label={`Apagar conversa de ${p.nome} em ${dataLonga(c.ocorridoEm || c.criadoEm)}`}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -198,7 +199,7 @@ function FormFeedback({ form, setForm, hojeISO, salvando, aoSalvar, aoFechar }) 
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -248,7 +249,7 @@ function FormFeedback({ form, setForm, hojeISO, salvando, aoSalvar, aoFechar }) 
                 <p className="whitespace-pre-wrap">{form.base.roteiro}</p>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="fb-tipo">Tipo</label>
                 <select id="fb-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>

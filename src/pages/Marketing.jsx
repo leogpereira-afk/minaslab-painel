@@ -80,21 +80,21 @@ const paraPlanilha = (m) => ({
   resultado: m.resultado,
 });
 
-function Linha({ m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
+function Linha({ salvando, m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
   const Icone = m.cn.icone;
   const encerrada = m.status === "encerrada";
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${encerrada ? "opacity-60" : ""}`}
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${encerrada ? "bg-slate-50" : ""}`}
       style={{ borderColor: "var(--hairline)" }}
     >
       <Icone size={17} strokeWidth={2.2} className={`shrink-0 ${m.cn.cor}`} title={m.cn.rotulo} />
 
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {m.titulo}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[
             m.cn.rotulo,
             m.data ? dataCurta(m.data) : null,
@@ -112,7 +112,8 @@ function Linha({ m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
              formulário e sem perder o lugar na lista (padrão do remarcar). */
           <select
             autoFocus
-            className="input h-8 w-32 py-0 text-xs"
+            aria-label={`Situação da ação: ${m.titulo}`}
+            className="select min-h-11 w-44 max-w-full text-sm"
             value={m.status}
             onChange={(e) => {
               setMudandoStatus(null);
@@ -128,9 +129,10 @@ function Linha({ m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
           <button
             type="button"
             onClick={() => editavel && setMudandoStatus(m.id)}
-            disabled={!editavel}
+            disabled={!editavel || salvando}
             title={editavel ? "Mudar status" : undefined}
-            className={`${m.st.chip} whitespace-nowrap transition-opacity hover:opacity-75 disabled:cursor-default`}
+            aria-label={`Mudar situação de ${m.titulo}: ${m.st.rotulo}`}
+            className={`${m.st.chip} min-h-11 whitespace-nowrap transition-opacity hover:opacity-75 disabled:cursor-default`}
           >
             {m.st.rotulo}
           </button>
@@ -141,17 +143,21 @@ function Linha({ m, editavel, mudandoStatus, setMudandoStatus, acoes }) {
         <span className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirForm(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar ação: ${m.titulo}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.remover(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar ação: ${m.titulo}`}
           >
             <Trash2 size={14} />
           </button>
@@ -167,8 +173,10 @@ function FormAcao({ form, setForm, salvando, aoSalvar, aoFechar }) {
   return (
     <Modal titulo={form.id ? "Editar ação" : "Nova ação"} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -177,7 +185,7 @@ function FormAcao({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <label className="label" htmlFor="m-titulo">O que é</label>
           <input id="m-titulo" type="text" className="input" value={form.titulo} onChange={setCampo("titulo")} autoFocus required />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="m-canal">Canal</label>
             <select id="m-canal" className="select" value={form.canal} onChange={setCampo("canal")}>
@@ -219,7 +227,7 @@ function FormAcao({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <label className="label" htmlFor="m-obs">Observações</label>
           <textarea id="m-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.titulo.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -236,6 +244,7 @@ export default function Marketing() {
 
   const [itens, setItens] = useState(null);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -254,6 +263,7 @@ export default function Marketing() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     listar(COLECAO)
       .then((lista) => {
@@ -266,7 +276,8 @@ export default function Marketing() {
         // existe) — sem este aviso, a recarga que falha deixava a tela velha
         // em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -371,17 +382,20 @@ export default function Marketing() {
       gravar({ ...m, status: novoStatus }, `Agora está em "${STATUS[novoStatus].rotulo}".`),
     remover: async (m) => {
       if (!window.confirm(`Apagar "${m.titulo}"?`)) return;
+      setSalvando(true);
       try {
         await apagar(COLECAO, m.id);
         setAviso({ tipo: "ok", texto: "Ação apagada." });
         recarregar();
       } catch (e) {
         setAviso({ tipo: "erro", texto: e.message });
+      } finally {
+        setSalvando(false);
       }
     },
   };
 
-  if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
   const gruposVisiveis = recorte
@@ -423,6 +437,15 @@ export default function Marketing() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Marketing"
         descricao="O que a MinasLab está fazendo para aparecer — do que está no ar até a ideia na gaveta."
@@ -441,7 +464,7 @@ export default function Marketing() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="No ar"
           valor={String(vm.noAr)}
@@ -475,11 +498,18 @@ export default function Marketing() {
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {STATUS[recorte].grupo}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       {gruposVisiveis.length === 0 && (
         <Empty>
           {recorte
-            ? "Nada neste recorte. Clique de novo no cartão para ver tudo."
-            : "Nenhuma ação de marketing por aqui. Registre a primeira no botão lá em cima."}
+            ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
+            : editavel ? "Nenhuma ação de marketing por aqui. Use Nova ação para registrar." : "Nenhuma ação de marketing registrada."}
         </Empty>
       )}
 
@@ -492,6 +522,7 @@ export default function Marketing() {
             <div className="space-y-2">
               {g.itens.map((m) => (
                 <Linha
+                  salvando={salvando}
                   key={m.id}
                   m={m}
                   editavel={editavel}
@@ -512,15 +543,17 @@ export default function Marketing() {
               type="button"
               onClick={alternarEncerradas}
               aria-expanded={verEncerradas}
-              className="flex w-full items-center gap-1.5 font-display text-sm font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700"
+              aria-controls={verEncerradas ? "marketing-encerradas" : undefined}
+              className="flex min-h-11 w-full items-center gap-1.5 font-display text-sm font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700"
             >
               {verEncerradas ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
               Encerradas <span className="text-slate-400">({encerradas.itens.length})</span>
             </button>
             {verEncerradas && (
-              <div className="mt-3 space-y-2">
+              <div id="marketing-encerradas" className="mt-3 space-y-2">
                 {encerradas.itens.map((m) => (
                   <Linha
+                  salvando={salvando}
                     key={m.id}
                     m={m}
                     editavel={editavel}

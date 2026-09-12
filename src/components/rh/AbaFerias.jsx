@@ -271,6 +271,7 @@ function LinhaFerias({ linha, hoje, aberta, aoAlternar, editavel, acoes }) {
                       onClick={() => acoes.editar(f)}
                       className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                       title="Editar"
+                      aria-label={`Editar férias de ${p.nome}, início ${dataLonga(f.inicio)}`}
                     >
                       <Pencil size={14} />
                     </button>
@@ -280,6 +281,7 @@ function LinhaFerias({ linha, hoje, aberta, aoAlternar, editavel, acoes }) {
                         onClick={() => acoes.cancelar(f)}
                         className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
                         title="Cancelar este período"
+                        aria-label={`Cancelar férias de ${p.nome}, início ${dataLonga(f.inicio)}`}
                       >
                         <Ban size={14} />
                       </button>
@@ -319,7 +321,7 @@ function FormFerias({ form, setForm, ativos, ferias, hoje, desde, salvando, aoSa
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (travado) return; // erro trava; aviso não
+          if (travado || salvando) return; // erro trava; aviso não
           aoSalvar();
         }}
         className="space-y-4"
@@ -334,7 +336,7 @@ function FormFerias({ form, setForm, ativos, ferias, hoje, desde, salvando, aoSa
             ))}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="f-inicio">Início</label>
             <input id="f-inicio" type="date" className="input" value={form.inicio} onChange={setCampo("inicio")} required />

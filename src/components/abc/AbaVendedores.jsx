@@ -298,10 +298,10 @@ export default function AbaVendedores({ vendas, clientes, ano, hojeISO, setAviso
 
   const explicacao = (
     <Explicacao>
-      O vendedor é o que o Omie manda em cada nota fiscal e em cada ordem de serviço — o painel não
-      deduz por cliente nem por região. O número forte é o faturamento do recorte; ao lado, quantos
-      documentos e quantos clientes distintos. Venda sem vendedor não vira linha: fica contada
-      abaixo da lista.
+      Este ranking depende da identificação do vendedor no faturamento importado. O painel não
+      deduz por cliente nem por região. Quando essa informação está disponível, mostra o
+      faturamento, os documentos e os clientes distintos de cada vendedor. A ausência da
+      identificação é informada abaixo.
     </Explicacao>
   );
 

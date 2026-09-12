@@ -10,7 +10,7 @@
 // resumo que some inteiro porque UM módulo falhou não resume nada.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { CalendarCheck, Gavel, Wrench, ShoppingCart } from "lucide-react";
 import { listar } from "../services/dados.js";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
@@ -53,7 +53,7 @@ function CardModulo({ titulo, para, children }) {
 function LinhaCompra({ c }) {
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border p-3"
+      className="flex min-w-0 items-center gap-3 rounded-xl border p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
       <ShoppingCart size={16} strokeWidth={2.2} className="shrink-0 text-brand-600" />
@@ -75,7 +75,7 @@ function LinhaCompra({ c }) {
 function LinhaCompromisso({ c }) {
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border p-3"
+      className="flex min-w-0 items-center gap-3 rounded-xl border p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
       <span className="w-14 shrink-0 font-display text-sm font-semibold tabular-nums text-slate-900">
@@ -94,7 +94,7 @@ function LinhaSessao({ l, hojeISO }) {
   const texto = dias === 0 ? "HOJE" : dias === 1 ? "amanhã" : `em ${dias} dias`;
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border p-3"
+      className="flex min-w-0 items-center gap-3 rounded-xl border p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
       <span className={`${dias <= 1 ? "chip-warn" : "chip"} shrink-0 whitespace-nowrap`}>{texto}</span>
@@ -110,6 +110,7 @@ function LinhaSessao({ l, hojeISO }) {
 }
 
 export default function Home() {
+  const navigate = useNavigate();
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -244,11 +245,12 @@ export default function Home() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
-      <PageTitle titulo="Início" descricao={dataExtensa} />
+      <PageTitle titulo="Visão geral" descricao={dataExtensa} acao={<Link to="/calendario" className="btn-outline"><CalendarCheck size={17} />Abrir calendário</Link>} />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           rotulo="Compromissos hoje"
+          onClick={() => navigate("/compromissos")}
           valor={comps ? String(comps.hoje.length) : "—"}
           sub={
             !comps
@@ -262,6 +264,7 @@ export default function Home() {
         />
         <StatCard
           rotulo="Sessões em 7 dias"
+          onClick={() => navigate("/licitacoes")}
           valor={lics ? String(lics.sessoes.length) : "—"}
           sub={
             !lics
@@ -275,6 +278,7 @@ export default function Home() {
         />
         <StatCard
           rotulo="Manutenções em 30 dias"
+          onClick={() => navigate("/manutencoes")}
           valor={mans ? String(mans.qtd) : "—"}
           sub={mans ? "agendadas ou com próxima no prazo" : "sem dados agora"}
           tom={mans && mans.qtd > 0 ? "warn" : "neutral"}
@@ -282,6 +286,7 @@ export default function Home() {
         />
         <StatCard
           rotulo="Compras para receber"
+          onClick={() => navigate("/compras")}
           valor={cprs ? String(cprs.aReceber.length) : "—"}
           sub={!cprs ? "sem dados agora" : `${cprs.cotando} em cotação`}
           tom={cprs && cprs.aReceber.length > 0 ? "warn" : "neutral"}
@@ -289,7 +294,7 @@ export default function Home() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
         <CardModulo titulo="Compromissos de hoje" para="/compromissos">
           {!comps ? (
             <Empty>O módulo de compromissos não respondeu agora.</Empty>

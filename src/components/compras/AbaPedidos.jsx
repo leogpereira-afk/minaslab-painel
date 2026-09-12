@@ -28,23 +28,23 @@ export const PEDIDO_VAZIO = {
   produtoId: "", ordemId: "", qtdeRecebida: "",
 };
 
-function Linha({ c, editavel, acoes }) {
+function Linha({ salvando, c, editavel, acoes }) {
   const Icone = c.st.icone;
   const cancelada = c.status === "cancelada";
   const proxima = PROXIMO_PEDIDO[c.status];
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${cancelada ? "opacity-60" : ""}`}
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${cancelada ? "bg-slate-50" : ""}`}
       style={{ borderColor: "var(--hairline)" }}
     >
       <Icone size={17} strokeWidth={2.2} className={`shrink-0 ${c.st.cor}`} title={c.st.rotulo} />
 
       <span className="min-w-0 flex-1 basis-48">
-        <span className={`block truncate font-display text-sm font-medium text-slate-900 ${cancelada ? "line-through" : ""}`}>
+        <span className={`block break-words font-display text-sm font-medium text-slate-900 ${cancelada ? "line-through" : ""}`}>
           {c.item}
           {c.qtde ? <span className="font-normal text-slate-500"> — {c.qtde}</span> : null}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[
             c.fornecedor,
             c.solicitante && `pedido por ${c.solicitante}`,
@@ -82,30 +82,36 @@ function Linha({ c, editavel, acoes }) {
           {proxima && (
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.avancarPedido(c.id)}
+              aria-label={`${proxima === "recebida" ? "Conferir recebimento" : `Avançar para ${STATUS_PEDIDO[proxima].rotulo}`}: ${c.item}`}
               title={
                 proxima === "recebida"
                   ? "Marcar recebida (confere a quantidade antes de entrar no estoque)"
                   : `Avançar para ${STATUS_PEDIDO[proxima].rotulo}`
               }
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
             >
               <ArrowRight size={15} strokeWidth={2.2} />
             </button>
           )}
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirPedido(c.id)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar pedido: ${c.item}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.removerPedido(c.id)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar pedido: ${c.item}`}
           >
             <Trash2 size={14} />
           </button>
@@ -139,8 +145,10 @@ export function FormPedido({ form, setForm, produtos, entrada, salvando, aoSalva
   return (
     <Modal titulo={form.id ? "Editar pedido" : "Novo pedido de compra"} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -163,7 +171,7 @@ export function FormPedido({ form, setForm, produtos, entrada, salvando, aoSalva
             Vinculado, o recebimento já sabe onde dar entrada. Sem vínculo, dá para escolher na hora.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="cp-qtde">Quantidade</label>
             <input id="cp-qtde" type="text" className="input" placeholder="ex.: 2 cx" value={form.qtde} onChange={setCampo("qtde")} />
@@ -217,7 +225,7 @@ export function FormPedido({ form, setForm, produtos, entrada, salvando, aoSalva
           <label className="label" htmlFor="cp-obs">Observações</label>
           <textarea id="cp-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.item.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -379,7 +387,7 @@ export default function AbaPedidos({
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Abertas"
           valor={String(vm.abertas)}
@@ -416,6 +424,13 @@ export default function AbaPedidos({
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {({ abertas: "Abertas", receber: "Para receber", mes: "Recebidas no mês" })[recorte]}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
@@ -436,7 +451,7 @@ export default function AbaPedidos({
       {gruposVisiveis.length === 0 && (
         <Empty>
           {recorte
-            ? "Nada neste recorte. Clique de novo no cartão para ver tudo."
+            ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
             : "Nenhum pedido de compra por aqui. Registre o primeiro no botão lá em cima."}
         </Empty>
       )}
@@ -449,7 +464,7 @@ export default function AbaPedidos({
             </h2>
             <div className="space-y-2">
               {g.itens.map((c) => (
-                <Linha key={c.id} c={c} editavel={editavel} acoes={acoes} />
+                <Linha salvando={salvando} key={c.id} c={c} editavel={editavel} acoes={acoes} />
               ))}
             </div>
           </Card>
@@ -464,7 +479,8 @@ export default function AbaPedidos({
               type="button"
               onClick={alternarCanceladas}
               aria-expanded={verCanceladas}
-              className="flex w-full items-center justify-between text-left"
+              aria-controls={verCanceladas ? "pedidos-cancelados" : undefined}
+              className="flex min-h-11 w-full items-center justify-between text-left"
             >
               <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Canceladas <span className="text-slate-400">({vm.canceladas.length})</span>
@@ -476,9 +492,9 @@ export default function AbaPedidos({
               )}
             </button>
             {verCanceladas && (
-              <div className="mt-3 space-y-2">
+              <div id="pedidos-cancelados" className="mt-3 space-y-2">
                 {vm.canceladas.map((c) => (
-                  <Linha key={c.id} c={c} editavel={editavel} acoes={acoes} />
+                  <Linha salvando={salvando} key={c.id} c={c} editavel={editavel} acoes={acoes} />
                 ))}
               </div>
             )}

@@ -10,7 +10,7 @@ export default {
            classe desconhecida SEM ERRO, e uma escala com buraco faz o sinal
            sumir exatamente no estado que ele existia para gritar. */
         brand: {
-          DEFAULT: "#0e9f8f",
+          DEFAULT: "#0f766e",
           ink: "#24444f",
           50: "#effaf8",
           100: "#d5f3ee",

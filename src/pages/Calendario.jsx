@@ -245,7 +245,7 @@ const FRASE_OK = {
    formulário diz, em uma linha, o que ele não confere. */
 function conferirFerias(inicioISO, retornoISO, outros) {
   const ano = anoRuim(retornoISO);
-  if (ano) return [{ nivel: "erro", texto: `Confira o ano da data de retorno: ${ano}` }];
+  if (ano) return [{ nivel: "erro", texto: `Confira o ano da data de retorno: ${ano}`}];
   const ini = parseData(inicioISO);
   const ret = parseData(retornoISO);
   // Campo ainda vazio: nada a conferir — o botão já fica travado sem o retorno,
@@ -263,11 +263,11 @@ function conferirFerias(inicioISO, retornoISO, outros) {
 // do Léo: escolha de quadro não se perde ao sair da tela.
 function FiltroOrigens({ filtros, aoAlternar, direcao }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <div role="group" aria-label="Origens dos eventos" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
       {Object.entries(ORIGENS).map(([chave, o]) => {
         if (o.soDirecao && !direcao) return null;
         return (
-          <label key={chave} htmlFor={`flt-${chave}`} className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-600">
+          <label key={chave} htmlFor={`flt-${chave}`} className="flex min-h-11 cursor-pointer items-center gap-1.5 text-sm text-slate-600">
             <input
               id={`flt-${chave}`}
               type="checkbox"
@@ -286,7 +286,7 @@ function FiltroOrigens({ filtros, aoAlternar, direcao }) {
 function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
   const doDia = eventos.filter((e) => e.dia === diaISO);
   return (
-    <Card>
+    <Card id="calendario-dia" role="region" aria-label={`Eventos de ${dataLonga(diaISO)}`}>
       <SectionTitle
         titulo="O dia"
         sub={`${dataLonga(diaISO)}${diaISO === hojeISO ? " — hoje" : ""}`}
@@ -318,7 +318,8 @@ function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
                   <span className="mt-0.5 shrink-0 font-display text-xs font-semibold tnum text-slate-500">{e.hora}</span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm text-slate-800">{e.texto}</span>
+                  <span className="block break-words text-sm text-slate-800">{e.texto}</span>
+                  <span className="mt-1 block text-xs font-medium text-brand-700">Abrir {o.rotulo} →</span>
                   {/* A RESSALVA MORA NA LINHA, não num rodapé. "5 anos de casa"
                       lido sem a ressalva vira placa de bronze — e a admissão
                       destas fichas veio da primeira batida no relógio, não do
@@ -368,6 +369,7 @@ function FormNovo({
   return (
     <Modal titulo={`Novo lançamento — ${dataLonga(diaISO)}`} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
           if (travado) return; // erro trava; aviso não
@@ -375,7 +377,7 @@ function FormNovo({
         }}
         className="space-y-4"
       >
-        <div>
+        <div role="group" aria-label="O que lançar">
           <span className="label">O que lançar</span>
           <Segmented
             opcoes={[
@@ -397,7 +399,7 @@ function FormNovo({
               <label className="label" htmlFor="nv-titulo">O que é</label>
               <input id="nv-titulo" type="text" className="input" value={form.titulo} onChange={setCampo("titulo")} autoFocus required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
               <div>
                 <label className="label" htmlFor="nv-comp-tipo">Tipo</label>
                 <select id="nv-comp-tipo" className="select" value={form.compTipo} onChange={setCampo("compTipo")}>
@@ -424,7 +426,7 @@ function FormNovo({
 
         {form.oQue === "manutencao" && (
           <>
-            <div>
+            <div role="group" aria-label="Manutenção de quê">
               <span className="label">Manutenção de quê</span>
               <Segmented
                 opcoes={[
@@ -463,7 +465,7 @@ function FormNovo({
                 </>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
               <div>
                 <label className="label" htmlFor="nv-man-tipo">Tipo</label>
                 <select id="nv-man-tipo" className="select" value={form.manTipo} onChange={setCampo("manTipo")}>
@@ -507,7 +509,7 @@ function FormNovo({
                 </>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
               <div>
                 <span className="label">Início</span>
                 <p className="text-sm text-slate-700">{dataLonga(diaISO)}</p>
@@ -528,7 +530,7 @@ function FormNovo({
           </>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !valido}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -546,6 +548,7 @@ export default function Calendario() {
 
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [dia, setDia] = useState(null); // dia escolhido na grade; null = hoje
 
@@ -574,6 +577,7 @@ export default function Calendario() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     const s = getSessao();
     const querRH = ehDirecao(s);
@@ -620,7 +624,7 @@ export default function Calendario() {
         rhFalhas,
       });
       setErro(null);
-    });
+    }).finally(() => setAtualizando(false));
 
     // Apoio do "+ Novo", fora da agenda: alvos da manutenção e, para a direção,
     // o elenco das férias. Se falharem, o mês continua de pé e o formulário diz
@@ -772,18 +776,27 @@ export default function Calendario() {
     }
   };
 
-  if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Calendário"
         descricao="A agenda de tudo num lugar só — clique num dia para ver o detalhe e no evento para abrir o módulo."
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard rotulo="Hoje" valor={String(vm.hoje)} tom={vm.hoje > 0 ? "brand" : "neutral"} icone={CalendarDays} />
         <StatCard rotulo="Esta semana" valor={String(vm.semana)} tom="neutral" icone={CalendarRange} />
         <StatCard
@@ -793,15 +806,21 @@ export default function Calendario() {
           icone={AlertTriangle}
           sub={vm.atrasados > 0 ? "compromissos e manutenções" : undefined}
         />
-        <StatCard rotulo="Sem data" valor={String(vm.semData)} tom="neutral" icone={CircleDot} />
+        <Link to="/compromissos" className="rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+          <StatCard rotulo="Sem data" valor={String(vm.semData)} tom="neutral" icone={CircleDot} sub="Abrir Compromissos →" />
+        </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
-        <Card>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <Card className="min-w-0">
           <FiltroOrigens filtros={filtros} aoAlternar={alternarFiltro} direcao={direcao} />
+          {!Object.entries(ORIGENS).some(([chave, origem]) => (!origem.soDirecao || direcao) && filtros[chave]) && (
+            <p role="status" className="mb-3 text-sm text-slate-600">Nenhuma origem selecionada. Marque uma das opções acima para exibir seus eventos.</p>
+          )}
           {vm.rhFalhas.length > 0 && (
-            <p className="mb-3 text-xs text-warn-700">
+            <p role="status" className="mb-3 text-xs text-warn-700">
               Não consegui carregar {vm.rhFalhas.join(" e ")} do RH agora — o que falta na grade não é ausência de registro.
+              {" "}<button type="button" className="min-h-11 underline" disabled={atualizando} onClick={recarregar}>{atualizando ? "Atualizando…" : "Tentar novamente"}</button>
             </p>
           )}
           {/* O AVISO FICA ONDE A PESSOA ESTÁ OLHANDO: em cima da grade, não numa
@@ -819,10 +838,13 @@ export default function Calendario() {
           )}
           <CalendarioMes
             eventosPorDia={vm.porDia}
-            diaSelecionado={dia}
+            diaSelecionado={diaVisto}
             aoEscolherDia={setDia}
             aoMudarMes={aoMudarMes}
           />
+          <a href="#calendario-dia" className="btn-outline mt-3 min-h-11 w-full whitespace-normal text-center">
+            Ver eventos de {dataLonga(diaVisto)} ↓
+          </a>
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
             {LEGENDA.map((l) => (
               <span key={l.cor} className="flex items-center gap-1.5 text-xs text-slate-500">
