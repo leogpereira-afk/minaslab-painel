@@ -1,3 +1,4 @@
+import { composicaoIntervalo } from "../../lib/pontoPeriodo.js";
 // Aba Ponto do RH — o relógio da MinasLab, que é o JIBBLE, e o fechamento do
 // mês que sai dele.
 //
@@ -557,8 +558,9 @@ function fatosDoDia(d, min) {
   const cracha = numOuNulo(d?.trackedMin) ?? minutosEntre(d?.entrada, d?.saida);
   if (cracha !== null) partes.push(`${duracaoTexto(cracha)} no crachá`);
   const pausa = numOuNulo(d?.pausaMin);
-  // Intervalo zero é "sem intervalo", nunca "0h00": 0h00 parece medida.
-  if (pausa !== null) partes.push(pausa > 0 ? `${duracaoTexto(pausa)} de intervalo` : "sem intervalo");
+  // Intervalo zero é "intervalo não registrado", nunca "0h00": 0h00 parece medida.
+  if (pausa !== null) partes.push(pausa > 0 ? `${duracaoTexto(pausa)} de intervalo` : "intervalo não registrado");
+  else partes.push("intervalo não informado — conferir");
   const pausaPaga = numOuNulo(d?.pausaPagaMin);
   if (pausaPaga) partes.push(`${duracaoTexto(pausaPaga)} de intervalo pago`);
   // Dia sem total é SEM TOTAL. Zero aqui vira desconto na folha de alguém.
@@ -568,11 +570,7 @@ function fatosDoDia(d, min) {
 
 /* A EXPLICAÇÃO DA DIFERENÇA, num lugar só — a linha do dia e a cascata do mês
    mostram o MESMO número e têm de dizer a MESMA coisa sobre ele. */
-const DICA_DIFERENCA_ESCALA =
-  "O crachá menos o intervalo não dá o que foi para a folha porque o relógio aplica deduções próprias, " +
-  "configuradas na escala de cada pessoa (1h por dia, no que o relógio mostrou em 29/08/2026). A ponte ainda " +
-  "não importa essa configuração: o painel mostra a diferença MEDIDA entre os dois números, e não a regra que " +
-  "a produziu.";
+const DICA_DIFERENCA_ESCALA = "Diferença entre o tempo registrado menos a pausa não paga e o total da folha do Jibble. Confira escala, deduções e batidas no relógio; a diferença isolada não identifica sua causa.";
 
 /**
  * A CASCATA DE UM DIA, na ordem em que o relógio a monta (descoberta de
@@ -594,14 +592,11 @@ const DICA_DIFERENCA_ESCALA =
  * `minutosTrabalhados` no mesmo dia é o começo de dois resultados diferentes.
  */
 function cascataDoDia(d, min) {
-  // O crachá: o que o relógio mediu de porta aberta; no dia lançado à mão, o
-  // intervalo entre as duas batidas. A MESMA leitura de `fatosDoDia`.
-  const registradasMin = numOuNulo(d?.trackedMin) ?? minutosEntre(d?.entrada, d?.saida);
-  const pausaMin = numOuNulo(d?.pausaMin);
-  const folhaMin = min === undefined ? minutosTrabalhados(d) : min;
-  if (registradasMin === null || pausaMin === null || folhaMin === null) return null;
-  const trabalhadasMin = registradasMin - pausaMin;
-  return { registradasMin, pausaMin, trabalhadasMin, folhaMin, diferencaMin: trabalhadasMin - folhaMin };
+  const c = composicaoIntervalo(d);
+  const folhaMin = min === undefined ? c.folhaMin : min;
+  if (c.efetivoMin === null || folhaMin === null) return null;
+  return { ...c, trabalhadasMin: c.efetivoMin, folhaMin,
+    diferencaMin: c.efetivoMin + c.pausaPagaMin - folhaMin };
 }
 
 /** A diferença da escala em palavras (ou ""). Zero não é notícia. */
@@ -632,6 +627,7 @@ function textoDaDiferencaDaEscala(dif) {
 function cascataDoMes(dias) {
   let registradasMin = 0;
   let pausaMin = 0;
+  let pausaPagaMin = 0;
   let trabalhadasMin = 0;
   let folhaMin = 0;
   let diferencaMin = 0;
@@ -656,6 +652,7 @@ function cascataDoMes(dias) {
     diasNaCascata += 1;
     registradasMin += c.registradasMin;
     pausaMin += c.pausaMin;
+    pausaPagaMin += c.pausaPagaMin;
     trabalhadasMin += c.trabalhadasMin;
     folhaMin += c.folhaMin;
     diferencaMin += c.diferencaMin;
@@ -671,6 +668,7 @@ function cascataDoMes(dias) {
     folhaDeForaMin,
     registradasMin: vazia ? null : registradasMin,
     pausaMin: vazia ? null : pausaMin,
+    pausaPagaMin: vazia ? null : pausaPagaMin,
     trabalhadasMin: vazia ? null : trabalhadasMin,
     folhaMin: vazia ? null : folhaMin,
     diferencaMin: vazia ? null : diferencaMin,
@@ -715,7 +713,7 @@ function efeitoDaCorrecao(base, { entrada, saida, pausaMin }) {
     mexeuNasBatidas,
     mantemApuracao: !!apurado && !mexeuNasBatidas,
     // O total que VAI SER GRAVADO — o mesmo número que a caixa da tela mostra.
-    trabalhadoMin: base && !mexeuNasBatidas ? numOuNulo(base.trabalhadoMin) : derivado,
+    trabalhadoMin: base && !mexeuNasBatidas ? minutosTrabalhados(base) : derivado,
   };
 }
 
@@ -865,15 +863,17 @@ function BlocoCascata({ cascata, apuracao, previstoMesMin, jornadaEmPalavras }) 
         valor={cascata.registradasMin}
       />
       <LinhaCascata rotulo="− Intervalo não pago" valor={cascata.pausaMin} />
-      <LinhaCascata rotulo="= Horas trabalhadas" valor={cascata.trabalhadasMin} topo />
+      {cascata.pausaPagaMin > 0 && <LinhaCascata rotulo="− Pausa paga" valor={cascata.pausaPagaMin} />}
+      <LinhaCascata rotulo="= Trabalho efetivo" valor={cascata.trabalhadasMin} topo />
+      {cascata.pausaPagaMin > 0 && <LinhaCascata rotulo="+ Pausa paga (remunerada)" valor={cascata.pausaPagaMin} />}
       {/* A LINHA QUE EXPLICA O MISTÉRIO. Só aparece quando a diferença existe:
           no mês inteiro lançado à mão ela é zero, e "− 0h00" seria ruído. */}
       {dif !== null && dif !== 0 && (
         <LinhaCascata
           rotulo={
             dif > 0
-              ? "− diferença da escala (dedução configurada no relógio)"
-              : "+ diferença da escala (o relógio apurou mais que o crachá)"
+              ? "− diferença da apuração (conferir no Jibble)"
+              : "+ diferença da apuração (conferir no Jibble)"
           }
           valor={Math.abs(dif)}
           dica={DICA_DIFERENCA_ESCALA}
@@ -1208,7 +1208,7 @@ function LinhaBatida({ b, editavel, acoes }) {
         {d.obs && <span className="block truncate text-xs text-slate-500">{d.obs}</span>}
       </span>
 
-      <span className="min-w-0 shrink-0 basis-72 text-xs tabular-nums text-slate-600">
+      <span className="min-w-0 max-w-full shrink-0 basis-full text-xs tabular-nums text-slate-600 sm:basis-72">
         <span className="block">
           {d.entrada || "—"} → {d.saida || "—"}
           {trechoMin !== null && (
@@ -1437,7 +1437,7 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -1488,7 +1488,7 @@ function FormFechamento({ form, setForm, salvando, aoSalvar, aoFechar }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="pt-extras">Horas extras</label>
             <input
@@ -1653,7 +1653,7 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
   const corrigindo = !!form.id;
 
   const bruto = minutosEntre(form.entrada, form.saida);
-  const pausa = inteiroDoCampo(form.pausa);
+  const pausa = txt(form.pausa) === "" ? null : inteiroDoCampo(form.pausa);
   const pausaDemais = bruto !== null && pausa > bruto;
   // A MESMA função que o Gravar usa: o que esta caixa promete é o que vai ser
   // gravado, inclusive quando a promessa é "não mexo no que o relógio apurou".
@@ -1705,7 +1705,7 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -1732,11 +1732,13 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
                 pd_<jibbleId>_<dia>): mudar a data aqui deixaria um dia órfão e a
                 importação seguinte recriaria o antigo. */}
             <p className="mt-0.5 text-xs text-slate-400">
-              O dia não se muda por aqui — se a data está errada, lance o dia certo e apague o errado.
+              {form.origem === "jibble"
+                ? "A data desta batida vem do relógio e não pode ser alterada ou apagada aqui. Confira a data no Jibble antes de lançar outro registro."
+                : "A data não pode ser alterada aqui. Se este registro manual está no dia errado, lance o dia correto e apague o anterior."}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="bt-pessoa">Pessoa</label>
               <select id="bt-pessoa" className="select" value={form.pessoaId} onChange={setCampo("pessoaId")} required>
@@ -1753,7 +1755,7 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className="label" htmlFor="bt-entrada">Entrada</label>
             <input id="bt-entrada" type="time" className="input" value={form.entrada} onChange={setCampo("entrada")} />
@@ -1763,7 +1765,7 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
             <input id="bt-saida" type="time" className="input" value={form.saida} onChange={setCampo("saida")} />
           </div>
           <div>
-            <label className="label" htmlFor="bt-pausa">Pausa (min)</label>
+            <label className="label" htmlFor="bt-pausa">Intervalo registrado (min)</label>
             <input id="bt-pausa" type="number" min="0" step="5" className="input" value={form.pausa} onChange={setCampo("pausa")} />
           </div>
         </div>
@@ -1849,7 +1851,7 @@ function FormAusencia({ form, setForm, ativos, salvando, aoSalvar, aoRemover, ao
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -1867,7 +1869,7 @@ function FormAusencia({ form, setForm, ativos, salvando, aoSalvar, aoRemover, ao
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="au-pessoa">Pessoa</label>
               <select id="au-pessoa" className="select" value={form.pessoaId} onChange={setCampo("pessoaId")} required>
@@ -1975,12 +1977,12 @@ function LinhaJornada({ linha, onMudar }) {
   const previsto = previstoDaLinha(linha);
   const nome = NOMES_DIA_SEMANA[linha.dia];
   return (
-    <div className="grid grid-cols-[5.5rem_repeat(4,1fr)_4.5rem] items-center gap-1.5">
+    <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[5.5rem_repeat(4,minmax(0,1fr))_4.5rem] sm:gap-1.5">
       <span className="font-display text-xs font-semibold capitalize text-slate-600">{nome}</span>
       {CAMPOS_JORNADA.map((c) => (
         <div key={c.chave}>
-          <label className="sr-only" htmlFor={`jr-${linha.dia}-${c.chave}`}>
-            {c.rotulo} de {nome}
+          <label className="label sm:sr-only" htmlFor={`jr-${linha.dia}-${c.chave}`}>
+            {c.rotulo}<span className="sr-only"> de {nome}</span>
           </label>
           <input
             id={`jr-${linha.dia}-${c.chave}`}
@@ -1992,6 +1994,7 @@ function LinhaJornada({ linha, onMudar }) {
         </div>
       ))}
       <span className="text-right text-xs tnum text-slate-500">
+        <span className="sm:sr-only">Previsto no dia: </span>
         {/* Par pela metade não vira 0h00: 0h00 pareceria "não se trabalha". */}
         {previsto === null ? <span className="text-bad-700">?</span> : previsto > 0 ? duracaoTexto(previsto) : "—"}
       </span>
@@ -2011,7 +2014,7 @@ function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -2023,7 +2026,7 @@ function FormParametros({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <span className="label">Jornada da casa</span>
           {form.jornadaEditavel ? (
             <>
-              <div className="grid grid-cols-[5.5rem_repeat(4,1fr)_4.5rem] gap-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <div aria-hidden="true" className="hidden gap-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[5.5rem_repeat(4,minmax(0,1fr))_4.5rem]">
                 <span>Dia</span>
                 <span>Entra</span>
                 <span>Sai</span>
@@ -2188,8 +2191,12 @@ const COLUNAS_BATIDAS = [
 
 export default function AbaPonto({
   pessoas, ativos, ponto, pontoDia, hojeISO, editavel, gravar, apagarReg, setAviso, recarregar,
+  competenciaSelecionada, aoMudarCompetencia,
 }) {
-  const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
+  const [competenciaLocal, setCompetenciaLocal] = useState(() => competenciaDe(hojeISO));
+  // Dentro do módulo, relatório, faltas e sincronização usam o mesmo mês.
+  const competencia = competenciaSelecionada ?? competenciaLocal;
+  const setCompetencia = aoMudarCompetencia ?? setCompetenciaLocal;
   const [visao, setVisao] = useState("fechamento");
   // Ativos | Todos | Desligados — a escolha nasce do que ficou guardado.
   const [recorte, setRecorte] = useState(lerRecorte);
@@ -2518,7 +2525,7 @@ export default function AbaPonto({
     const abonadasMes = linhas.reduce((s, l) => s + l.apuracao.ausenciasSemDesconto, 0);
     const ausenciasEstranhas = linhas.reduce((s, l) => s + l.apuracao.ausenciasDesconhecidas, 0);
 
-    const anos = new Set([Number(String(hojeISO).slice(0, 4)), Number(String(hojeISO).slice(0, 4)) - 1]);
+    const anos = new Set([Number(String(hojeISO).slice(0, 4)), Number(String(hojeISO).slice(0, 4)) - 1, Number(competencia.slice(0, 4))]);
     for (const d of pontoDia || []) {
       const a = Number(String(d.data || "").slice(0, 4));
       if (a) anos.add(a);
@@ -2869,7 +2876,7 @@ export default function AbaPonto({
     const ano = anoRuim(f.data);
     if (ano) return setAviso({ tipo: "erro", texto: `Confira o ano do dia: ${ano}` });
 
-    const pausa = inteiroDoCampo(f.pausa);
+    const pausa = txt(f.pausa) === "" ? null : inteiroDoCampo(f.pausa);
     const bruto = minutosEntre(f.entrada, f.saida);
     if (bruto !== null && pausa > bruto) {
       return setAviso({ tipo: "erro", texto: "A pausa é maior que o intervalo entre a entrada e a saída." });
@@ -2935,7 +2942,7 @@ export default function AbaPonto({
     const semApuracaoDoRelogio = {
       extraMin: null,
       extraDobroMin: null,
-      pausaPagaMin: null,
+      pausaPagaMin: numOuNulo(base?.pausaPagaMin) ?? 0,
       trackedMin: minutosEntre(f.entrada, f.saida),
       // "Entrou e não saiu", refeito: a marca do relógio não pode ficar presa
       // num dia que o RH acabou de fechar.
@@ -3303,10 +3310,10 @@ export default function AbaPonto({
                   className="btn-outline"
                   onClick={puxarDoRelogio}
                   disabled={!!importando}
-                  title="Busca no Jibble as batidas desta competência"
+                  title={`Atualiza somente as batidas de ${rotuloCompetencia(competencia)}`}
                 >
                   <RefreshCw size={16} strokeWidth={2.5} className={importando ? "animate-spin" : undefined} />
-                  {importando || "Puxar do relógio"}
+                  {importando || `Atualizar batidas de ${rotuloCompetencia(competencia)}`}
                 </button>
               )}
               {editavel && visao === "batidas" && (
@@ -3351,7 +3358,7 @@ export default function AbaPonto({
               lista suspensa esconde justamente o quanto de história existe.
               Os anos vêm do que TEM DADO (mais o de hoje) — lista cravada
               envelhece virando o ano. */}
-          <div>
+          <div role="group" aria-label="Ano do ponto">
             <span className="label">Ano</span>
             <Pilulas
               opcoes={vm.anos}
@@ -3362,11 +3369,11 @@ export default function AbaPonto({
           {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
               é o filtro que mais muda esta aba — 13 das 20 fichas estão
               desligadas. Quem não bate ponto não entra em recorte nenhum. */}
-          <div>
+          <div role="group" aria-label="Quadro do ponto">
             <span className="label">Quadro</span>
             <Segmented opcoes={RECORTES} valor={recorte} onChange={mudarRecorte} />
           </div>
-          <div className="ml-auto">
+          <div role="group" aria-label="Visão do ponto" className="ml-auto">
             <span className="label">Visão</span>
             <Segmented
               opcoes={[
@@ -3608,7 +3615,7 @@ export default function AbaPonto({
               <label className="sr-only" htmlFor="pt-filtro">Pessoa</label>
               <select
                 id="pt-filtro"
-                className="select w-56"
+                className="select w-full max-w-full sm:w-56"
                 value={filtroPessoa}
                 onChange={(e) => setFiltroPessoa(e.target.value)}
               >
@@ -3628,8 +3635,8 @@ export default function AbaPonto({
             O extrato dia a dia: a <strong>duração</strong> do trecho entre as batidas, o <strong>crachá</strong>, o
             intervalo e o que vai para a <strong>folha</strong>. Os três não fecham por subtração, e o que sobra sai
             escrito na linha: é a <strong>diferença da escala</strong>, a dedução que o relógio aplica e que a ponte
-            ainda não importa. Correção fica marcada e o que veio do relógio continua à vista. Toque num dia para ver
-            o mês inteiro daquela pessoa.
+            ainda não importa. Correção fica marcada e o que veio do relógio continua à vista. Toque no nome da pessoa para ver
+            o mês inteiro, com esse dia em foco.
           </Explicacao>
           {semBatidaNoMes ? (
             <Empty>

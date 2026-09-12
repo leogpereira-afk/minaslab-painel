@@ -220,7 +220,7 @@ function LinhaDia({ l, emFoco, refFoco }) {
         ) : Number(reg.pausaMin) > 0 ? (
           duracaoTexto(reg.pausaMin)
         ) : (
-          <span className="text-slate-400">sem intervalo</span>
+          <span className="text-slate-400">intervalo não registrado</span>
         )}
       </td>
 
@@ -323,26 +323,7 @@ export default function PessoaDetalhe({
     linhaFoco.current?.scrollIntoView({ block: "center" });
   }, [vm, diaFoco, mes]);
 
-  /* ESCAPE FECHA, E O FUNDO NÃO ROLA ENQUANTO O PAINEL ESTÁ ABERTO.
-     Sem o Escape, quem abre pelo teclado fica preso — o painel cobre a tela e
-     o único jeito de sair é achar o X com o mouse. E sem travar a rolagem do
-     corpo, girar a roda dentro do painel rola a página ATRÁS dele: some a
-     linha de onde a pessoa veio, e ela volta perdida. `aoFechar` vai por ref
-     para não recriar o efeito a cada render do pai. */
-  const fecharRef = useRef(aoFechar);
-  fecharRef.current = aoFechar;
-  useEffect(() => {
-    const aoTeclar = (e) => {
-      if (e.key === "Escape") fecharRef.current?.();
-    };
-    document.addEventListener("keydown", aoTeclar);
-    const rolagemAntes = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", aoTeclar);
-      document.body.style.overflow = rolagemAntes;
-    };
-  }, []);
+  // Escape, foco e bloqueio de rolagem pertencem ao Modal compartilhado.
 
   if (!pessoa || !vm) return null;
 
@@ -376,12 +357,12 @@ export default function PessoaDetalhe({
       </div>
 
       {/* ---- O MÊS ---- */}
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <button type="button" className="btn-outline px-2 py-1" onClick={() => setMes(mesVizinho(mes, -1))} aria-label="Mês anterior">
             <ChevronLeft size={15} strokeWidth={2.5} />
           </button>
-          <span className="font-display text-sm font-semibold text-slate-800">{rotuloCompetencia(mes)}</span>
+          <span aria-live="polite" className="font-display text-sm font-semibold text-slate-800">{rotuloCompetencia(mes)}</span>
           <button type="button" className="btn-outline px-2 py-1" onClick={() => setMes(mesVizinho(mes, 1))} aria-label="Próximo mês">
             <ChevronRight size={15} strokeWidth={2.5} />
           </button>
@@ -420,7 +401,7 @@ export default function PessoaDetalhe({
       )}
 
       {/* ---- O DIA A DIA ---- */}
-      <div className="mt-3 max-h-[52vh] overflow-auto rounded-xl border" style={{ borderColor: "var(--hairline)" }}>
+      <div tabIndex={0} role="region" aria-label={`Batidas de ${pessoa.nome || "pessoa sem nome"} em ${rotuloCompetencia(mes)}`} className="mt-3 max-h-[52vh] overflow-auto rounded-xl border" style={{ borderColor: "var(--hairline)" }}>
         <table className="w-full min-w-[42rem] text-sm">
           <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b text-left font-display text-[11px] uppercase tracking-wide text-slate-500" style={{ borderColor: "var(--hairline)" }}>
