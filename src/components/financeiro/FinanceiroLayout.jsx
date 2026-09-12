@@ -14,6 +14,7 @@ const principais=[
  {label:"Notas",to:"/financas/notas-fiscais",icon:FileText},
 ];
 const mais=[
+ {label:"Conferência financeira",to:"/financas/conferencia",icon:ListChecks,descricao:"Datas, históricos e documentos para revisão."},
  {label:"Fluxo de Caixa",to:"/financas/fluxo-caixa",icon:LineChart,descricao:"Previsto, realizado e projeção financeira."},
  {label:"Relatórios",to:"/financas/relatorios",icon:BarChart3,descricao:"Análises e exportações financeiras."},
  {label:"Clientes",to:"/financas/clientes",icon:Users,descricao:"Cadastro financeiro de clientes."},
@@ -28,10 +29,10 @@ export default function FinanceiroLayout(){
  const navigate=useNavigate(),location=useLocation(),ref=useRef(null);const [aberto,setAberto]=useState(false);const [periodo,setPeriodo]=useState(periodoSalvo);const emMais=mais.some(x=>ativa(location,x.label,x.to));const usaPeriodo=rotaPeriodo(location.pathname),listaPeriodo=rotaListaPeriodo(location.pathname),conciliacaoPeriodo=location.pathname.startsWith("/financas/conciliacao-titulos"),fluxo=location.pathname==="/financas/fluxo-caixa";
  useEffect(()=>setAberto(false),[location.pathname]);useEffect(()=>{const f=e=>{if(ref.current&&!ref.current.contains(e.target))setAberto(false)};document.addEventListener("mousedown",f);return()=>document.removeEventListener("mousedown",f)},[]);
  useEffect(()=>{try{sessionStorage.setItem(PERIODO_KEY,JSON.stringify(periodo))}catch{void 0}},[periodo]);
- useEffect(()=>{if(!conciliacaoPeriodo)return;const t=setTimeout(()=>{const input=document.querySelector('.financeiro-shell input[type="month"]');if(!input||!input.value)return;const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;if(setter)setter.call(input,"");else input.value="";input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}))},0);return()=>clearTimeout(t)},[conciliacaoPeriodo,periodo.de,periodo.ate]);
- function setData(campo,valor){setPeriodo(p=>{const n={...p,[campo]:valor};if(n.de&&n.ate&&n.de>n.ate){if(campo==="de")n.ate=valor;else n.de=valor}return n})}
- function definirMesAtual(){setPeriodo(mesAtual())}
- function limparPeriodo(){setPeriodo({de:"",ate:""})}
+ function guardarPeriodo(n){try{sessionStorage.setItem(PERIODO_KEY,JSON.stringify(n))}catch{void 0}setPeriodo(n)}
+ function setData(campo,valor){const n={...periodo,[campo]:valor};if(n.de&&n.ate&&n.de>n.ate){if(campo==="de")n.ate=valor;else n.de=valor}guardarPeriodo(n)}
+ function definirMesAtual(){guardarPeriodo(mesAtual())}
+ function limparPeriodo(){guardarPeriodo({de:"",ate:""})}
  const classes=["financeiro-shell","space-y-4",listaPeriodo?"financeiro-periodo-listas":"",conciliacaoPeriodo?"financeiro-periodo-conciliacao":"",fluxo?"financeiro-fluxo":""].filter(Boolean).join(" ");
  return <div className={classes}>
   <section className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center gap-1 px-3 py-2"><nav className="min-w-0 flex-1 overflow-x-auto"><div className="flex min-w-max items-center gap-1">{principais.map(({label,to,end,icon:Icon})=>{const a=ativa(location,label,to);return <NavLink key={to} to={to} end={end} className={`flex min-w-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition ${a?"bg-blue-600 text-white shadow-sm":"text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}><Icon size={16}/><span>{label}</span></NavLink>})}</div></nav><div className="relative shrink-0" ref={ref}><button onClick={()=>setAberto(v=>!v)} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${emMais?"bg-blue-50 text-blue-700":"text-slate-600 hover:bg-slate-50"}`}><MoreHorizontal size={16}/>Mais<ChevronDown size={14} className={aberto?"rotate-180":""}/></button>{aberto&&<div className="absolute right-0 z-40 mt-2 w-72 rounded-2xl border bg-white p-2 shadow-xl">{mais.map(({label,to,icon:Icon,descricao})=><button key={to} onClick={()=>navigate(to)} className="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-slate-50"><span className="rounded-lg bg-slate-50 p-2"><Icon size={16}/></span><span><b className="block text-sm">{label}</b><small className="text-slate-500">{descricao}</small></span></button>)}</div>}</div></div></section>

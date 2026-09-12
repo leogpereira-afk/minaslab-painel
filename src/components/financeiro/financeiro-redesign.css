@@ -206,3 +206,8 @@
     max-height: 62vh;
   }
 }
+
+/* Hierarquia financeira: títulos azuis, leitura de valores alinhada. */
+.financeiro-shell h1,.financeiro-shell h2,.financeiro-shell h3 { color: #1e3a8a; }
+.financeiro-shell table,.financeiro-shell strong { font-variant-numeric: tabular-nums; }
+.financeiro-shell dialog { color: #334155; }

@@ -1,3 +1,4 @@
+import ComparativoMensal from "../components/financeiro/ComparativoMensal.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Download, Landmark, ArrowDownCircle, ArrowUpCircle, RefreshCw } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
@@ -73,5 +74,6 @@ export default function RelatoriosFinanceiro() {
 
     <button type="button" className="btn-outline" onClick={carregar} disabled={loading}><RefreshCw size={15}/>{loading ? "Atualizando..." : "Atualizar dados"}</button>
     <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500"><BarChart3 size={14} className="mr-1 inline"/>Os arquivos são CSV em UTF-8, abrem normalmente no Excel e preservam os dados do sistema sem alterar nenhum registro.</div>
-  </div>;
+  <ComparativoMensal movimentos={movimentosFiltrados}/>
+</div>;
 }
