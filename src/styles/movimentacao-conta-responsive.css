@@ -1,6 +1,21 @@
 /* Movimentação da Conta — tabela adaptativa. Evita obrigar o usuário a reduzir o zoom
    ou arrastar horizontalmente para alcançar Situação/Ações. */
 
+/* Densidade tipográfica levemente menor só nesta tabela, sem comprometer leitura. */
+table[class*="min-w-[1050px]"] {
+  font-size: 13px;
+}
+
+table[class*="min-w-[1050px]"] thead {
+  font-size: 11px;
+}
+
+table[class*="min-w-[1050px]"] td button,
+table[class*="min-w-[1050px]"] td span,
+table[class*="min-w-[1050px]"] td small {
+  line-height: 1.3;
+}
+
 @media (min-width: 768px) {
   div:has(> table[class*="min-w-[1050px]"]) {
     overflow-x: visible !important;
