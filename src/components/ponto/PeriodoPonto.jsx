@@ -1,29 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Download, Printer, Search, Clock, Users, Coffee, AlertTriangle } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Printer, Search } from 'lucide-react';
 import { Card, Segmented } from '../ui.jsx';
 import { lerCfg } from '../../services/dados.js';
 import { baixarPlanilha } from '../../lib/planilha.js';
-import { cfgDoPonto, duracaoTexto, ausenciaDoDia, minutosPrevistosDoDia } from '../../lib/rh/ponto.js';
+import { cfgDoPonto, duracaoTexto } from '../../lib/rh/ponto.js';
 import { composicaoIntervalo, periodoPonto, moverPeriodo, datasPeriodo, resumirDias } from '../../lib/pontoPeriodo.js';
 import './periodoPonto.css';
+import LeituraPonto from './LeituraPonto.jsx';
+import { situacaoPonto as situacao } from '../../lib/pontoLeitura.js';
 const horas = n => n === null || n === undefined ? '—' : duracaoTexto(n);
 const curta = iso => iso.slice(8,10)+'/'+iso.slice(5,7);
 const longa = iso => `${curta(iso)}/${iso.slice(0,4)}`;
 const SEMANA=['dom.','seg.','ter.','qua.','qui.','sex.','sáb.'];
 const opcoes=[{valor:'dia',rotulo:'Dia'},{valor:'semana',rotulo:'Semana'},{valor:'mes',rotulo:'Mês'}];
-function Medida({icone:Icon, titulo, valor, nota}) {return <div className="pp-medida"><span className="pp-legenda"><Icon size={16}/>{titulo}</span><strong>{valor}</strong><small>{nota}</small></div>;}
-function situacao(d, iso, hoje, jornada) {
-  if(iso>hoje) return 'Futuro';
-  const ausencia=d && ausenciaDoDia(d); if(ausencia) return ausencia.rotulo;
-  if(!d) return minutosPrevistosDoDia(iso,jornada)===0?'Sem jornada':'Sem registro';
-  if(d.emAberto) return 'Em aberto';
-  const c=composicaoIntervalo(d);
-  if(c.invalido) return 'Conferir intervalo';
-  if(c.semIntervalo) return 'Intervalo não registrado';
-  if(c.pausaPagaMin===null) return 'Conferir pausa paga';
-  if(c.folhaMin===null) return 'Conferir batidas';
-  return 'Registrado';
-}
 export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenciaSelecionada,aoMudarCompetencia,montarIndice,pessoasDoPeriodo,setAviso}) {
   const [visao,setVisao]=useState('semana');
   const [referencia,setReferencia]=useState(hojeISO);
@@ -44,9 +33,7 @@ export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenci
   const pessoa=lista.find(p=>p.id===pessoaId);
   const exibidas=pessoa?[pessoa]:lista;
   const linhas=exibidas.flatMap(p=>datas.filter(d=>d<=hojeISO).map(data=>({p,data,d:indice.porPessoa.get(p.id)?.dias.get(data)})));
-  const resumo=resumirDias(linhas.flatMap(l=>l.d?[l.d]:[]));
-  const pendentes=linhas.filter(l=>l.d && !ausenciaDoDia(l.d) && (l.d.emAberto || composicaoIntervalo(l.d).semIntervalo || composicaoIntervalo(l.d).efetivoMin===null || composicaoIntervalo(l.d).folhaMin===null)).length;
-  const ultima=(pontoDia||[]).filter(d=>d.data>=periodo?.de && d.data<=periodo?.ate && d.atualizadoPor==='jibble').map(d=>d.atualizadoEm||'').sort().at(-1);
+  const ultima=linhas.flatMap(l=>l.d?[l.d]:[]).filter(d=>d.atualizadoPor==='jibble').map(d=>d.atualizadoEm||'').sort().at(-1);
   const mudarRef=d=>{if(!periodoPonto('dia',d))return;setReferencia(d);aoMudarCompetencia?.(d.slice(0,7));};
   const trocar=v=>{setVisao(v);if(v==='mes')aoMudarCompetencia?.(referencia.slice(0,7));else if(visao==='mes' && referencia.slice(0,7)!==ref.slice(0,7))setReferencia(ref);};
   const titulo=periodo ? periodo.de===periodo.ate?longa(periodo.de):`${longa(periodo.de)} a ${longa(periodo.ate)}` : 'Selecione uma data';
@@ -62,7 +49,7 @@ export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenci
   };
   const exportar=()=>baixarPlanilha({nome:`ponto-${visao}-${periodo.de}-${periodo.ate}`,titulo:`MinasLab · ${titulo} · ${quadro} · ${pessoa?.nome||busca||'todas as pessoas'} · última importação ${ultima||'não informada'}`,colunas:[{chave:'nome',rotulo:'Pessoa'},{chave:'data',rotulo:'Dia'},{chave:'entrada',rotulo:'Entrada'},{chave:'saida',rotulo:'Saída'},{chave:'intervalo',rotulo:'Intervalo não pago (min)',tipo:'numero'},{chave:'pago',rotulo:'Intervalo pago (min)',tipo:'numero'},{chave:'efetivo',rotulo:'Trabalho efetivo (min)',tipo:'numero'},{chave:'folha',rotulo:'Horas consideradas (min, inclui extras)',tipo:'numero'},{chave:'original',rotulo:'Total de origem (min)',tipo:'numero'},{chave:'diferenca',rotulo:'Diferença para conferência (min)',tipo:'numero'},{chave:'situacao',rotulo:'Situação'}],linhas:registrosRelatorio});
   return <section className="pp-root" aria-label="Acompanhamento do ponto">
-    <Card className="pp-topo">
+    <header className="pp-topo">
       <div className="pp-cabecalho">
         <div className="pp-titulo"><span className="pp-legenda"><CalendarDays size={14}/> Acompanhamento da equipe</span><h2>{titulo}</h2></div>
         <Segmented className="pp-visoes sem-impressao" opcoes={opcoes} valor={visao} onChange={trocar}/>
@@ -78,14 +65,16 @@ export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenci
         <span>{pessoa?.nome||`${exibidas.length} pessoa(s)`} · Última importação: {ultima?new Date(ultima).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'não informada'}</span>
         <details className="pp-jornada"><summary><strong>{horas(jornada.semanaMin)} / semana</strong><span>Ver jornada</span></summary><p>{jornada.dias.filter(d=>d.previstoMin>0).map(d=>`${d.nome} ${horas(d.previstoMin)}`).join(' · ')}. O intervalo fica fora dessas horas.</p></details>
       </div>
-    </Card>
-    <div className="pp-resumo"><Medida icone={Clock} titulo="Horas consideradas" valor={horas(resumo.folhaMin)} nota="Inclui horas extras"/><Medida icone={Coffee} titulo="Intervalo não pago" valor={horas(resumo.pausaMin)} nota="Somente o registrado"/><Medida icone={Users} titulo="Trabalho efetivo" valor={horas(resumo.efetivoMin)} nota="Sem pausas"/><Medida icone={AlertTriangle} titulo="Conferir" valor={pendentes} nota="Intervalos e batidas pendentes"/></div>
-    {(pendentes>0 || resumo.divergencias>0 || indice.repetidos>0 || indice.orfaos.length>0 || cfgErro)&&<p role="status" className="pp-aviso">{pendentes>0&&'Totais parciais: há registros a conferir. '}{resumo.divergencias>0&&`${resumo.divergencias} dia(s) com diferença do Jibble. O painel considera somente o intervalo registrado. `}{indice.repetidos>0&&`${indice.repetidos} registro(s) repetido(s) na base; sem somar em dobro. `}{indice.orfaos.length>0&&`${indice.orfaos.length} vínculo(s) com pessoas pendentes na base. `}{cfgErro&&'Escala não carregada; referências de jornada usam o padrão do sistema.'}</p>}
+    </header>
+    {(indice.repetidos>0 || indice.orfaos.length>0 || cfgErro)&&<p role="status" className="pp-aviso">{indice.repetidos>0&&`${indice.repetidos} registro(s) repetido(s) na base; sem somar em dobro. `}{indice.orfaos.length>0&&`${indice.orfaos.length} vínculo(s) com pessoas pendentes na base. `}{cfgErro&&'Escala não carregada; referências de jornada usam o padrão do sistema.'}</p>}
+    {exibidas.length>0&&<LeituraPonto pessoas={exibidas} datas={datas} indice={indice} hoje={hojeISO} jornada={jornada} visao={visao} pessoa={pessoa} abrirPessoa={setPessoaId} abrirDia={data=>{mudarRef(data);setVisao('dia');}} abrirRegistro={({p,data})=>{setPessoaId(p.id);mudarRef(data);setVisao('dia');}}/>}
+    <details className="pp-tabela-completa"><summary>Ver tabela completa e valores de origem</summary>
     {exibidas.length===0?<Card><p>Nenhuma pessoa neste filtro. Altere a busca ou o quadro.</p></Card>:<>
       {visao==='semana'&&!pessoa&&<Card><div className="pp-grade"><table><caption className="sr-only">Semana da equipe — horas da folha por dia</caption><thead><tr><th>Pessoa</th>{datas.map(d=><th key={d}><button onClick={()=>{mudarRef(d);setVisao('dia');}}>{SEMANA[new Date(`${d}T12:00:00`).getDay()]}<br/>{curta(d)}</button></th>)}<th>Total</th></tr></thead><tbody>{exibidas.map(p=>{const ds=datas.filter(d=>d<=hojeISO).map(d=>indice.porPessoa.get(p.id)?.dias.get(d));return <tr key={p.id}><th><button onClick={()=>setPessoaId(p.id)}>{p.nome}</button></th>{datas.map(data=>{const d=indice.porPessoa.get(p.id)?.dias.get(data);return <td key={data}><button className={d?.emAberto?'pp-pendente':''} onClick={()=>{setPessoaId(p.id);mudarRef(data);setVisao('dia');}}>{data>hojeISO?'—':horas(d?composicaoIntervalo(d).folhaMin:null)}<small>{situacao(d,data,hojeISO,jornada)}</small></button></td>;})}<td><strong>{horas(resumirDias(ds.filter(Boolean)).folhaMin)}</strong></td></tr>;})}</tbody></table></div><p className="pp-fonte">Clique em um dia para detalhar as batidas e o intervalo. “Sem registro” não significa falta.</p></Card>}
       {visao==='mes'&&!pessoa&&<div className="pp-pessoas">{exibidas.map(p=>{const ds=datas.map(d=>indice.porPessoa.get(p.id)?.dias.get(d)).filter(d=>d&&d.data<=hojeISO);const r=resumirDias(ds);return <button className="pp-pessoa" key={p.id} onClick={()=>setPessoaId(p.id)}><span><strong>{p.nome}</strong><small>{r.dias} dias com registro{r.pendentes>0?` · ${r.pendentes} a conferir`:''}</small></span><span><strong>{horas(r.folhaMin)}</strong><small>total · intervalo {horas(r.pausaMin)}</small></span><ChevronRight size={18}/></button>;})}</div>}
       {(visao==='dia'||pessoa)&&<Card><h3 className="pp-subtitulo">{pessoa?.nome||'Batidas do dia'}</h3><div className="pp-grade"><table><thead><tr><th>{pessoa?'Dia':'Pessoa'}</th><th>Entrada</th><th>Saída</th><th>Intervalo não pago</th><th>Pausa paga</th><th>Trabalho efetivo</th><th>Total considerado</th><th>Total de origem</th><th>Situação</th></tr></thead><tbody>{linhas.map(({p,data,d})=>{const c=composicaoIntervalo(d);return <tr key={`${p.id}-${data}`}><th>{pessoa?longa(data):<button onClick={()=>setPessoaId(p.id)}>{p.nome}</button>}</th><td>{d?.entrada||'—'}</td><td>{d?.saida||'—'}</td><td>{horas(c.pausaMin)}</td><td>{d?horas(c.pausaPagaMin):'—'}</td><td>{horas(c.efetivoMin)}</td><td><strong>{horas(c.folhaMin)}</strong></td><td>{horas(c.originalJibbleMin)}</td><td>{situacao(d,data,hojeISO,jornada)}{c.diferencaMin!==null&&c.diferencaMin!==0&&<small>Diferença do total original: {horas(Math.abs(c.diferencaMin))} · intervalo descontado uma vez</small>}</td></tr>;})}</tbody></table></div></Card>}
     </>}
+    </details>
     <details className="pp-explicacao"><summary>Como os intervalos entram na conta</summary><p>Trabalho efetivo = horas registradas − intervalo não pago − pausa paga. Para o total considerado no painel, descontamos somente o intervalo não pago registrado. Não aplicamos a hora adicional da apuração do Jibble; o total original é preservado para comparação.</p><p>Sem intervalo informado, o total fica pendente. Com zero no relógio, nenhum intervalo é descontado e aparece o aviso “Intervalo não registrado”, para conferência. Pausas pagas não reduzem a remuneração. Totais incluem apenas valores conhecidos.</p></details>
   </section>;
 }
