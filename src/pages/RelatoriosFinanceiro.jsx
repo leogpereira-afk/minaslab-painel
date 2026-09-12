@@ -64,7 +64,7 @@ export default function RelatoriosFinanceiro() {
     <section className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4">
       <label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => { setEmpresa(e.target.value); setConta(""); }}><option value="">Todas / Consolidado</option>{(op.empresas || []).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label>
       <label><span className="label">Banco / conta</span><select className="input" value={conta} onChange={(e) => setConta(e.target.value)}><option value="">Todas as contas juntas</option>{contas.map((x) => <option key={x.id} value={x.id}>{[x.banco, x.nome].filter(Boolean).join(" · ")}</option>)}</select></label>
-      <label><span className="label">De</span><input className="input" type="date" value={de} onChange={(e) => {setDe(e.target.value);if(e.target.value)setAno(Number(e.target.value.slice(0,4)))}}/></label>
+      <label><span className="label">De</span><input className="input" type="date" value={de} onChange={(e) => {setDe(e.target.value);const a=Number(e.target.value.slice(0,4));if(a>=1900&&a<=2200)setAno(a)}}/></label>
       <label><span className="label">Até</span><input className="input" type="date" value={ate} onChange={(e) => setAte(e.target.value)}/></label>
     </section>
 
