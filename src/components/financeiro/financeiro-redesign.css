@@ -211,3 +211,15 @@
 .financeiro-shell h1,.financeiro-shell h2,.financeiro-shell h3 { color: #1e3a8a; }
 .financeiro-shell table,.financeiro-shell strong { font-variant-numeric: tabular-nums; }
 .financeiro-shell dialog { color: #334155; }
+
+/* Duas linhas de acesso direto ao Financeiro. */
+.financeiro-shell .financeiro-navegacao{border:1px solid #e2e8f0;border-radius:20px;background:#fff;padding:8px 12px;box-shadow:0 2px 5px #0f172a06}
+.financeiro-shell .financeiro-nav-linha{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:4px 0}
+.financeiro-shell .financeiro-nav-linha+.financeiro-nav-linha{border-top:1px solid #edf1f5;margin-top:4px;padding-top:8px}
+.financeiro-shell .financeiro-nav-link{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;min-height:46px;padding:8px 6px;border-radius:12px;color:#526074;font-size:14px;font-weight:600;line-height:1.35;text-align:center;text-decoration:none;transition:background .15s,color .15s}
+.financeiro-shell .financeiro-nav-link svg{flex-shrink:0}
+.financeiro-shell .financeiro-nav-link:hover{background:#f1f5f9;color:#243b80}
+.financeiro-shell .financeiro-nav-link:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.financeiro-shell .financeiro-nav-link-ativo,.financeiro-shell .financeiro-nav-link-ativo:hover{background:#eaf0ff;color:#254bb4}
+@media(max-width:1100px){.financeiro-shell .financeiro-nav-link{flex-direction:column;gap:5px;font-size:13px}}
+@media(max-width:640px){.financeiro-shell .financeiro-nav-linha{grid-template-columns:repeat(3,minmax(0,1fr))}.financeiro-shell .financeiro-navegacao{padding:8px}.financeiro-shell .financeiro-nav-link{min-height:64px}}
