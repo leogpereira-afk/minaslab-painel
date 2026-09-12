@@ -79,6 +79,7 @@ export default function RelatoriosFinanceiro() {
       <PageTitle titulo="Relatórios Financeiros" descricao="Entenda o período, compare os números e leve a análise para sua reunião."/>
       <button type="button" className="btn-primary" disabled={!r || !!gerando} onClick={() => exportarPdf('executivo')}><FileText size={17}/>{gerando === 'executivo' ? 'Preparando PDF…' : 'Baixar análise em PDF'}</button>
     </div>
+    <div className="flex flex-wrap gap-3"><Link className="btn-outline" to="/financas/aplicacoes">Aplicações financeiras</Link><Link className="btn-outline" to="/financas/socios">Retiradas dos sócios</Link></div>
     {erro && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{erro} <button className="underline" onClick={() => setVersao(v => v + 1)}>Tentar novamente</button></div>}
     {erroPdf && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{erroPdf}</div>}
     <section className="fin-relatorios-filtros grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4" aria-label="Filtros dos relatórios">
