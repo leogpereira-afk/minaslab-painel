@@ -34,6 +34,7 @@ function LinhaVenc({ v, editavel, aoEditar, aoApagar }) {
             onClick={aoEditar}
             className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar ${v.tipo} de ${v.pessoaNome || "pessoa sem registro"}`}
           >
             <Pencil size={14} />
           </button>
@@ -42,6 +43,7 @@ function LinhaVenc({ v, editavel, aoEditar, aoApagar }) {
             onClick={aoApagar}
             className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar ${v.tipo} de ${v.pessoaNome || "pessoa sem registro"}`}
           >
             <Trash2 size={14} />
           </button>
@@ -60,7 +62,7 @@ function FormVenc({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -74,7 +76,7 @@ function FormVenc({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
             ))}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="v-tipo">Tipo</label>
             <select id="v-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>
@@ -122,7 +124,7 @@ export default function AbaVencimentos({
               <label className="sr-only" htmlFor="rh-filtro-venc">Filtrar por pessoa</label>
               <select
                 id="rh-filtro-venc"
-                className="select h-9 w-56"
+                className="select h-9 w-full max-w-full sm:w-56"
                 value={filtroVenc}
                 onChange={(e) => setFiltroVenc(e.target.value)}
               >
@@ -138,7 +140,9 @@ export default function AbaVencimentos({
           <Empty>
             {filtroVenc
               ? "Nada anotado para esta pessoa."
-              : "Nenhum vencimento anotado. Anote o primeiro no botão lá em cima."}
+              : editavel
+                ? "Nenhum vencimento anotado. Use Novo vencimento no topo para anotar o primeiro."
+                : "Nenhum vencimento anotado."}
           </Empty>
         )}
         <div className="space-y-2">

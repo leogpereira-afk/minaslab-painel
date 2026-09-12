@@ -63,6 +63,7 @@ export default function Compras() {
   const [dados, setDados] = useState(null); // { pedidos, produtos, movs, ordens }
   const [equipe, setEquipe] = useState([]);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [aba, setAba] = useState(() => {
@@ -88,6 +89,7 @@ export default function Compras() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     Promise.all([listar(COL_PEDIDOS), listar(COL_PRODUTOS), listar(COL_MOV), listar(COL_ORDENS)])
       .then(([pedidos, produtos, movs, ordens]) => {
@@ -100,7 +102,8 @@ export default function Compras() {
         // existe) — sem este aviso, a recarga que falha deixava saldo velho na
         // tela, em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -516,11 +519,44 @@ export default function Compras() {
   };
 
   // ---- recebimento (pedido -> estoque) ---------------------------------
+  const concluirOrdemRecebida = async (ordemId, confirmados, falhas) => {
+    if (!ordemId) return ""; // recebimento avulso não conclui uma OC
+    const o = dados.ordens.find((x) => x.id === ordemId);
+    if (!o) {
+      falhas.push("a ordem não está mais na lista; sua conclusão não foi confirmada");
+      return " Os itens já salvos foram preservados.";
+    }
+
+    // Confere a ordem INTEIRA pelo vínculo atual, não só as linhas do modal.
+    // Mesma régua de receberOrdem: recebido, cancelado ou com entrada anterior
+    // fica fora da conferência. O Set registra apenas os sucessos desta rodada;
+    // o snapshot de dados ainda não contém as gravações feitas acima.
+    const pendentes = dados.pedidos.filter((c) =>
+      c.ordemId === o.id && c.status !== "recebida" && c.status !== "cancelada" &&
+      !confirmados.has(c.id) && !temEntrada(c.id)
+    );
+    if (pendentes.length && !falhas.length) {
+      falhas.push(`a ordem ainda tem ${pendentes.length} pedido(s) pendente(s) fora dos itens confirmados`);
+    }
+    if (!falhas.length && o.status !== "recebida") {
+      try {
+        await salvar(COL_ORDENS, { ...o, status: "recebida" });
+      } catch (e) {
+        falhas.push(`ordem OC ${o.numero || "sem número"}: ${e.message}`);
+      }
+    }
+    if (!falhas.length) return "";
+    return o.status === "recebida"
+      ? ` A ordem OC ${o.numero || "sem número"} já consta como recebida, mas esta tentativa teve falhas; confira os itens. Os itens já salvos foram preservados.`
+      : ` A ordem OC ${o.numero || "sem número"} continua pendente. Os itens já salvos foram preservados.`;
+  };
+
   const confirmarRecebimento = async (linhas) => {
     setSalvando(true);
     const ordemId = recebendo?.ordemId || "";
     const hoje = ymdLocal(new Date());
     const falhas = [];
+    const confirmados = new Set();
     let feitos = 0;
     try {
       for (const l of linhas) {
@@ -599,6 +635,7 @@ export default function Compras() {
             );
             continue;
           }
+          confirmados.add(c.id);
           feitos += 1;
         } catch (e) {
           // Nada foi gravado nesta linha: nem livro, nem pedido.
@@ -609,22 +646,11 @@ export default function Compras() {
           );
         }
       }
-      /* A ORDEM só é marcada depois que os itens foram conferidos: marcá-la
-         antes fazia a ordem mentir quando a pessoa desistia no modal. */
-      if (ordemId) {
-        const o = dados.ordens.find((x) => x.id === ordemId);
-        if (o && o.status !== "recebida") {
-          try {
-            await salvar(COL_ORDENS, { ...o, status: "recebida" });
-          } catch (e) {
-            falhas.push(`ordem OC ${o.numero || "sem número"}: ${e.message}`);
-          }
-        }
-      }
+      const avisoOrdem = await concluirOrdemRecebida(ordemId, confirmados, falhas);
       if (falhas.length) {
         setAviso({
           tipo: "erro",
-          texto: `Dei entrada em ${feitos} de ${linhas.length}. Não consegui: ${falhas.join(" · ")}`,
+          texto: `Dei entrada em ${feitos} de ${linhas.length}. Não consegui: ${falhas.join(" · ")}.${avisoOrdem}`,
         });
       } else {
         setAviso({
@@ -648,6 +674,7 @@ export default function Compras() {
     setSalvando(true);
     const hoje = ymdLocal(new Date());
     const falhas = [];
+    const confirmados = new Set();
     let feitos = 0;
     try {
       for (const id of ids) {
@@ -658,24 +685,15 @@ export default function Compras() {
         }
         try {
           await salvar(COL_PEDIDOS, { ...c, status: "recebida", dataRecebida: c.dataRecebida || hoje });
+          confirmados.add(c.id);
           feitos += 1;
         } catch (e) {
           falhas.push(`${c.item}: ${e.message}`);
         }
       }
-      // A ordem também só é marcada aqui, depois da decisão de quem conferiu.
-      if (ordemId) {
-        const o = dados.ordens.find((x) => x.id === ordemId);
-        if (o && o.status !== "recebida") {
-          try {
-            await salvar(COL_ORDENS, { ...o, status: "recebida" });
-          } catch (e) {
-            falhas.push(`ordem OC ${o.numero || "sem número"}: ${e.message}`);
-          }
-        }
-      }
+      const avisoOrdem = await concluirOrdemRecebida(ordemId, confirmados, falhas);
       if (falhas.length) {
-        setAviso({ tipo: "erro", texto: `Marquei ${feitos} de ${ids.length}. Não consegui: ${falhas.join(" · ")}` });
+        setAviso({ tipo: "erro", texto: `Marquei ${feitos} de ${ids.length}. Não consegui: ${falhas.join(" · ")}.${avisoOrdem}` });
       } else {
         setAviso({
           tipo: "ok",
@@ -724,19 +742,28 @@ export default function Compras() {
     registrarRetirada,
   };
 
-  if (erro && !dados) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !dados && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!dados) return <CarregandoModulo />;
 
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Compras"
         descricao="O material da casa num lugar só: o que está acabando, o que já foi pedido e quem levou o quê."
       />
 
-      <div className="mb-6 max-w-full overflow-x-auto">
-        <Segmented opcoes={ABAS} valor={aba} onChange={trocarAba} />
+      <div role="group" aria-label="Seções de Compras" className="mb-6 max-w-full">
+        <Segmented opcoes={ABAS} valor={aba} onChange={trocarAba} className="!grid w-full grid-cols-2 sm:!flex sm:w-fit" />
       </div>
 
       {aba === "estoque" && (

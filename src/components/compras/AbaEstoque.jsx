@@ -39,7 +39,7 @@ function LinhaMovimento({ mv, unidade }) {
         {sinal < 0 ? "−" : "+"}
         {comUnidade(Math.abs(Number(mv.quantidade) || 0), unidade)}
       </span>
-      <span className="min-w-0 flex-1 basis-40 truncate text-xs text-slate-500">
+      <span className="min-w-0 flex-1 basis-40 break-words text-xs text-slate-500">
         {[mv.motivo, mv.pessoaNome && `por ${mv.pessoaNome}`, origem, mv.obs].filter(Boolean).join(" · ") ||
           "sem motivo registrado"}
       </span>
@@ -47,7 +47,7 @@ function LinhaMovimento({ mv, unidade }) {
   );
 }
 
-function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
+function LinhaProduto({ salvando, p, editavel, aberto, aoAbrir, extrato, acoes }) {
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -56,7 +56,9 @@ function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
           onClick={aoAbrir}
           aria-expanded={aberto}
           title={aberto ? "Fechar o extrato" : "Ver o extrato deste produto"}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          aria-label={`${aberto ? "Fechar" : "Ver"} extrato de ${p.nome}`}
+          aria-controls={aberto ? `extrato-${p.id}` : undefined}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
         >
           {aberto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -64,17 +66,17 @@ function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
         <Package size={17} strokeWidth={2.2} className="shrink-0 text-brand-600" />
 
         <span className="min-w-0 flex-1 basis-48">
-          <span className="block truncate font-display text-sm font-medium text-slate-900">{p.nome}</span>
-          <span className="block truncate text-xs text-slate-500">
+          <button type="button" onClick={aoAbrir} aria-expanded={aberto} aria-controls={aberto ? `extrato-${p.id}` : undefined} className="min-h-11 w-full break-words text-left font-display text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4">{p.nome}<span className="sr-only"> — extrato do produto</span></button>
+          <span className="block break-words text-xs text-slate-500">
             {[rotuloCategoria(p.categoria), p.fornecedorPadrao, p.obs].filter(Boolean).join(" · ")}
           </span>
         </span>
 
         {/* O LOCAL em destaque: é a pergunta do dia a dia. Produto sem local
             não fica em silêncio — quem guardou sem anotar precisa ver isso. */}
-        <span className="shrink-0">
+        <span className="min-w-0 max-w-full">
           {p.local ? (
-            <span className="chip-brand max-w-[16rem] truncate" title={p.local}>
+            <span className="chip-brand max-w-full whitespace-normal break-words" title={p.local}>
               <MapPin size={12} strokeWidth={2.4} className="mr-1 shrink-0" />
               {p.local}
             </span>
@@ -107,17 +109,21 @@ function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
               <>
                 <button
                   type="button"
+                  disabled={salvando}
                   onClick={() => acoes.abrirMovimento(p, "entrada")}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-ok-50 hover:text-ok-700"
+                  className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-ok-50 hover:text-ok-700"
                   title="Entrada"
+                  aria-label={`Registrar entrada de ${p.nome}`}
                 >
                   <PackagePlus size={15} strokeWidth={2.2} />
                 </button>
                 <button
                   type="button"
+                  disabled={salvando}
                   onClick={() => acoes.abrirMovimento(p, "saida")}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-warn-50 hover:text-warn-700"
+                  className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-warn-50 hover:text-warn-700"
                   title="Saída"
+                  aria-label={`Registrar saída de ${p.nome}`}
                 >
                   <PackageMinus size={15} strokeWidth={2.2} />
                 </button>
@@ -125,9 +131,11 @@ function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
             )}
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.abrirProduto(p)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
               title="Editar produto"
+              aria-label={`Editar produto: ${p.nome}`}
             >
               <Pencil size={14} />
             </button>
@@ -136,7 +144,7 @@ function LinhaProduto({ p, editavel, aberto, aoAbrir, extrato, acoes }) {
       </div>
 
       {aberto && (
-        <div className="mt-2 pl-11">
+        <div id={`extrato-${p.id}`} className="mt-2 sm:pl-11">
           <p className="mb-1 text-xs text-slate-500">
             {p.custo === null ? "Custo médio sem registro" : `Custo médio ${moedaCheia(p.custo)}`}
             {p.valorEstoque !== null ? ` · em estoque ${moedaCheia(p.valorEstoque)}` : ""}
@@ -166,8 +174,10 @@ export function FormProduto({ form, setForm, salvando, aoSalvar, aoFechar }) {
   return (
     <Modal titulo={form.id ? "Editar produto" : "Novo produto"} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -184,7 +194,7 @@ export function FormProduto({ form, setForm, salvando, aoSalvar, aoFechar }) {
             value={form.local} onChange={setCampo("local")}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="pr-cat">Categoria</label>
             <select id="pr-cat" className="select" value={form.categoria} onChange={setCampo("categoria")}>
@@ -236,7 +246,7 @@ export function FormProduto({ form, setForm, salvando, aoSalvar, aoFechar }) {
             Produto ativo (desmarque para tirar das listas sem apagar o histórico)
           </label>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.nome.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -261,8 +271,10 @@ export function ModalMovimento({ form, setForm, equipe, resumo, salvando, aoSalv
   return (
     <Modal titulo={`${TIPOS_MOV[form.tipo]} — ${form.produtoNome}`} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -276,7 +288,7 @@ export function ModalMovimento({ form, setForm, equipe, resumo, salvando, aoSalv
           )}
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="mv-tipo">Tipo</label>
             <select id="mv-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>
@@ -303,8 +315,10 @@ export function ModalMovimento({ form, setForm, equipe, resumo, salvando, aoSalv
             <label className="label" htmlFor="mv-qtd">Quantidade ({form.unidade || "un"})</label>
             <input
               id="mv-qtd" type="text" inputMode="decimal" className="input"
+              aria-describedby="mv-qtd-ajuda" aria-invalid={!!form.quantidade.trim() && (q === null || q <= 0)}
               value={form.quantidade} onChange={setCampo("quantidade")} autoFocus
             />
+            <p id="mv-qtd-ajuda" className="mt-1 text-xs text-slate-600">Informe uma quantidade maior que zero.</p>
           </div>
           {form.tipo === "ajuste" && (
             <div>
@@ -335,7 +349,7 @@ export function ModalMovimento({ form, setForm, equipe, resumo, salvando, aoSalv
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || q === null || q <= 0 || !form.data}>
             {salvando ? "Gravando..." : "Lançar"}
@@ -475,7 +489,7 @@ export default function AbaEstoque({
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Abaixo do mínimo"
           valor={String(vm.abaixo.length)}
@@ -514,20 +528,27 @@ export default function AbaEstoque({
         />
       </div>
 
+      {(recorte || busca || categoria || local) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "abaixo" ? "Abaixo do mínimo" : recorte === "parado" ? "Sem movimento há mais de 90 dias" : "Busca, categoria ou local"}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => { setRecorte(null); setBusca(""); setCategoria(""); setLocal(""); }}>Limpar filtros</button>
+        </div>
+      )}
+
       <Card>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="grid w-full min-w-0 gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-end">
             <div className="relative">
               <label className="label" htmlFor="es-busca">Buscar produto</label>
               <Search size={15} className="pointer-events-none absolute left-3 top-[2.15rem] text-slate-400" />
               <input
-                id="es-busca" type="search" className="input w-56 pl-9" placeholder="nome do produto"
+                id="es-busca" type="search" className="input w-full min-w-0 sm:w-56 pl-9" placeholder="nome do produto"
                 value={busca} onChange={(e) => setBusca(e.target.value)}
               />
             </div>
             <div>
               <label className="label" htmlFor="es-cat">Categoria</label>
-              <select id="es-cat" className="select w-40" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+              <select id="es-cat" className="select w-full min-w-0 sm:w-40" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
                 <option value="">Todas</option>
                 {Object.entries(CATEGORIAS).map(([valor, rotulo]) => (
                   <option key={valor} value={valor}>{rotulo}</option>
@@ -536,7 +557,7 @@ export default function AbaEstoque({
             </div>
             <div>
               <label className="label" htmlFor="es-local">Local</label>
-              <select id="es-local" className="select w-48" value={local} onChange={(e) => setLocal(e.target.value)}>
+              <select id="es-local" className="select w-full min-w-0 sm:w-48" value={local} onChange={(e) => setLocal(e.target.value)}>
                 <option value="">Todos</option>
                 {vm.locais.map((l) => (
                   <option key={l} value={l}>{l}</option>
@@ -580,12 +601,13 @@ export default function AbaEstoque({
           <Empty>
             {vm.ativos.length === 0
               ? "Nenhum produto cadastrado ainda. Comece pelo que costuma faltar."
-              : "Nada neste recorte. Limpe a busca ou clique de novo no cartão."}
+              : "Nada neste recorte. Use “Limpar filtros” para ver todos os produtos."}
           </Empty>
         ) : (
           <div className="space-y-2">
             {visiveis.map((p) => (
               <LinhaProduto
+                  salvando={salvando}
                 key={p.id}
                 p={p}
                 editavel={editavel}

@@ -25,7 +25,7 @@
 // exatamente o que a completude existe para evitar. Cada seção abre e fecha, e
 // a escolha fica guardada no navegador.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   AlertTriangle, BadgeCheck, Building2, ChevronDown, ChevronRight, CircleDot,
@@ -221,7 +221,7 @@ function AvisoExperiencia({ s, podeEfetivar, salvando, aoEfetivar }) {
   );
 }
 
-function LinhaPessoa({ p, hojeISO, editavel, aoAbrir }) {
+function LinhaPessoa({ p, hojeISO, aoAbrir }) {
   const desligada = p.ativo === false;
   // Inteligência de leitura da linha (nada disso vai ao banco): ficha
   // incompleta e prazo da experiência. Desligado não é cobrado aqui.
@@ -232,14 +232,15 @@ function LinhaPessoa({ p, hojeISO, editavel, aoAbrir }) {
   // foi desligado (a linha inteira já vem apagada) e usa o chip neutro: quem
   // não bate ponto não está errado, só não é medido pelo relógio.
   const semPonto = !batePontoDe(p);
-  const Comp = editavel ? "button" : "div";
   return (
-    <Comp
-      type={editavel ? "button" : undefined}
-      onClick={editavel ? aoAbrir : undefined}
+    <button
+      type="button"
+      onClick={aoAbrir}
+      data-pessoa-id={p.id}
+      aria-label={`Abrir ficha de ${p.nome || "pessoa sem nome"}`}
       className={clsx(
         "flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border p-3 text-left transition-colors",
-        editavel && "hover:bg-slate-50",
+        "hover:bg-slate-50",
         desligada && "opacity-60"
       )}
       style={{ borderColor: "var(--hairline)" }}
@@ -299,7 +300,7 @@ function LinhaPessoa({ p, hojeISO, editavel, aoAbrir }) {
           </span>
         </>
       )}
-    </Comp>
+    </button>
   );
 }
 
@@ -407,6 +408,7 @@ function LinhaTempo({ eventos, editavel, aoApagar }) {
                 onClick={() => aoApagar(h)}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
                 title="Apagar este registro"
+                aria-label={`Apagar ${h.titulo || "acontecimento"} de ${h.pessoaNome || "esta pessoa"}`}
               >
                 <Trash2 size={14} />
               </button>
@@ -457,7 +459,7 @@ function FormPessoa({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -711,9 +713,9 @@ function FormPessoa({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>
             {form.id && (desligada ? (
-              <button type="button" className="btn-outline" onClick={aoReativar}>Reativar</button>
+              <button type="button" className="btn-outline" onClick={aoReativar} disabled={salvando}>Reativar</button>
             ) : (
-              <button type="button" className="btn-outline text-bad-700" onClick={aoAbrirDesligamento}>Desligar</button>
+              <button type="button" className="btn-outline text-bad-700" onClick={aoAbrirDesligamento} disabled={salvando}>Desligar</button>
             ))}
           </span>
           <span className="flex gap-2">
@@ -809,7 +811,7 @@ function FormAcontecimento({ item, setItem, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -850,7 +852,7 @@ function FormAcontecimento({ item, setItem, salvando, aoSalvar, aoFechar }) {
 }
 
 export default function AbaPessoas({
-  ativos, desligados, visiveis, historico, hojeISO, editavel,
+  ativos, desligados, desligadosVisiveis, visiveis, historico, hojeISO, editavel,
   ferias = [], exames = [], vencimentos = [], feedbacks = [], aoIrParaAba,
   busca, setBusca, verDesligados, setVerDesligados,
   form, setForm, salvando, aoAbrir, aoGravar, aoFechar, aoDesligar, aoReativar, aoEfetivar,
@@ -860,6 +862,8 @@ export default function AbaPessoas({
      desenho da Impresilk: quem abre uma pessoa está indo até ela, e o
      Anterior/Próximo anda na MESMA ordem que a tela mostra. */
   const [fichaId, setFichaId] = useState(null);
+  const listaRef = useRef(null);
+  const ultimaFichaId = useRef(null);
   const [secoes, setSecoes] = useState(lerSecoes);
   const [desligando, setDesligando] = useState(null);
   const [acontecimento, setAcontecimento] = useState(null);
@@ -971,10 +975,21 @@ export default function AbaPessoas({
      lista VISÍVEL (com busca e filtro aplicados) mais os desligados quando
      estão à mostra — navegar por uma lista que a pessoa não está vendo pula
      gente e abre a errada. */
-  const navegaveis = verDesligados ? [...visiveis, ...desligados] : visiveis;
+  const navegaveis = verDesligados ? [...visiveis, ...desligadosVisiveis] : visiveis;
   const iFicha = fichaId ? navegaveis.findIndex((p) => p.id === fichaId) : -1;
   const pessoaFicha = iFicha >= 0 ? navegaveis[iFicha] : null;
   const daPessoa = (lista) => (lista || []).filter((r) => r.pessoaId === fichaId);
+
+  useEffect(() => {
+    if (pessoaFicha) {
+      ultimaFichaId.current = pessoaFicha.id;
+    } else if (ultimaFichaId.current) {
+      const origem = [...(listaRef.current?.querySelectorAll("[data-pessoa-id]") || [])]
+        .find((botao) => botao.dataset.pessoaId === ultimaFichaId.current);
+      (origem || listaRef.current?.querySelector("input"))?.focus();
+      ultimaFichaId.current = null;
+    }
+  }, [pessoaFicha]);
 
   return (
     <>
@@ -1004,18 +1019,19 @@ export default function AbaPessoas({
           }
         />
       ) : (
+      <div ref={listaRef}>
       <Card>
         <SectionTitle
           titulo="Quadro"
           sub={`${ativos.length} ${ativos.length === 1 ? "pessoa ativa" : "pessoas ativas"}`}
           acao={
             <>
-              <label className="sr-only" htmlFor="rh-busca">Buscar por nome</label>
+              <label className="sr-only" htmlFor="rh-busca">Buscar por nome ou apelido</label>
               <input
                 id="rh-busca"
                 type="search"
-                className="input h-9 w-56"
-                placeholder="Buscar por nome..."
+                className="input h-9 w-full sm:w-56"
+                placeholder="Nome ou apelido..."
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
               />
@@ -1025,13 +1041,19 @@ export default function AbaPessoas({
         {visiveis.length === 0 && (
           <Empty>
             {ativos.length === 0
-              ? "Ninguém no quadro ainda. Cadastre a primeira pessoa no botão lá em cima."
+              ? editavel ? "Ninguém no quadro ainda. Cadastre a primeira pessoa no botão lá em cima." : "Ninguém no quadro ainda."
               : "Ninguém no quadro com esse nome."}
           </Empty>
         )}
+        {busca.trim() && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span role="status">{visiveis.length + (verDesligados ? desligadosVisiveis.length : 0)} pessoas neste recorte</span>
+            <button type="button" className="btn-ghost" onClick={() => setBusca("")}>Limpar busca</button>
+          </div>
+        )}
         <div className="space-y-2">
           {visiveis.map((p) => (
-            <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => setFichaId(p.id)} />
+            <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} aoAbrir={() => setFichaId(p.id)} />
           ))}
         </div>
 
@@ -1040,21 +1062,22 @@ export default function AbaPessoas({
             type="button"
             className="mt-4 text-sm font-medium text-slate-500 underline hover:text-slate-700"
             onClick={() => setVerDesligados(!verDesligados)}
+            aria-expanded={verDesligados}
+            aria-controls="rh-desligados"
           >
             {verDesligados ? "Ocultar desligados" : `Ver desligados (${desligados.length})`}
           </button>
         )}
-        {verDesligados && desligados.length === 0 && (
-          <p className="mt-4 text-sm text-slate-400">Nenhum desligamento registrado.</p>
-        )}
-        {verDesligados && desligados.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {desligados.map((p) => (
-              <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} editavel={editavel} aoAbrir={() => setFichaId(p.id)} />
+        <div id="rh-desligados" hidden={!verDesligados} className="mt-3 space-y-2">
+            {desligadosVisiveis.length === 0 && (
+              <p className="text-sm text-slate-500">{busca.trim() ? "Nenhum desligado com esse nome ou apelido." : "Nenhum desligamento registrado."}</p>
+            )}
+            {desligadosVisiveis.map((p) => (
+              <LinhaPessoa key={p.id} p={p} hojeISO={hojeISO} aoAbrir={() => setFichaId(p.id)} />
             ))}
-          </div>
-        )}
+        </div>
       </Card>
+      </div>
       )}
 
       {/* Um modal por vez, de propósito: dois <form> aninhados são HTML inválido

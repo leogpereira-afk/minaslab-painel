@@ -76,18 +76,18 @@ function prazoAgendada(dias) {
 // Uma linha da Seção 1: o alvo e a próxima manutenção dele. O chip "sem
 // registro" existe de propósito: alvo sem manutenção registrada NÃO está em
 // dia — só não sabemos, e não saber também precisa aparecer.
-function LinhaAlvo({ a }) {
+function LinhaAlvo({ a, editavel, salvando, aoAgendar }) {
   const Icone = a.alvoTipo === "carro" ? Car : Wrench;
   return (
     <div
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
         <Icone size={16} strokeWidth={2.2} />
       </span>
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {a.nome}
           {a.placa ? <span className="font-normal text-slate-500"> — {a.placa}</span> : null}
           {/* Quilometragem manda na preventiva do carro tanto quanto a data.
@@ -101,14 +101,19 @@ function LinhaAlvo({ a }) {
             </span>
           ) : null}
         </span>
-        <span className="block truncate text-xs text-slate-500">{a.sub}</span>
+        <span className="block break-words text-xs text-slate-500">{a.sub}</span>
       </span>
       <span className={`${a.chip} shrink-0 whitespace-nowrap`}>{a.texto}</span>
+      {editavel && (
+        <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={aoAgendar} aria-label={`Agendar manutenção: ${a.nome}`}>
+          Agendar
+        </button>
+      )}
     </div>
   );
 }
 
-function LinhaAgendada({ m, editavel, acoes }) {
+function LinhaAgendada({ salvando, m, editavel, acoes }) {
   const Icone = m.alvoTipo === "carro" ? Car : Wrench;
   return (
     <div
@@ -118,9 +123,11 @@ function LinhaAgendada({ m, editavel, acoes }) {
       {editavel && (
         <button
           type="button"
+          disabled={salvando}
           onClick={() => acoes.marcarFeita(m)}
           title="Marcar como feita"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-slate-400 transition-colors hover:border-ok-600 hover:text-ok-700"
+          aria-label={`Marcar manutenção como feita: ${m.descricao}, ${m.alvoNome}`}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-slate-400 transition-colors hover:border-ok-600 hover:text-ok-700"
           style={{ borderColor: "var(--hairline)" }}
         >
           <Check size={15} />
@@ -128,8 +135,8 @@ function LinhaAgendada({ m, editavel, acoes }) {
       )}
       <Icone size={17} strokeWidth={2.2} className="shrink-0 text-brand-600" />
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">{m.descricao}</span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">{m.descricao}</span>
+        <span className="block break-words text-xs text-slate-500">
           {[m.alvoNome, TIPOS[m.tipo] || m.tipo, m.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -143,17 +150,21 @@ function LinhaAgendada({ m, editavel, acoes }) {
         <span className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirForm(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar manutenção: ${m.descricao}, ${m.alvoNome}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.remover(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar manutenção: ${m.descricao}, ${m.alvoNome}`}
           >
             <Trash2 size={14} />
           </button>
@@ -163,7 +174,7 @@ function LinhaAgendada({ m, editavel, acoes }) {
   );
 }
 
-function LinhaHistorico({ m, editavel, acoes }) {
+function LinhaHistorico({ salvando, m, editavel, acoes }) {
   return (
     <div
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
@@ -173,11 +184,11 @@ function LinhaHistorico({ m, editavel, acoes }) {
         {m.data ? dataCurta(m.data) : "sem data"}
       </span>
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {m.alvoNome || "(alvo sem nome)"}
           <span className="font-normal text-slate-500"> · {TIPOS[m.tipo] || m.tipo}</span>
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[m.descricao, m.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -193,17 +204,21 @@ function LinhaHistorico({ m, editavel, acoes }) {
         <span className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirForm(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar manutenção: ${m.descricao}, ${m.alvoNome}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.remover(m)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar manutenção: ${m.descricao}, ${m.alvoNome}`}
           >
             <Trash2 size={14} />
           </button>
@@ -226,8 +241,8 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
     const antigo = lista.find((a) => a.id === form.alvoId);
     opcoes.push(
       antigo
-        ? { ...antigo, nome: `${antigo.nome} (desativado)` }
-        : { id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)` }
+        ? { ...antigo, nome: `${antigo.nome} (desativado)`}
+        : { id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)`}
     );
   }
 
@@ -236,13 +251,15 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
   return (
     <Modal titulo={form.id ? "Editar manutenção" : "Nova manutenção"} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
       >
-        <div>
+        <div role="group" aria-label="Manutenção de quê">
           <span className="label">Manutenção de quê</span>
           <Segmented
             opcoes={[
@@ -253,7 +270,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
             onChange={(v) => setForm({ ...form, alvoTipo: v, alvoId: "" })}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="m-alvo">{form.alvoTipo === "carro" ? "Carro" : "Equipamento"}</label>
             <select id="m-alvo" className="select" value={form.alvoId} onChange={setCampo("alvoId")} required>
@@ -278,7 +295,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
           <label className="label" htmlFor="m-desc">O que foi (ou será) feito</label>
           <input id="m-desc" type="text" className="input" value={form.descricao} onChange={setCampo("descricao")} autoFocus required />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="m-status">Situação</label>
             <select id="m-status" className="select" value={form.status} onChange={setCampo("status")}>
@@ -307,7 +324,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
           <label className="label" htmlFor="m-obs">Observações</label>
           <textarea id="m-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !valido}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -422,24 +439,27 @@ function ModalCarros({ aberto, aoFechar, carros, salvando, aoAdicionar, aoAltern
                 <div className="flex flex-wrap items-center gap-3">
                   <Car size={16} strokeWidth={2.2} className={ativo ? "text-brand-600" : "text-slate-300"} />
                   <span className="min-w-0 flex-1 basis-40">
-                    <span className={`block truncate text-sm ${ativo ? "text-slate-900" : "text-slate-400 line-through"}`}>
+                    <span className={`block break-words text-sm ${ativo ? "text-slate-900" : "text-slate-400 line-through"}`}>
                       {c.nome}
                     </span>
-                    <span className="block truncate text-xs text-slate-500">{resumo}</span>
+                    <span className="block break-words text-xs text-slate-500">{resumo}</span>
                   </span>
                   {!ativo && <span className="chip">desativado</span>}
                   <button
                     type="button"
-                    className="btn-outline px-2.5 py-1 text-xs"
+                    className="btn-outline min-h-11 px-2.5 py-1 text-xs"
                     aria-expanded={aberta}
+                    aria-controls={aberta ? `ficha-carro-${c.id}` : undefined}
+                    aria-label={`${aberta ? "Fechar" : "Abrir"} ficha de ${c.nome}`}
                     onClick={() => (aberta ? setFichaId("") : abrirFicha(c))}
                   >
                     {aberta ? "Fechar" : "Ficha"}
                   </button>
                   <button
                     type="button"
-                    className="btn-outline px-2.5 py-1 text-xs"
+                    className="btn-outline min-h-11 px-2.5 py-1 text-xs"
                     disabled={salvando}
+                    aria-label={`${ativo ? "Desativar" : "Reativar"} carro: ${c.nome}`}
                     onClick={() => aoAlternar(c)}
                   >
                     {ativo ? "Desativar" : "Reativar"}
@@ -447,8 +467,8 @@ function ModalCarros({ aberto, aoFechar, carros, salvando, aoAdicionar, aoAltern
                 </div>
 
                 {aberta && (
-                  <form onSubmit={gravarFicha} className="mt-3 space-y-3 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
-                    <div className="grid grid-cols-2 gap-3">
+                  <form id={`ficha-carro-${c.id}`} aria-busy={salvando} onSubmit={gravarFicha} className="mt-3 space-y-3 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
                       <div>
                         <label className="label" htmlFor="ficha-nome">Nome</label>
                         <input id="ficha-nome" type="text" className="input" value={ficha.nome} onChange={setCampoFicha("nome")} required />
@@ -495,7 +515,7 @@ function ModalCarros({ aberto, aoFechar, carros, salvando, aoAdicionar, aoAltern
                       <label className="label" htmlFor="ficha-obs">Observações</label>
                       <textarea id="ficha-obs" className="input" rows={2} value={ficha.obs} onChange={setCampoFicha("obs")} />
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button type="button" className="btn-outline" onClick={() => setFichaId("")}>Cancelar</button>
                       <button type="submit" className="btn-primary" disabled={salvando || !ficha.nome.trim()}>
                         {salvando ? "Gravando..." : "Gravar ficha"}
@@ -527,16 +547,17 @@ function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicion
   return (
     <Modal titulo="Equipamentos do laboratório" aberto={aberto} aoFechar={aoFechar}>
       <form
-        onSubmit={(e) => {
+        aria-busy={salvando}
+        onSubmit={async (e) => {
           e.preventDefault();
           const nome = novoNome.trim();
           if (!nome) return;
-          setNovoNome("");
-          aoAdicionar(nome);
+          const ok = await aoAdicionar(nome);
+          if (ok) setNovoNome("");
         }}
-        className="mb-4 flex gap-2"
+        className="mb-4 flex flex-wrap items-end gap-2"
       >
-        <div className="flex-1">
+        <div className="min-w-0 flex-1 basis-48">
           <label className="label" htmlFor="eq-nome">Novo equipamento</label>
           <input
             id="eq-nome" type="text" className="input" placeholder="Ex.: Espectrofotômetro UV-Vis"
@@ -557,18 +578,19 @@ function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicion
             return (
               <div
                 key={eq.id}
-                className="flex items-center gap-3 rounded-xl border p-3"
+                className="flex flex-wrap items-center gap-3 rounded-xl border p-3"
                 style={{ borderColor: "var(--hairline)" }}
               >
                 <Wrench size={16} strokeWidth={2.2} className={ativo ? "text-brand-600" : "text-slate-300"} />
-                <span className={`min-w-0 flex-1 truncate text-sm ${ativo ? "text-slate-900" : "text-slate-400 line-through"}`}>
+                <span className={`min-w-0 flex-1 basis-40 break-words text-sm ${ativo ? "text-slate-900" : "text-slate-400 line-through"}`}>
                   {eq.nome}
                 </span>
                 {!ativo && <span className="chip">desativado</span>}
                 <button
                   type="button"
-                  className="btn-outline px-2.5 py-1 text-xs"
+                  className="btn-outline min-h-11 px-2.5 py-1 text-xs"
                   disabled={salvando}
+                  aria-label={`${ativo ? "Desativar" : "Reativar"} equipamento: ${eq.nome}`}
                   onClick={() => aoAlternar(eq)}
                 >
                   {ativo ? "Desativar" : "Reativar"}
@@ -590,6 +612,7 @@ export default function Manutencoes() {
   const [equipamentos, setEquipamentos] = useState(null);
   const [carros, setCarros] = useState(null);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -603,6 +626,7 @@ export default function Manutencoes() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     Promise.all([listar(COLECAO), listar("equipamentos"), listar("carros")])
       .then(([ms, eqs, cs]) => {
@@ -617,7 +641,8 @@ export default function Manutencoes() {
         // existe): sem este aviso a tela ficava com números velhos sob a data
         // de hoje, em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -765,12 +790,15 @@ export default function Manutencoes() {
     marcarFeita: (m) => gravar({ ...m, status: "feita" }, "Manutenção marcada como feita."),
     remover: async (m) => {
       if (!window.confirm(`Apagar "${m.descricao}" (${m.alvoNome})?`)) return;
+      setSalvando(true);
       try {
         await apagar(COLECAO, m.id);
         setAviso({ tipo: "ok", texto: "Manutenção apagada." });
         recarregar();
       } catch (e) {
         setAviso({ tipo: "erro", texto: e.message });
+      } finally {
+        setSalvando(false);
       }
     },
   };
@@ -790,8 +818,10 @@ export default function Manutencoes() {
       await salvar("equipamentos", { nome, ativo: true });
       setAviso({ tipo: "ok", texto: `Equipamento "${nome}" adicionado.` });
       recarregar();
+      return true;
     } catch (e) {
       setAviso({ tipo: "erro", texto: e.message });
+      return false;
     } finally {
       setSalvando(false);
     }
@@ -879,7 +909,7 @@ export default function Manutencoes() {
     }
   };
 
-  if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
   const alvosVisiveis =
@@ -946,6 +976,15 @@ export default function Manutencoes() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Manutenções"
         descricao="Carros e equipamentos do laboratório — calibração vencida compromete o laudo."
@@ -979,7 +1018,7 @@ export default function Manutencoes() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Vencidas"
           valor={String(vm.vencidas)}
@@ -1006,6 +1045,13 @@ export default function Manutencoes() {
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "vencidas" ? "Vencidas" : "Próximas em 30 dias"}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       <div className="space-y-6">
         <Card>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1014,7 +1060,7 @@ export default function Manutencoes() {
           {alvosVisiveis.length === 0 ? (
             <Empty>
               {recorte
-                ? "Nada neste recorte. Clique de novo no cartão para ver tudo."
+                ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
                 : editavel
                   ? "Nenhum carro ou equipamento ativo. Cadastre pelos botões Carros e Equipamentos, lá em cima."
                   : "Nenhum carro ou equipamento ativo cadastrado."}
@@ -1022,7 +1068,13 @@ export default function Manutencoes() {
           ) : (
             <div className="space-y-2">
               {alvosVisiveis.map((a) => (
-                <LinhaAlvo key={`${a.alvoTipo}|${a.id}`} a={a} />
+                <LinhaAlvo
+                  key={`${a.alvoTipo}|${a.id}`}
+                  a={a}
+                  editavel={editavel}
+                  salvando={salvando}
+                  aoAgendar={() => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome })}
+                />
               ))}
             </div>
           )}
@@ -1039,7 +1091,7 @@ export default function Manutencoes() {
           ) : (
             <div className="space-y-2">
               {agendadasVisiveis.map((m) => (
-                <LinhaAgendada key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
               ))}
             </div>
           )}
@@ -1052,10 +1104,10 @@ export default function Manutencoes() {
             </h2>
             {vm.opcoesFiltro.length > 0 && (
               <div>
-                <label className="sr-only" htmlFor="h-filtro">Filtrar por alvo</label>
+                <label className="label" htmlFor="h-filtro">Filtrar histórico por alvo</label>
                 <select
                   id="h-filtro"
-                  className="select h-9 w-56 py-0 text-sm"
+                  className="select min-h-11 w-full min-w-0 sm:w-56"
                   value={filtroAlvo}
                   onChange={(e) => setFiltroAlvo(e.target.value)}
                 >
@@ -1074,7 +1126,7 @@ export default function Manutencoes() {
           ) : (
             <div className="space-y-2">
               {historicoVisivel.map((m) => (
-                <LinhaHistorico key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
               ))}
             </div>
           )}

@@ -223,12 +223,12 @@ export function ModalRecebimento({ pedidos, produtos, salvando, aoConfirmar, aoS
         diferente da pedida. A entrada no estoque é lançada com o carimbo do pedido.
       </p>
 
-      <div className="space-y-3">
+      <div className="space-y-3" aria-busy={salvando}>
         {linhas.map((l, i) => {
           const prod = ativos.find((p) => p.id === l.produtoId);
           const q = numeroOuNull(l.quantidade);
           return (
-            <div key={l.pedidoId} className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <div key={l.pedidoId} role="group" aria-label={`Recebimento: ${l.item}`} className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
               <p className="font-display text-sm font-medium text-slate-900">{l.item}</p>
               <p className="text-xs text-slate-500">
                 {[
@@ -266,13 +266,15 @@ export function ModalRecebimento({ pedidos, produtos, salvando, aoConfirmar, aoS
                   <label className="label" htmlFor={`rec-qtd-${i}`}>Quantidade recebida</label>
                   <input
                     id={`rec-qtd-${i}`}
+                    aria-describedby={`rec-qtd-ajuda-${i}`}
+                    aria-invalid={!!l.quantidade.trim() && (q === null || q <= 0)}
                     type="text"
                     inputMode="decimal"
                     className="input"
                     value={l.quantidade}
                     onChange={(e) => setLinha(i, { quantidade: e.target.value })}
                   />
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p id={`rec-qtd-ajuda-${i}`} className="mt-1 text-xs text-slate-500">
                     {q !== null && q <= 0
                       ? "Precisa ser maior que zero."
                       : prod

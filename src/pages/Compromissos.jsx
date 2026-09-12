@@ -67,20 +67,22 @@ function proximaSegunda() {
   return ymdLocal(d);
 }
 
-function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
+function Linha({ salvando, c, editavel, remarcando, setRemarcando, acoes }) {
   const Icone = c.t.icone;
   const telDigitos = String(c.telefone || "").replace(/\D/g, "");
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${c.feito ? "opacity-60" : ""}`}
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${c.feito ? "bg-slate-50" : ""}`}
       style={{ borderColor: "var(--hairline)" }}
     >
       <button
         type="button"
         onClick={() => editavel && acoes.alternarFeito(c)}
-        disabled={!editavel}
+        disabled={!editavel || salvando}
         title={c.feito ? "Reabrir" : "Marcar como feito"}
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition-colors ${
+        aria-label={`${c.feito ? "Reabrir" : "Marcar como feito"}: ${c.titulo}`}
+        aria-pressed={!!c.feito}
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg border transition-colors ${
           c.feito ? "border-ok-600 bg-ok-600 text-white" : "text-slate-400 hover:border-ok-600 hover:text-ok-700"
         } disabled:cursor-default`}
         style={c.feito ? undefined : { borderColor: "var(--hairline)" }}
@@ -91,10 +93,10 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
       <Icone size={17} strokeWidth={2.2} className={`shrink-0 ${c.t.cor}`} title={c.t.rotulo} />
 
       <span className="min-w-0 flex-1 basis-48">
-        <span className={`block truncate font-display text-sm font-medium text-slate-900 ${c.feito ? "line-through" : ""}`}>
+        <span className={`block break-words font-display text-sm font-medium text-slate-900 ${c.feito ? "line-through" : ""}`}>
           {c.titulo}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[c.t.rotulo, c.cliente, c.responsavelNome, c.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -105,7 +107,8 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
              e sem perder o lugar na lista. */
           <select
             autoFocus
-            className="input h-8 w-36 py-0 text-xs"
+            aria-label={`Remarcar compromisso: ${c.titulo}`}
+            className="input min-h-11 w-44 max-w-full text-sm"
             defaultValue=""
             onChange={(e) => {
               const v = e.target.value;
@@ -130,7 +133,9 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
                 type="button"
                 onClick={() => editavel && setRemarcando(c.id)}
                 title={editavel ? "Remarcar" : undefined}
-                className={`${c.pz.chip} whitespace-nowrap transition-opacity hover:opacity-75`}
+                disabled={!editavel || salvando}
+                aria-label={`Remarcar ${c.titulo}: ${c.pz.texto}`}
+                className={`${c.pz.chip} min-h-11 whitespace-nowrap transition-opacity hover:opacity-75`}
               >
                 {c.pz.texto}
               </button>
@@ -150,7 +155,8 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
             <a
               href={`tel:${telDigitos}`}
               title={`Ligar para ${c.cliente || "o cliente"}`}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-700"
+              aria-label={`Ligar para ${c.cliente || "o cliente"}, compromisso ${c.titulo}`}
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-700"
             >
               <Phone size={15} strokeWidth={2.2} />
             </a>
@@ -159,7 +165,8 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
               target="_blank"
               rel="noopener noreferrer"
               title="Abrir no WhatsApp"
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-ok-50 hover:text-ok-700"
+              aria-label={`Abrir WhatsApp de ${c.cliente || "o cliente"}, compromisso ${c.titulo} (nova aba)`}
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-ok-50 hover:text-ok-700"
             >
               <MessageCircle size={15} strokeWidth={2.2} />
             </a>
@@ -169,17 +176,21 @@ function Linha({ c, editavel, remarcando, setRemarcando, acoes }) {
           <>
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.abrirForm(c)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
               title="Editar"
+              aria-label={`Editar compromisso: ${c.titulo}`}
             >
               <Pencil size={14} />
             </button>
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.remover(c)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
               title="Apagar"
+              aria-label={`Apagar compromisso: ${c.titulo}`}
             >
               <Trash2 size={14} />
             </button>
@@ -196,8 +207,10 @@ function FormCompromisso({ form, setForm, equipe, salvando, aoSalvar, aoFechar }
   return (
     <Modal titulo={form.id ? "Editar compromisso" : "Novo compromisso"} aberto={!!form} aoFechar={aoFechar}>
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -206,7 +219,7 @@ function FormCompromisso({ form, setForm, equipe, salvando, aoSalvar, aoFechar }
           <label className="label" htmlFor="c-titulo">O que é</label>
           <input id="c-titulo" type="text" className="input" value={form.titulo} onChange={setCampo("titulo")} autoFocus required />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="c-tipo">Tipo</label>
             <select id="c-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>
@@ -245,7 +258,7 @@ function FormCompromisso({ form, setForm, equipe, salvando, aoSalvar, aoFechar }
           <label className="label" htmlFor="c-obs">Observações</label>
           <textarea id="c-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.titulo.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -262,6 +275,7 @@ export default function Compromissos() {
 
   const [itens, setItens] = useState(null);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -275,6 +289,7 @@ export default function Compromissos() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     listar(COLECAO)
       .then((lista) => {
@@ -286,7 +301,8 @@ export default function Compromissos() {
         // A tela pode já estar cheia de dados de uma carga antiga: recarga que
         // falha em silêncio deixaria números de ontem sob a data de hoje.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -385,17 +401,20 @@ export default function Compromissos() {
     remarcar: (c, novaData) => gravar({ ...c, data: novaData }, `Remarcado para ${dataCurta(novaData)}.`),
     remover: async (c) => {
       if (!window.confirm(`Apagar "${c.titulo}"?`)) return;
+      setSalvando(true);
       try {
         await apagar(COLECAO, c.id);
         setAviso({ tipo: "ok", texto: "Compromisso apagado." });
         recarregar();
       } catch (e) {
         setAviso({ tipo: "erro", texto: e.message });
+      } finally {
+        setSalvando(false);
       }
     },
   };
 
-  if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
   const gruposVisiveis =
@@ -410,6 +429,15 @@ export default function Compromissos() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Compromissos"
         descricao="O que está marcado e o que está esperando — a tela abre pelo que atrasou."
@@ -422,7 +450,7 @@ export default function Compromissos() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Atrasados"
           valor={String(vm.atrasados)}
@@ -457,11 +485,18 @@ export default function Compromissos() {
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {({ atrasados: "Atrasados", hoje: "Hoje", semData: "Sem data" })[recorte]}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       {gruposVisiveis.length === 0 && (
         <Empty>
           {recorte
-            ? "Nada neste recorte. Clique de novo no cartão para ver tudo."
-            : "Nenhum compromisso em aberto. Crie o primeiro no botão lá em cima."}
+            ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
+            : editavel ? "Nenhum compromisso em aberto. Use Novo compromisso para registrar." : "Nenhum compromisso em aberto."}
         </Empty>
       )}
 
@@ -474,6 +509,7 @@ export default function Compromissos() {
             <div className="space-y-2">
               {g.itens.map((c) => (
                 <Linha
+                  salvando={salvando}
                   key={c.id}
                   c={c}
                   editavel={editavel}
@@ -494,6 +530,7 @@ export default function Compromissos() {
             <div className="space-y-2">
               {vm.feitos.map((c) => (
                 <Linha
+                  salvando={salvando}
                   key={c.id}
                   c={c}
                   editavel={editavel}

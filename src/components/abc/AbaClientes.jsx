@@ -92,7 +92,7 @@ function rotuloDeDocumentos(vendasDaLinha) {
    declarado dentro remonta a subárvore a cada tecla e o campo perde o foco
    (três telas da Impresilk ao mesmo tempo, com build e lint verdes).
    O estado do formulário é do chamador — é ele que grava e que sabe validar. */
-function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, aoSalvar, aoApagar, aoFechar }) {
+function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, erro, aoSalvar, aoApagar, aoFechar }) {
   if (!form) return null;
   const busca = semAcento(form.busca || "");
   const escolhidos = new Set(form.chaves || []);
@@ -110,7 +110,8 @@ function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, aoSa
 
   return (
     <Modal titulo={form.id ? "Editar grupo de CNPJs" : "Vincular CNPJs"} aberto aoFechar={aoFechar} largura="max-w-2xl">
-      <div className="space-y-4">
+      <div className="space-y-4" aria-busy={salvando}>
+        {erro && <p role="alert" className="rounded-xl bg-bad-50 p-3 text-sm text-bad-800 break-words">{erro}</p>}
         <p className="text-xs leading-relaxed text-slate-500">
           O mesmo dono comprando por vários CNPJs vira UM cliente na curva — os valores somam e a linha
           passa a mostrar de quantos CNPJs ela é feita. Cada CNPJ só pode estar em um grupo.
@@ -141,12 +142,12 @@ function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, aoSa
                 return (
                   <span
                     key={id}
-                    className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-800"
+                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-800"
                   >
-                    {c ? c.nome : `Cliente #${id}`}
+                    <span className="min-w-0 break-words">{c ? c.nome : `Cliente #${id}`}</span>
                     <button
                       type="button"
-                      className="text-brand-600 hover:text-bad-600"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-brand-700 hover:text-bad-700"
                       onClick={() => alternar(id)}
                       aria-label={`Tirar ${c ? c.nome : id} do grupo`}
                     >
@@ -195,15 +196,16 @@ function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, aoSa
                     }
                     onClick={() => alternar(c.id)}
                     className={clsx(
-                      "flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
-                      travado ? "cursor-not-allowed opacity-40" : "hover:bg-slate-50"
+                      "flex w-full flex-wrap items-baseline gap-2 rounded-lg px-2 py-2 text-left text-sm",
+                      travado ? "cursor-not-allowed bg-slate-50" : "hover:bg-slate-50"
                     )}
                   >
-                    <span className="min-w-0 flex-1 truncate text-slate-700">{c.nome}</span>
-                    {c.doc && <span className="tnum shrink-0 text-[11px] text-slate-400">{c.doc}</span>}
+                    <span className="min-w-0 basis-full break-words text-slate-700 sm:flex-1 sm:basis-auto">{c.nome}</span>
+                    <span className="tnum min-w-0 break-words text-[11px] text-slate-500">{c.doc || `Código ${c.id}`}</span>
                     <span className="tnum w-24 shrink-0 text-right text-xs text-slate-500">
                       {c.valor > 0 ? moeda(c.valor) : "—"}
                     </span>
+                    {travado && <span className="basis-full text-xs text-slate-600">Já pertence ao grupo {jaEm.nome}.</span>}
                   </button>
                 );
               })
@@ -228,7 +230,7 @@ function ModalGrupo({ form, setForm, candidatos, grupoPorCliente, salvando, aoSa
           ) : (
             <span />
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-ghost" onClick={aoFechar} disabled={salvando}>
               Cancelar
             </button>
@@ -279,7 +281,7 @@ function DetalheDoCliente({ linha, itensNoTempo, vendasDoRecorte, membros, receb
               nome={
                 <>
                   <span className="tnum mr-1.5 text-xs text-slate-400">{dataLonga(v.data)}</span>
-                  {String(v.documento || "doc").toUpperCase()} {v.numero || "sem número"}
+                  Título {v.numero || "sem número"}
                 </>
               }
               valor={num(v.valor) === null ? null : moeda(v.valor)}
@@ -328,6 +330,12 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
   const [aberto, setAberto] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [erroGrupo, setErroGrupo] = useState(null);
+  const avisarGrupo = (aviso) => {
+    if (form && aviso.tipo === "erro") setErroGrupo(aviso.texto);
+    else setAviso(aviso);
+  };
+  const abrirGrupo = (proximo) => { setErroGrupo(null); setForm(proximo); };
   const [classeVista, escolherClasse] = useEscolha(K_CLASSE, "");
   const [grupoAberto, setGrupoAberto] = useState(() => {
     const f = FAIXAS.find((x) => x.id === classeVista) || faixaDaClasse(classeVista);
@@ -337,7 +345,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
   /* O quadro do detalhe nasce depois de um ranking de dezenas de linhas —
      sem isto ele abriria fora da dobra e o clique pareceria não ter feito
      nada. Ver useRolarAoAbrir em comum.jsx. */
-  const alvoDoDetalhe = useRolarAoAbrir(aberto);
+  const alvoDoDetalhe = useRolarAoAbrir(aberto, secaoAberta("cliente"));
 
   useEffect(() => {
     let vivo = true;
@@ -481,12 +489,13 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
   const totalDeClientes = abc ? abc.curva.length : 0;
 
   const gravarGrupo = async () => {
+    setErroGrupo(null);
     const nome = String(form?.nome || "").trim();
     const chaves = [...new Set((form?.chaves || []).map(String))];
-    if (!nome) return setAviso({ tipo: "erro", texto: "Dê um nome ao grupo." });
-    if (chaves.length < 2) return setAviso({ tipo: "erro", texto: "Um grupo precisa de pelo menos dois CNPJs." });
+    if (!nome) return avisarGrupo({ tipo: "erro", texto: "Dê um nome ao grupo." });
+    if (chaves.length < 2) return avisarGrupo({ tipo: "erro", texto: "Um grupo precisa de pelo menos dois CNPJs." });
     if (gruposFalhou) {
-      return setAviso({
+      return avisarGrupo({
         tipo: "erro",
         texto: "Os grupos não carregaram — sem a lista atual eu não tenho como conferir se um CNPJ já está em outro grupo.",
       });
@@ -495,7 +504,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
        sumiria do outro em silêncio, e as duas curvas ficariam erradas. */
     const conflito = chaves.map((ch) => grupoPorCliente.get(ch)).find((g) => g && g.id !== String(form?.id || ""));
     if (conflito) {
-      return setAviso({
+      return avisarGrupo({
         tipo: "erro",
         texto: `Um dos CNPJs já está no grupo “${conflito.nome}”. Tire de lá primeiro — cada CNPJ só pode estar em um grupo.`,
       });
@@ -509,7 +518,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
       setAberto(null);
       setAviso({ tipo: "ok", texto: `Grupo “${nome}” gravado. A curva já conta os CNPJs juntos.` });
     } catch (e) {
-      setAviso({ tipo: "erro", texto: e.message });
+      avisarGrupo({ tipo: "erro", texto: e.message || "Não foi possível gravar o grupo. Tente novamente." });
     } finally {
       setSalvando(false);
     }
@@ -525,7 +534,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
       setAberto(null);
       setAviso({ tipo: "ok", texto: `Grupo “${nome}” desfeito.` });
     } catch (e) {
-      setAviso({ tipo: "erro", texto: e.message });
+      avisarGrupo({ tipo: "erro", texto: e.message || "Não foi possível desfazer o grupo. Tente novamente." });
     } finally {
       setSalvando(false);
     }
@@ -608,7 +617,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
       />
 
       {gruposFalhou && (
-        <p className="sem-impressao rounded-xl bg-warn-50 px-3.5 py-2.5 text-xs text-warn-800">
+        <p role="alert" className="sem-impressao rounded-xl bg-warn-50 px-3.5 py-2.5 text-xs text-warn-800">
           Os grupos de CNPJ não carregaram. Esta curva está contando cada CNPJ separado — o dono com
           várias empresas aparece dividido, em classe mais baixa do que a real. Recarregue a página para
           tentar de novo.
@@ -621,13 +630,13 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
         aberta={secaoAberta("curva")}
         aoAlternar={() => alternarSecao("curva")}
         acao={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             {editavel && !gruposFalhou && (
               <button
                 type="button"
                 className="btn-outline"
                 title="Juntar os CNPJs do mesmo dono para contarem como um cliente só"
-                onClick={() => setForm({ id: "", nome: "", chaves: [], busca: "" })}
+                onClick={() => abrirGrupo({ id: "", nome: "", chaves: [], busca: "" })}
               >
                 <Link2 size={16} strokeWidth={2.5} /> Vincular CNPJs
               </button>
@@ -645,7 +654,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
           aoAlternarGrupo={setGrupoAberto}
         />
 
-        <Explicacao>
+        <Explicacao titulo="Como ler a curva ABC">
           Todos os compradores do recorte, em ordem de valor: <strong>A+</strong> são os que somam os
           primeiros 30% do dinheiro, <strong>A</strong> até 80%, <strong>B+</strong> até 90%,{" "}
           <strong>B</strong> até 95%, <strong>C</strong> o resto — a classe sai do acumulado, não da
@@ -708,13 +717,13 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
                 /* UM SINAL DE ESTADO POR LINHA: aqui ele é o selo da classe.
                    Tingir também a barra e o valor pintaria a lista inteira, e
                    tom em tudo é tom em nada. */
-                aberta={aberto === c.chave}
+                aberta={aberto === c.chave && secaoAberta("cliente")}
                 /* Clicar no cliente PEDE o detalhe: além de escolher a linha,
                    garante que o quadro esteja aberto. Se ele estivesse
                    recolhido (escolha guardada no aparelho), o clique
                    renderizaria um quadro fechado e nada apareceria. */
                 aoAbrir={() => {
-                  const proximo = aberto === c.chave ? null : c.chave;
+                  const proximo = aberto === c.chave && secaoAberta("cliente") ? null : c.chave;
                   setAberto(proximo);
                   if (proximo) abrirSecao("cliente");
                 }}
@@ -747,7 +756,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
       </Secao>
 
       {linhaAberta && detalhe && (
-        <div ref={alvoDoDetalhe}>
+        <div ref={alvoDoDetalhe} tabIndex={-1} role="region" aria-label={`Histórico de ${linhaAberta.rotulo}`} className="scroll-mt-24 rounded-xl">
         <Secao
           titulo={linhaAberta.rotulo}
           sub={`${linhaAberta.posicao}º da curva · classe ${linhaAberta.classe} · ${moedaCheia(
@@ -758,9 +767,9 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
           acao={
             <button
               type="button"
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="grid h-10 w-10 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               onClick={() => setAberto(null)}
-              aria-label="Fechar o cliente"
+              aria-label={`Fechar histórico de ${linhaAberta.rotulo}`}
             >
               <X size={16} />
             </button>
@@ -781,7 +790,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
             aoEditarGrupo={() => {
               const g = grupoPorId.get(linhaAberta.item.chave);
               if (!g) return;
-              setForm({ id: String(g.id), nome: String(g.nome || ""), chaves: (g.chaves || []).map(String), busca: "" });
+              abrirGrupo({ id: String(g.id), nome: String(g.nome || ""), chaves: (g.chaves || []).map(String), busca: "" });
             }}
           />
         </Secao>
@@ -809,8 +818,8 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
           ) : (
             <div className="space-y-0.5">
               {grupos.map((g) => (
-                <div key={g.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
+                <div key={g.id} className="flex flex-wrap items-center gap-3 rounded-lg px-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 break-words font-medium text-slate-800">
                     {g.nome || "grupo sem nome"}
                   </span>
                   <span className="tnum shrink-0 text-xs text-slate-400">
@@ -822,7 +831,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
                         type="button"
                         className="btn-ghost !px-2 !py-1 text-xs"
                         onClick={() =>
-                          setForm({
+                          abrirGrupo({
                             id: String(g.id),
                             nome: String(g.nome || ""),
                             chaves: (g.chaves || []).map(String),
@@ -855,6 +864,7 @@ export default function AbaClientes({ vendas, clientes, receber, ano, hojeISO, e
         candidatos={candidatos}
         grupoPorCliente={grupoPorCliente}
         salvando={salvando}
+        erro={erroGrupo}
         aoSalvar={gravarGrupo}
         aoApagar={() => desfazerGrupo(form.id, form.nome || "sem nome")}
         aoFechar={() => setForm(null)}

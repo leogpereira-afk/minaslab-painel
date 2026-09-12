@@ -273,14 +273,7 @@ export default function CurvaAbc() {
         setErro(null);
       })
       .catch((e) => {
-        setErro(e.message);
-        // Depois da primeira carga boa o ErroModulo não aparece mais (dados
-        // existe). Sem este aviso, a recarga que falha deixaria a tela velha em
-        // silêncio, e a decisão sairia de um número de ontem.
-        setAviso({
-          tipo: "erro",
-          texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga.",
-        });
+        setErro(e.message || "Não foi possível carregar o faturamento.");
       });
   }, []);
 
@@ -351,6 +344,7 @@ export default function CurvaAbc() {
   const semNada = dados.vendas.length === 0 && dados.clientes.length === 0;
 
   const cabecalho = (
+    <>
     <PageTitle
       titulo="Curva ABC"
       descricao="Quem sustenta o faturamento — por cliente, por serviço e por vendedor."
@@ -365,6 +359,10 @@ export default function CurvaAbc() {
         </button>
       }
     />
+    {erro && <p role="alert" className="mb-4 rounded-xl bg-bad-50 p-3 text-sm text-bad-800">
+      Não foi possível atualizar. Os dados exibidos são da última carga. Use Atualizar para tentar novamente.
+    </p>}
+    </>
   );
 
   /* Sem NADA no banco (nem venda, nem cadastro), a tela é só a explicação: sem
@@ -397,17 +395,18 @@ export default function CurvaAbc() {
 
       <div className="sem-impressao space-y-3">
         <Explicacao>
-          As vendas são as notas fiscais e as ordens de serviço importadas do Omie. Venda cancelada
-          continua gravada, mas fica fora de todas as somas, e venda sem data não entra em recorte
-          nenhum — as duas voltam contadas embaixo de cada lista, nunca descartadas em silêncio.
+          O faturamento vem dos títulos a receber importados do Omie, pela data de emissão.
+          Títulos cancelados ficam fora das somas; títulos sem data ficam fora dos recortes por ano.
+          As exclusões são informadas embaixo de cada lista.
         </Explicacao>
 
-        <Pilulas opcoes={opcoesDeAno} valor={ano} aoEscolher={escolherAno} />
+        <div role="group" aria-label="Ano do faturamento">
+          <Pilulas opcoes={opcoesDeAno} valor={ano} aoEscolher={escolherAno} />
+        </div>
 
-        {/* As abas não cabem na largura do celular. Sem o overflow aqui, a
-            PÁGINA INTEIRA passa a rolar de lado. */}
-        <div className="max-w-full overflow-x-auto pb-1">
-          <Segmented opcoes={ABAS} valor={aba} onChange={escolherAba} />
+        {/* As opções podem quebrar de linha no celular sem esconder uma aba. */}
+        <div role="group" aria-label="Analisar faturamento por" className="max-w-full pb-1">
+          <Segmented className="flex flex-wrap" opcoes={ABAS} valor={aba} onChange={escolherAba} />
         </div>
       </div>
 

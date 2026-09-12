@@ -37,6 +37,7 @@
 // ou "3 atrasos". No dia em que este arquivo aprender a formatar hora, ele
 // passa a errar em toda tela que não é a de hora.
 
+import { useId } from "react";
 import { clsx } from "clsx";
 import { ChevronDown, Info } from "lucide-react";
 import { Card } from "./ui.jsx";
@@ -98,36 +99,36 @@ export function LinhaRanking({ nome, valor, apoios, teto, medida, aberta, aoAbri
       onClick={clicavel ? aoAbrir : undefined}
       aria-expanded={clicavel ? !!aberta : undefined}
       className={clsx(
-        "flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+        "ranking-row w-full rounded-xl px-3 py-3 text-left text-sm transition-colors",
         clicavel && "hover:bg-slate-50",
         aberta && "bg-brand-50/70"
       )}
     >
       {/* min-w-0 junto do flex-1: sem ele o nome longo não trunca, empurra as
           colunas para fora e a linha inteira passa a rolar de lado. */}
-      <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={typeof nome === "string" ? nome : undefined}>
+      <span className="ranking-name min-w-0 font-medium text-slate-800" title={typeof nome === "string" ? nome : undefined}>
         {ouTravessao(nome)}
       </span>
 
       {proporcao === null ? (
         // Lugar guardado: sem medida não se desenha trilho vazio (leria zero),
         // mas as colunas seguintes têm de continuar alinhadas com as das outras.
-        <span className="hidden w-40 shrink-0 sm:block" aria-hidden="true" />
+        <span className="ranking-bar hidden w-32 shrink-0 xl:block" aria-hidden="true" />
       ) : (
         // A barra é enfeite de leitura, não informação nova: o valor à direita
         // já diz tudo. Por isso aria-hidden — o leitor de tela não repete.
-        <span className="hidden h-2.5 w-40 shrink-0 overflow-hidden rounded bg-slate-100 sm:block" aria-hidden="true">
+        <span className="ranking-bar hidden h-2 w-32 shrink-0 overflow-hidden rounded bg-slate-100 xl:block" aria-hidden="true">
           <span className={clsx("block h-full rounded", t.barra)} style={{ width: `${proporcao}%` }} />
         </span>
       )}
 
-      {colunas.map((apoio, i) => (
-        <span key={i} className="tnum w-16 shrink-0 truncate text-right text-xs text-slate-400">
+      <span className="ranking-supports">{colunas.map((apoio, i) => (
+        <span key={i} className="tnum text-xs text-slate-600">
           {ouTravessao(apoio)}
         </span>
-      ))}
+      ))}</span>
 
-      <span className={clsx("tnum w-28 shrink-0 text-right", t.valor)}>{ouTravessao(valor)}</span>
+      <span className={clsx("ranking-value tnum text-right font-semibold", t.valor)}>{ouTravessao(valor)}</span>
     </Comp>
   );
 }
@@ -146,13 +147,15 @@ export function LinhaRanking({ nome, valor, apoios, teto, medida, aberta, aoAbri
    guarda no aparelho: quem trabalha com um quadro fechado não quer reabri-lo a
    cada visita. */
 export function Secao({ titulo, sub, aberta, aoAlternar, acao, children }) {
+  const conteudoId = useId();
   return (
     <Card className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <button
           type="button"
           onClick={() => aoAlternar?.()}
           aria-expanded={!!aberta}
+          aria-controls={conteudoId}
           className="group flex min-w-0 flex-1 items-start gap-2.5 text-left"
         >
           <ChevronDown
@@ -168,9 +171,9 @@ export function Secao({ titulo, sub, aberta, aoAlternar, acao, children }) {
           </span>
         </button>
         {/* A ação (fechar o detalhe, exportar) é controle: some no papel. */}
-        {acao && <div className="sem-impressao shrink-0">{acao}</div>}
+        {acao && <div className="sem-impressao min-w-0 max-w-full shrink-0">{acao}</div>}
       </div>
-      <div className={aberta ? "space-y-3" : "hidden print:block"}>{children}</div>
+      <div id={conteudoId} className={aberta ? "space-y-3" : "hidden print:block"}>{children}</div>
     </Card>
   );
 }
@@ -202,7 +205,7 @@ export function Pilulas({ opcoes, valor, aoEscolher }) {
             aria-pressed={sel}
             style={sel ? undefined : { borderColor: "var(--hairline)" }}
             className={clsx(
-              "tnum h-8 rounded-full border px-3.5 font-display text-sm font-medium transition-all",
+              "tnum min-h-10 rounded-full border px-3.5 font-display text-sm font-medium transition-all",
               sel
                 ? "border-brand bg-brand text-white shadow-sm"
                 : "bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
@@ -222,7 +225,13 @@ export function Pilulas({ opcoes, valor, aoEscolher }) {
    porque uma linha que abre detalhe, sem ninguém dizer, ninguém toca.
    Fundo claro da marca, letra pequena: é apoio de leitura, não alerta. Alerta
    tem cor de alerta (o Aviso, em ui.jsx). */
-export function Explicacao({ children }) {
+export function Explicacao({ children, titulo }) {
+  if (titulo) return (
+    <details className="explicacao-recolhivel rounded-xl bg-brand-50 px-3.5 py-2.5 text-xs leading-relaxed text-brand-800">
+      <summary className="cursor-pointer py-1 font-medium">{titulo}</summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
   return (
     <div className="flex items-start gap-2 rounded-xl bg-brand-50 px-3.5 py-2.5 text-xs leading-relaxed text-brand-800">
       <Info size={14} className="mt-0.5 shrink-0 text-brand-600" aria-hidden="true" />

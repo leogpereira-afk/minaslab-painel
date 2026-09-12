@@ -39,12 +39,12 @@ function prazoOrdem(o, hojeISO) {
   return { texto: `em ${ndias(dias)}`, chip: "chip", peso: dias, atrasada: false };
 }
 
-function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
+function LinhaOrdem({ salvando, o, editavel, aberto, aoAbrir, acoes }) {
   const podeAvancar = o.status === "aberta";
   const podeReceber = o.status === "aberta" || o.status === "enviada";
   return (
     <div
-      className={`rounded-xl border p-3 ${o.status === "cancelada" ? "opacity-60" : ""}`}
+      className={`rounded-xl border p-3 ${o.status === "cancelada" ? "bg-slate-50" : ""}`}
       style={{ borderColor: "var(--hairline)" }}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -53,7 +53,9 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
           onClick={aoAbrir}
           aria-expanded={aberto}
           title={aberto ? "Fechar os itens" : "Ver os itens desta ordem"}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          aria-label={`${aberto ? "Fechar" : "Ver"} itens da ordem OC ${o.numero}`}
+          aria-controls={aberto ? `itens-ordem-${o.id}` : undefined}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
         >
           {aberto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -61,11 +63,18 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
         <ScrollText size={17} strokeWidth={2.2} className="shrink-0 text-brand-600" />
 
         <span className="min-w-0 flex-1 basis-48">
-          <span className="block truncate font-display text-sm font-medium text-slate-900">
+          <button
+            type="button"
+            onClick={aoAbrir}
+            aria-expanded={aberto}
+            aria-controls={aberto ? `itens-ordem-${o.id}` : undefined}
+            className="min-h-11 w-full break-words text-left font-display text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4"
+          >
             OC {o.numero || "sem número"}
             <span className="font-normal text-slate-500"> — {o.fornecedor || "fornecedor não informado"}</span>
-          </span>
-          <span className="block truncate text-xs text-slate-500">
+            <span className="sr-only"> — itens da ordem</span>
+          </button>
+          <span className="block break-words text-xs text-slate-500">
             {[
               `${o.itens.length} ${o.itens.length === 1 ? "item" : "itens"}`,
               // O cancelado aparece À PARTE, e não somado: ele está na ordem,
@@ -108,9 +117,11 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
             {podeAvancar && (
               <button
                 type="button"
+                disabled={salvando}
                 onClick={() => acoes.avancarOrdem(o.id)}
                 title="Marcar como enviada ao fornecedor"
-                className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+                aria-label={`Marcar ordem OC ${o.numero} como enviada ao fornecedor`}
+                className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
               >
                 <ArrowRight size={15} strokeWidth={2.2} />
               </button>
@@ -118,26 +129,32 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
             {podeReceber && (
               <button
                 type="button"
+                disabled={salvando}
                 onClick={() => acoes.receberOrdem(o.id)}
                 title="Marcar recebida (oferece dar entrada nos itens)"
-                className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-ok-50 hover:text-ok-700"
+                aria-label={`Receber ordem OC ${o.numero} e conferir seus itens`}
+                className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-ok-50 hover:text-ok-700"
               >
                 <PackageCheck size={15} strokeWidth={2.2} />
               </button>
             )}
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.abrirOrdem(o.id)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
               title="Editar"
+              aria-label={`Editar ordem OC ${o.numero}`}
             >
               <Pencil size={14} />
             </button>
             <button
               type="button"
+              disabled={salvando}
               onClick={() => acoes.removerOrdem(o.id)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
               title="Apagar"
+              aria-label={`Apagar ordem OC ${o.numero}`}
             >
               <Trash2 size={14} />
             </button>
@@ -146,7 +163,7 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
       </div>
 
       {aberto && (
-        <div className="mt-2 pl-11">
+        <div id={`itens-ordem-${o.id}`} className="mt-2 sm:pl-11">
           {o.itens.length === 0 ? (
             <Empty className="py-6">
               Nenhum pedido nesta ordem. Edite a ordem para marcar os pedidos que entram nela.
@@ -158,7 +175,7 @@ function LinhaOrdem({ o, editavel, aberto, aoAbrir, acoes }) {
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2"
                 style={{ borderTop: "1px solid var(--fio-lista)" }}
               >
-                <span className="min-w-0 flex-1 basis-40 truncate text-sm text-slate-900">
+                <span className="min-w-0 flex-1 basis-40 break-words text-sm text-slate-900">
                   {c.item}
                   {c.qtde ? <span className="text-slate-500"> — {c.qtde}</span> : null}
                 </span>
@@ -216,8 +233,10 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
       largura="max-w-2xl"
     >
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
@@ -263,7 +282,7 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
           <div className="mb-1.5 flex flex-wrap items-end justify-between gap-2">
             <span className="label mb-0">Pedidos desta ordem</span>
             {doFornecedor.length > 0 && (
-              <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setVerTodos((v) => !v)}>
+              <button type="button" aria-pressed={verTodos} className="btn-ghost min-h-11 whitespace-normal px-2 py-1 text-xs" onClick={() => setVerTodos((v) => !v)}>
                 {verTodos ? `Só os de ${form.fornecedor.trim()}` : "Ver todos os pedidos em aberto"}
               </button>
             )}
@@ -278,7 +297,7 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
                 <label
                   key={c.id}
                   htmlFor={`oc-ped-${c.id}`}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                  className="flex min-h-11 cursor-pointer flex-wrap items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
                 >
                   <input
                     id={`oc-ped-${c.id}`}
@@ -288,11 +307,11 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
                     onChange={() => alternar(c.id)}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-900">
+                    <span className="block break-words text-sm text-slate-900">
                       {c.item}
                       {c.qtde ? <span className="text-slate-500"> — {c.qtde}</span> : null}
                     </span>
-                    <span className="block truncate text-xs text-slate-500">
+                    <span className="block break-words text-xs text-slate-500">
                       {[c.fornecedor || "sem fornecedor", (STATUS_PEDIDO[c.status] || STATUS_PEDIDO.solicitada).rotulo]
                         .filter(Boolean)
                         .join(" · ")}
@@ -307,7 +326,7 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
           )}
           {/* O total sai da soma dos VALORES CONHECIDOS. Pedido sem preço não
               entra como zero — entra como aviso de que o total está incompleto. */}
-          <p className="mt-2 text-sm text-slate-600">
+          <p role="status" className="mt-2 text-sm text-slate-600">
             {marcados.length === 0
               ? "Nenhum pedido marcado."
               : `${marcados.length} ${marcados.length === 1 ? "pedido marcado" : "pedidos marcados"} · total ${
@@ -321,7 +340,7 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
           <textarea id="oc-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.fornecedor.trim() || !form.numero.trim()}>
             {salvando ? "Gravando..." : "Gravar ordem"}
@@ -421,7 +440,7 @@ export default function AbaOrdens({
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Atrasadas"
           valor={String(vm.atrasadas.length)}
@@ -450,6 +469,13 @@ export default function AbaOrdens({
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "atrasadas" ? "Atrasadas" : "Em aberto"}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -477,12 +503,13 @@ export default function AbaOrdens({
           <Empty>
             {vm.linhas.length === 0
               ? "Nenhuma ordem de compra ainda. Junte os pedidos em aberto de um fornecedor no botão lá em cima."
-              : "Nada neste recorte. Clique de novo no cartão para ver tudo."}
+              : "Nada neste recorte. Use “Limpar filtros” para ver tudo."}
           </Empty>
         ) : (
           <div className="space-y-2">
             {visiveis.map((o) => (
               <LinhaOrdem
+                  salvando={salvando}
                 key={o.id}
                 o={o}
                 editavel={editavel}

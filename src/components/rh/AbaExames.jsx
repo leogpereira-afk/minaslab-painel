@@ -71,6 +71,7 @@ import { dataLonga, diasEntre, paraNumero, ymdLocal } from "../../lib/format.js"
 import { baixarPlanilha } from "../../lib/planilha.js";
 import { SectionTitle, Empty, Modal, Card, StatCard } from "../ui.jsx";
 import { anoRuim, chipVenc } from "./uteis.js";
+import { dataDe, resultadoDe, TIPOS, tipoDe, rotuloTipo, RESULTADOS, metaResultado } from "../../lib/rhExamesApresentacao.js";
 
 const txt = (v) => String(v ?? "").trim();
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -80,45 +81,7 @@ const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
    descartar em silêncio o que não se reconhece é como se esconde problema —
    lição paga na Impresilk com um filtro que jogava fora o desconhecido. */
 const venceDe = (e) => txt(e.vence) || txt(e.validade);
-const dataDe = (e) => txt(e.data) || txt(e.realizadoEm);
 const restricaoDe = (e) => txt(e.restricao) || txt(e.restricoes);
-
-// Hífen e sublinhado do mesmo valor são o MESMO resultado: normalizar na
-// leitura evita que "apto-com-restricao" apareça como resultado desconhecido e
-// perca o destaque da restrição, que é justamente o que não pode sumir.
-const resultadoDe = (e) => txt(e.resultado).toLowerCase().replace(/-/g, "_");
-
-const TIPOS = [
-  { valor: "admissional", rotulo: "Admissional" },
-  { valor: "periodico", rotulo: "Periódico" },
-  { valor: "retorno", rotulo: "Retorno ao trabalho" },
-  { valor: "mudanca_funcao", rotulo: "Mudança de função" },
-  { valor: "demissional", rotulo: "Demissional" },
-  { valor: "complementar", rotulo: "Complementar" },
-];
-
-// Mesma normalização do resultado, mais os dois nomes longos que já circularam.
-const tipoDe = (e) => {
-  const t = txt(e.tipo).toLowerCase().replace(/-/g, "_");
-  if (t === "retorno_trabalho") return "retorno";
-  if (t === "mudanca_de_funcao") return "mudanca_funcao";
-  return t;
-};
-
-// Tipo fora da lista aparece CRU, não some: a lista da tela é uma escolha de
-// hoje, o banco pode ter o que veio de antes.
-const rotuloTipo = (t) => TIPOS.find((x) => x.valor === t)?.rotulo || t || "tipo sem registro";
-
-const RESULTADOS = {
-  apto: { rotulo: "Apto", chip: "chip-ok" },
-  apto_com_restricao: { rotulo: "Apto com restrição", chip: "chip-warn" },
-  inapto: { rotulo: "Inapto", chip: "chip-bad" },
-  // Chip PRÓPRIO: laudo que não voltou não pode se parecer com apto.
-  aguardando: { rotulo: "Aguardando laudo", chip: "chip-brand" },
-};
-
-const metaResultado = (r) =>
-  RESULTADOS[r] || { rotulo: r ? `${r} (fora da lista)` : "resultado sem registro", chip: "chip" };
 
 // O resultado que obriga a mostrar a restrição na linha.
 const mudaEscala = (r) => r === "inapto" || r === "apto_com_restricao";
@@ -289,6 +252,7 @@ function ItemHistorico({ h, atual, editavel, aoEditar, aoApagar }) {
             onClick={aoEditar}
             className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar este exame"
+            aria-label={`Editar exame ${rotuloTipo(tipoDe(h))} de ${h.pessoaNome || "pessoa sem registro"}, ${data ? dataLonga(data) : "sem data"}`}
           >
             <Pencil size={14} />
           </button>
@@ -297,6 +261,7 @@ function ItemHistorico({ h, atual, editavel, aoEditar, aoApagar }) {
             onClick={aoApagar}
             className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar este exame"
+            aria-label={`Apagar exame ${rotuloTipo(tipoDe(h))} de ${h.pessoaNome || "pessoa sem registro"}, ${data ? dataLonga(data) : "sem data"}`}
           >
             <Trash2 size={14} />
           </button>
@@ -353,6 +318,7 @@ function LinhaExame({ l, aberta, aoAlternar, historico, editavel, aoEditar, aoAp
               onClick={() => aoEditar(l.e)}
               className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
               title="Editar"
+              aria-label={`Editar exame de ${l.e.pessoaNome || "pessoa sem registro"}`}
             >
               <Pencil size={14} />
             </button>
@@ -361,6 +327,7 @@ function LinhaExame({ l, aberta, aoAlternar, historico, editavel, aoEditar, aoAp
               onClick={() => aoApagar(l.e)}
               className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
               title="Apagar"
+              aria-label={`Apagar exame de ${l.e.pessoaNome || "pessoa sem registro"}`}
             >
               <Trash2 size={14} />
             </button>
@@ -473,7 +440,7 @@ function FormExame({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          aoSalvar();
+          if (!salvando) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -990,7 +957,7 @@ export default function AbaExames({
           <label className="sr-only" htmlFor="ex-filtro-pessoa">Filtrar por pessoa</label>
           <select
             id="ex-filtro-pessoa"
-            className="select h-9 w-56"
+            className="select h-9 w-full max-w-full sm:w-56"
             value={filtroPessoa}
             onChange={(e) => setFiltroPessoa(e.target.value)}
           >
@@ -1002,7 +969,7 @@ export default function AbaExames({
           <label className="sr-only" htmlFor="ex-filtro-tipo">Filtrar por tipo</label>
           <select
             id="ex-filtro-tipo"
-            className="select h-9 w-56"
+            className="select h-9 w-full max-w-full sm:w-56"
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
           >

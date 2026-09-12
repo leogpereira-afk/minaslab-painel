@@ -99,7 +99,7 @@ const paraPlanilha = (l) => ({
   resultado: l.resultado,
 });
 
-function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
+function LinhaAndamento({ salvando, l, editavel, mudando, setMudando, acoes }) {
   return (
     <div
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors"
@@ -108,11 +108,11 @@ function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
       <Gavel size={17} strokeWidth={2.2} className="shrink-0 text-brand-600" />
 
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {l.orgao}
           {l.edital ? <span className="text-slate-500"> · {l.edital}</span> : null}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[MODALIDADES[l.modalidade] || MODALIDADES.outra, l.portal, l.objeto]
             .filter(Boolean)
             .join(" · ")}
@@ -143,7 +143,8 @@ function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
              exemplar). */
           <select
             autoFocus
-            className="select h-8 w-44 py-0 text-xs"
+            aria-label={`Situação da licitação: ${l.orgao}`}
+            className="select min-h-11 w-44 max-w-full text-sm"
             value={l.status}
             onChange={(e) => {
               const v = e.target.value;
@@ -160,9 +161,10 @@ function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
           <button
             type="button"
             onClick={() => editavel && setMudando(l.id)}
-            disabled={!editavel}
+            disabled={!editavel || salvando}
             title={editavel ? "Mudar status" : undefined}
-            className="chip whitespace-nowrap transition-opacity hover:opacity-75 disabled:cursor-default"
+            aria-label={`Mudar situação de ${l.orgao}: ${STATUS_ROTULOS[l.status] || l.status}`}
+            className="chip min-h-11 whitespace-nowrap transition-opacity hover:opacity-75 disabled:cursor-default"
           >
             {STATUS_ROTULOS[l.status] || l.status}
           </button>
@@ -173,17 +175,21 @@ function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
         <span className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirForm(l)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar licitação: ${l.orgao}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.remover(l)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar licitação: ${l.orgao}`}
           >
             <Trash2 size={14} />
           </button>
@@ -193,10 +199,10 @@ function LinhaAndamento({ l, editavel, mudando, setMudando, acoes }) {
   );
 }
 
-function LinhaEncerrada({ l, editavel, acoes }) {
+function LinhaEncerrada({ salvando, l, editavel, acoes }) {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 opacity-80"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-slate-50 p-3"
       style={{ borderColor: "var(--hairline)" }}
     >
       <span className={`${chipDesfecho(l.status)} shrink-0 whitespace-nowrap`}>
@@ -204,11 +210,11 @@ function LinhaEncerrada({ l, editavel, acoes }) {
       </span>
 
       <span className="min-w-0 flex-1 basis-48">
-        <span className="block truncate font-display text-sm font-medium text-slate-900">
+        <span className="block break-words font-display text-sm font-medium text-slate-900">
           {l.orgao}
           {l.edital ? <span className="text-slate-500"> · {l.edital}</span> : null}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block break-words text-xs text-slate-500">
           {[MODALIDADES[l.modalidade] || MODALIDADES.outra, l.objeto, l.resultado]
             .filter(Boolean)
             .join(" · ")}
@@ -228,17 +234,21 @@ function LinhaEncerrada({ l, editavel, acoes }) {
         <span className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.abrirForm(l)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             title="Editar"
+            aria-label={`Editar licitação: ${l.orgao}`}
           >
             <Pencil size={14} />
           </button>
           <button
             type="button"
+            disabled={salvando}
             onClick={() => acoes.remover(l)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
             title="Apagar"
+            aria-label={`Apagar licitação: ${l.orgao}`}
           >
             <Trash2 size={14} />
           </button>
@@ -254,13 +264,15 @@ function FormLicitacao({ form, setForm, salvando, aoSalvar, aoFechar }) {
   return (
     <Modal titulo={form.id ? "Editar licitação" : "Nova licitação"} aberto={!!form} aoFechar={aoFechar} largura="max-w-2xl">
       <form
+        aria-busy={salvando}
         onSubmit={(e) => {
           e.preventDefault();
+          if (salvando) return;
           aoSalvar();
         }}
         className="space-y-4"
       >
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="l-orgao">Órgão</label>
             <input id="l-orgao" type="text" className="input" value={form.orgao} onChange={setCampo("orgao")} autoFocus required />
@@ -286,7 +298,7 @@ function FormLicitacao({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <label className="label" htmlFor="l-objeto">Objeto</label>
           <textarea id="l-objeto" className="input" rows={2} value={form.objeto} onChange={setCampo("objeto")} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="l-data">Data da sessão</label>
             <input id="l-data" type="date" className="input" value={form.dataSessao} onChange={setCampo("dataSessao")} />
@@ -320,7 +332,7 @@ function FormLicitacao({ form, setForm, salvando, aoSalvar, aoFechar }) {
           <label className="label" htmlFor="l-obs">Observações</label>
           <textarea id="l-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.orgao.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
@@ -337,6 +349,7 @@ export default function Licitacoes() {
 
   const [itens, setItens] = useState(null);
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -365,6 +378,7 @@ export default function Licitacoes() {
   };
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     listar(COLECAO)
       .then((lista) => {
@@ -377,7 +391,8 @@ export default function Licitacoes() {
         // existe) — sem este aviso, a recarga que falha deixava a tela velha
         // em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -476,12 +491,15 @@ export default function Licitacoes() {
       gravar({ ...l, status: novo }, `Status atualizado: ${STATUS_ROTULOS[novo]}.`),
     remover: async (l) => {
       if (!window.confirm(`Apagar a licitação "${l.orgao}${l.edital ? ` · ${l.edital}` : ""}"?`)) return;
+      setSalvando(true);
       try {
         await apagar(COLECAO, l.id);
         setAviso({ tipo: "ok", texto: "Licitação apagada." });
         recarregar();
       } catch (e) {
         setAviso({ tipo: "erro", texto: e.message });
+      } finally {
+        setSalvando(false);
       }
     },
   };
@@ -498,7 +516,7 @@ export default function Licitacoes() {
       form.id ? "Licitação atualizada." : "Licitação criada."
     );
 
-  if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+  if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
   const andamentoVisiveis =
@@ -537,6 +555,15 @@ export default function Licitacoes() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 rounded-xl border border-bad-200 bg-bad-50 p-3 text-sm text-bad-800">
+          <p>Não foi possível atualizar. Os dados abaixo são da última carga.</p>
+          <p className="mt-1 break-words">{erro}</p>
+          <button type="button" className="btn-outline mt-2 min-h-11" disabled={atualizando} onClick={recarregar}>
+            {atualizando ? "Atualizando…" : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <PageTitle
         titulo="Licitações"
         descricao="Do estudo do edital ao desfecho — a tela abre pela sessão mais próxima."
@@ -555,7 +582,7 @@ export default function Licitacoes() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Em andamento"
           valor={String(vm.andamento.length)}
@@ -575,6 +602,7 @@ export default function Licitacoes() {
           valor={String(vm.ganhasNoAno)}
           tom="ok"
           icone={Trophy}
+          sub="mostrar ou esconder todas as encerradas"
           onClick={() => alternarEncerradas(!verEncerradas)}
           ativo={verEncerradas}
         />
@@ -587,6 +615,13 @@ export default function Licitacoes() {
         />
       </div>
 
+      {recorte && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: Sessão em 7 dias.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+        </div>
+      )}
+
       <div className="space-y-6">
         <Card>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -595,13 +630,14 @@ export default function Licitacoes() {
           {andamentoVisiveis.length === 0 ? (
             <Empty>
               {recorte === "sessao7"
-                ? "Nenhuma sessão nos próximos 7 dias. Clique de novo no cartão para ver tudo."
-                : "Nenhuma licitação em andamento. Crie a primeira no botão lá em cima."}
+                ? "Nenhuma sessão nos próximos 7 dias. Use “Limpar filtros” para ver tudo."
+                : editavel ? "Nenhuma licitação em andamento. Use Nova licitação para registrar." : "Nenhuma licitação em andamento."}
             </Empty>
           ) : (
             <div className="space-y-2">
               {andamentoVisiveis.map((l) => (
                 <LinhaAndamento
+                  salvando={salvando}
                   key={l.id}
                   l={l}
                   editavel={editavel}
@@ -622,7 +658,9 @@ export default function Licitacoes() {
             <button
               type="button"
               onClick={() => alternarEncerradas(!verEncerradas)}
-              className="flex items-center gap-1 font-display text-xs font-semibold text-slate-500 hover:text-slate-900"
+              aria-expanded={verEncerradas}
+              aria-label={verEncerradas ? "Esconder licitações encerradas" : "Mostrar licitações encerradas"}
+              className="flex min-h-11 items-center gap-1 font-display text-xs font-semibold text-slate-500 hover:text-slate-900"
             >
               {verEncerradas ? (
                 <>esconder <ChevronUp size={14} /></>
@@ -637,7 +675,7 @@ export default function Licitacoes() {
             ) : (
               <div className="space-y-2">
                 {vm.encerradas.map((l) => (
-                  <LinhaEncerrada key={l.id} l={l} editavel={editavel} acoes={acoes} />
+                  <LinhaEncerrada salvando={salvando} key={l.id} l={l} editavel={editavel} acoes={acoes} />
                 ))}
               </div>
             ))}

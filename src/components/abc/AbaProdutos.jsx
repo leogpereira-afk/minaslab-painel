@@ -267,7 +267,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
   const [grupoAberto, setGrupoAberto] = useState(null);
   const [secaoAberta, alternarSecao, abrirSecao] = useSecoes(K_SECOES, SECOES_PADRAO);
   /* Mesmo motivo da aba Clientes: o detalhe nasce depois do ranking. */
-  const alvoDoDetalhe = useRolarAoAbrir(aberto);
+  const alvoDoDetalhe = useRolarAoAbrir(aberto, secaoAberta("produto"));
 
   const anoTexto = /^\d{4}$/.test(String(ano ?? "")) ? String(ano) : "";
   const hoje = /^\d{4}-\d{2}-\d{2}$/.test(String(hojeISO ?? "")) ? String(hojeISO) : "";
@@ -346,12 +346,12 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
 
   const baixar = () => {
     if (!lista.length) {
-      return setAviso({ tipo: "erro", texto: "Não há produto nenhum neste recorte para baixar." });
+      return setAviso({ tipo: "erro", texto: "Não há categoria neste recorte para baixar." });
     }
     try {
       const arquivo = baixarPlanilha({
         nome: `curva-abc-produtos${anoTexto ? `-${anoTexto}` : ""}`,
-        titulo: `Curva ABC de produtos${anoTexto ? ` — ${anoTexto}` : ""}`,
+        titulo: `Curva ABC de categorias${anoTexto ? ` — ${anoTexto}` : ""}`,
         colunas: COLUNAS,
         linhas: lista.map((p) => ({
           posicao: p.posicao,
@@ -367,7 +367,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
           valor: p.valor,
         })),
       });
-      setAviso({ tipo: "ok", texto: `Planilha baixada: ${arquivo} (${plural(lista.length, "produto", "produtos")}).` });
+      setAviso({ tipo: "ok", texto: `Planilha baixada: ${arquivo} (${plural(lista.length, "categoria", "categorias")}).` });
     } catch (e) {
       setAviso({ tipo: "erro", texto: `Não consegui gerar a planilha: ${e.message}` });
     }
@@ -377,8 +377,8 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
     return (
       <div className="space-y-4">
         <CabecalhoDoPapel
-          titulo={`MinasLab — Curva ABC de produtos${anoTexto ? ` · ${anoTexto}` : ""}`}
-          linhas={[hoje ? `Emitido em ${dataLonga(hoje)}` : null, "Nenhum produto no recorte."]}
+          titulo={`MinasLab — Curva ABC de categorias${anoTexto ? ` · ${anoTexto}` : ""}`}
+          linhas={[hoje ? `Emitido em ${dataLonga(hoje)}` : null, "Nenhuma categoria no recorte."]}
         />
         <SemVenda
           vendas={vendas}
@@ -406,10 +406,10 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
   return (
     <div className="space-y-4">
       <CabecalhoDoPapel
-        titulo={`MinasLab — Curva ABC de produtos${anoTexto ? ` · ${anoTexto}` : " · todos os anos"}`}
+        titulo={`MinasLab — Curva ABC de categorias${anoTexto ? ` · ${anoTexto}` : " · todos os anos"}`}
         linhas={[
           hoje ? `Emitido em ${dataLonga(hoje)}` : null,
-          `${plural(abc.curva.length, "produto", "produtos")} no recorte · ${moedaCheia(abc.total)} em itens`,
+          `${plural(abc.curva.length, "categoria", "categorias")} no recorte · ${moedaCheia(abc.total)} em itens`,
           "A+ soma os primeiros 30% do faturamento · A até 80% · B+ até 90% · B até 95% · C o resto.",
           classeVista ? `Impresso só com a classe ${rotuloDaClasse}.` : null,
           ...frasesDoCorte(recorte),
@@ -418,14 +418,14 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
 
       <Secao
         titulo={anoTexto ? `O que mais vendemos em ${anoTexto}` : "O que mais vendemos — todos os anos"}
-        sub={`${plural(abc.curva.length, "produto", "produtos")} no recorte · ${moedaCheia(abc.total)}`}
+        sub={`${plural(abc.curva.length, "categoria", "categorias")} no recorte · ${moedaCheia(abc.total)}`}
         aberta={secaoAberta("curva")}
         aoAlternar={() => alternarSecao("curva")}
         acao={<AcoesDoRecorte aoBaixarPlanilha={baixar} />}
       >
         <CartoesDaCurva
           faixas={abc.faixas}
-          unidade={{ um: "produto", varios: "produtos" }}
+          unidade={{ um: "categoria", varios: "categorias" }}
           classeVista={classeVista}
           aoEscolherClasse={escolherClasse}
           grupoAberto={grupoAberto}
@@ -460,7 +460,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
           <div className="sem-impressao flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>
               Mostrando só a classe <strong className="text-slate-700">{rotuloDaClasse}</strong> —{" "}
-              {plural(lista.length, "produto", "produtos")} de {abc.curva.length}. A posição continua sendo
+              {plural(lista.length, "categoria", "categorias")} de {abc.curva.length}. A posição continua sendo
               a da curva inteira.
             </span>
             <button
@@ -477,7 +477,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
         )}
 
         {lista.length === 0 ? (
-          <Empty>Nenhum produto na classe {rotuloDaClasse} neste recorte.</Empty>
+          <Empty>Nenhuma categoria na classe {rotuloDaClasse} neste recorte.</Empty>
         ) : (
           <div>
             {lista.map((p) => (
@@ -514,11 +514,11 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
                 ]}
                 medida={p.valor}
                 teto={tetoDaCurva}
-                aberta={aberto === p.chave}
+                aberta={aberto === p.chave && secaoAberta("produto")}
                 /* Como na aba Clientes: o clique PEDE o detalhe, então garante
                    o quadro aberto — recolhido, ele renderizaria fechado. */
                 aoAbrir={() => {
-                  const proximo = aberto === p.chave ? null : p.chave;
+                  const proximo = aberto === p.chave && secaoAberta("produto") ? null : p.chave;
                   setAberto(proximo);
                   if (proximo) abrirSecao("produto");
                 }}
@@ -567,7 +567,7 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
       </Secao>
 
       {linhaAberta && detalhe && (
-        <div ref={alvoDoDetalhe}>
+        <div ref={alvoDoDetalhe} tabIndex={-1} role="region" aria-label={`Histórico de ${linhaAberta.rotulo}`} className="scroll-mt-24 rounded-xl">
         <Secao
           titulo={linhaAberta.rotulo}
           sub={`${linhaAberta.posicao}º da curva · classe ${linhaAberta.classe} · ${moedaCheia(
@@ -578,9 +578,9 @@ export default function AbaProdutos({ vendas, clientes, ano, hojeISO, setAviso }
           acao={
             <button
               type="button"
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="grid h-10 w-10 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               onClick={() => setAberto(null)}
-              aria-label="Fechar o produto"
+              aria-label={`Fechar histórico de ${linhaAberta.rotulo}`}
             >
               <X size={16} />
             </button>
