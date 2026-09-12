@@ -576,7 +576,7 @@ function ModalAusencia({ form, onMudar, aoFechar, aoGravar, aoRemover, salvando,
 
         {/* A CONTRADIÇÃO, antes de qualquer campo: quem vai lançar precisa ver
             que o dia já tem batida ANTES de escolher o tipo. */}
-        {(form.fraseBatida || form.futuro || form.repetidos > 1) && (
+        {(form.fraseBatida || form.futuro || form.repetidos > 1 || form.duplicataSuspeita) && (
           <div className="rounded-xl border border-warn-200 bg-warn-50 p-3 text-xs text-warn-800">
             <p className="flex items-center gap-1.5 font-semibold">
               <CircleAlert size={14} strokeWidth={2.5} /> Confira antes de lançar
@@ -599,8 +599,9 @@ function ModalAusencia({ form, onMudar, aoFechar, aoGravar, aoRemover, salvando,
               {form.duplicataSuspeita && (
                 <li>
                   Há um registro deste dia AINDA NÃO VINCULADO a ficha nenhuma, com o nome
-                  &ldquo;{form.duplicataSuspeita}&rdquo; no relógio. Se for a mesma pessoa, vincule antes
-                  em &ldquo;Pessoas do relógio&rdquo; — senão o dia fica com dois registros.
+                  &ldquo;{form.duplicataSuspeita}&rdquo; no relógio. Antes de lançar outro registro, use
+                  &ldquo;Sincronizar&rdquo; no topo e confira o resultado. Se a pendência persistir,
+                  confira a ficha da pessoa no RH para evitar dois registros no mesmo dia.
                 </li>
               )}
             </ul>
@@ -722,9 +723,13 @@ const COLUNAS = [
 // ============================================================================
 
 export default function Faltas({
-  pessoas, ativos, pontoDia, hojeISO, editavel, salvando, gravar, apagarReg, setAviso, recarregar,
+  pessoas, ativos, pontoDia, hojeISO, editavel, salvando, gravar, apagarReg, setAviso, recarregar, atualizando = false,
+  competenciaSelecionada, aoMudarCompetencia,
 }) {
-  const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
+  const [competenciaLocal, setCompetenciaLocal] = useState(() => competenciaDe(hojeISO));
+  // Dentro do módulo, relatório, faltas e sincronização usam o mesmo mês.
+  const competencia = competenciaSelecionada ?? competenciaLocal;
+  const setCompetencia = aoMudarCompetencia ?? setCompetenciaLocal;
   const [busca, setBusca] = useState("");
   // Ativos | Todos | Desligados — a escolha nasce do que ficou guardado.
   const [recorte, setRecorte] = useState(lerRecorte);
@@ -1191,8 +1196,8 @@ export default function Faltas({
               <button type="button" className="btn-outline" onClick={baixar}>
                 <Download size={16} strokeWidth={2.5} /> Baixar planilha
               </button>
-              <button type="button" className="btn-ghost" onClick={() => recarregar?.()}>
-                Atualizar
+              <button type="button" className="btn-ghost" onClick={() => recarregar?.()} disabled={atualizando}>
+                {atualizando ? "Atualizando..." : "Atualizar"}
               </button>
             </div>
           }
@@ -1211,24 +1216,24 @@ export default function Faltas({
               lista suspensa esconde justamente o quanto de história existe. Os
               anos vêm do que TEM DADO (mais o de hoje) — lista cravada
               envelhece virando o ano. */}
-          <div>
+          <div role="group" aria-label="Ano do ponto">
             <span className="label">Ano</span>
             <Pilulas opcoes={vm.anos} valor={ano} aoEscolher={(a) => setCompetencia(`${a}-${mes}`)} />
           </div>
           {/* O recorte do quadro. Nasce em "Ativos" e a escolha fica guardada:
               é o filtro que mais muda esta tela — 13 das 20 fichas estão
               desligadas. Quem não bate ponto não entra em recorte nenhum. */}
-          <div>
+          <div role="group" aria-label="Quadro do ponto">
             <span className="label">Quadro</span>
             <Segmented opcoes={RECORTES} valor={recorte} onChange={mudarRecorte} />
           </div>
-          <div className="min-w-[12rem] flex-1">
+          <div className="min-w-0 flex-1 basis-48">
             <label className="label" htmlFor="fl-busca">Pessoa</label>
             <div className="relative">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="fl-busca"
-                type="text"
+                type="search"
                 className="input pl-9"
                 placeholder="filtrar por nome"
                 value={busca}
@@ -1328,9 +1333,9 @@ export default function Faltas({
         </Secao>
       </div>
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
+      <div className="mb-4 grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ---- a grade ---- */}
-        <Card className="lg:col-span-2">
+        <Card className="min-w-0 lg:col-span-2">
           <SectionTitle
             titulo="O mês, dia a dia"
             sub={
@@ -1352,7 +1357,7 @@ export default function Faltas({
                 <strong> — {plural(vm.semVinculo.ausencias, "deles tem ausência lançada", "deles têm ausência lançada")}</strong>
               )}
               . {vm.semVinculo.nomes.length > 0 && <>No relógio: {vm.semVinculo.nomes.join(", ")}. </>}
-              Vincule em &ldquo;Pessoas do relógio&rdquo;.
+              Use &ldquo;Sincronizar&rdquo; no topo. Se a pendência persistir, confira a ficha da pessoa no RH.
             </p>
           )}
 
@@ -1366,7 +1371,7 @@ export default function Faltas({
             </Empty>
           ) : (
             <>
-              <div className="max-w-full overflow-x-auto">
+              <div className="max-w-full overflow-x-auto" role="region" aria-label={`Grade de faltas de ${rotuloCompetencia(competencia)}`} tabIndex={0}>
                 <table className="w-full border-separate border-spacing-0 text-xs">
                   <thead>
                     <tr>
@@ -1503,7 +1508,7 @@ export default function Faltas({
             dizer que ninguém lançou.
           </Empty>
         ) : (
-          <div className="max-w-full overflow-x-auto">
+          <div className="max-w-full overflow-x-auto" role="region" aria-label={`Lançamentos de faltas de ${rotuloCompetencia(competencia)}`} tabIndex={0}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left font-display text-xs uppercase tracking-wide text-slate-500" style={{ borderColor: "var(--hairline)" }}>

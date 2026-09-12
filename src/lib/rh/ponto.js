@@ -1,3 +1,5 @@
+// Atualização 12/09/2026: a regra de minutosTrabalhados abaixo substitui
+// a antiga prioridade do payrollHours. Apenas o intervalo registrado é descontado.
 // Portado de rh/src/lib/pontoFolha.ts (Impresilk) em 27/08/2026 — as regras de
 // virar HORA em DINHEIRO são as de lá, que já custaram a confiança do RH uma
 // vez. O que mudou aqui foi o formato dos campos (a MinasLab lê o relógio
@@ -151,39 +153,33 @@ export function minutosEntre(inicio, fim) {
 export function minutosDoDia(dia) {
   const bruto = minutosEntre(dia?.entrada, dia?.saida);
   if (bruto === null) return null;
-  return Math.max(0, bruto - positivo(dia?.pausaMin));
+  if (bruto === 0) return 0;
+  const pausa = numeroOuNulo(dia?.pausaMin);
+  return pausa === null || pausa < 0 || pausa > bruto ? null : bruto - pausa;
 }
 
-/**
- * Os minutos que valem para a apuração do dia.
- *
- * A ORDEM DAS DUAS PRIMEIRAS LINHAS É O CONSERTO (28/08/2026). A marca
- * `emAberto` é lida ANTES de `trabalhadoMin`, e não depois, porque o Jibble
- * devolve payrollHours "PT0S" para quem entrou e não saiu — e "PT0S" é uma
- * duração que a ponte entende, então ela grava `trabalhadoMin: 0`, não null.
- * Lido primeiro, esse zero fazia o dia EM ABERTO passar por dia FECHADO de
- * zero minuto: contava em `diasComBatida`, a tela imprimia "0h00 para a folha"
- * ao lado do selo "em aberto" e a planilha exportava 0.0 justamente na coluna
- * que o RH soma para descontar. Dia que o relógio diz que não terminou não tem
- * total — tem pendência.
- *
- * Fora do dia em aberto, `trabalhadoMin` MANDA quando existe, inclusive quando
- * é 0, que aí é um zero de verdade (bateu entrada e saída no mesmo minuto).
- *
- * ATENÇÃO: `trabalhadoMin` NÃO é (saída − entrada) − pausa. Em 17/08/2026 o
- * crachá ficou 10h16 aberto (`trackedMin` 616), a pausa não paga foi de 1h04 e
- * para a folha foram 8h12 (492). Quem concilia essas três coisas é a escala, e
- * quem apura a escala é o relógio — a tela mostra os três números lado a lado,
- * nunca como uma subtração que não fecha.
- *
- * Sem a marca de aberto e sem total gravado (dia lançado à mão, ou importado
- * antes desta versão) a conta sai das batidas, que podem ter sido corrigidas.
+/** Regra confirmada em 12/09/2026: descontar só a pausa registrada.
+ * O total antigo do Jibble é preservado no registro para conciliação.
+ * Sem base de batidas (legado), o único total disponível continua consultável.
  */
+export function intervaloNaoRegistrado(dia) {
+  if ((numeroOuNulo(dia?.trackedMin) ?? minutosEntre(dia?.entrada, dia?.saida)) === 0) return false;
+  const temRegistro = !!dia && (numeroOuNulo(dia.trackedMin) !== null || !!texto(dia.entrada) || !!texto(dia.saida));
+  const pausa = numeroOuNulo(dia?.pausaMin);
+  return temRegistro && (pausa === null || pausa === 0);
+}
 export function minutosTrabalhados(dia) {
   if (dia?.emAberto === true) return null;
+  const bruto = numeroOuNulo(dia?.trackedMin) ?? minutosEntre(dia?.entrada, dia?.saida);
+  if (bruto === 0) return 0;
+  if (bruto !== null) {
+    const pausa = numeroOuNulo(dia?.pausaMin);
+    if (pausa === null || pausa < 0 || bruto < 0 || pausa > bruto) return null;
+    return Math.round(bruto - pausa);
+  }
   const gravado = numeroOuNulo(dia?.trabalhadoMin);
   if (gravado !== null) return Math.max(0, Math.round(gravado));
-  return minutosDoDia(dia);
+  return null;
 }
 
 /**
@@ -200,6 +196,12 @@ export function minutosTrabalhados(dia) {
  * domingo trabalhado tem dobra e não tem extra de dia normal.
  */
 export function apuracaoDoRelogio(dia) {
+  // Faixas de extras só continuam válidas quando descrevem o mesmo total.
+  const baseRegistrada = numeroOuNulo(dia?.trackedMin) ?? minutosEntre(dia?.entrada, dia?.saida);
+  if (baseRegistrada !== null) return null;
+  const original = numeroOuNulo(dia?.trabalhadoMin);
+  const atual = minutosTrabalhados(dia);
+  if (atual === null || (original !== null && atual !== Math.round(original))) return null;
   const extra = numeroOuNulo(dia?.extraMin);
   const dobro = numeroOuNulo(dia?.extraDobroMin);
   if (extra === null && dobro === null) return null;

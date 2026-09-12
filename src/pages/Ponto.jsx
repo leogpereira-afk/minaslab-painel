@@ -41,14 +41,9 @@
 // pior que a falta dele. O alternador de verdade é o do próprio AbaPonto.
 //
 // ----------------------------------------------------------------------------
-// O MÊS DA FAIXA É DA FAIXA, e ela DIZ qual é. Pelo mesmo motivo de cima: cada
-// aba guarda a competência dela por dentro, e a casca não tem como perguntar
-// qual é. Um seletor mudo aqui em cima mostraria agosto no alto e julho na
-// tabela. Então a faixa carrega o próprio seletor (que começa no mês de hoje) e
-// o mês vai escrito NO RÓTULO DO BOTÃO — "Puxar agosto/2026" —, que é onde a
-// mão clica: ninguém puxa um mês achando que puxou outro. Quando o AbaPonto
-// aceitar a competência por prop, o seletor vira um só e vale para as três
-// abas.
+// O mês selecionado é compartilhado entre a faixa e as três abas. Uma leitura
+// já iniciada mantém o período capturado, mesmo se outro mês for consultado.
+// Dia, ano e comparação continuam com os próprios recortes explícitos.
 //
 // A LINHA "Vai puxar o mês de agosto — de 01/08 a 31/08" SAIU (30/08/2026). O
 // dono mandou o print da tela rolada inteira: nenhum dado à vista, só cabeçalho
@@ -72,7 +67,7 @@
 // (`apenas-impressao`) só existe impresso, para a folha dizer de onde veio, de
 // quem e de quando. As regras estão em src/index.css.
 
-import { useCallback, useEffect, useMemo, useState, useRef} from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, ChevronDown, Printer, RefreshCw, Users } from "lucide-react";
 import { salvar, apagar, carregarColecoes } from "../services/dados.js";
@@ -80,14 +75,16 @@ import { estadoDoRelogio, sincronizarPeriodo } from "../services/ponto.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { ymdLocal, dataLonga, MESES_LONGOS } from "../lib/format.js";
 import { PageTitle, Card, Segmented, CarregandoModulo, ErroModulo, Aviso } from "../components/ui.jsx";
-import AbaPonto from "../components/rh/AbaPonto.jsx";
-import Faltas from "../components/ponto/Faltas.jsx";
-import Relatorios from "../components/ponto/Relatorios.jsx";
+
+// Definições estáveis: baixar uma aba não recria o componente nem sua identidade.
+const AbaPonto = lazy(() => import("../components/rh/AbaPonto.jsx"));
+const Faltas = lazy(() => import("../components/ponto/Faltas.jsx"));
+const Relatorios = lazy(() => import("../components/ponto/Relatorios.jsx"));
 
 const ABAS = [
-  { valor: "ponto", rotulo: "Ponto" },
+  { valor: "ponto", rotulo: "Fechamento e ajustes" },
   { valor: "faltas", rotulo: "Faltas" },
-  { valor: "relatorios", rotulo: "Relatórios" },
+  { valor: "relatorios", rotulo: "Visão geral e relatórios" },
 ];
 
 /* ============================================================================
@@ -249,17 +246,22 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
   // antes de o servidor responder.
   const [estado, setEstado] = useState(null);
   const [estadoFalhou, setEstadoFalhou] = useState(null);
+  const [consultandoEstado, setConsultandoEstado] = useState(true);
   const [progresso, setProgresso] = useState(null);
   const [rodando, setRodando] = useState(false);
+  const [competenciaDaRodada, setCompetenciaDaRodada] = useState(null);
   const [resumo, setResumo] = useState(null);
+  useEffect(() => { setResumo(null); }, [competencia]);
 
   const perguntarEstado = useCallback(() => {
-    estadoDoRelogio()
+    setConsultandoEstado(true);
+    return estadoDoRelogio()
       .then((e) => {
         setEstado(e);
         setEstadoFalhou(null);
       })
-      .catch((e) => setEstadoFalhou(e.message));
+      .catch((e) => setEstadoFalhou(e.message))
+      .finally(() => setConsultandoEstado(false));
   }, []);
 
   useEffect(() => {
@@ -270,6 +272,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
     if (rodando) return;
     const de = `${competencia}-01`;
     const ate = fimDoMes(competencia);
+    setCompetenciaDaRodada(competencia);
     setRodando(true);
     setProgresso(null);
     setResumo(null);
@@ -317,10 +320,12 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
     }
   };
 
-  const [ano, mes] = competencia.split("-");
+  // A leitura em andamento mantém seu mês, mesmo se alguém consultar outro.
+  const competenciaExibida = rodando ? competenciaDaRodada : competencia;
+  const [ano, mes] = competenciaExibida.split("-");
   const desligado = estado && estado.ligado === false;
-  const rotulo = rotuloDoMes(competencia);
-  const rotuloCurto = rotuloCurtoDoMes(competencia);
+  const rotulo = rotuloDoMes(competenciaExibida);
+  const rotuloCurto = rotuloCurtoDoMes(competenciaExibida);
 
   /* A FAIXA ENCOLHE DEPOIS DA PRIMEIRA VEZ (pedido do Léo, 30/08/2026: ele
      rolou a tela inteira e não viu um dado sequer — o que ocupava a primeira
@@ -387,7 +392,12 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
             }
           >
             {!aberta && <RefreshCw size={15} strokeWidth={2.5} className="shrink-0 text-brand" />}
-            <span className="min-w-0">{fraseDaLeitura}</span>
+            <span className="min-w-0" role="status">{fraseDaLeitura}</span>
+            {estadoFalhou && (
+              <button type="button" className="btn-ghost" onClick={perguntarEstado} disabled={consultandoEstado}>
+                {consultandoEstado ? "Consultando..." : "Tentar consultar novamente"}
+              </button>
+            )}
             <button
               type="button"
               onClick={alternar}
@@ -427,7 +437,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
               disabled={rodando}
               onChange={(e) => { setResumo(null); setCompetencia(`${e.target.value}-${mes}`); }}
             >
-              {anos.map((a) => (
+              {[...new Set([...anos, Number(ano)])].sort((a, b) => b - a).map((a) => (
                 <option key={a} value={String(a)}>{a}</option>
               ))}
             </select>
@@ -442,15 +452,16 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
               type="button"
               className={aberta ? "btn-primary px-6 py-3 text-base" : "btn-primary"}
               onClick={puxar}
-              disabled={rodando}
-              title={`Busca no Jibble as pessoas e as batidas de ${rotulo}`}
+              disabled={rodando || consultandoEstado || !estado}
+              aria-label={`Sincronizar pessoas e batidas de ${rotulo}`}
+              title={`Sincroniza pessoas e batidas de ${rotulo}`}
             >
               <RefreshCw size={18} strokeWidth={2.5} className={rodando ? "animate-spin" : undefined} />
               {rodando
                 ? progresso?.pessoasLidas > 0
                   ? `Puxando... ${plural(progresso.pessoasLidas, "pessoa", "pessoas")}`
                   : "Puxando..."
-                : `Puxar ${rotuloCurto}`}
+                : `Sincronizar ${rotuloCurto}`}
             </button>
           )}
         </div>
@@ -460,9 +471,8 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
         <div className="mt-3 rounded-xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
           <p className="font-display font-semibold">O relógio ainda não foi ligado neste servidor.</p>
           <p className="mt-1">
-            Faltam os segredos do Jibble (ML_JIBBLE_CLIENT_ID e ML_JIBBLE_CLIENT_SECRET) na Edge Function ml-ponto. Não
-            adianta clicar em puxar: a chamada volta com erro. Enquanto isso o ponto funciona à mão — as batidas e as
-            faltas podem ser lançadas nas abas abaixo.
+            A conexão com o Jibble precisa ser configurada pela administração. Enquanto isso, as batidas e as
+            ausências podem ser lançadas nas abas abaixo.
           </p>
         </div>
       )}
@@ -482,6 +492,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
 
       {resumo && !rodando && (
         <div
+          role="status"
           className={
             resumo.tom === "ok"
               ? "mt-3 rounded-xl border border-ok-200 bg-ok-50 p-3"
@@ -491,14 +502,14 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
           <p className={resumo.tom === "ok" ? "text-sm font-medium text-ok-800" : "text-sm font-medium text-warn-800"}>
             {resumo.frase}
           </p>
-          {resumo.detalhes.length > 0 && (
+          {resumo.detalhes?.length > 0 && (
             <p className="mt-1 text-xs text-slate-600">{resumo.detalhes.join(" · ")}.</p>
           )}
           {/* Parar no teto de janelas em silêncio seria dizer "pronto" para um
               trabalho pela metade. */}
           {resumo.incompleto && (
             <p className="mt-1 text-xs font-medium text-warn-800">
-              Parei no limite de janelas desta rodada — clique em puxar de novo para terminar o mês.
+              A importação ficou incompleta — sincronize novamente para terminar o mês.
             </p>
           )}
         </div>
@@ -506,7 +517,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
 
       {/* AS DIVERGÊNCIAS. O painel APONTA e não mexe: desligar alguém é ato
           trabalhista, tem data e verbas, e quem faz isso é o RH. */}
-      {resumo && !rodando && resumo.divergencias.length > 0 && (
+      {resumo && !rodando && resumo.divergencias?.length > 0 && (
         <div className="mt-3 rounded-xl border border-warn-200 bg-white p-3">
           <p className="flex items-center gap-2 font-display text-sm font-semibold text-warn-800">
             <AlertTriangle size={15} />
@@ -556,6 +567,7 @@ export default function Ponto() {
 
   const [dados, setDados] = useState(null); // { pessoas, ponto, pontoDia }
   const [erro, setErro] = useState(null);
+  const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   /* ABRE NOS RELATÓRIOS (pedido do Léo, 28/08/2026). Quem abre o Ponto quer
      saber COMO ESTÁ — quem chegou no horário, quanto rendeu o mês —, não
@@ -571,10 +583,11 @@ export default function Ponto() {
   const [competencia, setCompetencia] = useState(() => ymdLocal(new Date()).slice(0, 7));
 
   const recarregar = useCallback(() => {
+    setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     // carregarColecoes: uma viagem só, e só baixa o que MUDOU desde a última
     // carga (o rev do servidor decide). Voltar à aba sem novidade custa 0,2s.
-    carregarColecoes(["rh_pessoas", "rh_ponto", "rh_ponto_dia"])
+    return carregarColecoes(["rh_pessoas", "rh_ponto", "rh_ponto_dia"])
       .then((r) => {
         setDados({ pessoas: r.rh_pessoas, ponto: r.rh_ponto, pontoDia: r.rh_ponto_dia });
         setErro(null);
@@ -588,7 +601,8 @@ export default function Ponto() {
           tipo: "erro",
           texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga.",
         });
-      });
+      })
+      .finally(() => setAtualizando(false));
   }, []);
 
   useEffect(() => {
@@ -623,7 +637,7 @@ export default function Ponto() {
      dado gravado. Uma lista fixa envelheceria em silêncio, e uma lista só com o
      que existe travaria a primeira leitura de um ano novo. */
   const anos = useMemo(() => {
-    const set = new Set([Number(hojeISO.slice(0, 4))]);
+    const set = new Set([Number(hojeISO.slice(0, 4)), Number(competencia.slice(0, 4))]);
     for (const d of dados?.pontoDia || []) {
       const a = Number(String(d?.data || "").slice(0, 4));
       if (a) set.add(a);
@@ -633,7 +647,7 @@ export default function Ponto() {
       if (a) set.add(a);
     }
     return [...set].sort((a, b) => b - a);
-  }, [dados, hojeISO]);
+  }, [dados, hojeISO, competencia]);
 
   /* A ÚNICA PORTA DE ESCRITA do módulo: nenhuma aba fala com services/dados.js
      por conta própria. Aviso no SUCESSO e no ERRO, e recarga depois — gravação
@@ -670,6 +684,14 @@ export default function Ponto() {
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
+      {erro && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
+          <span>Não foi possível atualizar os dados. A tela mostra a última carga disponível.</span>
+          <button type="button" className="btn-outline" onClick={recarregar} disabled={atualizando}>
+            {atualizando ? "Atualizando..." : "Tentar atualizar novamente"}
+          </button>
+        </div>
+      )}
       <CabecalhoDoPapel hojeISO={hojeISO} aba={aba} sessao={sessao} />
 
       {/* A DESCRIÇÃO É CURTA DE PROPÓSITO: o que o painel faz ao puxar está no
@@ -677,7 +699,7 @@ export default function Ponto() {
           linhas de explicação empurrando o número para fora da primeira dobra. */}
       <PageTitle
         titulo="Ponto"
-        descricao="O relógio da MinasLab é o Jibble."
+        descricao="Presença, horas e pendências da equipe."
         acao={
           <div className="sem-impressao flex flex-wrap items-center gap-2">
             {/* Imprimir não é escrita: quem só consulta também leva a folha.
@@ -709,12 +731,16 @@ export default function Ponto() {
 
       {/* As abas não cabem na largura do celular. Sem o overflow aqui, a PÁGINA
           INTEIRA passava a rolar de lado. */}
-      <div className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
+      <div role="group" aria-label="Seções do Ponto" className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented opcoes={ABAS} valor={aba} onChange={setAba} />
       </div>
 
+      {/* Só a área da aba espera pelo arquivo; cabeçalho e controles permanecem. */}
+      <Suspense fallback={<CarregandoModulo />}>
       {aba === "ponto" && (
         <AbaPonto
+          competenciaSelecionada={competencia}
+          aoMudarCompetencia={setCompetencia}
           pessoas={dados.pessoas}
           ativos={ativos}
           ponto={dados.ponto}
@@ -730,12 +756,15 @@ export default function Ponto() {
 
       {aba === "faltas" && (
         <Faltas
+          competenciaSelecionada={competencia}
+          aoMudarCompetencia={setCompetencia}
           pessoas={dados.pessoas}
           ativos={ativos}
           pontoDia={dados.pontoDia}
           hojeISO={hojeISO}
           editavel={editavel}
           salvando={salvando}
+          atualizando={atualizando}
           gravar={gravarRegistro}
           apagarReg={apagarRegistro}
           setAviso={setAviso}
@@ -745,6 +774,8 @@ export default function Ponto() {
 
       {aba === "relatorios" && (
         <Relatorios
+          competenciaSelecionada={competencia}
+          aoMudarCompetencia={setCompetencia}
           pessoas={dados.pessoas}
           ativos={ativos}
           ponto={dados.ponto}
@@ -753,6 +784,7 @@ export default function Ponto() {
           setAviso={setAviso}
         />
       )}
+      </Suspense>
     </div>
   );
 }

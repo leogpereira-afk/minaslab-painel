@@ -106,11 +106,11 @@ test("duracaoCampo: 0 volta como 00:00 — zero que some do campo é apagado no 
 test("minutosDoDia: soma o dia descontando a pausa", () => {
   assert.equal(minutosDoDia({ entrada: "08:00", saida: "17:30", pausaMin: 60 }), 510);
   // Pausa em branco não desconta nada — é a única leitura possível.
-  assert.equal(minutosDoDia({ entrada: "08:00", saida: "12:00", pausaMin: "" }), 240);
+  assert.equal(minutosDoDia({ entrada: "08:00", saida: "12:00", pausaMin: "" }), null);
   // Plantão que vira a meia-noite: 22:00 → 06:00 são 8h, não uma volta ao passado.
   assert.equal(minutosDoDia({ entrada: "22:00", saida: "06:00", pausaMin: 0 }), 480);
   // Pausa maior que o intervalo (erro de digitação) não devolve negativo.
-  assert.equal(minutosDoDia({ entrada: "08:00", saida: "12:00", pausaMin: 600 }), 0);
+  assert.equal(minutosDoDia({ entrada: "08:00", saida: "12:00", pausaMin: 600 }), null);
 });
 
 test("minutosDoDia: batida faltando é dia EM ABERTO (null), não dia de zero hora", () => {
@@ -120,12 +120,12 @@ test("minutosDoDia: batida faltando é dia EM ABERTO (null), não dia de zero ho
   assert.equal(minutosEntre("08:00", ""), null);
 });
 
-test("minutosTrabalhados: o que a ponte gravou manda, inclusive o zero de verdade", () => {
-  assert.equal(minutosTrabalhados({ trabalhadoMin: 480, entrada: "08:00", saida: "23:00" }), 480);
+test("minutosTrabalhados: intervalo ausente fica pendente; zero real é preservado", () => {
+  assert.equal(minutosTrabalhados({ trabalhadoMin: 480, entrada: "08:00", saida: "23:00" }), null);
   assert.equal(minutosTrabalhados({ trabalhadoMin: 0, entrada: "08:00", saida: "08:00" }), 0);
   // trabalhadoMin null = dia em aberto na ponte: a conta cai para as batidas,
   // que podem ter sido corrigidas à mão.
-  assert.equal(minutosTrabalhados({ trabalhadoMin: null, entrada: "08:00", saida: "12:00" }), 240);
+  assert.equal(minutosTrabalhados({ trabalhadoMin: null, entrada: "08:00", saida: "12:00" }), null);
   assert.equal(minutosTrabalhados({ trabalhadoMin: null, entrada: "08:00", saida: "" }), null);
 });
 
@@ -155,7 +155,7 @@ test("apuracaoDoRelogio: reconhece o dia pelo DADO, não pelo rótulo de origem"
   // O dia real de 17/08: 10h16 de crachá, 1h04 de pausa, 8h12 para a folha.
   assert.deepEqual(
     apuracaoDoRelogio({ trabalhadoMin: 492, trackedMin: 616, pausaMin: 64, extraMin: 12 }),
-    { extraMin: 12, extraDobroMin: 0 }
+    null
   );
   // Domingo trabalhado: só dobra. A faixa que não veio conta 0 porque o relógio
   // APUROU o dia e disse que ela não existiu.
@@ -565,7 +565,7 @@ test("apurarCompetencia: a MÉDIA mentia na sexta e no sábado — a escala não
   assert.equal(sabado.previstoDerivadoMin, 0);
 });
 
-test("apurarCompetencia: o apurado do relógio MANDA sobre a conta derivada", () => {
+test("apurarCompetencia: total divergente usa intervalo registrado e recalcula composição", () => {
   // O relógio, que respeita a escala de cada um, apurou 12 min de extra e um
   // domingo inteiro em dobra.
   const r = apurarCompetencia(
@@ -578,14 +578,14 @@ test("apurarCompetencia: o apurado do relógio MANDA sobre a conta derivada", ()
   );
   assert.equal(r.extrasMin, 12); // e não o que a conta derivada diria
   assert.equal(r.extrasDobroMin, 240);
-  assert.equal(r.trabalhadoMin, 1212);
-  assert.equal(r.diasDoRelogio, 3);
-  assert.equal(r.diasDerivados, 0);
-  assert.equal(r.fonteExtras, "relogio");
+  assert.equal(r.trabalhadoMin, 1272);
+  assert.equal(r.diasDoRelogio, 2);
+  assert.equal(r.diasDerivados, 1);
+  assert.equal(r.fonteExtras, "misto");
   // Atraso derivado NÃO se afirma sobre dia que o relógio apurou: seria um
   // segundo resultado, com régua diferente, em cima de desconto de folha.
-  assert.equal(r.atrasosMin, null);
-  assert.equal(r.previstoDerivadoMin, null);
+  assert.equal(r.atrasosMin, 0);
+  assert.equal(r.previstoDerivadoMin, 540);
 });
 
 test("apurarCompetencia: mês misto soma cada dia pela sua régua e diz que é misto", () => {

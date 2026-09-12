@@ -1,3 +1,4 @@
+import PeriodoPonto from "./PeriodoPonto.jsx";
 // Ponto → aba RELATÓRIOS. O que sai do ponto em PAPEL e em PLANILHA.
 //
 // Pedido do Leonardo (28/08/2026): "quero relatório ano, mês e dia e comparação
@@ -184,8 +185,8 @@
 //   hojeISO   string    "AAAA-MM-DD" LOCAL (ymdLocal).
 //   setAviso  (aviso|null) => void   { tipo: "ok" | "erro", texto }.
 //
-// A competência (e o dia, e o ano, e os dois períodos) é DESTA ABA: a casca não
-// guarda o mês — ver o comentário longo em pages/Ponto.jsx.
+// O mês acompanha a competência do módulo quando fornecida. Dia, ano e
+// comparação preservam seus recortes próprios, identificados na tela.
 //
 // A configuração global (jornada, divisor, fatores) vem de lerCfg(). Enquanto
 // ela não chega, vale o padrão da casa E A TELA DIZ ISSO: previsto e atraso
@@ -195,13 +196,13 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import {
   AlarmClock, ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff,
-  ChevronDown, CircleAlert, Clock, Download, Minus, Percent, Printer, Settings2, Users,
+  ChevronDown, CircleAlert, Clock, Download, Minus, Percent, Settings2, Users,
 } from "lucide-react";
 import { lerCfg } from "../../services/dados.js";
 import { dataCurta, dataLonga, diasEntre, ymdLocal, MESES, MESES_LONGOS } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import {
-  apurarCompetencia, atrasoDoDia, ausenciaDoDia, cfgDoPonto, competenciaDe,
+  intervaloNaoRegistrado, apurarCompetencia, atrasoDoDia, ausenciaDoDia, cfgDoPonto, competenciaDe,
   descreverJornada, diaDaSemanaISO, diasDoMes, divisorDaJornada, duracaoTexto, ehCompetencia, fimPrevistoDoDia,
   horasDecimais, inicioPrevistoDoDia, minutosPrevistosDoDia, minutosPrevistosDoMes,
   minutosTrabalhados, normaisDoDia, NOMES_DIA_SEMANA, TOLERANCIA_DIA_MIN, TOLERANCIA_MARCACAO_MIN,
@@ -210,7 +211,7 @@ import { Card, Empty, Modal, SectionTitle, Segmented, StatCard } from "../ui.jsx
 /* O PADRÃO DA LISTA DE TRABALHO (components/lista.jsx) — o mesmo desenho da aba
    Vendedores do Painel da Impresilk, que o dono mandou em 28/08/2026. Nada é
    redesenhado aqui: cópia do desenho em cada tela é como o padrão apodrece. */
-import { Explicacao, LinhaRanking, Pilulas, Secao } from "../lista.jsx";
+import { Explicacao, LinhaRanking, Secao } from "../lista.jsx";
 
 // ============================================================================
 // PALAVRAS E NÚMEROS — o vocabulário que as quatro visões dividem
@@ -235,13 +236,6 @@ const QUADROS = [
   { valor: "todos", rotulo: "Todos" },
   { valor: "desligados", rotulo: "Desligados" },
 ];
-
-/**
- * AS DOZE PÍLULAS DE MÊS. Rótulo curto ("jan", "fev") porque são doze numa
- * linha só: com o nome inteiro elas quebram em três fileiras e deixam de ser
- * uma régua para virar um parágrafo de botões.
- */
-const PILULAS_MES = MESES.map((m, i) => ({ valor: String(i + 1).padStart(2, "0"), rotulo: m }));
 
 /** A escolha do recorte FICA GUARDADA, como nas outras telas da casa. */
 const K_PREFS = "minaslab.ponto.relatorios";
@@ -710,7 +704,7 @@ const MEDIDAS = [
     sentido: "neutro",
     valor: (a) => a.folhaMin,
     ajuda:
-      "O que o relógio apurou para a folha (payrollHours), somado — E ELE JÁ INCLUI AS HORAS EXTRAS. Dia em aberto não entra. Para comparar com o previsto da escala, use Horas normais.",
+      "O que o relógio apurou para a folha, somado — E ELE JÁ INCLUI AS HORAS EXTRAS. Dia em aberto não entra. Para comparar com o previsto da escala, use Horas normais.",
   },
   {
     chave: "normais",
@@ -1114,7 +1108,7 @@ function Fechamentos({ linhas }) {
       {semLancamento > 0 && (
         <span className="chip">{plural(semLancamento, "sem lançamento", "sem lançamento")}</span>
       )}
-      <span>Conferir e fechar é na aba Ponto do RH — esta aqui só lê.</span>
+      <span>Conferir e fechar é no módulo Ponto, visão Fechamento — este relatório só lê.</span>
     </p>
   );
 }
@@ -1222,7 +1216,7 @@ function Pendencias({ indice }) {
       {semData > 0 && (
         <span className="chip-warn">{plural(semData, "dia com data ilegível", "dias com data ilegível")}</span>
       )}
-      {orfaos.length > 0 && <span>Vincule na aba “Pessoas do relógio” para eles entrarem.</span>}
+      {orfaos.length > 0 && <span>Use “Sincronizar” no topo. Se a pendência persistir, confira a ficha da pessoa no RH.</span>}
     </p>
   );
 }
@@ -1271,6 +1265,7 @@ function minutosComSinal(min) {
 function situacaoDoDia({ dia, ausencia, emAberto, previstoMin }) {
   if (emAberto) return { situacao: "em aberto (entrou e não saiu)", chip: "chip-warn" };
   if (ausencia) return { situacao: ausencia.rotulo, chip: ausencia.chip };
+  if (intervaloNaoRegistrado(dia)) return { situacao: "intervalo não registrado", chip: "chip-warn" };
   /* TRABALHOU NUM DIA QUE A ESCALA NÃO PREVÊ (decisão 13). "Presente" seco
      escondia justamente o dia que precisa de olho: ali a hora normal é 0 e a
      folha inteira é excedente — e descanso e feriado se pagam em DOBRO, faixa
@@ -1484,7 +1479,7 @@ function LinhaDoTempoDoDia({ dia, inicioPrevisto, fimPrevisto, p, emAberto }) {
  * conserto feito de um lado só, e aí a mesma hora tem duas explicações.
  */
 const AJUDA_FOLHA =
-  "A FOLHA JÁ INCLUI AS EXTRAS: folha = normais + extra 50% + extra 100%. É o payrollHours do relógio. Não some a folha com as extras ao lado — seria pagar a mesma hora duas vezes.";
+  "A FOLHA JÁ INCLUI AS EXTRAS: folha = normais + extra 50% + extra 100%. É o total apurado pelo relógio. Não some a folha com as extras ao lado — seria pagar a mesma hora duas vezes.";
 const AJUDA_NORMAIS =
   "A hora comum: a folha MENOS as extras. É esta que se compara com o previsto da escala — a folha traz a extra dentro e infla o cumprimento da jornada.";
 
@@ -1585,7 +1580,10 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
      conta por conta própria, o mês diria uma coisa e a linha outra no primeiro
      conserto feito de um lado só. */
   const composicao = d ? normaisDoDia(d, jornada) : null;
-  const emAberto = !!d && min === null;
+  const emAberto = !!d && (
+    d.emAberto === true ||
+    (min === null && !(txt(d.entrada) && txt(d.saida)) && !(ausencia?.conhecido && !txt(d.entrada) && !txt(d.saida)))
+  );
   const previstoDia = minutosPrevistosDoDia(diaFoco, jornada);
   const semJornadaDia = previstoDia === 0;
   const inicioPrev = inicioPrevistoDoDia(diaFoco, jornada);
@@ -1680,7 +1678,7 @@ function PessoaDetalhe({ pessoa, diaFoco, grupo, jornada, aoFechar, aoEscolherDi
           {ausencia?.motivo && <span>{ausencia.motivo}</span>}
           {ausencia?.documento && <span>· documento: {ausencia.documento}</span>}
           {d?.origem === "manual" && <span className="chip">lançado à mão</span>}
-          {d?.corrigido === true && <span className="chip">corrigido depois da importação</span>}
+          {d?.corrigido === true && d?.origem === "jibble" && <span className="chip">corrigido depois da importação</span>}
         </p>
       </div>
 
@@ -1901,7 +1899,7 @@ const COLUNAS_MES = [
     rotulo: "Horas da folha",
     tipo: "horas",
     valor: (l) => l.ag.folhaMin,
-    ajuda: "O payrollHours do relógio, somado — e ele JÁ INCLUI as extras (normais +50% +100%).",
+    ajuda: "O total da folha apurado pelo relógio, somado — e ele JÁ INCLUI as extras (normais +50% +100%).",
   },
   {
     chave: "extra",
@@ -1965,12 +1963,13 @@ const COLUNAS_MES = [
 
 // ============================================================================
 
-export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, setAviso }) {
+function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAviso, competenciaSelecionada, aoMudarCompetencia }) {
   /* Nasce da preferência guardada (padrão: mês). Lê o localStorage direto
      porque `prefs` só é declarado mais abaixo — e o inicializador roda uma vez
      só, no primeiro render. */
   const [visao, setVisao] = useState(() => lerPrefs().visao);
   const [filtroPessoa, setFiltroPessoa] = useState(TODAS);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   /* O QUADRO ESCOLHIDO vale para as quatro visões e FICA GUARDADO. Quem abre a
      tela toda manhã para olhar a equipe não pode reencontrar as treze
@@ -1989,7 +1988,10 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   // Cada visão tem o SEU recorte, e ele não se mistura: trocar de aba e voltar
   // devolve o dia que a pessoa estava olhando.
   const [dia, setDia] = useState(hojeISO);
-  const [competencia, setCompetencia] = useState(() => competenciaDe(hojeISO));
+  const [competenciaLocal, setCompetenciaLocal] = useState(() => competenciaDe(hojeISO));
+  // Dentro do módulo, relatório, faltas e sincronização usam o mesmo mês.
+  const competencia = competenciaSelecionada ?? competenciaLocal;
+  const setCompetencia = aoMudarCompetencia ?? setCompetenciaLocal;
   const [ano, setAno] = useState(() => String(hojeISO).slice(0, 4));
   const [medidaAno, setMedidaAno] = useState("horas");
   const [medidaComp, setMedidaComp] = useState("horas");
@@ -2082,7 +2084,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
   });
 
   const anosDisponiveis = useMemo(() => {
-    const set = new Set([Number(String(hojeISO).slice(0, 4))]);
+    const set = new Set([Number(String(hojeISO).slice(0, 4)), Number(competencia.slice(0, 4))]);
     for (const d of pontoDia || []) {
       const a = Number(String(d.data || "").slice(0, 4));
       if (a) set.add(a);
@@ -2092,7 +2094,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       if (a) set.add(a);
     }
     return [...set].filter(Boolean).sort((a, b) => b - a);
-  }, [pontoDia, ponto, hojeISO]);
+  }, [pontoDia, ponto, hojeISO, competencia]);
 
   // ==========================================================================
   // ABRIR A PESSOA, E NAVEGAR ENTRE AS VISÕES
@@ -2179,7 +2181,10 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       const composicao = d ? normaisDoDia(d, cfg.jornada) : null;
       const ausencia = d ? ausenciaDoDia(d) : null;
       const p = d ? atrasoDoDia(d, cfg.jornada) : null;
-      const emAberto = !!d && min === null;
+      const emAberto = !!d && (
+        d.emAberto === true ||
+        (min === null && !(txt(d.entrada) && txt(d.saida)) && !(ausencia?.conhecido && !txt(d.entrada) && !txt(d.saida)))
+      );
       const temEntrada = !!txt(d?.entrada);
 
       // A situação em uma palavra sai de `situacaoDoDia`, lá em cima: é a MESMA
@@ -2701,17 +2706,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
     }
   };
 
-  /* ==========================================================================
-     AS PÍLULAS DO RECORTE.
-     --------------------------------------------------------------------------
-     PÍLULA É PARA O RECORTE (que mês, que ano); o Segmented lá em cima é para a
-     VISÃO (Dia, Mês, Ano, Comparar). Misturar os dois formatos faria a pessoa
-     não saber mais o que muda o quê — e trocar de visão achando que trocou de
-     mês é como se olha o número errado sem perceber.
-     Os anos sobem da esquerda para a direita, como no painel da Impresilk: a
-     linha do tempo se lê para a frente, e o ano corrente fica na ponta.
-     ========================================================================== */
-  const pilulasDeAno = useMemo(
+  // As opções vêm do ano corrente, do mês escolhido e dos registros existentes.
+  const opcoesDeAno = useMemo(
     () => [...anosDisponiveis].sort((a, b) => a - b).map((a) => ({ valor: String(a), rotulo: String(a) })),
     [anosDisponiveis]
   );
@@ -2758,210 +2754,73 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
 
   return (
     <>
-      <Card className="mb-4">
-        {/* O TÍTULO E O SUB NA MESMA LINHA (o SectionTitle da casa os empilha).
-            Duas linhas de cabeçalho antes do primeiro número, numa tela cuja
-            queixa era "rolei tudo e não vi um dado", é uma linha a mais do que
-            a tela pode pagar. O sub continua escrito — só menor e ao lado. */}
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <h2 className="font-display text-lg font-semibold text-slate-900">Relatórios do ponto</h2>
-            <p className="min-w-0 text-xs text-slate-500">
-              o mesmo dado das outras abas, somado por dia, mês, ano e entre períodos · esta aba não grava nada
-            </p>
+      <Card className="ponto-filtros mb-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold text-slate-900">
+              {visao === "mes" ? rotuloCompetencia(competencia) : visao === "ano" ? `Resumo de ${ano}` : visao === "dia" ? `Dia ${dataLonga(dia)}` : "Comparar períodos"}
+            </h2>
+            <p className="text-xs text-slate-500">Confira a equipe e toque em um nome para ver os detalhes.</p>
           </div>
-          <div className="sem-impressao flex flex-wrap items-center gap-2">
-            {/* O PDF É A IMPRESSÃO: no destino da impressão, "Salvar como PDF".
-                Não há segunda geração de documento — se houvesse, a folha e a
-                tela discordariam no dia em que uma das duas mudasse. */}
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => window.print()}
-              title="Imprime esta tela; no destino da impressão escolha Salvar como PDF"
-            >
-              <Printer size={16} strokeWidth={2.5} /> Baixar PDF
-            </button>
-            <button type="button" className="btn-outline" onClick={baixar}>
-              <Download size={16} strokeWidth={2.5} /> Baixar planilha
+          <div className="sem-impressao flex max-w-full flex-wrap items-center gap-2">
+            <button type="button" className="btn-outline" onClick={baixar}><Download size={16} /> Planilha</button>
+            <button type="button" className={filtrosAbertos ? "btn-primary" : "btn-outline"} aria-expanded={filtrosAbertos} aria-controls="filtros-relatorio-ponto" onClick={() => setFiltrosAbertos(!filtrosAbertos)}>
+              <Settings2 size={16} /> Filtros{pessoaEscolhida ? " · 1 pessoa" : ""}
             </button>
           </div>
         </div>
 
-        <div className="sem-impressao mb-3 flex max-w-full flex-wrap items-center gap-3 overflow-x-auto pb-1">
-          <Segmented opcoes={VISOES} valor={visao} onChange={escolherVisao} />
-          {/* O QUADRO VALE PARA AS QUATRO VISÕES, e por isso ele fica aqui em
-              cima, ao lado delas — e não escondido entre os campos de data de
-              uma visão só. Sete pessoas no quadro contra treze desligadas: sem
-              este botão, toda lista da tela sai com o triplo de linhas do que a
-              pergunta pedia. */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Quadro</span>
-            <Segmented opcoes={QUADROS} valor={quadro} onChange={(v) => trocarQuadro(v)} />
-          </div>
-        </div>
-
-        {/* OS CONTROLES DO RECORTE. Todos em `sem-impressao`: no papel um
-            seletor sairia como se fosse um rótulo afirmando um mês. Quem diz o
-            recorte na folha é o bloco RecorteImpresso. */}
-        <div className="sem-impressao space-y-3">
-          {/* O MÊS E O ANO EM PÍLULAS — o recorte inteiro à vista, sem abrir
-              lista nenhuma. Doze meses cabem numa fileira; os anos são os que
-              têm dia importado (ou lançamento), nunca uma faixa inventada. */}
+        <div className="ponto-controles sem-impressao flex min-w-0 flex-wrap items-center gap-3">
+          <div role="group" aria-label="Período dos relatórios"><Segmented opcoes={VISOES} valor={visao} onChange={escolherVisao} /></div>
           {visao === "mes" && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="label mb-0 w-9 shrink-0">Mês</span>
-                <Pilulas
-                  opcoes={PILULAS_MES}
-                  valor={competencia.split("-")[1] || ""}
-                  aoEscolher={(v) => setCompetencia(`${competencia.split("-")[0]}-${v}`)}
-                />
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2" role="group" aria-label="Mês e ano dos relatórios">
+              <div className="min-w-0 flex-1"><label className="sr-only" htmlFor="rel-mes">Mês do relatório</label>
+                <select id="rel-mes" className="select" value={competencia.split("-")[1]} onChange={e => setCompetencia(`${competencia.split("-")[0]}-${e.target.value}`)}>
+                  {MESES_LONGOS.map((m, i) => <option key={m} value={String(i+1).padStart(2,"0")}>{m}</option>)}
+                </select>
               </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="label mb-0 w-9 shrink-0">Ano</span>
-                <Pilulas
-                  opcoes={pilulasDeAno}
-                  valor={competencia.split("-")[0] || ""}
-                  aoEscolher={(v) => setCompetencia(`${v}-${competencia.split("-")[1]}`)}
-                />
+              <div className="w-28"><label className="sr-only" htmlFor="rel-ano-mes">Ano do relatório mensal</label>
+                <select id="rel-ano-mes" className="select" value={competencia.split("-")[0]} onChange={e => setCompetencia(`${e.target.value}-${competencia.split("-")[1]}`)}>
+                  {opcoesDeAno.map(a => <option key={a.valor} value={a.valor}>{a.rotulo}</option>)}
+                </select>
               </div>
             </div>
           )}
+          {visao === "ano" && <div className="w-32"><label className="sr-only" htmlFor="rel-ano">Ano do relatório</label><select id="rel-ano" className="select" value={ano} onChange={e => setAno(e.target.value)}>{opcoesDeAno.map(a => <option key={a.valor} value={a.valor}>{a.rotulo}</option>)}</select></div>}
+          {visao === "dia" && <div className="max-w-full"><label className="sr-only" htmlFor="rel-dia">Dia do relatório</label><input id="rel-dia" type="date" className="input w-44" value={dia} onChange={e => setDia(e.target.value)} /></div>}
+        </div>
 
-          {visao === "ano" && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="label mb-0 w-9 shrink-0">Ano</span>
-              <Pilulas opcoes={pilulasDeAno} valor={ano} aoEscolher={(v) => setAno(String(v))} />
-            </div>
-          )}
+        {visao === "comparar" && (
+          <div className="sem-impressao mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[['aDe','Período anterior — de'],['aAte','Período anterior — até'],['bDe','Período novo — de'],['bAte','Período novo — até']].map(([chave,rotulo]) => <div key={chave} className="min-w-0"><label className="label" htmlFor={`rel-periodo-${chave}`}>{rotulo}</label><input id={`rel-periodo-${chave}`} type="date" className="input" value={periodos[chave]} onChange={e => setPeriodos(p => ({...p,[chave]:e.target.value}))}/></div>)}
+          </div>
+        )}
 
-          <div className="flex flex-wrap items-end gap-3">
-            {visao === "dia" && (
-              <div>
-                <label className="label" htmlFor="rel-dia">Dia</label>
-                <input
-                  id="rel-dia"
-                  type="date"
-                  className="input w-44"
-                  value={dia}
-                  onChange={(e) => setDia(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* O NÚMERO DA LISTA — e ele NÃO vira pílula. Pílula é o recorte
-                (que mês, que ano); isto é a régua do número. Dois formatos para
-                duas naturezas diferentes é o que deixa claro o que muda o quê. */}
-            {visao === "mes" && (
-              <div>
-                <label className="label" htmlFor="rel-medida-mes">Número na tabela</label>
-                <select
-                  id="rel-medida-mes"
-                  className="select w-56"
-                  value={medidaMes}
-                  onChange={(e) => salvar({ medidaMes: e.target.value })}
-                >
-                  {MEDIDAS.map((m) => (
-                    <option key={m.chave} value={m.chave}>{m.rotulo}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {visao === "ano" && (
-              <div>
-                <label className="label" htmlFor="rel-medida-ano">Número na tabela</label>
-                <select
-                  id="rel-medida-ano"
-                  className="select w-56"
-                  value={medidaAno}
-                  onChange={(e) => setMedidaAno(e.target.value)}
-                >
-                  {MEDIDAS.map((m) => (
-                    <option key={m.chave} value={m.chave}>{m.rotulo}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {visao === "comparar" && (
-              <>
-              <div>
-                <label className="label" htmlFor="rel-a-de">Período anterior — de</label>
-                <input
-                  id="rel-a-de"
-                  type="date"
-                  className="input w-44"
-                  value={periodos.aDe}
-                  onChange={(e) => setPeriodos((p) => ({ ...p, aDe: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="rel-a-ate">até</label>
-                <input
-                  id="rel-a-ate"
-                  type="date"
-                  className="input w-44"
-                  value={periodos.aAte}
-                  onChange={(e) => setPeriodos((p) => ({ ...p, aAte: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="rel-b-de">Período novo — de</label>
-                <input
-                  id="rel-b-de"
-                  type="date"
-                  className="input w-44"
-                  value={periodos.bDe}
-                  onChange={(e) => setPeriodos((p) => ({ ...p, bDe: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="rel-b-ate">até</label>
-                <input
-                  id="rel-b-ate"
-                  type="date"
-                  className="input w-44"
-                  value={periodos.bAte}
-                  onChange={(e) => setPeriodos((p) => ({ ...p, bAte: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="rel-medida-comp">Número comparado</label>
-                <select
-                  id="rel-medida-comp"
-                  className="select w-56"
-                  value={medidaComp}
-                  onChange={(e) => setMedidaComp(e.target.value)}
-                >
-                  {MEDIDAS.map((m) => (
-                    <option key={m.chave} value={m.chave}>{m.rotulo}</option>
-                  ))}
-                </select>
-              </div>
-              </>
-            )}
-
-            <div className="ml-auto">
+        <div className="sem-impressao mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div role="group" aria-label="Quadro dos relatórios"><Segmented opcoes={QUADROS} valor={quadro} onChange={trocarQuadro} /></div>
+          <p className="min-w-0 break-words text-xs text-slate-600">
+            {pessoaEscolhida ? pessoaEscolhida.nome : "Todas as pessoas do quadro"}
+            {visao !== "dia" && <> · <strong className="font-medium">{medidaDe(visao === "mes" ? medidaMes : visao === "ano" ? medidaAno : medidaComp).rotulo}</strong></>}
+          </p>
+        </div>
+        {filtrosAbertos && (
+          <div id="filtros-relatorio-ponto" className="sem-impressao mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+            <div className="min-w-0">
               <label className="label" htmlFor="rel-pessoa">Pessoa</label>
-              <select
-                id="rel-pessoa"
-                className="select w-60"
-                value={valorDoFiltroPessoa}
-                onChange={(e) => setFiltroPessoa(e.target.value)}
-              >
-                {/* "Todas" é todas AS DESTE RECORTE, e a palavra diz qual: um
-                    seletor escrito "todas as pessoas" sobre uma lista de sete
-                    onde a casa tem vinte é uma promessa que a tabela não cumpre. */}
+              <select id="rel-pessoa" className="select" value={valorDoFiltroPessoa} onChange={e => setFiltroPessoa(e.target.value)}>
                 <option value={TODAS}>Todas as pessoas ({pessoasDoFiltro.length})</option>
-                {pessoasDoFiltro.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nome}</option>
-                ))}
+                {pessoasDoFiltro.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
+            {visao !== "dia" && <div className="min-w-0">
+              <label className="label" htmlFor="rel-medida">O que mostrar na lista</label>
+              <select id="rel-medida" className="select" value={visao === "mes" ? medidaMes : visao === "ano" ? medidaAno : medidaComp} onChange={e => visao === "mes" ? salvar({medidaMes:e.target.value}) : visao === "ano" ? setMedidaAno(e.target.value) : setMedidaComp(e.target.value)}>
+                {MEDIDAS.map(m => <option key={m.chave} value={m.chave}>{m.rotulo}</option>)}
+              </select>
+            </div>}
+            {pessoaEscolhida && <button type="button" className="btn-ghost justify-self-start" onClick={() => setFiltroPessoa(TODAS)}>Mostrar todas as pessoas</button>}
           </div>
-        </div>
+        )}
 
         {/* A RÉGUA EM UMA LINHA (30/08/2026). Eram quatro linhas de texto —
             escala, tolerância da CLT em parágrafo e o carimbo do relógio por
@@ -3075,8 +2934,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
           <Empty>
             {semNinguemNaCasa ? (
               <>
-                Não há ninguém no quadro nem dia importado. Cadastre as pessoas no RH e traga as batidas na aba
-                “Pessoas do relógio”.
+                Não há ninguém no quadro nem dia importado. Use “Sincronizar” no topo para trazer pessoas e
+                batidas do período. Se alguém continuar ausente, confira a ficha no RH.
               </>
             ) : (
               <>
@@ -3325,107 +3184,15 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
               ================================================================ */}
           {visao === "mes" && (
             <>
-              <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                {/* O CARTÃO QUE MUDOU DE NÚMERO (decisão 12). Ele mostrava a
-                    FOLHA com o previsto embaixo, e esse par não se compara: a
-                    folha tem a extra dentro, e a extra tapava justamente o
-                    déficit que o previsto deveria denunciar (a VICTORIA de
-                    janeiro: 163h normais contra 193h previstas, lidas como
-                    177h30). Agora o número forte é a HORA COMUM, o previsto
-                    continua embaixo — agora comparável — e a folha vai ao lado,
-                    dita como total. */}
-                <StatCard
-                  rotulo="Horas normais"
-                  valor={horasOuNada(vmMes.totais.porColuna.normais)}
-                  tom="brand"
-                  sub={`previsto na escala: ${horasOuNada(vmMes.previstoMin)} por pessoa · folha (com extras): ${horasOuNada(
-                    vmMes.totais.porColuna.horas
-                  )}`}
-                  icone={Clock}
-                />
-                <StatCard
-                  rotulo="Horas extras"
-                  valor={horasOuSemApuracao(somaOuNulo([vmMes.totais.porColuna.extra, vmMes.totais.porColuna.extraDobro]))}
-                  tom="neutral"
-                  sub={`+50%: ${horasOuSemApuracao(vmMes.totais.porColuna.extra)} · +100%: ${horasOuSemApuracao(
-                    vmMes.totais.porColuna.extraDobro
-                  )} · já contadas dentro da folha`}
-                  icone={AlarmClock}
-                />
-                <StatCard
-                  rotulo="Faltas que descontam"
-                  valor={vmMes.totais.porColuna.faltas === null ? SEM : String(vmMes.totais.porColuna.faltas)}
-                  tom={
-                    vmMes.totais.porColuna.faltas === null ? "neutral" : vmMes.totais.porColuna.faltas > 0 ? "bad" : "ok"
-                  }
-                  sub={
-                    vmMes.totais.porColuna.abonadas === null
-                      ? "ninguém com dia apurado neste mês"
-                      : vmMes.totais.porColuna.abonadas > 0
-                        ? `${plural(vmMes.totais.porColuna.abonadas, "ausência justificada", "ausências justificadas")}`
-                        : "nenhuma ausência justificada lançada"
-                  }
-                  icone={CalendarOff}
-                />
-                <StatCard
-                  rotulo="Pontualidade média"
-                  // NUNCA 0%: sem dia medido é "sem registro", que é o oposto de
-                  // "nunca chega no horário".
-                  valor={
-                    vmMes.totais.porColuna.pontualidade === null
-                      ? SEM
-                      : `${Math.round(vmMes.totais.porColuna.pontualidade)}%`
-                  }
-                  tom={
-                    vmMes.totais.porColuna.pontualidade === null
-                      ? "neutral"
-                      : vmMes.totais.porColuna.pontualidade >= 90
-                        ? "ok"
-                        : vmMes.totais.porColuna.pontualidade >= 70
-                          ? "warn"
-                          : "bad"
-                  }
-                  sub={
-                    vmMes.totais.diasMedidos === 0
-                      ? "nenhum dia medido neste mês"
-                      : `${vmMes.totais.diasPontuais} de ${vmMes.totais.diasMedidos} dias medidos`
-                  }
-                  icone={Percent}
-                />
-              </div>
-
-              {/* A CASCATA ESCRITA, embaixo dos cartões que ela explica. Não
-                  recolhe e não é `Explicacao`: é a régua dos dois primeiros
-                  cartões, e sem ela o par "normais / horas extras" volta a ser
-                  somado por quem lê depressa. */}
-              <p className="mb-4 text-xs text-slate-500">
-                <strong>Horas normais</strong> é a hora comum, e é ela que se compara com o previsto da escala.{" "}
-                <strong>Horas da folha</strong> (o <em>payrollHours</em> do relógio) é o total do pagamento e{" "}
-                <strong>já inclui as extras</strong> — folha = normais + 50% + 100%. Somar a folha com as extras ao lado
-                pagaria a mesma hora duas vezes.{" "}
-                {/* O PREVISTO SAI POR PESSOA, NUNCA MULTIPLICADO PELO GRUPO.
-                    Quem foi admitido no dia 12, quem saiu no dia 20 e quem
-                    esteve de férias não devem o mês inteiro — um "previsto do
-                    grupo" seria um denominador inventado, e o número que ele
-                    produziria (um déficit coletivo) é exatamente o tipo de
-                    total que ninguém consegue conferir. A comparação honesta é
-                    linha a linha, no painel de cada pessoa. */}
-                O previsto é <strong>por pessoa</strong> ({horasOuNada(vmMes.previstoMin)} neste mês): quem entrou,
-                saiu ou esteve de férias no meio do mês não deve o mês inteiro, então a comparação se faz pessoa a
-                pessoa — toque num nome para ver a dela.
-              </p>
-
-              {/* A SEÇÃO RECOLHÍVEL, no padrão do print: título grande, e
-                  embaixo o TAMANHO DO RECORTE — porque a primeira dúvida diante
-                  de um ranking é "isso aqui é tudo?". Aberta ou fechada fica
-                  guardada no aparelho. */}
+              <div className="ponto-mes-layout">
+                <div className="ponto-mes-lista min-w-0">
               <Secao
                 titulo={`Mês de ${rotuloCompetencia(competencia)}`}
                 sub={tamanhoDoRecorte(vmMes.linhas.length, quadro, "neste mês", pessoaEscolhida)}
                 aberta={prefs.rankMes}
                 aoAlternar={() => salvar({ rankMes: !prefs.rankMes })}
               >
-                <Explicacao>
+                <Explicacao titulo="Como ler este relatório">
                   Os números vêm <strong>direto do relógio Jibble</strong>, já apurados pela escala da casa (atraso com
                   a tolerância da CLT aplicada). O valor da direita e a barra medem sempre{" "}
                   <strong>{rankingMes.medida.rotulo.toLowerCase()}</strong>
@@ -3436,12 +3203,16 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                   <strong>Toque numa pessoa para ver o dia a dia dela.</strong>
                 </Explicacao>
                 <Pendencias indice={indice} />
-                {vmMes.totais.emAberto > 0 && (
+                {(vmMes.totais.emAberto > 0 || vmMes.totais.estranhas > 0) && (
                   <p className="text-xs text-slate-500">
-                    <span className="chip-warn">
-                      {plural(vmMes.totais.emAberto, "dia em aberto", "dias em aberto")}
-                    </span>{" "}
-                    ficam fora de toda soma — dia que não terminou não tem total.
+                    {vmMes.totais.emAberto > 0 && (
+                      <>
+                        <span className="chip-warn">
+                          {plural(vmMes.totais.emAberto, "dia em aberto", "dias em aberto")}
+                        </span>{" "}
+                        ficam fora de toda soma — dia que não terminou não tem total.
+                      </>
+                    )}
                     {vmMes.totais.estranhas > 0 &&
                       ` E há ${plural(vmMes.totais.estranhas, "ausência de tipo desconhecido", "ausências de tipo desconhecido")}: confira na aba Faltas.`}
                   </p>
@@ -3473,6 +3244,108 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                 )}
                 <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmMes.foraDoQuadro} semPonto={vmMes.semPonto} />
               </Secao>
+              {/* Os KPIs mantêm o aviso sobre extras; o detalhe fica disponível sob demanda. */}
+              <details className="explicacao-recolhivel mb-4 text-xs text-slate-500">
+                <summary className="cursor-pointer py-2 font-medium">Como as horas são calculadas</summary>
+                <p className="mt-2">
+                <strong>Horas normais</strong> é a hora comum, e é ela que se compara com o previsto da escala.{" "}
+                <strong>Horas da folha</strong> é o total considerado pelo painel, descontando somente o intervalo registrado e{" "}
+                <strong>já inclui as extras</strong> — folha = normais + 50% + 100%. Somar a folha com as extras ao lado
+                pagaria a mesma hora duas vezes.{" "}
+                {/* O PREVISTO SAI POR PESSOA, NUNCA MULTIPLICADO PELO GRUPO.
+                    Quem foi admitido no dia 12, quem saiu no dia 20 e quem
+                    esteve de férias não devem o mês inteiro — um "previsto do
+                    grupo" seria um denominador inventado, e o número que ele
+                    produziria (um déficit coletivo) é exatamente o tipo de
+                    total que ninguém consegue conferir. A comparação honesta é
+                    linha a linha, no painel de cada pessoa. */}
+                O previsto é <strong>por pessoa</strong> ({horasOuNada(vmMes.previstoMin)} neste mês): quem entrou,
+                saiu ou esteve de férias no meio do mês não deve o mês inteiro, então a comparação se faz pessoa a
+                pessoa — toque num nome para ver a dela.
+                </p>
+              </details>
+
+              {/* A SEÇÃO RECOLHÍVEL, no padrão do print: título grande, e
+                  embaixo o TAMANHO DO RECORTE — porque a primeira dúvida diante
+                  de um ranking é "isso aqui é tudo?". Aberta ou fechada fica
+                  guardada no aparelho. */}
+                </div>
+              <div className="ponto-resumo grid grid-cols-2 gap-3" role="group" aria-label="Resumo do mês">
+                {/* O CARTÃO QUE MUDOU DE NÚMERO (decisão 12). Ele mostrava a
+                    FOLHA com o previsto embaixo, e esse par não se compara: a
+                    folha tem a extra dentro, e a extra tapava justamente o
+                    déficit que o previsto deveria denunciar (a VICTORIA de
+                    janeiro: 163h normais contra 193h previstas, lidas como
+                    177h30). Agora o número forte é a HORA COMUM, o previsto
+                    continua embaixo — agora comparável — e a folha vai ao lado,
+                    dita como total. */}
+                <StatCard
+                  rotulo="Horas normais"
+                  onClick={() => salvar({ medidaMes: "normais" })}
+                  ativo={medidaMes === "normais"}
+                  valor={horasOuNada(vmMes.totais.porColuna.normais)}
+                  tom="brand"
+                  sub={`previsto na escala: ${horasOuNada(vmMes.previstoMin)} por pessoa · folha (com extras): ${horasOuNada(
+                    vmMes.totais.porColuna.horas
+                  )}`}
+                  icone={Clock}
+                />
+                <StatCard
+                  rotulo="Horas extras"
+                  valor={horasOuSemApuracao(somaOuNulo([vmMes.totais.porColuna.extra, vmMes.totais.porColuna.extraDobro]))}
+                  tom="neutral"
+                  sub={`+50%: ${horasOuSemApuracao(vmMes.totais.porColuna.extra)} · +100%: ${horasOuSemApuracao(
+                    vmMes.totais.porColuna.extraDobro
+                  )} · já contadas dentro da folha`}
+                  icone={AlarmClock}
+                />
+                <StatCard
+                  rotulo="Faltas que descontam"
+                  onClick={() => salvar({ medidaMes: "faltas" })}
+                  ativo={medidaMes === "faltas"}
+                  valor={vmMes.totais.porColuna.faltas === null ? SEM : String(vmMes.totais.porColuna.faltas)}
+                  tom={
+                    vmMes.totais.porColuna.faltas === null ? "neutral" : vmMes.totais.porColuna.faltas > 0 ? "bad" : "ok"
+                  }
+                  sub={
+                    vmMes.totais.porColuna.abonadas === null
+                      ? "ninguém com dia apurado neste mês"
+                      : vmMes.totais.porColuna.abonadas > 0
+                        ? `${plural(vmMes.totais.porColuna.abonadas, "ausência justificada", "ausências justificadas")}`
+                        : "nenhuma ausência justificada lançada"
+                  }
+                  icone={CalendarOff}
+                />
+                <StatCard
+                  rotulo="Pontualidade média"
+                  onClick={() => salvar({ medidaMes: "pontualidade" })}
+                  ativo={medidaMes === "pontualidade"}
+                  // NUNCA 0%: sem dia medido é "sem registro", que é o oposto de
+                  // "nunca chega no horário".
+                  valor={
+                    vmMes.totais.porColuna.pontualidade === null
+                      ? SEM
+                      : `${Math.round(vmMes.totais.porColuna.pontualidade)}%`
+                  }
+                  tom={
+                    vmMes.totais.porColuna.pontualidade === null
+                      ? "neutral"
+                      : vmMes.totais.porColuna.pontualidade >= 90
+                        ? "ok"
+                        : vmMes.totais.porColuna.pontualidade >= 70
+                          ? "warn"
+                          : "bad"
+                  }
+                  sub={
+                    vmMes.totais.diasMedidos === 0
+                      ? "nenhum dia medido neste mês"
+                      : `${vmMes.totais.diasPontuais} de ${vmMes.totais.diasMedidos} dias medidos`
+                  }
+                  icone={Percent}
+                />
+              </div>
+
+              </div>
             </>
           )}
 
@@ -3491,7 +3364,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
               aberta={prefs.rankAno}
               aoAlternar={() => salvar({ rankAno: !prefs.rankAno })}
             >
-              <Explicacao>
+              <Explicacao titulo="Como ler este relatório">
                 O mesmo dado do <strong>relógio Jibble</strong>, já apurado pela escala da casa, somado o ano inteiro —
                 pontualidade não soma: é a razão dos dias juntados.{" "}
                 <strong>Toque numa pessoa para ver o dia a dia dela.</strong> A tendência mês a mês está na tabela logo
@@ -3622,6 +3495,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                                 <button
                                   type="button"
                                   onClick={() => irParaMes(vmAno.meses[i], l.pessoa)}
+                                  aria-label={`Abrir ${MESES_LONGOS[i]} de ${ano} de ${l.nome}: ${v == null ? "sem registro" : textoDaMedida(v, vmAno.medida.unidade)}`}
                                   className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
                                   title={
                                     v === null || v === undefined
@@ -3660,6 +3534,7 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
                               <button
                                 type="button"
                                 onClick={() => irParaMes(vmAno.meses[i], null)}
+                                aria-label={`Abrir total de ${MESES_LONGOS[i]} de ${ano}: ${v == null ? "sem registro" : textoDaMedida(v, vmAno.medida.unidade)}`}
                                 className="w-full text-right underline-offset-2 hover:text-brand-700 hover:underline"
                                 title={`abrir ${MESES_LONGOS[i]} de ${ano}`}
                               >
@@ -3824,8 +3699,8 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
           (`sem-impressao`) porque a folha já sai assinada em cima, pelo bloco
           RecorteImpresso — e uma assinatura repetida é uma a menos que se lê. */}
       <p className="sem-impressao mt-6 text-center text-xs text-slate-400">
-        Painel MinasLab · Ponto → Relatórios · dado do relógio Jibble, apurado pela escala da casa · esta aba só lê:
-        quem lança e corrige é a aba Ponto do RH
+        Painel MinasLab · Ponto → Relatórios · dado do relógio Jibble, com apenas o intervalo registrado descontado · esta aba só lê:
+        na aba Ponto, use Batidas para lançamentos e correções e Fechamento para conferir o mês. Ausências ficam em Faltas.
       </p>
 
       {/* O PAINEL DA PESSOA — fora da folha impressa (`sem-impressao`): a
@@ -3847,4 +3722,9 @@ export default function Relatorios({ pessoas, ativos, ponto, pontoDia, hojeISO, 
       )}
     </>
   );
+}
+
+export default function Relatorios(props) {
+ const [avancado, setAvancado] = useState(false);
+ return <><div className="sem-impressao mb-4 flex flex-wrap gap-2"><button className={!avancado?"btn-primary":"btn-outline"} onClick={()=>setAvancado(false)}>Acompanhamento</button><button className={avancado?"btn-primary":"btn-outline"} onClick={()=>setAvancado(true)}>Análises e comparativos</button></div>{avancado?<RelatoriosAvancados {...props}/>:<PeriodoPonto {...props} montarIndice={montarIndice} pessoasDoPeriodo={pessoasDoPeriodo}/>}</>;
 }
