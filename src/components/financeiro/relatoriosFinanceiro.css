@@ -1,0 +1,49 @@
+.fin-relatorios { color:#334155; font-variant-numeric:tabular-nums; }
+.fin-relatorios-titulo,.fin-relatorios-subtitulo,.fin-relatorios-contexto { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+.fin-relatorios-titulo>.btn-primary { flex-shrink:0; }
+.fin-relatorios-contexto { border-top:1px solid #e7edf2; padding-top:12px; font-size:12px; color:#64748b; }
+.fin-relatorios-bloco { background:#fff; border:1px solid #e2e8f0; border-radius:18px; padding:22px; min-width:0; }
+.fin-relatorios h2 { font-size:18px; font-weight:650; line-height:1.4; letter-spacing:-.02em; color:#23446f; }
+.fin-relatorios-subtitulo p,.fin-relatorios-nota { font-size:13px; color:#64748b; line-height:1.65; margin-top:6px; }
+.fin-relatorios-tag { font-size:12px; padding:6px 10px; background:#eff4fa; color:#395779; border-radius:20px; }
+.fin-relatorios-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:20px 0 14px; }
+.fin-relatorios-kpi { border:1px solid #e5eaf1; border-radius:14px; padding:17px; background:#fafcfe; min-width:0; }
+.fin-relatorios .fin-relatorios-kpi h3 { line-height:1.5; font-family:inherit; font-size:13px; font-weight:600; color:#53657c; }
+.fin-relatorios-kpi strong { display:block; font-size:clamp(21px,2vw,29px); letter-spacing:-.035em; line-height:1.35; margin:8px 0; overflow-wrap:anywhere; }
+.fin-relatorios-kpi small { display:block; font-size:12px; color:#64748b; line-height:1.6; }
+.fin-relatorios-entradas strong { color:#14775e; }
+.fin-relatorios-saidas strong { color:#a43e4e; }
+.fin-relatorios-liquido { background:#f0f5fc; border-color:#d6e1f2; }
+.fin-relatorios-liquido strong { color:#23446f; }
+.fin-relatorios-pendencias { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin-top:18px; }
+.fin-relatorios-pendencias article { border-left:3px solid #c9d8e9; padding:3px 18px; }
+.fin-relatorios h3 { font-size:15px; font-weight:600; }
+.fin-relatorios-pendencias strong,.fin-relatorios-total { display:block; font-size:25px; letter-spacing:-.03em; margin:6px 0; }
+.fin-relatorios-pendencias p { font-size:13px; line-height:1.6; }
+.fin-relatorios-pendencias span { display:block; color:#64748b; font-size:12px; margin-top:7px; }
+.fin-relatorios-link { display:inline-flex; align-items:center; gap:4px; color:#245aa1; font-size:13px; font-weight:600; margin-top:8px; }
+.fin-relatorios-analises { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:20px; align-items:start; }
+.fin-relatorios-analises>section { min-width:0; }
+.fin-relatorios-categoria { margin:18px 0; }
+.fin-relatorios-categoria>div:first-child { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:13px; }
+.fin-relatorios-categoria b { font-weight:550; overflow-wrap:anywhere; }
+.fin-relatorios-categoria small { color:#64748b; font-size:12px; }
+.fin-relatorios-barra { height:5px; background:#edf2f7; border-radius:8px; margin:8px 0 4px; overflow:hidden; }
+.fin-relatorios-barra span { display:block; height:100%; background:#718eb6; border-radius:8px; }
+.fin-relatorios-exports { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:18px; }
+.fin-relatorios-exports article { padding:16px; background:#f8fafc; border:1px solid #e7edf2; border-radius:12px; }
+.fin-relatorios-exports p { color:#64748b; font-size:12px; margin:8px 0 14px; }
+.fin-relatorios-exports article>div { display:flex; gap:8px; flex-wrap:wrap; }
+.fin-relatorios-detalhes summary { color:#23446f; font-size:14px; font-weight:600; cursor:pointer; line-height:1.6; }
+.fin-relatorios-detalhes table { width:100%; font-size:12px; margin-top:12px; text-align:left; }
+.fin-relatorios-detalhes caption { text-align:left; color:#64748b; padding:8px 0; }
+.fin-relatorios-detalhes th,.fin-relatorios-detalhes td { padding:10px 8px; border-bottom:1px solid #e7edf2; }
+.fin-relatorios-detalhes th:not(:first-child),.fin-relatorios-detalhes td:not(:first-child) { text-align:right; white-space:nowrap; }
+.fin-relatorios :is(button,a,summary):focus-visible { outline:3px solid #82a8d9; outline-offset:3px; }
+@media(max-width:1100px) { .fin-relatorios-analises { grid-template-columns:1fr; } }
+@media(max-width:700px) {
+  .fin-relatorios-kpis,.fin-relatorios-pendencias,.fin-relatorios-exports { grid-template-columns:1fr; }
+  .fin-relatorios-bloco { padding:17px; }
+  .fin-relatorios-titulo>.btn-primary { width:100%; justify-content:center; }
+  .fin-relatorios-contexto { align-items:flex-start; }
+}
