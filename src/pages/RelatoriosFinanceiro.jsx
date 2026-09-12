@@ -1,3 +1,4 @@
+import ReguaAnual from "../components/financeiro/ReguaAnual.jsx";
 import ComparativoMensal from "../components/financeiro/ComparativoMensal.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Download, Landmark, ArrowDownCircle, ArrowUpCircle, RefreshCw } from "lucide-react";
@@ -18,6 +19,7 @@ export default function RelatoriosFinanceiro() {
   const [op, setOp] = useState({ empresas: [], contas: [] });
   const [empresa, setEmpresa] = useState("");
   const [conta, setConta] = useState("");
+  const [ano, setAno] = useState(new Date().getFullYear());
   const [de, setDe] = useState(inicioAno());
   const [ate, setAte] = useState(hoje());
   const [movimentos, setMovimentos] = useState([]);
@@ -62,10 +64,11 @@ export default function RelatoriosFinanceiro() {
     <section className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4">
       <label><span className="label">Empresa</span><select className="input" value={empresa} onChange={(e) => { setEmpresa(e.target.value); setConta(""); }}><option value="">Todas / Consolidado</option>{(op.empresas || []).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select></label>
       <label><span className="label">Banco / conta</span><select className="input" value={conta} onChange={(e) => setConta(e.target.value)}><option value="">Todas as contas juntas</option>{contas.map((x) => <option key={x.id} value={x.id}>{[x.banco, x.nome].filter(Boolean).join(" · ")}</option>)}</select></label>
-      <label><span className="label">De</span><input className="input" type="date" value={de} onChange={(e) => setDe(e.target.value)}/></label>
+      <label><span className="label">De</span><input className="input" type="date" value={de} onChange={(e) => {setDe(e.target.value);if(e.target.value)setAno(Number(e.target.value.slice(0,4)))}}/></label>
       <label><span className="label">Até</span><input className="input" type="date" value={ate} onChange={(e) => setAte(e.target.value)}/></label>
     </section>
 
+    <ReguaAnual ano={ano} setAno={setAno} movimentos={movimentos} conta={conta} de={de} ate={ate} onPeriodo={p=>{setDe(p.de);setAte(p.ate)}} loading={loading}/>
     <div className="grid gap-4 lg:grid-cols-3">
       <section className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><Landmark size={18} className="text-teal-700"/><h2 className="font-bold">Extrato bancário</h2></div><p className="mt-2 text-sm text-slate-500">{movimentosFiltrados.length} movimento(s) no período. Baixe uma conta específica ou todas as contas em uma única planilha.</p><button className="btn-primary mt-4 w-full" disabled={loading} onClick={exportarBancos}><Download size={16}/>Baixar planilha bancária</button></section>
       <section className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><ArrowDownCircle size={18} className="text-emerald-700"/><h2 className="font-bold">Recebimentos</h2></div><p className="mt-2 text-sm text-slate-500">{recebimentosFiltrados.length} recebimento(s) no período selecionado.</p><button className="btn-outline mt-4 w-full" disabled={loading} onClick={exportarRecebimentos}><Download size={16}/>Baixar recebimentos</button></section>
