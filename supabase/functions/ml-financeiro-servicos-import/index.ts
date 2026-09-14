@@ -29,6 +29,8 @@ function num(v:any){if(typeof v==="number")return Number.isFinite(v)?v:0;let s=t
 function statusGL(v:any){const s=cab(v).toUpperCase();if(s.includes("CANCEL"))return"CANCELADO";if(s==="PAGO")return"PAGO";if(s.includes("FATURAMENTO"))return"FATURAMENTO";return"EM_ABERTO"}
 function prefKey(cnpj:string,nome:string){return cnpj?`DOC:${cnpj}`:`NOME:${key(nome)}`}
 async function emLotes<T>(itens:T[],fn:(item:T)=>Promise<void>,tamanho=40){for(let i=0;i<itens.length;i+=tamanho)await Promise.all(itens.slice(i,i+tamanho).map(fn))}
+async function listarTodosServicos(){const todos:any[]=[];const tamanho=1000;for(let inicio=0;;inicio+=tamanho){const{data,error}=await sb.from("servicos_gerados").select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual,apagado").range(inicio,inicio+tamanho-1);if(error)throw error;const lote=data||[];todos.push(...lote);if(lote.length<tamanho)break}return todos}
+function aplicarAutomaticos(base:any,ex:any,fat:string,pag:string,ref:any){if(!ex?.faturamento_manual){base.status_faturamento=fat;if(ref?.data_emissao)base.data_emissao=ref.data_emissao}if(!ex?.pagamento_manual){base.status_pagamento=pag;if(ref?.paga){base.pagamento_origem="HISTORICO PLANILHA";base.pagamento_referencia=ref.referencia||null;base.pagamento_identificado_em=ref.data_pagamento?`${ref.data_pagamento}T12:00:00-03:00`:null;base.referencia_pagamento=ref.referencia||null}}return base}
 
 Deno.serve(async req=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:C});
@@ -51,35 +53,42 @@ Deno.serve(async req=>{
     const rows=raw.map(r=>{const x:any={};for(const[k,v]of Object.entries(r))x[cab(k)]=v;return x});
     if(!Object.keys(rows[0]).some(x=>x.includes("ordem de servico"))||!("fatura" in rows[0])||!("cnpj cpf" in rows[0]))throw new Error("Arquivo não corresponde ao modelo GerenciaLab Dashboard aprovado.");
 
-    const [{data:exist,error:e1},{data:prefs,error:e2},{data:refs,error:e3}]=await Promise.all([
-      sb.from("servicos_gerados").select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual").eq("apagado",false).limit(5000),
+    const [exist,{data:prefs,error:e2},{data:refs,error:e3}]=await Promise.all([
+      listarTodosServicos(),
       sb.from("servicos_gerados_empresa_preferencia").select("chave,empresa_id").limit(5000),
       sb.from("servicos_gerados_referencia_historica").select("os_key,emitida,paga,data_emissao,data_pagamento,forma_pagamento,referencia").limit(5000)
     ]);
-    if(e1||e2||e3)throw(e1||e2||e3);
+    if(e2||e3)throw(e2||e3);
     const porOS=new Map((exist??[]).map((x:any)=>[key(x.os_numero),x])),pm=new Map((prefs??[]).map((x:any)=>[x.chave,x.empresa_id])),rm=new Map((refs??[]).map((x:any)=>[x.os_key,x]));
     const unicos=new Map<string,any>();let excluidos=0,semOS=0;
     for(const r of rows){const f=txt(get(r,"fatura")),d=doc(get(r,"cnpj cpf")),os=txt(get(r,"ordem de servico")),ok=key(os);if(key(f).startsWith("EXEMPLO")||EXC_DOC.has(d)||EXC_FAT.has(f)){excluidos++;continue}if(!ok||os==="-"){semOS++;continue}unicos.set(ok,r)}
 
-    let inseridos=0,atualizados=0,semEmpresa=0;
+    let inseridos=0,atualizados=0,semEmpresa=0,reativados=0,conflitosRecuperados=0;
     await emLotes([...unicos.entries()],async([ok,r])=>{
       const f=txt(get(r,"fatura")),d=doc(get(r,"cnpj cpf")),nome=txt(get(r,"cliente"))||"Cliente não informado",ex=porOS.get(ok),ref=rm.get(ok),empresa=ex?.empresa_id||pm.get(prefKey(d,nome))||null;
       if(!empresa)semEmpresa++;
       const sg=statusGL(get(r,"status fatura")),venc=dt(get(r,"data de vencimento")),valor=num(get(r,"total excel","total"));
       let fat="AGUARDANDO",pag="AGUARDANDO";
       if(ref?.paga){fat="FATURADO";pag="PAGO"}else if(ref?.emitida){fat="FATURADO";pag="A RECEBER"}else if(sg==="PAGO"){fat="FATURADO";pag="PAGO"}else if(sg==="CANCELADO"){fat="CANCELADO";pag="CANCELADO"}else if(sg==="FATURAMENTO")fat="PRONTO PARA FATURAR";
-      const base:any={empresa_id:empresa,os_numero:txt(get(r,"ordem de servico")),codigo_gerencialab:f||null,contrato_proposta:txt(get(r,"contrato"))||null,cliente:nome,cnpj_cpf:d||null,servico:txt(get(r,"amostra referencia"))||null,data_os:dt(get(r,"data de recepcao"))||dt(get(r,"data do agendamento")),valor_original:valor,data_vencimento:venc,forma_pagamento:ref?.forma_pagamento||txt(get(r,"forma pagamento"))||null,dados_origem:r,updated_at:now(),updated_by:usuario};
+      const base:any={empresa_id:empresa,os_numero:txt(get(r,"ordem de servico")),codigo_gerencialab:f||null,contrato_proposta:txt(get(r,"contrato"))||null,cliente:nome,cnpj_cpf:d||null,servico:txt(get(r,"amostra referencia"))||null,data_os:dt(get(r,"data de recepcao"))||dt(get(r,"data do agendamento")),valor_original:valor,data_vencimento:venc,forma_pagamento:ref?.forma_pagamento||txt(get(r,"forma pagamento"))||null,dados_origem:r,apagado:false,updated_at:now(),updated_by:usuario};
       if(ex){
-        if(!ex.faturamento_manual){base.status_faturamento=fat;if(ref?.data_emissao)base.data_emissao=ref.data_emissao}
-        if(!ex.pagamento_manual){base.status_pagamento=pag;if(ref?.paga){base.pagamento_origem="HISTORICO PLANILHA";base.pagamento_referencia=ref.referencia||null;base.pagamento_identificado_em=ref.data_pagamento?`${ref.data_pagamento}T12:00:00-03:00`:null;base.referencia_pagamento=ref.referencia||null}}
-        const{error}=await sb.from("servicos_gerados").update(base).eq("id",ex.id);if(error)throw error;atualizados++;
+        aplicarAutomaticos(base,ex,fat,pag,ref);
+        const{error}=await sb.from("servicos_gerados").update(base).eq("id",ex.id);if(error)throw error;if(ex.apagado)reativados++;atualizados++;porOS.set(ok,{...ex,...base});
       }else{
-        Object.assign(base,{valor_faturar:valor,data_emissao:ref?.data_emissao||null,status_faturamento:fat,status_pagamento:pag,pagamento_origem:ref?.paga?"HISTORICO PLANILHA":null,pagamento_referencia:ref?.referencia||null,pagamento_identificado_em:ref?.data_pagamento?`${ref.data_pagamento}T12:00:00-03:00`:null,referencia_pagamento:ref?.referencia||null,created_by:usuario});
-        const{data,error}=await sb.from("servicos_gerados").insert(base).select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual").single();if(error)throw error;porOS.set(ok,data);inseridos++;
+        const novo:any={...base,valor_faturar:valor,data_emissao:ref?.data_emissao||null,status_faturamento:fat,status_pagamento:pag,pagamento_origem:ref?.paga?"HISTORICO PLANILHA":null,pagamento_referencia:ref?.referencia||null,pagamento_identificado_em:ref?.data_pagamento?`${ref.data_pagamento}T12:00:00-03:00`:null,referencia_pagamento:ref?.referencia||null,created_by:usuario};
+        const{data,error}=await sb.from("servicos_gerados").insert(novo).select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual,apagado").single();
+        if(error){
+          if(error.code!=="23505")throw error;
+          const{data:ja,error:buscaErro}=await sb.from("servicos_gerados").select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual,apagado").eq("os_numero",base.os_numero).maybeSingle();
+          if(buscaErro||!ja)throw error;
+          const patch:any={...base};aplicarAutomaticos(patch,ja,fat,pag,ref);
+          const{error:updateErro}=await sb.from("servicos_gerados").update(patch).eq("id",ja.id);if(updateErro)throw updateErro;
+          conflitosRecuperados++;if(ja.apagado)reativados++;atualizados++;porOS.set(ok,{...ja,...patch});
+        }else{porOS.set(ok,data);inseridos++}
       }
     },40);
 
-    await sb.from("servicos_gerados_importacoes").insert({arquivo_nome:txt(body.arquivoNome)||"GerenciaLab Dashboard",lidos:rows.length,inseridos,atualizados,excluidos_regra:excluidos,pendentes_empresa:semEmpresa,detalhes:{sem_os:semOS,unicas:unicos.size,lote:40,regras:{cnpjs:[...EXC_DOC],faturas:[...EXC_FAT]}},criado_por:usuario});
-    return out({ok:true,lidos:rows.length,unicas:unicos.size,inseridos,atualizados,excluidosRegra:excluidos,semOS,semEmpresa});
+    await sb.from("servicos_gerados_importacoes").insert({arquivo_nome:txt(body.arquivoNome)||"GerenciaLab Dashboard",lidos:rows.length,inseridos,atualizados,excluidos_regra:excluidos,pendentes_empresa:semEmpresa,detalhes:{sem_os:semOS,unicas:unicos.size,lote:40,reativados,conflitos_recuperados:conflitosRecuperados,regras:{cnpjs:[...EXC_DOC],faturas:[...EXC_FAT]}},criado_por:usuario});
+    return out({ok:true,lidos:rows.length,unicas:unicos.size,inseridos,atualizados,excluidosRegra:excluidos,semOS,semEmpresa,reativados,conflitosRecuperados});
   }catch(e){console.error(e);return out({erro:e instanceof Error?e.message:JSON.stringify(e)},500)}
 });
