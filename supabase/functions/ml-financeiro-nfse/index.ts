@@ -6,6 +6,7 @@ const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"au
 const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
 const digits=(v:any)=>String(v||"").replace(/\D/g,"");
 const hoje=()=>new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
+function erroTexto(v:any):string{if(v==null)return"";if(typeof v==="string")return v.trim();if(v instanceof Error)return v.message||String(v);if(Array.isArray(v))return v.map(erroTexto).filter(Boolean).join(" ");if(typeof v==="object"){for(const k of["erro","message","mensagem","details","hint","code"]){const s=erroTexto(v[k]);if(s)return s}try{return JSON.stringify(v)}catch{return"Falha interna ao salvar o rascunho."}}return String(v)}
 async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t)return null;const p=t.split(".");if(p.length!==3)return null;try{const s=p[1].replace(/-/g,"+").replace(/_/g,"/");const x=JSON.parse(atob(s+"=".repeat((4-s.length%4)%4)));if(x.exp&&x.exp*1000<Date.now())return null;return x}catch{return null}}
 
 function calcularServico(r:any){
@@ -103,5 +104,5 @@ Deno.serve(async(req)=>{
       return json({erro:"Bloqueio técnico de segurança: a transmissão direta ao Emissor Nacional permanece delegada à função específica de produção/homologação. Nenhuma NFS-e foi emitida por esta função."},409);
     }
     return json({erro:"Ação inválida."},400);
-  }catch(e){return json({erro:e instanceof Error?e.message:String(e)},500)}
+  }catch(e){return json({erro:erroTexto(e)||"Falha interna ao salvar o rascunho."},500)}
 });
