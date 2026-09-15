@@ -1,0 +1,1 @@
+import test from "node:test";import assert from "node:assert/strict";const clean=v=>String(v).replace(/\s+/g," ").trim();test("E1235: xLgr sem espaço residual",()=>assert.equal(clean("Fazenda Teixeira "),"Fazenda Teixeira"));
