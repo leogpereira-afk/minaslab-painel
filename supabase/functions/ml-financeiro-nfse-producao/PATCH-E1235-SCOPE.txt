@@ -1,0 +1,1 @@
+Escopo: somente serialização dos textos fiscais enviados no XML. O cadastro do cliente não é alterado.
