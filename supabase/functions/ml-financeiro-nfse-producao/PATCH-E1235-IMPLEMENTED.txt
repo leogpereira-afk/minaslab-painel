@@ -1,0 +1,4 @@
+Supabase production Edge Function version 10 active on 2026-09-15.
+fiscalText(v) = strip XML control chars + collapse whitespace + trim.
+esc(v) applies fiscalText before XML escaping.
+Example: "Fazenda Teixeira " -> "Fazenda Teixeira".
