@@ -1,43 +1,16 @@
 import { FileSpreadsheet } from "lucide-react";
 
 const esperar=(ms=80)=>new Promise(r=>setTimeout(r,ms));
-
+const xmlEsc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function tabela(){return document.querySelector('table.min-w-\\[1470px\\]')}
-function pagina(){
- const t=tabela();if(!t)return null;
- const rodape=t.closest("section")?.querySelector("div.border-t.px-3.py-2");
- const anterior=rodape?.querySelector("button:has(svg.lucide-chevron-left)");
- const proxima=rodape?.querySelector("button:has(svg.lucide-chevron-right)");
- const indicador=[...(rodape?.querySelectorAll("span")||[])].find(x=>/^\s*\d+\s*\/\s*\d+\s*$/.test(x.textContent||""));
- const m=(indicador?.textContent||"1 / 1").match(/(\d+)\s*\/\s*(\d+)/);
- return {atual:Number(m?.[1]||1),total:Number(m?.[2]||1),anterior,proxima};
-}
-function linhasVisiveis(){
- const t=tabela();if(!t)return [];
- return [...t.querySelectorAll("tbody tr")].filter(r=>r.cells.length>=14).map(r=>{
-  const c=[...r.cells];
-  return [c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9],c[10],c[11],c[12]].map(x=>(x?.innerText||"").replace(/\s+/g," ").trim());
- });
-}
+function pagina(){const t=tabela();if(!t)return null;const r=t.closest("section")?.querySelector("div.border-t.px-3.py-2"),anterior=r?.querySelector("button:has(svg.lucide-chevron-left)"),proxima=r?.querySelector("button:has(svg.lucide-chevron-right)"),i=[...(r?.querySelectorAll("span")||[])].find(x=>/^\s*\d+\s*\/\s*\d+\s*$/.test(x.textContent||"")),m=(i?.textContent||"1 / 1").match(/(\d+)\s*\/\s*(\d+)/);return{atual:Number(m?.[1]||1),total:Number(m?.[2]||1),anterior,proxima}}
+function linhasVisiveis(){const t=tabela();if(!t)return[];return[...t.querySelectorAll("tbody tr")].filter(r=>r.cells.length>=14).map(r=>{const c=[...r.cells];return[c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9],c[10],c[11],c[12]].map(x=>(x?.innerText||"").replace(/\s+/g," ").trim())})}
 async function irPrimeira(){let p=pagina();while(p&&p.atual>1&&p.anterior&&!p.anterior.disabled){p.anterior.click();await esperar();p=pagina()}}
-function csvCell(v){const s=String(v??"");return `"${s.replace(/"/g,'""')}"`}
-async function exportar(){
- const t=tabela();if(!t){alert("A tabela de Serviços Gerados não foi encontrada.");return}
- const botao=document.activeElement;if(botao instanceof HTMLButtonElement)botao.disabled=true;
- try{
-  const original=pagina()?.atual||1;await irPrimeira();
-  const dados=[];let p=pagina();
-  while(p){dados.push(...linhasVisiveis());if(p.atual>=p.total||!p.proxima||p.proxima.disabled)break;p.proxima.click();await esperar();p=pagina()}
-  await irPrimeira();for(let i=1;i<original;i++){const q=pagina();if(!q?.proxima||q.proxima.disabled)break;q.proxima.click();await esperar()}
-  const headers=["Contrato","OS","Empresa","Cliente","NF","Faturamento","Pagamento","Data da Recepção","Emissão","Vencimento","Valor","Origem"];
-  const empresa=[...document.querySelectorAll("select")].find(s=>[...s.options].some(o=>o.textContent==="Todas as empresas"))?.selectedOptions?.[0]?.textContent||"Todas as empresas";
-  const visao=[...document.querySelectorAll("button.rounded-full")].find(b=>b.className.includes("bg-blue-600"))?.textContent||"Todos";
-  const busca=document.querySelector('input[placeholder^="Buscar por OS"]')?.value||"";
-  const linhas=[["Serviços Gerados"],[`Empresa: ${empresa} | Visão: ${visao} | Busca: ${busca||"—"} | Registros: ${dados.length}`],headers,...dados];
-  // CSV UTF-8 com BOM e separador ';' é aberto nativamente pelo Excel pt-BR, sem o antigo XML Spreadsheet 2003.
-  const csv="\ufeffsep=;\r\n"+linhas.map(r=>r.map(csvCell).join(";")).join("\r\n");
-  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download=`Servicos_Gerados_${new Date().toLocaleDateString("en-CA")}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
- }catch(e){alert(e?.message||"Não foi possível gerar a planilha de Serviços Gerados.")}finally{if(botao instanceof HTMLButtonElement)botao.disabled=false}
-}
+const u16=n=>new Uint8Array([n&255,(n>>>8)&255]);const u32=n=>new Uint8Array([n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]);
+let crcTable=null;function crc32(bytes){if(!crcTable){crcTable=Array.from({length:256},(_,n)=>{let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;return c>>>0})}let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0}
+function concat(parts){const len=parts.reduce((n,p)=>n+p.length,0),out=new Uint8Array(len);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
+function zip(files){const enc=new TextEncoder(),locals=[],centrals=[];let offset=0;for(const [name,text] of Object.entries(files)){const nb=enc.encode(name),data=enc.encode(text),crc=crc32(data),local=concat([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nb.length),u16(0),nb,data]);locals.push(local);centrals.push(concat([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nb.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),nb]));offset+=local.length}const central=concat(centrals),body=concat(locals);return concat([body,central,u32(0x06054b50),u16(0),u16(0),u16(centrals.length),u16(centrals.length),u32(central.length),u32(body.length),u16(0)])}
+function coluna(n){let s="";for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s}
+function criarXlsx(linhas){const rows=linhas.map((r,ri)=>`<row r="${ri+1}">${r.map((v,ci)=>`<c r="${coluna(ci)}${ri+1}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`).join("")}</row>`).join("");const files={"[Content_Types].xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,"_rels/.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,"xl/workbook.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Serviços Gerados" sheetId="1" r:id="rId1"/></sheets></workbook>`,"xl/_rels/workbook.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,"xl/worksheets/sheet1.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows}</sheetData></worksheet>`};return zip(files)}
+async function exportar(){const t=tabela();if(!t){alert("A tabela de Serviços Gerados não foi encontrada.");return}const botao=document.activeElement;if(botao instanceof HTMLButtonElement)botao.disabled=true;try{const original=pagina()?.atual||1;await irPrimeira();const dados=[];let p=pagina();while(p){dados.push(...linhasVisiveis());if(p.atual>=p.total||!p.proxima||p.proxima.disabled)break;p.proxima.click();await esperar();p=pagina()}await irPrimeira();for(let i=1;i<original;i++){const q=pagina();if(!q?.proxima||q.proxima.disabled)break;q.proxima.click();await esperar()}const headers=["Contrato","OS","Empresa","Cliente","NF","Faturamento","Pagamento","Data da Recepção","Emissão","Vencimento","Valor","Origem"],empresa=[...document.querySelectorAll("select")].find(s=>[...s.options].some(o=>o.textContent==="Todas as empresas"))?.selectedOptions?.[0]?.textContent||"Todas as empresas",visao=[...document.querySelectorAll("button.rounded-full")].find(b=>b.className.includes("bg-blue-600"))?.textContent||"Todos",busca=document.querySelector('input[placeholder^="Buscar por OS"]')?.value||"",bytes=criarXlsx([["Serviços Gerados"],[`Empresa: ${empresa} | Visão: ${visao} | Busca: ${busca||"—"} | Registros: ${dados.length}`],headers,...dados]),blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Servicos_Gerados_${new Date().toLocaleDateString("en-CA")}.xlsx`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){alert(e?.message||"Não foi possível gerar o Excel de Serviços Gerados.")}finally{if(botao instanceof HTMLButtonElement)botao.disabled=false}}
 export default function ServicosGeradosPrintButton(){return <button type="button" className="btn-outline" onClick={exportar}><FileSpreadsheet size={16}/>Baixar Excel</button>}
