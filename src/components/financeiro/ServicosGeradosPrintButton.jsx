@@ -4,6 +4,7 @@ import { FileSpreadsheet } from "lucide-react";
 const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const texto=v=>String(v??"").trim()||"—";
 const data=v=>v?new Date(`${String(v).slice(0,10)}T12:00:00`).toLocaleDateString("pt-BR"):"—";
+const esperar=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const cabecalhos=["Contrato","OS","Empresa","Cliente","NF","Faturamento","Pagamento","Data da Recepção","Emissão","Vencimento","Valor","Origem"];
 
 const dataRecepcao=x=>{
@@ -15,32 +16,82 @@ const dataRecepcao=x=>{
 function linhasDosItens(itens){
  return itens.map(x=>({
   valores:[
-   texto(x.contrato_proposta),
-   texto(x.os_numero),
-   texto(x.empresa?.nome),
-   texto(x.cliente),
-   texto(x.numero_nf),
-   texto(x.status_faturamento),
-   texto(x.status_pagamento),
-   dataRecepcao(x),
-   data(x.data_emissao),
-   data(x.data_vencimento),
-   Number(x.valor_faturar||x.valor_original)||0,
+   texto(x.contrato_proposta),texto(x.os_numero),texto(x.empresa?.nome),texto(x.cliente),
+   texto(x.numero_nf),texto(x.status_faturamento),texto(x.status_pagamento),dataRecepcao(x),
+   data(x.data_emissao),data(x.data_vencimento),Number(x.valor_faturar||x.valor_original)||0,
    texto(x.pagamento_origem)
   ],
   valorNumerico:true
  }));
 }
 
-function linhasDaTabela(){
- const tabelas=[...document.querySelectorAll("table")];
- const tabela=tabelas.find(t=>[...t.querySelectorAll("thead th")].some(th=>/contrato/i.test(th.textContent||""))&&[...t.querySelectorAll("thead th")].some(th=>/^\s*os\s*$/i.test(th.textContent||"")));
+function localizarTabela(){
+ return [...document.querySelectorAll("table")].find(t=>{
+  const titulos=[...t.querySelectorAll("thead th")].map(th=>(th.textContent||"").trim());
+  return titulos.some(v=>/contrato/i.test(v))&&titulos.some(v=>/^os$/i.test(v));
+ });
+}
+
+function linhasDaTabela(tabela){
  if(!tabela)return [];
  return [...tabela.querySelectorAll("tbody tr")].filter(r=>r.cells.length>=13).map(r=>{
-  const c=[...r.cells];
-  const inicio=c.length>=14?1:0;
+  const c=[...r.cells],inicio=c.length>=14?1:0;
   return {valores:c.slice(inicio,inicio+12).map(x=>(x?.innerText||"").replace(/\s+/g," ").trim()||"—"),valorNumerico:false};
  });
+}
+
+function paginaDaTabela(tabela){
+ const area=tabela?.closest("section")||tabela?.parentElement?.parentElement;
+ const indicador=[...(area?.querySelectorAll("span")||[])].find(x=>/^\s*\d+\s*\/\s*\d+\s*$/.test(x.textContent||""));
+ const partes=(indicador?.textContent||"1 / 1").match(/(\d+)\s*\/\s*(\d+)/);
+ const botoes=[...(area?.querySelectorAll("button")||[])];
+ const anterior=botoes.find(b=>b.querySelector("svg.lucide-chevron-left"));
+ const proxima=botoes.find(b=>b.querySelector("svg.lucide-chevron-right"));
+ return {atual:Number(partes?.[1]||1),total:Number(partes?.[2]||1),anterior,proxima};
+}
+
+async function aguardarPagina(tabela,paginaAnterior){
+ for(let i=0;i<20;i++){
+  await esperar(50);
+  if(paginaDaTabela(tabela).atual!==paginaAnterior)return;
+ }
+}
+
+async function irParaPrimeira(tabela){
+ let pagina=paginaDaTabela(tabela);
+ while(pagina.atual>1&&pagina.anterior&&!pagina.anterior.disabled){
+  const anterior=pagina.atual;
+  pagina.anterior.click();
+  await aguardarPagina(tabela,anterior);
+  pagina=paginaDaTabela(tabela);
+ }
+}
+
+async function linhasDeTodasAsPaginas(){
+ const tabela=localizarTabela();
+ if(!tabela)return [];
+ const paginaOriginal=paginaDaTabela(tabela).atual;
+ await irParaPrimeira(tabela);
+ const linhas=[];
+ let pagina=paginaDaTabela(tabela);
+ while(true){
+  linhas.push(...linhasDaTabela(tabela));
+  if(pagina.atual>=pagina.total||!pagina.proxima||pagina.proxima.disabled)break;
+  const anterior=pagina.atual;
+  pagina.proxima.click();
+  await aguardarPagina(tabela,anterior);
+  const novaPagina=paginaDaTabela(tabela);
+  if(novaPagina.atual===anterior)break;
+  pagina=novaPagina;
+ }
+ await irParaPrimeira(tabela);
+ for(let numero=1;numero<paginaOriginal;numero++){
+  const atual=paginaDaTabela(tabela);
+  if(!atual.proxima||atual.proxima.disabled)break;
+  atual.proxima.click();
+  await aguardarPagina(tabela,atual.atual);
+ }
+ return linhas;
 }
 
 function criarPlanilha({linhas,empresa,visao,busca}){
@@ -57,36 +108,30 @@ function criarPlanilha({linhas,empresa,visao,busca}){
   <Style ss:ID="Cabecalho"><Font ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/></Style>
   <Style ss:ID="Moeda"><NumberFormat ss:Format="R$ #,##0.00"/></Style>
  </Styles>
- <Worksheet ss:Name="Serviços Gerados">
-  <Table>
-   <Row><Cell ss:StyleID="Titulo"><Data ss:Type="String">Serviços Gerados</Data></Cell></Row>
-   <Row><Cell ss:MergeAcross="11"><Data ss:Type="String">${esc(resumo)}</Data></Cell></Row>
-   <Row>${cabecalhos.map(h=>`<Cell ss:StyleID="Cabecalho"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join("")}</Row>
-   ${conteudo}
-  </Table>
- </Worksheet>
+ <Worksheet ss:Name="Serviços Gerados"><Table>
+  <Row><Cell ss:StyleID="Titulo"><Data ss:Type="String">Serviços Gerados</Data></Cell></Row>
+  <Row><Cell ss:MergeAcross="11"><Data ss:Type="String">${esc(resumo)}</Data></Cell></Row>
+  <Row>${cabecalhos.map(h=>`<Cell ss:StyleID="Cabecalho"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join("")}</Row>
+  ${conteudo}
+ </Table></Worksheet>
 </Workbook>`;
 }
 
 function baixar(blob,nome){
  if(navigator.msSaveOrOpenBlob){navigator.msSaveOrOpenBlob(blob,nome);return}
  const url=URL.createObjectURL(blob),link=document.createElement("a");
- link.href=url;
- link.download=nome;
- link.style.display="none";
- document.body.appendChild(link);
- link.click();
- link.remove();
+ link.href=url;link.download=nome;link.style.display="none";
+ document.body.appendChild(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
 
 export default function ServicosGeradosPrintButton({itens,empresa,visao,busca}){
  const [baixando,setBaixando]=useState(false);
- function exportar(){
+ async function exportar(){
   if(baixando)return;
   setBaixando(true);
   try{
-   const linhas=Array.isArray(itens)&&itens.length?linhasDosItens(itens):linhasDaTabela();
+   const linhas=Array.isArray(itens)&&itens.length?linhasDosItens(itens):await linhasDeTodasAsPaginas();
    if(!linhas.length)throw new Error("Não há serviços para exportar com os filtros atuais.");
    const xml=criarPlanilha({linhas,empresa,visao,busca});
    const blob=new Blob(["\ufeff",xml],{type:"application/vnd.ms-excel;charset=utf-8"});
