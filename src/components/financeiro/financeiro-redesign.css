@@ -373,3 +373,120 @@
     font-size: .75rem;
   }
 }
+
+
+/* Movimentação da Conta possui raiz space-y-4 e, por isso, recebe sua
+   padronização explicitamente. As medidas seguem Serviços Gerados. */
+.financeiro-movimentacao .page-title h1 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+.financeiro-movimentacao .page-title p {
+  font-size: .875rem;
+  line-height: 1.25rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div {
+  padding: .75rem;
+  border-radius: 1rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div > .flex {
+  gap: .75rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div span.grid {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div span.grid svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div p.text-sm {
+  font-size: .6875rem;
+  line-height: 1rem;
+}
+
+.financeiro-movimentacao > .grid.md\:grid-cols-2.xl\:grid-cols-4 > div p.text-2xl {
+  margin-top: .125rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.p-3 .input {
+  min-height: 2.25rem;
+  height: 2.25rem;
+  border-radius: .5rem;
+  padding: .5rem .75rem;
+  font-size: .75rem;
+  line-height: 1rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.p-3 .label {
+  margin-bottom: .25rem;
+  font-size: .6875rem;
+  line-height: 1rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.p-3 .btn-outline {
+  min-height: 2.25rem;
+  padding: .5rem .75rem;
+  font-size: .75rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table {
+  font-size: .6875rem;
+  line-height: 1rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table thead {
+  font-size: .625rem;
+  line-height: .875rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table thead th,
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table tbody td {
+  padding: .5rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table thead tr + tr th {
+  padding: .375rem;
+}
+
+.financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table thead tr + tr .input {
+  min-height: 1.75rem;
+  height: 1.75rem;
+  border-radius: .375rem;
+  padding-top: .25rem;
+  padding-bottom: .25rem;
+  font-size: .6875rem;
+}
+
+.financeiro-movimentacao > .flex.flex-col.gap-4.lg\:flex-row button {
+  min-height: 2.25rem;
+  padding-top: .5rem;
+  padding-bottom: .5rem;
+  font-size: .75rem;
+}
+
+.financeiro-movimentacao > .flex.flex-col.gap-4.lg\:flex-row button.min-w-\[245px\] {
+  min-width: 13.5rem;
+  padding-left: .75rem;
+  padding-right: .75rem;
+}
+
+@media (max-width: 640px) {
+  .financeiro-movimentacao > .rounded-2xl.border.bg-white.p-3 .input {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    font-size: 1rem;
+  }
+
+  .financeiro-movimentacao > .rounded-2xl.border.bg-white.shadow-sm.overflow-hidden table {
+    font-size: .75rem;
+  }
+}
