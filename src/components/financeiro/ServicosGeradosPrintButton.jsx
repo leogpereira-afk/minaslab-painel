@@ -145,5 +145,5 @@ export default function ServicosGeradosPrintButton({itens,empresa,visao,busca}){
    setBaixando(false);
   }
  }
- return <button type="button" className="btn-secondary text-xs" onClick={exportar} disabled={baixando}><FileSpreadsheet size={14}/>{baixando?"Gerando...":"Baixar Excel"}</button>
+ return <button type="button" className="btn-outline h-9 px-3 py-2 text-xs" onClick={exportar} disabled={baixando}><FileSpreadsheet size={15}/>{baixando?"Gerando...":"Baixar Excel"}</button>
 }
