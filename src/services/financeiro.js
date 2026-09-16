@@ -39,7 +39,7 @@ export const finNotaSalvarXml=r=>chamarArquivos("salvarNotaXml",{registro:r}).th
 export const finEmailEstado=()=>chamarArquivos("emailEstado");
 export const finEmailEnviar=(notaId,email,assunto="",mensagem="")=>chamarArquivos("emailEnviar",{notaId,email,assunto,mensagem});
 export const finMovimentosListar=(empresaId="")=>chamar("movimentosListar",{empresaId}).then(r=>r.itens||[]);
-export const finMovimentosImportar=(empresaId,contaBancariaId,itens)=>chamar("movimentosImportar",{empresaId,contaBancariaId,itens});
+export const finMovimentosImportar=(empresaId,contaBancariaId,itens,contaOfx={})=>chamar("movimentosImportar",{empresaId,contaBancariaId,itens,contaOfx});
 export const finMovimentosDesfazerUltimoOfx=(empresaId,contaBancariaId)=>chamar("movimentosDesfazerUltimoOfx",{empresaId,contaBancariaId});
 export const finConciliar=(movimentoId,destino)=>chamar("conciliar",{movimentoId,...destino});
 export const finConfigListar=()=>chamar("configListar");
