@@ -21,6 +21,7 @@ import {
   ResumoFiltrosColuna,
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
+import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
 import {
   financeiroOpcoes,
   finMovimentosPagina,
@@ -116,6 +117,7 @@ export default function ConciliacaoTitulos() {
     [itens, setItens] = useState([]),
     [meta, setMeta] = useState({ total: 0, paginas: 1, pagina: 1 }),
     [pagina, setPagina] = useState(1),
+    [limite, setLimite] = useState(25),
     [loading, setLoading] = useState(true),
     [erro, setErro] = useState(""),
     [ok, setOk] = useState(""),
@@ -168,8 +170,7 @@ export default function ConciliacaoTitulos() {
           `${nomeTitulo(x, tipo)} ${documentoTitulo(x)} ${x.descricao || ""} ${x.cnpj_cpf || ""}`,
         ).includes(termo);
       });
-      const limite = 25,
-        paginas = Math.max(1, Math.ceil(filtrados.length / limite)),
+      const paginas = Math.max(1, Math.ceil(filtrados.length / limite)),
         paginaValida = Math.min(Math.max(1, p), paginas),
         ini = (paginaValida - 1) * limite;
       setItens(filtrados.slice(ini, ini + limite));
@@ -184,7 +185,7 @@ export default function ConciliacaoTitulos() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
-  }, [tipo, empresa, busca, situacao, periodo]);
+  }, [tipo, empresa, busca, situacao, periodo, limite]);
   async function abrir(x, tipoForcado = tipo) {
     if (!x?.empresa_id) {
       setErro("Este título não possui empresa vinculada.");
@@ -652,33 +653,16 @@ export default function ConciliacaoTitulos() {
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between rounded-xl border bg-white p-3 text-sm">
-        <span className="text-slate-500">
-          {meta.total} títulos · página {pagina} de {meta.paginas}
-          <span className="ml-2">
-            <ResumoFiltrosColuna
-              quantidade={filtrosColuna.quantidade}
-              exibidos={filtrosColuna.filtrados.length}
-            />
-          </span>
-        </span>
-        <div className="flex gap-2">
-          <button
-            className="btn-outline h-9"
-            disabled={pagina <= 1}
-            onClick={() => carregar(pagina - 1)}
-          >
-            Anterior
-          </button>
-          <button
-            className="btn-outline h-9"
-            disabled={pagina >= meta.paginas}
-            onClick={() => carregar(pagina + 1)}
-          >
-            Próxima
-          </button>
-        </div>
-      </div>
+      <PaginacaoFinanceiro
+        total={meta.total}
+        pagina={pagina}
+        paginas={meta.paginas}
+        porPagina={limite}
+        itensNaPagina={filtrosColuna.filtrados.length}
+        onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
+        onPagina={carregar}
+        extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
+      />
 
       {titulo && (
         <Modal
