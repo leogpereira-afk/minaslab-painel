@@ -37,6 +37,7 @@ export default function ServicosGerados(){
    const colunasOk=tem("contrato_proposta",filtros.contrato)&&tem("os_numero",filtros.os)&&(!filtros.empresa||texto(x.empresa?.nome).includes(texto(filtros.empresa)))&&tem("cliente",filtros.cliente)&&tem("numero_nf",filtros.nf)&&(!filtros.valorMin||valor>=Number(filtros.valorMin))&&(!filtros.valorMax||valor<=Number(filtros.valorMax))&&(!filtros.emissaoDe||em>=filtros.emissaoDe)&&(!filtros.emissaoAte||em<=filtros.emissaoAte)&&(!filtros.vencimentoDe||ve>=filtros.vencimentoDe)&&(!filtros.vencimentoAte||ve<=filtros.vencimentoAte)&&(!filtros.faturamento||x.status_faturamento===filtros.faturamento)&&(!filtros.pagamento||x.status_pagamento===filtros.pagamento)&&(!filtros.origem||texto(x.pagamento_origem).includes(texto(filtros.origem)));
    return empresaOk&&statusOk&&colunasOk;
  }),[dados.itens,tab,empresaFiltro,filtros]);
+ useEffect(()=>{window.__minaslabServicosGeradosExport=itens;return()=>{if(window.__minaslabServicosGeradosExport===itens)delete window.__minaslabServicosGeradosExport}},[itens]);
  const totalPaginas=Math.max(1,Math.ceil(itens.length/porPagina)),paginaSegura=Math.min(pagina,totalPaginas),inicio=(paginaSegura-1)*porPagina,itensPagina=itens.slice(inicio,inicio+porPagina),filtrosAtivos=Object.values(filtros).some(Boolean);
  const itensSelecionados=useMemo(()=>dados.itens.filter(x=>!x.grupo_faturamento&&selecionados.includes(x.id)),[dados.itens,selecionados]);
  const totalSelecionado=itensSelecionados.reduce((s,x)=>s+Number(x.valor_faturar||x.valor_original||0),0);
