@@ -14,7 +14,8 @@ const dataRecepcao=x=>{
 };
 
 function linhasDosItens(itens){
- return itens.map(x=>({
+ const individuais=itens.flatMap(x=>x?.grupo_faturamento&&Array.isArray(x.grupo_itens)&&x.grupo_itens.length?x.grupo_itens:[x]);
+ return individuais.map(x=>({
   valores:[
    texto(x.contrato_proposta),texto(x.os_numero),texto(x.empresa?.nome),texto(x.cliente),
    texto(x.numero_nf),texto(x.status_faturamento),texto(x.status_pagamento),dataRecepcao(x),
@@ -131,7 +132,8 @@ export default function ServicosGeradosPrintButton({itens,empresa,visao,busca}){
   if(baixando)return;
   setBaixando(true);
   try{
-   const linhas=Array.isArray(itens)&&itens.length?linhasDosItens(itens):await linhasDeTodasAsPaginas();
+   const fonte=Array.isArray(itens)&&itens.length?itens:Array.isArray(window.__minaslabServicosGeradosExport)?window.__minaslabServicosGeradosExport:[];
+   const linhas=fonte.length?linhasDosItens(fonte):await linhasDeTodasAsPaginas();
    if(!linhas.length)throw new Error("Não há serviços para exportar com os filtros atuais.");
    const xml=criarPlanilha({linhas,empresa,visao,busca});
    const blob=new Blob(["\ufeff",xml],{type:"application/vnd.ms-excel;charset=utf-8"});
