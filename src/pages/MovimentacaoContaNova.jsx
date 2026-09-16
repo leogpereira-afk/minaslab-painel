@@ -7,8 +7,6 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   CircleDollarSign,
   Download,
   Link2,
@@ -28,6 +26,7 @@ import {
   ResumoFiltrosColuna,
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
+import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
 import {
   financeiroOpcoes,
   finMovimentosImportar,
@@ -210,7 +209,7 @@ export default function MovimentacaoContaNova() {
     [relacionadoId, setRelacionadoId] = useState(""),
     [contrapartidas, setContrapartidas] = useState([]),
     [salvando, setSalvando] = useState(false);
-  const limite = 8;
+  const [limite, setLimite] = useState(25);
   const filtrosColuna = useFiltrosColunaTabela(itens, {
     data: (m) => dataBR(m.data_movimento),
     descricao: (m) => [nomeMovimento(m), m.descricao].join(" "),
@@ -254,7 +253,7 @@ export default function MovimentacaoContaNova() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 180);
     return () => clearTimeout(t);
-  }, [empresa, conta, busca, status, tipoMovimento, de, ate]);
+  }, [empresa, conta, busca, status, tipoMovimento, de, ate, limite]);
   useEffect(() => {
     try {
       sessionStorage.setItem(
@@ -479,12 +478,6 @@ export default function MovimentacaoContaNova() {
     a.click();
     URL.revokeObjectURL(url);
   }
-  const paginas = useMemo(() => {
-    const t = Math.max(1, meta.paginas),
-      a = Math.max(1, Math.min(pagina - 2, t - 4)),
-      f = Math.min(t, a + 4);
-    return Array.from({ length: f - a + 1 }, (_, i) => a + i);
-  }, [meta.paginas, pagina]);
   return (
     <div className="financeiro-movimentacao space-y-4 pb-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -809,47 +802,16 @@ export default function MovimentacaoContaNova() {
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-500">
-          Mostrando {itens.length ? (pagina - 1) * limite + 1 : 0} a{" "}
-          {Math.min(pagina * limite, meta.total)} de {meta.total}
-          <span className="ml-2">
-            <ResumoFiltrosColuna
-              quantidade={filtrosColuna.quantidade}
-              exibidos={filtrosColuna.filtrados.length}
-            />
-          </span>
-        </span>
-        <div className="flex gap-1">
-          <button
-            className="btn-outline h-9 w-9 p-0"
-            disabled={pagina <= 1}
-            onClick={() => carregar(pagina - 1)}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          {paginas.map((p) => (
-            <button
-              key={p}
-              className={
-                p === pagina
-                  ? "btn-primary h-9 min-w-9"
-                  : "btn-outline h-9 min-w-9"
-              }
-              onClick={() => carregar(p)}
-            >
-              {p}
-            </button>
-          ))}
-          <button
-            className="btn-outline h-9 w-9 p-0"
-            disabled={pagina >= meta.paginas}
-            onClick={() => carregar(pagina + 1)}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+      <PaginacaoFinanceiro
+        total={meta.total}
+        pagina={pagina}
+        paginas={meta.paginas}
+        porPagina={limite}
+        itensNaPagina={filtrosColuna.filtrados.length}
+        onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
+        onPagina={carregar}
+        extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
+      />
       {menu && (
         <>
           <button
