@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finMovimentosPagina, finMovimentosImportar } from "../services/financeiro.js";
+import { financeiroOpcoes, finMovimentosPagina, finMovimentosImportar, finMovimentosDesfazerUltimoOfx } from "../services/financeiro.js";
 import { API } from "../lib/api.js";
 import { comCracha } from "../lib/sessao.js";
 import { nomeMovimento } from "../lib/movimentoNome.js";
@@ -134,6 +134,7 @@ export default function MovimentacaoConta() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [importando, setImportando] = useState(false);
+  const [desfazendoImportacao, setDesfazendoImportacao] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
   const [menu, setMenu] = useState(null);
   const [resolver, setResolver] = useState(null);
@@ -246,6 +247,26 @@ export default function MovimentacaoConta() {
     } finally {
       setImportando(false);
       e.target.value = "";
+    }
+  }
+
+  async function desfazerUltimoOFX() {
+    if (!empresa || !conta) {
+      setErro("Selecione a empresa e a conta bancária da importação que deseja desfazer.");
+      return;
+    }
+    if (!confirm(`Excluir a última importação OFX da conta ${contaSelecionada?.nome || "selecionada"}? Esta ação remove somente movimentações ainda não conciliadas desse lote.`)) return;
+    setDesfazendoImportacao(true);
+    setErro("");
+    setAviso("");
+    try {
+      const r = await finMovimentosDesfazerUltimoOfx(empresa, conta);
+      setAviso(`Última importação OFX desfeita: ${r?.excluidos || 0} movimentação(ões) excluída(s).`);
+      await carregar(1);
+    } catch (e) {
+      setErro(e.message || "Não foi possível desfazer a última importação OFX.");
+    } finally {
+      setDesfazendoImportacao(false);
     }
   }
 
@@ -411,6 +432,9 @@ export default function MovimentacaoConta() {
           <button className="btn-primary h-11 px-5" onClick={() => carregar(pagina)}><RefreshCw size={16} />Atualizar</button>
           <button className="btn-outline h-11" onClick={() => empresa ? ofxRef.current?.click() : setErro("Selecione a empresa antes de atualizar o extrato.")} disabled={importando}>
             <Upload size={16} />{importando ? "Importando..." : ehMLab ? "Atualizar C6" : "Importar extrato"}
+          </button>
+          <button className="btn-outline h-11 text-rose-700" onClick={desfazerUltimoOFX} disabled={desfazendoImportacao || !empresa || !conta} title={!conta ? "Selecione uma conta bancária" : "Excluir somente o último lote OFX ainda não conciliado"}>
+            <Undo2 size={16} />{desfazendoImportacao ? "Desfazendo..." : "Desfazer último OFX"}
           </button>
           <input ref={ofxRef} type="file" accept=".ofx,application/x-ofx" className="hidden" onChange={importarOFX} />
         </div>
