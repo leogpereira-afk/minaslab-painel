@@ -4,6 +4,7 @@ import {
   ResumoFiltrosColuna,
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
+import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -16,8 +17,6 @@ import {
   Search,
   Trash2,
   Upload,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
@@ -708,44 +707,16 @@ export default function Despesas() {
           </tbody>
         </table>
       </div>
-      <div className="flex flex-col gap-2 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-slate-500">
-          {meta.total} registros · página {pagina} de {meta.paginas}
-          <span className="ml-2">
-            <ResumoFiltrosColuna
-              quantidade={filtrosColuna.quantidade}
-              exibidos={filtrosColuna.filtrados.length}
-            />
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="input h-9 w-24"
-            value={limite}
-            onChange={(e) => setLimite(Number(e.target.value))}
-          >
-            <option>25</option>
-            <option>50</option>
-            <option>100</option>
-          </select>
-          <button
-            className="btn-outline h-9"
-            disabled={pagina <= 1}
-            onClick={() => carregar(pagina - 1)}
-          >
-            <ChevronLeft size={15} />
-            Anterior
-          </button>
-          <button
-            className="btn-outline h-9"
-            disabled={pagina >= meta.paginas}
-            onClick={() => carregar(pagina + 1)}
-          >
-            Próxima
-            <ChevronRight size={15} />
-          </button>
-        </div>
-      </div>
+      <PaginacaoFinanceiro
+        total={meta.total}
+        pagina={pagina}
+        paginas={meta.paginas}
+        porPagina={limite}
+        itensNaPagina={filtrosColuna.filtrados.length}
+        onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
+        onPagina={carregar}
+        extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
+      />
       {detalhe && (
         <Modal
           ocupado={salvando}
