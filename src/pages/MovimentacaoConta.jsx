@@ -68,6 +68,14 @@ function parseOFX(t) {
     })
     .filter((x) => x.data_movimento && x.valor !== 0);
 }
+function compararContaOFX(meta, conta) {
+  const codigo = (v) => soDigitos(v).replace(/^0+/, "") || "0";
+  const divergencias = [];
+  if (meta?.banco && conta?.banco && codigo(meta.banco) !== codigo(conta.banco)) divergencias.push(`banco do arquivo ${meta.banco} ≠ banco da conta ${conta.banco}`);
+  if (meta?.agencia && conta?.agencia && codigo(meta.agencia) !== codigo(conta.agencia)) divergencias.push(`agência do arquivo ${meta.agencia} ≠ agência da conta ${conta.agencia}`);
+  if (meta?.conta && conta?.conta && codigo(meta.conta) !== codigo(conta.conta)) divergencias.push(`conta do arquivo ${meta.conta} ≠ conta cadastrada ${conta.conta}`);
+  return divergencias;
+}
 function detectarContaOFX(meta, contas, empresaId) {
   const cs = (contas || []).filter((c) => c.empresa_id === empresaId);
   if (cs.length === 1) return cs[0];
@@ -238,8 +246,10 @@ export default function MovimentacaoConta() {
       if (!dados.length) throw new Error("Nenhuma movimentação válida foi encontrada no arquivo.");
       const detectada = conta ? op.contas.find((c) => c.id === conta) : detectarContaOFX(metaConta, op.contas, empresa);
       if (!detectada) throw new Error("Não foi possível identificar a conta. Selecione a conta bancária e tente novamente.");
+      const divergencias = compararContaOFX(metaConta, detectada);
+      if (divergencias.length) throw new Error(`Importação bloqueada: o OFX não pertence à conta ${detectada.nome}. ${divergencias.join("; ")}.`);
       setConta(detectada.id);
-      const r = await finMovimentosImportar(empresa, detectada.id, dados);
+      const r = await finMovimentosImportar(empresa, detectada.id, dados, metaConta);
       setAviso(`Extrato atualizado: ${r?.inseridos || 0} novos e ${r?.ignorados || 0} já existentes.`);
       await carregar(1);
     } catch (e2) {
