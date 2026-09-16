@@ -486,7 +486,7 @@ export default function MovimentacaoContaNova() {
     return Array.from({ length: f - a + 1 }, (_, i) => a + i);
   }, [meta.paginas, pagina]);
   return (
-    <div className="space-y-4 pb-4">
+    <div className="financeiro-movimentacao space-y-4 pb-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <PageTitle
           titulo="Movimentação da Conta"
