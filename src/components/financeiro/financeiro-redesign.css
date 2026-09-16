@@ -228,53 +228,53 @@
 /* Escala operacional padronizada pela tela Serviços Gerados.
    Aplica-se às páginas financeiras legadas (raiz space-y-5); a tela de
    Serviços Gerados já utiliza estas medidas diretamente em seus componentes. */
-.financeiro-shell > .space-y-5 {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) {
   gap: 1rem;
 }
 
-.financeiro-shell > .space-y-5 .page-title h1,
-.financeiro-shell > .space-y-5 > .flex.items-center.gap-3 h1 {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) .page-title h1,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .flex.items-center.gap-3 h1 {
   font-size: 1.5rem;
   line-height: 2rem;
 }
 
-.financeiro-shell > .space-y-5 .page-title p,
-.financeiro-shell > .space-y-5 > .flex.items-center.gap-3 p {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) .page-title p,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .flex.items-center.gap-3 p {
   font-size: .875rem;
   line-height: 1.25rem;
 }
 
-.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-3 > div,
-.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div,
-.financeiro-shell > .space-y-5 > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .grid.gap-3.sm\:grid-cols-3 > div,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .grid.gap-3.sm\:grid-cols-2.xl\:grid-cols-5 > div {
   padding: .75rem;
 }
 
-.financeiro-shell > .space-y-5 > .grid.gap-3.rounded-2xl.border.bg-white.p-4 {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .grid.gap-3.rounded-2xl.border.bg-white.p-4 {
   padding: .75rem;
   gap: .75rem;
 }
 
-.financeiro-shell > .space-y-5 table {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table {
   font-size: .6875rem;
   line-height: 1rem;
 }
 
-.financeiro-shell > .space-y-5 table thead {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table thead {
   font-size: .625rem;
   line-height: .875rem;
 }
 
-.financeiro-shell > .space-y-5 table thead th,
-.financeiro-shell > .space-y-5 table tbody td {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table thead th,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table tbody td {
   padding: .5rem;
 }
 
-.financeiro-shell > .space-y-5 table thead tr + tr th {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table thead tr + tr th {
   padding: .375rem;
 }
 
-.financeiro-shell > .space-y-5 table thead tr + tr .input {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table thead tr + tr .input {
   min-height: 1.75rem;
   height: 1.75rem;
   border-radius: .375rem;
@@ -284,14 +284,14 @@
   line-height: 1rem;
 }
 
-.financeiro-shell > .space-y-5 > .flex.flex-col.gap-2.rounded-xl.border.bg-white.p-3 {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > .flex.flex-col.gap-2.rounded-xl.border.bg-white.p-3 {
   padding: .5rem .75rem;
   font-size: .75rem;
 }
 
-.financeiro-shell > .space-y-5 .btn-primary,
-.financeiro-shell > .space-y-5 .btn-outline,
-.financeiro-shell > .space-y-5 .btn-ghost {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) .btn-primary,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) .btn-outline,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) .btn-ghost {
   padding: .5rem .75rem;
   font-size: .75rem;
 }
@@ -309,11 +309,11 @@
 }
 
 @media (max-width: 640px) {
-  .financeiro-shell > .space-y-5 table {
+  .financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table {
     font-size: .75rem;
   }
 
-  .financeiro-shell > .space-y-5 table thead {
+  .financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) table thead {
     font-size: .6875rem;
   }
 }
@@ -322,8 +322,8 @@
 /* Filtros gerais seguem a escala compacta de Serviços Gerados.
    O seletor limita a regra ao conteúdo normal das páginas; modais e drawers
    (filhos fixed) mantêm campos maiores para preenchimento confortável. */
-.financeiro-shell > .space-y-5 > :not(.fixed) .input,
-.financeiro-shell > .space-y-5 > select.input {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) .input,
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > select.input {
   min-height: 2.25rem;
   height: 2.25rem;
   border-radius: .5rem;
@@ -332,22 +332,22 @@
   line-height: 1rem;
 }
 
-.financeiro-shell > .space-y-5 > :not(.fixed) .label {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) .label {
   margin-bottom: .25rem;
   font-size: .6875rem;
   line-height: 1rem;
 }
 
-.financeiro-shell > .space-y-5 > :not(.fixed) input.input::placeholder {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) input.input::placeholder {
   font-size: .75rem;
 }
 
-.financeiro-shell > .space-y-5 > :not(.fixed) .relative > svg.absolute {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) .relative > svg.absolute {
   top: .625rem;
 }
 
 /* A linha de filtros das colunas é ainda menor, como na tabela de Serviços. */
-.financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .input {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) table thead tr + tr .input {
   min-height: 1.75rem;
   height: 1.75rem;
   padding-top: .25rem;
@@ -355,19 +355,19 @@
   font-size: .6875rem;
 }
 
-.financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .relative > svg.absolute {
+.financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) table thead tr + tr .relative > svg.absolute {
   top: .5rem;
 }
 
 @media (max-width: 640px) {
-  .financeiro-shell > .space-y-5 > :not(.fixed) .input,
-  .financeiro-shell > .space-y-5 > select.input {
+  .financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) .input,
+  .financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > select.input {
     min-height: 2.5rem;
     height: 2.5rem;
     font-size: 1rem;
   }
 
-  .financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .input {
+  .financeiro-shell > .space-y-5:not(.financeiro-emissao-nfse) > :not(.fixed) table thead tr + tr .input {
     min-height: 2rem;
     height: 2rem;
     font-size: .75rem;
