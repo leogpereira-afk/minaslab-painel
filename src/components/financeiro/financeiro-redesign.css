@@ -317,3 +317,59 @@
     font-size: .6875rem;
   }
 }
+
+
+/* Filtros gerais seguem a escala compacta de Serviços Gerados.
+   O seletor limita a regra ao conteúdo normal das páginas; modais e drawers
+   (filhos fixed) mantêm campos maiores para preenchimento confortável. */
+.financeiro-shell > .space-y-5 > :not(.fixed) .input,
+.financeiro-shell > .space-y-5 > select.input {
+  min-height: 2.25rem;
+  height: 2.25rem;
+  border-radius: .5rem;
+  padding: .5rem .75rem;
+  font-size: .75rem;
+  line-height: 1rem;
+}
+
+.financeiro-shell > .space-y-5 > :not(.fixed) .label {
+  margin-bottom: .25rem;
+  font-size: .6875rem;
+  line-height: 1rem;
+}
+
+.financeiro-shell > .space-y-5 > :not(.fixed) input.input::placeholder {
+  font-size: .75rem;
+}
+
+.financeiro-shell > .space-y-5 > :not(.fixed) .relative > svg.absolute {
+  top: .625rem;
+}
+
+/* A linha de filtros das colunas é ainda menor, como na tabela de Serviços. */
+.financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .input {
+  min-height: 1.75rem;
+  height: 1.75rem;
+  padding-top: .25rem;
+  padding-bottom: .25rem;
+  font-size: .6875rem;
+}
+
+.financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .relative > svg.absolute {
+  top: .5rem;
+}
+
+@media (max-width: 640px) {
+  .financeiro-shell > .space-y-5 > :not(.fixed) .input,
+  .financeiro-shell > .space-y-5 > select.input {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    font-size: 1rem;
+  }
+
+  .financeiro-shell > .space-y-5 > :not(.fixed) table thead tr + tr .input {
+    min-height: 2rem;
+    height: 2rem;
+    font-size: .75rem;
+  }
+}
