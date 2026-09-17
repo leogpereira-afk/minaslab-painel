@@ -130,7 +130,6 @@ Deno.serve(async req=>{
       const {error:upErr}=await sb.storage.from(BUCKET).upload(pdfPath,bytes,{contentType:"application/pdf",upsert:true}); if(upErr)throw upErr;
       const {error:dbErr}=await sb.from("notas_fiscais").update({pdf_url:pdfPath,updated_at:new Date().toISOString()}).eq("id",n.id); if(dbErr)throw dbErr;
     }
-    const {data:preview}=await sb.storage.from(BUCKET).createSignedUrl(pdfPath,300);
-    return json({ok:true,pdfPath,origemPdf,numeroNf:n.numero_nf||null,previewUrl:preview?.signedUrl||null});
+    return json({ok:true,pdfPath,origemPdf,numeroNf:n.numero_nf||null});
   }catch(e){return json({ok:false,erro:e instanceof Error?e.message:String(e)},500)}
 });
