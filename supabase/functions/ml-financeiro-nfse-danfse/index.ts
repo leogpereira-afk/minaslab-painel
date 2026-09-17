@@ -1,8 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
 import forge from "npm:node-forge@1.3.1";
 import templateDanfseV1 from "./template-danfse-montes-claros-v1.ts";
+import arialDanfseV1 from "./arial-danfse-v1.ts";
 
 const U=Deno.env.get("SUPABASE_URL")!;
 const K=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -16,6 +18,9 @@ const section=(xml:string,n:string)=>{const m=xml.match(new RegExp(`<(?:\\w+:)?$
 const money=(v:any)=>{const n=Number(String(v||"0").replace(",","."));return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})};
 const dateBR=(v:string)=>{const x=String(v||"").slice(0,10);const p=x.split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:x};
 const docFmt=(v:string)=>{const d=String(v||"").replace(/\D/g,"");if(d.length===14)return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;if(d.length===11)return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;return v||"—"};
+const phoneFmt=(v:string)=>{const d=String(v||"").replace(/\D/g,"");if(d.length===11)return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;if(d.length===10)return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;return v||"-"};
+const cepFmt=(v:string)=>{const d=String(v||"").replace(/\D/g,"");return d.length===8?`${d.slice(0,5)}-${d.slice(5)}`:(v||"-")};
+const clip=(v:string,max:number)=>{const x=String(v||"-");return x.length<=max?x:x.slice(0,Math.max(1,max-3)).trimEnd()+"..."};
 function wrap(text:string,max=88){const w=String(text||"").split(/\s+/).filter(Boolean),out:string[]=[];let cur="";for(const x of w){const n=cur?`${cur} ${x}`:x;if(n.length>max&&cur){out.push(cur);cur=x}else cur=n}if(cur)out.push(cur);return out.length?out:["—"]}
 
 async function tentarGateway(chave:string){
@@ -69,7 +74,11 @@ async function tentarAdnOficial(chave:string){
 async function gerarPdfLocal(xml:string,n:any){
   const b64=templateDanfseV1;
   const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
-  const pdf=await PDFDocument.load(raw),page=pdf.getPages()[0],font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),H=page.getHeight(),white=rgb(1,1,1),black=rgb(0,0,0);
+  const source=await PDFDocument.load(raw),pdf=await PDFDocument.create(),[background]=await pdf.embedPdf(source,[0]),page=pdf.addPage([595,842]);
+  page.drawPage(background,{x:0,y:0,width:595,height:842});
+  pdf.registerFontkit(fontkit);
+  const arialBytes=Uint8Array.from(atob(arialDanfseV1),c=>c.charCodeAt(0));
+  const font=await pdf.embedFont(arialBytes,{subset:false}),bold=await pdf.embedFont(StandardFonts.HelveticaBold),H=page.getHeight(),white=rgb(1,1,1),black=rgb(0,0,0);
   const erase=(x,top,w,h)=>page.drawRectangle({x,y:H-top-h,width:w,height:h,color:white});
   const put=(s,x,top,size=8,b=false,max=560)=>page.drawText(String(s||"-"),{x,y:H-top-size,size,font:b?bold:font,color:black,maxWidth:max});
   const lineValue=(s,x,top,w,size=8)=>{const ls=wrap(String(s||"-"),Math.max(8,Math.floor(w/(size*.51))));ls.slice(0,2).forEach((z,i)=>put(z,x,top+i*(size+1),size,false,w));};
@@ -80,17 +89,17 @@ async function gerarPdfLocal(xml:string,n:any){
   const endereco=s=>[tag(s,"xLgr"),tag(s,"nro"),tag(s,"xCpl"),tag(s,"xBairro")].filter(Boolean).join(", ");
   const desc=tag(dps,"xDescServ")||"Serviço conforme NFS-e autorizada.",valor=tag(inf,"vTotNF")||tag(inf,"vLiq")||tag(dps,"vServ")||String(n.valor_total||0),nbs=tag(dps,"cNBS")||"";
   const munToma=(tag(toma,"xMun")||"Montes Claros")+" - "+(tag(toma,"UF")||"MG");
-  [[14,59,430,11],[14,80,125,11],[156,80,125,11],[298,80,150,11],[14,101,125,11],[156,101,125,11],[298,101,150,11],[476,51,70,58],
-   [14,138,120,11],[156,138,125,11],[298,138,125,11],[439,138,125,11],[14,159,260,11],[298,159,255,11],[14,180,270,11],[298,180,125,11],[439,180,125,11],
-   [14,223,125,11],[156,223,125,11],[298,223,125,11],[439,223,125,11],[14,244,260,12],[298,244,255,12],[14,266,270,12],[298,266,125,12],[439,266,125,12],
-   [14,310,270,22],[298,310,125,12],[439,310,125,12],[14,343,540,13],[14,420,125,12],[14,533,125,12],[439,554,125,12],[14,607,300,13]].forEach(v=>erase(...v));
+  [[14,59,430,11],[14,80,125,11],[156,80,125,11],[298,80,150,11],[14,101,125,11],[156,101,125,11],[298,101,150,11],[476,51,60,52],
+   [156,137,125,11],[298,137,125,11],[439,137,125,11],[14,159,260,11],[298,159,255,11],[14,180,270,11],[298,180,125,11],[439,180,125,11],
+   [156,223,125,11],[298,223,125,11],[439,223,125,11],[14,245,270,11],[298,245,270,11],[14,266,270,11],[298,266,125,11],[439,266,125,11],
+   [14,313,140,20],[156,313,125,11],[298,313,125,11],[439,313,125,11],[14,343,540,14],[14,420,125,12],[14,533,125,12],[439,554,125,12],[14,617,300,12]].forEach(v=>erase(...v));
   put(chave,14,59,8);put(numero,14,80,8);put(compet,156,80,8);put(dataHora(dhN),298,80,8);put(tag(dps,"nDPS")||"-",14,101,8);put(tag(dps,"serie")||"-",156,101,8);put(dataHora(tag(dps,"dhEmi")),298,101,8);
-  try{const qr=(await import("npm:qrcode-generator@1.4.4")).default(0,"M");qr.addData("https://www.nfse.gov.br/consultapublica?chave="+chave);qr.make();const m=qr.getModuleCount(),s=48/m;for(let r=0;r<m;r++)for(let c=0;c<m;c++)if(qr.isDark(r,c))page.drawRectangle({x:480+c*s,y:H-54-(r+1)*s,width:s+.06,height:s+.06,color:black});}catch{}
-  put("Prestador do Serviço",14,138,8);put(docFmt(prestDoc),156,138,8);put(tag(emit,"IM")||"130602",298,138,8);put(tag(emit,"fone")||"(38) 9812-9311",439,138,8);
-  lineValue(tag(emit,"xNome")||n.nome_emitente||"M LAB SERVICOS LTDA",14,159,260,8);put(tag(emit,"email")||"financeiro@minaslab.net",298,159,8);lineValue(endereco(emit)||"R RAIMUNDO FERNANDES DIAS, 96, RENASCENCA",14,180,270,8);put("Montes Claros - MG",298,180,8);put(tag(emit,"CEP")||"39400-241",439,180,8);
-  put(docFmt(tomaDoc),156,223,8);put(tag(toma,"IM")||"-",298,223,8);put(tag(toma,"fone")||"-",439,223,8);lineValue(tag(toma,"xNome")||n.nome_destinatario||"-",14,244,260,8);put(tag(toma,"email")||"-",298,244,8);lineValue(endereco(toma)||"-",14,266,270,7.5);put(munToma,298,266,8);put(tag(toma,"CEP")||"-",439,266,8);
-  const cod=tag(dps,"cTribNac")||"170202";lineValue(cod.replace(/(\d{2})(\d{2})(\d{2})/,"$1.$2.$3")+" - Expediente, secretaria em geral, apoio e infraestrutura administrativa e congêneres.",14,310,270,7.5);put("-",298,310,8);put("Montes Claros - MG",439,310,8);
-  lineValue(desc,14,343,540,8);put(money(valor),14,420,8);put(money(valor),14,533,8);put(money(valor),439,554,8,true);put("NBS: "+(nbs||"-"),14,607,8);
+  try{const qr=(await import("npm:qrcode-generator@1.4.4")).default(0,"M");qr.addData("https://www.nfse.gov.br/consultapublica?chave="+chave);qr.make();const m=qr.getModuleCount(),s=48/m;for(let r=0;r<m;r++)for(let c=0;c<m;c++)if(qr.isDark(r,c))page.drawRectangle({x:480+c*s,y:H-53-(r+1)*s,width:s+.06,height:s+.06,color:black});}catch{}
+  put(docFmt(prestDoc),156,137,8);put(tag(emit,"IM")||"130602",298,137,8);put(phoneFmt(tag(emit,"fone")||"(38) 9812-9311"),439,137,8);
+  lineValue(tag(emit,"xNome")||n.nome_emitente||"M LAB SERVICOS LTDA",14,159,260,8);put(tag(emit,"email")||"financeiro@minaslab.net",298,159,8);put(clip(endereco(emit)||"R RAIMUNDO FERNANDES DIAS, 96, RENASCENCA",55),14,180,8,false,560);put("Montes Claros - MG",298,180,8);put(cepFmt(tag(emit,"CEP")||"39400-241"),439,180,8);
+  put(docFmt(tomaDoc),156,223,8);put(tag(toma,"IM")||"-",298,223,8);put(phoneFmt(tag(toma,"fone")||"-"),439,223,8);lineValue(tag(toma,"xNome")||n.nome_destinatario||"-",14,245,270,8);put(tag(toma,"email")||"-",298,245,8);put(clip(endereco(toma)||"-",55),14,266,8,false,560);put(munToma,298,266,8);put(cepFmt(tag(toma,"CEP")||"-"),439,266,8);
+  const cod=tag(dps,"cTribNac")||"170202";lineValue(cod.replace(/(\d{2})(\d{2})(\d{2})/,"$1.$2.$3")+" - Expediente, secretaria em geral, apoio e infraestrutura administrativa e congêneres.",14,313,140,8);put("-",156,313,8);put("Montes Claros - MG",298,313,8);put("-",439,313,8);
+  lineValue(desc,14,343,540,8);put(money(valor),14,420,8);put(money(valor),14,533,8);put(money(valor),439,554,8,true);put("NBS: "+(nbs||"-"),14,617,8);
   return new Uint8Array(await pdf.save());
 }
 Deno.serve(async req=>{
@@ -113,7 +122,7 @@ Deno.serve(async req=>{
           if(!n.xml_url)throw new Error("A nota não possui XML fiscal para gerar o DANFSe no padrão nacional.");
           const {data:xmlBlob,error:xe}=await sb.storage.from(BUCKET).download(n.xml_url); if(xe)throw xe;
           const xml=await xmlBlob.text(); if(!xml.trim())throw new Error("O XML salvo da NFS-e está vazio.");
-          bytes=await gerarPdfLocal(xml,n); origemPdf="padrao_danfse_v2_xml";
+          bytes=await gerarPdfLocal(xml,n); origemPdf="padrao_danfse_municipal_v1_xml";
         }else throw new Error("O DANFSe oficial ainda não está disponível no Portal Nacional; o PDF existente foi preservado.");
       }
       const ano=String(n.data_emissao||new Date().toISOString()).slice(0,4)||String(new Date().getFullYear());
