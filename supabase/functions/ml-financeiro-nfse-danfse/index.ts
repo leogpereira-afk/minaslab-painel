@@ -66,40 +66,30 @@ async function tentarAdnOficial(chave:string){
 }
 
 async function gerarPdfLocal(xml:string,n:any){
-  const pdf=await PDFDocument.create(),page=pdf.addPage([595.28,841.89]),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-  const ink=rgb(.08,.08,.08),muted=rgb(.28,.32,.38),line=rgb(.55,.58,.62),pale=rgb(.94,.95,.96),blue=rgb(.04,.29,.55),W=575,x0=10,H=page.getHeight();
-  const draw=(s,x,top,size=6.5,b=false,color=ink)=>page.drawText(String(s||"-"),{x,y:H-top-size,size,font:b?bold:font,color,maxWidth:570});
-  const rule=(top,x=x0,w=W)=>page.drawLine({start:{x,y:H-top},end:{x:x+w,y:H-top},thickness:.55,color:line});
-  const rect=(top,h,x=x0,w=W,fill)=>page.drawRectangle({x,y:H-top-h,width:w,height:h,borderColor:line,borderWidth:.55,...(fill?{color:fill}:{})});
-  const label=(s,x,top)=>draw(s.toUpperCase(),x,top,5.5,true,muted),value=(s,x,top,size=7,b=false)=>draw(s||"-",x,top,size,b,ink);
-  const field=(l,v,x,top,w,size=7)=>{label(l,x,top);const ls=wrap(v||"-",Math.max(12,Math.floor(w/(size*.52))));ls.slice(0,2).forEach((z,i)=>value(z,x,top+9+i*8,size));};
+  const b64=(await Deno.readTextFile(new URL("./template-danfse-montes-claros-v1.b64",import.meta.url))).trim();
+  const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const pdf=await PDFDocument.load(raw),page=pdf.getPages()[0],font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),H=page.getHeight(),white=rgb(1,1,1),black=rgb(0,0,0);
+  const erase=(x,top,w,h)=>page.drawRectangle({x,y:H-top-h,width:w,height:h,color:white});
+  const put=(s,x,top,size=8,b=false,max=560)=>page.drawText(String(s||"-"),{x,y:H-top-size,size,font:b?bold:font,color:black,maxWidth:max});
+  const lineValue=(s,x,top,w,size=8)=>{const ls=wrap(String(s||"-"),Math.max(8,Math.floor(w/(size*.51))));ls.slice(0,2).forEach((z,i)=>put(z,x,top+i*(size+1),size,false,w));};
   const emit=section(xml,"emit")||section(xml,"prest"),toma=section(xml,"toma"),inf=section(xml,"infNFSe")||xml,dps=section(xml,"infDPS")||xml;
   const chave=String(n.chave_acesso||tag(inf,"chNFSe")||""),numero=String(n.numero_nf||tag(inf,"nNFSe")||"-"),compet=dateBR(tag(dps,"dCompet")||n.data_emissao||"");
-  const dhN=tag(inf,"dhProc")||tag(inf,"dhEmi")||tag(dps,"dhEmi")||n.data_emissao||"",dataHora=v=>{const d=String(v||"");return d?dateBR(d)+(d.includes("T")?" "+d.slice(11,19):""):"-"};
-  const prestNome=tag(emit,"xNome")||n.nome_emitente||"M LAB SERVICOS LTDA",prestDoc=tag(emit,"CNPJ")||tag(emit,"CPF")||n.cnpj_emitente||"";
-  const tomaNome=tag(toma,"xNome")||n.nome_destinatario||"-",tomaDoc=tag(toma,"CNPJ")||tag(toma,"CPF")||n.cnpj_destinatario||"";
+  const dataHora=v=>{const d=String(v||"");return d?dateBR(d)+(d.includes("T")?" "+d.slice(11,19):""):"-"};
+  const dhN=tag(inf,"dhProc")||tag(inf,"dhEmi")||tag(dps,"dhEmi")||n.data_emissao||"",prestDoc=tag(emit,"CNPJ")||tag(emit,"CPF")||n.cnpj_emitente||"",tomaDoc=tag(toma,"CNPJ")||tag(toma,"CPF")||n.cnpj_destinatario||"";
   const endereco=s=>[tag(s,"xLgr"),tag(s,"nro"),tag(s,"xCpl"),tag(s,"xBairro")].filter(Boolean).join(", ");
-  const cMun=tag(dps,"cLocPrestacao")||tag(dps,"cLocEmi")||"3143302",codigo=tag(dps,"cTribNac")||"",nbs=tag(dps,"cNBS")||"",desc=tag(dps,"xDescServ")||"Serviço conforme NFS-e autorizada.";
-  const valor=tag(inf,"vTotNF")||tag(inf,"vLiq")||tag(dps,"vServ")||String(n.valor_total||0);
-  rect(8,55,10,575,pale);page.drawRectangle({x:22,y:H-45,width:12,height:12,color:blue});page.drawRectangle({x:37,y:H-36,width:8,height:8,color:blue});draw("NFS-e",51,18,18,true,blue);
-  draw("DANFSe v2.0",210,14,7,true);draw("Documento Auxiliar da NFS-e",188,29,10,true);draw("Município: Montes Claros - MG",430,14,6,true);draw("Ambiente Gerador: Nacional",430,25,6);draw("Tipo de Ambiente: Produção",430,36,6);
-  rect(66,86);field("Chave de acesso da NFS-e",chave,18,72,380,9);field("Número da NFS-e",numero,18,100,130,8);field("Competência da NFS-e",compet,155,100,150,8);field("Data e hora da emissão da NFS-e",dataHora(dhN),315,100,190,8);
-  field("Número da DPS",tag(dps,"nDPS")||"-",18,126,130,7);field("Série da DPS",tag(dps,"serie")||"-",155,126,150,7);field("Data e hora da emissão da DPS",dataHora(tag(dps,"dhEmi")),315,126,190,7);
-  try{const qr=(await import("npm:qrcode-generator@1.4.4")).default(0,"M");qr.addData("https://www.nfse.gov.br/consultapublica?chave="+chave);qr.make();const m=qr.getModuleCount(),s=62/m;for(let r=0;r<m;r++)for(let c=0;c<m;c++)if(qr.isDark(r,c))page.drawRectangle({x:514+c*s,y:H-76-(r+1)*s,width:s+.08,height:s+.08,color:ink});}catch{}
-  field("Emitente da NFS-e","Prestador",18,154,130,7);field("Situação da NFS-e",String(n.status_fiscal||"AUTORIZADA")==="CANCELADA"?"NFS-e Cancelada":"NFS-e Gerada",155,154,150,7);field("Finalidade","NFS-e regular",315,154,180,7);
-  rect(181,74);draw("PRESTADOR / FORNECEDOR",18,186,7,true);field("CNPJ / CPF / NIF",docFmt(prestDoc),190,186,125);field("Indicador Municipal (Inscrição)",tag(emit,"IM")||"-",325,186,130);field("Telefone",tag(emit,"fone")||"-",470,186,105);
-  field("Nome / Nome Empresarial",prestNome,18,211,290,7.2);field("Município / Sigla UF","Montes Claros / MG",325,211,130);field("Código IBGE / CEP","31.43302 / "+(tag(emit,"CEP")||"-"),470,211,105);field("Endereço",endereco(emit)||"R RAIMUNDO FERNANDES DIAS, 96, RENASCENCA",18,235,290,6.5);field("E-mail",tag(emit,"email")||"financeiro@minaslab.net",325,235,250,6.5);
-  rect(258,69);draw("TOMADOR / ADQUIRENTE",18,263,7,true);field("CNPJ / CPF / NIF",docFmt(tomaDoc),190,263,125);field("Indicador Municipal (Inscrição)",tag(toma,"IM")||"-",325,263,130);field("Telefone",tag(toma,"fone")||"-",470,263,105);
-  field("Nome / Nome Empresarial",tomaNome,18,288,290,7.2);field("Município / Sigla UF",(tag(toma,"xMun")||"Montes Claros")+" / "+(tag(toma,"UF")||"MG"),325,288,130);field("Código IBGE / CEP",(tag(toma,"cMun")||"31.43302")+" / "+(tag(toma,"CEP")||"-"),470,288,105);field("Endereço",endereco(toma)||"-",18,309,290,5.4);field("E-mail",tag(toma,"email")||"-",325,309,250,5.8);
-  rect(330,26,10,575,pale);draw("DESTINATÁRIO DA OPERAÇÃO NÃO IDENTIFICADO NA NFS-e",165,335,6,true);draw("INTERMEDIÁRIO DA OPERAÇÃO NÃO IDENTIFICADO NA NFS-e",158,346,6,true);
-  rect(359,89);draw("SERVIÇO PRESTADO",18,364,7,true);field("Código de Tributação Nacional/Municipal",codigo?codigo.replace(/(\d{2})(\d{2})(\d{2})/,"$1.$2.$3")+" / -":"-",190,364,135);field("Código da NBS",nbs?nbs.replace(/(\d)(\d{4})(\d{2})(\d{2})/,"$1.$2.$3.$4"):"-",335,364,105);field("Local da Prestação / Sigla UF / País","Montes Claros / MG / -",450,364,125);
-  value("Expediente, secretaria em geral, apoio e infraestrutura administrativa e congêneres.",18,389,6.5);label("Descrição do Serviço",18,402);wrap(desc,112).slice(0,3).forEach((z,i)=>value(z,18,412+i*9,6.8));
-  rect(451,62);draw("TRIBUTAÇÃO MUNICIPAL (ISSQN)",18,456,7,true);field("Tipo de Tributação do ISSQN","Operação Tributável",190,456,180);field("Município / UF / País de Incidência","Montes Claros / MG / -",385,456,190);field("BC ISSQN","-",18,482,130);field("Alíquota Aplicada","-",155,482,130);field("Retenção do ISSQN",tag(dps,"tpRetISSQN")==="2"?"Retido":"Não Retido",295,482,130);field("ISSQN Apurado","-",440,482,135);
-  rect(516,53);draw("TRIBUTAÇÃO FEDERAL (EXCETO CBS)",18,521,7,true);field("IRRF","-",190,521,100);field("Contribuição Previdenciária - Retida","-",300,521,160);field("Contribuições Sociais - Retidas","-",470,521,105);field("PIS / COFINS","Não Retidos",190,546,180);field("Descrição","0 - PIS/COFINS/CSLL Não Retidos",385,546,190);
-  rect(572,89);draw("TRIBUTAÇÃO IBS/CBS",18,577,7,true);field("CST / cClassTrib",(tag(dps,"CST")||"000")+" / "+(tag(dps,"cClassTrib")||"000001"),190,577,150);field("Indicador de Operação / Código IBGE / Município / UF",(tag(dps,"cIndOp")||"100301")+" / "+cMun+" / Montes Claros / MG",350,577,225);
-  field("Exclusões e Reduções da Base","R$ 0,00",18,606,130);field("Base de Cálculo",money(valor),155,606,130);field("Reduções de Alíquota","- / - / -",295,606,130);field("Alíquota IBS UF / IBS Mun","0,10% / 0,00%",440,606,135);field("Valor Total Apurado - IBS","-",18,634,130);field("Alíquota CBS","0,90%",155,634,130);field("Valor Total Apurado - CBS","-",295,634,130);field("Total IBS/CBS","-",440,634,135);
-  rect(664,61);draw("VALOR TOTAL DA NFS-e",18,669,7,true);field("Valor da Operação / Serviço",money(valor),190,669,140,8);field("Desconto Incondicionado","-",340,669,115);field("Desconto Condicionado","-",470,669,105);field("Total das Retenções","-",18,696,130);field("VALOR LÍQUIDO DA NFS-e",money(valor),190,696,140,8);field("Total do IBS/CBS","-",340,696,115);field("VALOR LÍQUIDO + IBS/CBS",money(valor),470,696,105,7);
-  rect(728,58);draw("INFORMAÇÕES COMPLEMENTARES",18,733,7,true);value("Totais aproximados dos Tributos conforme Lei nº 12.741/2012: conforme documento fiscal autorizado.",18,751,6.3);rule(792);field("Data cientificação","",18,797,150);field("Identificação e assinatura","",190,797,180);field("Nº NFS-e / Chave NFS-e",numero+" / "+chave,385,797,190,5.8);
+  const desc=tag(dps,"xDescServ")||"Serviço conforme NFS-e autorizada.",valor=tag(inf,"vTotNF")||tag(inf,"vLiq")||tag(dps,"vServ")||String(n.valor_total||0),nbs=tag(dps,"cNBS")||"";
+  const munToma=(tag(toma,"xMun")||"Montes Claros")+" - "+(tag(toma,"UF")||"MG");
+  [[14,59,430,11],[14,80,125,11],[156,80,125,11],[298,80,150,11],[14,101,125,11],[156,101,125,11],[298,101,150,11],[476,51,70,58],
+   [14,138,120,11],[156,138,125,11],[298,138,125,11],[439,138,125,11],[14,159,260,11],[298,159,255,11],[14,180,270,11],[298,180,125,11],[439,180,125,11],
+   [14,223,125,11],[156,223,125,11],[298,223,125,11],[439,223,125,11],[14,244,260,12],[298,244,255,12],[14,266,270,12],[298,266,125,12],[439,266,125,12],
+   [14,310,270,22],[298,310,125,12],[439,310,125,12],[14,343,540,13],[14,420,125,12],[14,533,125,12],[439,554,125,12],[14,607,300,13]].forEach(v=>erase(...v));
+  put(chave,14,59,8);put(numero,14,80,8);put(compet,156,80,8);put(dataHora(dhN),298,80,8);put(tag(dps,"nDPS")||"-",14,101,8);put(tag(dps,"serie")||"-",156,101,8);put(dataHora(tag(dps,"dhEmi")),298,101,8);
+  try{const qr=(await import("npm:qrcode-generator@1.4.4")).default(0,"M");qr.addData("https://www.nfse.gov.br/consultapublica?chave="+chave);qr.make();const m=qr.getModuleCount(),s=48/m;for(let r=0;r<m;r++)for(let c=0;c<m;c++)if(qr.isDark(r,c))page.drawRectangle({x:480+c*s,y:H-54-(r+1)*s,width:s+.06,height:s+.06,color:black});}catch{}
+  put("Prestador do Serviço",14,138,8);put(docFmt(prestDoc),156,138,8);put(tag(emit,"IM")||"130602",298,138,8);put(tag(emit,"fone")||"(38) 9812-9311",439,138,8);
+  lineValue(tag(emit,"xNome")||n.nome_emitente||"M LAB SERVICOS LTDA",14,159,260,8);put(tag(emit,"email")||"financeiro@minaslab.net",298,159,8);lineValue(endereco(emit)||"R RAIMUNDO FERNANDES DIAS, 96, RENASCENCA",14,180,270,8);put("Montes Claros - MG",298,180,8);put(tag(emit,"CEP")||"39400-241",439,180,8);
+  put(docFmt(tomaDoc),156,223,8);put(tag(toma,"IM")||"-",298,223,8);put(tag(toma,"fone")||"-",439,223,8);lineValue(tag(toma,"xNome")||n.nome_destinatario||"-",14,244,260,8);put(tag(toma,"email")||"-",298,244,8);lineValue(endereco(toma)||"-",14,266,270,7.5);put(munToma,298,266,8);put(tag(toma,"CEP")||"-",439,266,8);
+  const cod=tag(dps,"cTribNac")||"170202";lineValue(cod.replace(/(\d{2})(\d{2})(\d{2})/,"$1.$2.$3")+" - Expediente, secretaria em geral, apoio e infraestrutura administrativa e congêneres.",14,310,270,7.5);put("-",298,310,8);put("Montes Claros - MG",439,310,8);
+  lineValue(desc,14,343,540,8);put(money(valor),14,420,8);put(money(valor),14,533,8);put(money(valor),439,554,8,true);put("NBS: "+(nbs||"-"),14,607,8);
   return new Uint8Array(await pdf.save());
 }
 Deno.serve(async req=>{
