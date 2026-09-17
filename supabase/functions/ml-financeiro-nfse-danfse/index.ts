@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import forge from "npm:node-forge@1.3.1";
 
 const U=Deno.env.get("SUPABASE_URL")!;
 const K=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,6 +35,34 @@ async function tentarGateway(chave:string){
   }
   if(/ssl|tls|bad record mac|decryption failed/i.test(last))return null;
   throw new Error(last||"Falha ao recuperar DANFSe.");
+}
+
+function abrirCertificadoA1(){
+  const b64=String(Deno.env.get("MLAB_NFSE_CERT_PFX_B64")||"").replace(/\s/g,"");
+  const senha=String(Deno.env.get("MLAB_NFSE_CERT_PASSWORD")||"");
+  if(!b64||!senha)return null;
+  const asn1=forge.asn1.fromDer(forge.util.createBuffer(atob(b64),"raw"));
+  const p12=forge.pkcs12.pkcs12FromAsn1(asn1,false,senha);
+  const cert=(p12.getBags({bagType:forge.pki.oids.certBag})[forge.pki.oids.certBag]||[]).find((x:any)=>x.cert)?.cert;
+  const protegidas=p12.getBags({bagType:forge.pki.oids.pkcs8ShroudedKeyBag})[forge.pki.oids.pkcs8ShroudedKeyBag]||[];
+  const abertas=p12.getBags({bagType:forge.pki.oids.keyBag})[forge.pki.oids.keyBag]||[];
+  const key=[...protegidas,...abertas].find((x:any)=>x.key)?.key;
+  if(!cert||!key)return null;
+  return {certChain:forge.pki.certificateToPem(cert),privateKey:forge.pki.privateKeyToPem(key)};
+}
+
+async function tentarAdnOficial(chave:string){
+  const a1=abrirCertificadoA1(); if(!a1)return null;
+  const client=Deno.createHttpClient({certChain:a1.certChain,privateKey:a1.privateKey});
+  try{
+    for(let i=0;i<4;i++){
+      const r=await fetch(`https://adn.nfse.gov.br/danfse/${encodeURIComponent(chave)}`,{method:"GET",client,headers:{Accept:"application/pdf"}} as RequestInit & {client:Deno.HttpClient});
+      if(r.ok){const bytes=new Uint8Array(await r.arrayBuffer());if(bytes.length>4&&String.fromCharCode(...bytes.slice(0,4))==="%PDF")return bytes;}
+      if(![404,409,425,429,500,502,503,504].includes(r.status))return null;
+      if(i<3)await sleep(750*(i+1));
+    }
+    return null;
+  }finally{client.close();}
 }
 
 async function gerarPdfLocal(xml:string,n:any){
@@ -78,11 +107,9 @@ Deno.serve(async req=>{
     let pdfPath=String(n.pdf_url||""); let origemPdf="existente";
     if(!pdfPath||forcarOficial){
       let bytes=await tentarGateway(String(n.chave_acesso));
-      if(bytes){origemPdf="gateway_oficial"}else{if(forcarOficial)throw new Error("Não foi possível recuperar o DANFSe oficial do Portal Nacional; o PDF existente foi preservado.");
-        if(!n.xml_url)throw new Error("O DANFSe remoto não está disponível e esta nota não possui XML salvo para geração local.");
-        const {data:xmlBlob,error:xe}=await sb.storage.from(BUCKET).download(n.xml_url); if(xe)throw xe;
-        const xml=await xmlBlob.text(); if(!xml.trim())throw new Error("O XML salvo da NFS-e está vazio.");
-        bytes=await gerarPdfLocal(xml,n); origemPdf="local_xml";
+      if(bytes){origemPdf="gateway_oficial"}else{
+        bytes=await tentarAdnOficial(String(n.chave_acesso));
+        if(bytes){origemPdf="adn_oficial_direto"}else throw new Error("O DANFSe oficial ainda não está disponível no Portal Nacional; nenhum PDF simplificado foi gerado e o arquivo existente foi preservado.");
       }
       const ano=String(n.data_emissao||new Date().toISOString()).slice(0,4)||String(new Date().getFullYear());
       pdfPath=`financeiro/${n.empresa_id}/nfse/${ano}/${n.chave_acesso}.pdf`;
