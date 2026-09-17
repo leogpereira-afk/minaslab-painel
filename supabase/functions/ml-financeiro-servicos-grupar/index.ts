@@ -1,18 +1,95 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-const U=Deno.env.get("SUPABASE_URL")!,K=Deno.env.get("SB_SECRET_KEY")??Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,J=Deno.env.get("ML_JWT_SECRET")??"";
-const sb=createClient(U,K,{auth:{persistSession:false,autoRefreshToken:false}}),enc=new TextEncoder(),dec=new TextDecoder();
+
+const U=Deno.env.get("SUPABASE_URL")!;
+const K=Deno.env.get("SB_SECRET_KEY")??Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const J=Deno.env.get("ML_JWT_SECRET")??"";
+const sb=createClient(U,K,{auth:{persistSession:false,autoRefreshToken:false}});
+const enc=new TextEncoder(),dec=new TextDecoder();
 const C={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-const out=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...C,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}}),txt=(v:any)=>String(v??"").trim();
+const out=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...C,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+const txt=(v:any)=>String(v??"").trim();
+const dig=(v:any)=>txt(v).replace(/\D/g,"");
+const vazio=(v:any)=>v===undefined?undefined:(txt(v)||null);
+const refProvisoria=(v:any)=>["EM ANDAMENTO","SOLICITAR PO","AGUARDANDO","PENDENTE","A DEFINIR","SEM PO"].includes(txt(v).toUpperCase());
+
 function b64u(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
 async function jwt(t:string){if(!J||!t)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",enc.encode(J),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(typeof x.exp==="number"&&x.exp<Math.floor(Date.now()/1000)))return null;return x}catch{return null}}
-const dig=(v:any)=>txt(v).replace(/\D/g,"");
-const refProvisoria=(v:any)=>["EM ANDAMENTO","SOLICITAR PO","AGUARDANDO","PENDENTE","A DEFINIR","SEM PO"].includes(txt(v).toUpperCase());
-async function limparGrupo(id:string){try{await sb.from("servicos_gerados_grupos_itens").delete().eq("grupo_id",id)}catch{}try{await sb.from("servicos_gerados_grupos_faturamento").delete().eq("id",id)}catch{}}
-Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:C});if(req.method!=="POST")return out({erro:"Use POST."},405);const m=txt(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i),cr=m?await jwt(m[1]):null;if(!cr)return out({erro:"Entre no sistema."},401);if(txt(cr?.papel)!=="direcao")return out({erro:"O financeiro é somente da direção."},403);let b:any={};try{b=await req.json()}catch{return out({erro:"JSON inválido."},400)};
-if(b.action==="listarGrupos"){const q=await sb.from("servicos_gerados_grupos_faturamento").select("id,empresa_id,cliente_chave,cliente_nome,cnpj_cpf,tipo,status,referencia_pagamento,valor_total,created_at").eq("status","ABERTO").order("created_at",{ascending:false}).limit(200);if(q.error)return out({erro:q.error.message},409);return out({ok:true,grupos:q.data||[]})}
-if(b.action==="desagrupar"){const grupoId=txt(b.grupoId);if(!grupoId)return out({erro:"Agrupamento não informado."},400);try{const r=await sb.rpc("servicos_gerados_desagrupar",{p_grupo_id:grupoId});if(r.error)throw r.error;return out(r.data||{ok:true})}catch(e:any){return out({erro:e?.message||"Não foi possível desagrupar."},409)}}
-if(b.action==="desagruparItem"){const servicoId=txt(b.servicoId);if(!servicoId)return out({erro:"OS não informada."},400);try{const r=await sb.rpc("servicos_gerados_desagrupar_item",{p_servico_id:servicoId});if(r.error)throw r.error;return out(r.data||{ok:true})}catch(e:any){return out({erro:e?.message||"Não foi possível desagrupar a OS."},409)}}
-const ids=[...new Set((Array.isArray(b.servicoIds)?b.servicoIds:[]).map(txt).filter(Boolean))];const grupoExistenteId=txt(b.grupoId);if(grupoExistenteId&&ids.length<1)return out({erro:"Selecione ao menos uma OS para adicionar ao grupo."},400);if(!grupoExistenteId&&ids.length<2)return out({erro:"Selecione pelo menos duas OS para agrupar."},400);
-try{const q=await sb.from("servicos_gerados").select("id,empresa_id,cliente,cnpj_cpf,os_numero,contrato_proposta,valor_faturar,valor_original,data_vencimento,forma_pagamento,status_faturamento,referencia_pagamento,empresa:empresas(nome,usa_omie)").in("id",ids).eq("apagado",false);if(q.error)throw q.error;const itens=q.data||[];if(itens.length!==ids.length)throw new Error("Uma ou mais OS não foram encontradas.");if(itens.some((x:any)=>x.status_faturamento!=="PRONTO PARA FATURAR"))throw new Error("Somente OS com status Pronto para faturar podem ser agrupadas.");const emp=itens[0].empresa_id,doc=dig(itens[0].cnpj_cpf),cli=txt(itens[0].cliente).toUpperCase();if(!emp||itens.some((x:any)=>x.empresa_id!==emp))throw new Error("As OS precisam pertencer à mesma empresa de emissão.");if(itens.some((x:any)=>(doc&&dig(x.cnpj_cpf)!==doc)||(!doc&&txt(x.cliente).toUpperCase()!==cli)))throw new Error("As OS precisam pertencer ao mesmo cliente/CNPJ.");const empresa=Array.isArray(itens[0].empresa)?itens[0].empresa[0]:itens[0].empresa;const usaOmie=!!empresa?.usa_omie,tipo=usaOmie?"OMIE":"FATURAMENTO",refInformada=txt(b.referenciaPagamento),refsExistentes=[...new Set(itens.map((x:any)=>txt(x.referencia_pagamento)).filter((v:string)=>v&&!refProvisoria(v)))];
-if(grupoExistenteId){const gq=await sb.from("servicos_gerados_grupos_faturamento").select("*").eq("id",grupoExistenteId).single();if(gq.error||!gq.data)throw new Error("Agrupamento não encontrado.");const g:any=gq.data;if(g.status!=="ABERTO")throw new Error("Somente agrupamentos abertos podem receber novas OS.");if(g.empresa_id!==emp)throw new Error("A OS e o agrupamento precisam pertencer à mesma empresa.");const chave=doc||cli;if(txt(g.cliente_chave).toUpperCase()!==txt(chave).toUpperCase())throw new Error("A OS precisa pertencer ao mesmo cliente/CNPJ do agrupamento.");if(g.tipo!==tipo)throw new Error("O tipo de faturamento da OS não corresponde ao agrupamento.");const dup=await sb.from("servicos_gerados_grupos_itens").select("servico_id").in("servico_id",ids);if(dup.error)throw dup.error;if((dup.data||[]).length)throw new Error("Uma ou mais OS já pertencem a um agrupamento.");const gi=await sb.from("servicos_gerados_grupos_itens").insert(itens.map((x:any)=>({grupo_id:grupoExistenteId,servico_id:x.id,valor:Number(x.valor_faturar||x.valor_original||0)})));if(gi.error)throw gi.error;const adicional=itens.reduce((s:number,x:any)=>s+Number(x.valor_faturar||x.valor_original||0),0),novoTotal=Number(g.valor_total||0)+adicional;const ug=await sb.from("servicos_gerados_grupos_faturamento").update({valor_total:novoTotal}).eq("id",grupoExistenteId);if(ug.error)throw ug.error;if(usaOmie&&g.referencia_pagamento){const u=await sb.from("servicos_gerados").update({referencia_pagamento:g.referencia_pagamento,pagamento_referencia:g.referencia_pagamento,updated_at:new Date().toISOString(),updated_by:txt(cr.sub)||"direcao"}).in("id",ids);if(u.error)throw u.error}return out({ok:true,grupo:{...g,valor_total:novoTotal,usaOmie,adicionados:itens.map((x:any)=>x.os_numero)}})}
-if(usaOmie&&refsExistentes.length>1)throw new Error("As OS possuem Pedidos/Referências Omie diferentes e não podem ser agrupadas juntas.");if(usaOmie&&refsExistentes.length===1&&refInformada&&refInformada.toUpperCase()!==refsExistentes[0].toUpperCase())throw new Error(`A referência informada não confere com o Pedido Omie já vinculado (${refsExistentes[0]}).`);const ref=usaOmie?(refsExistentes[0]||refInformada):refInformada;if(usaOmie&&(!ref||refProvisoria(ref)))throw new Error("Informe um Pedido/Referência Omie definitivo para o grupo.");const total=itens.reduce((s:number,x:any)=>s+Number(x.valor_faturar||x.valor_original||0),0);const g=await sb.from("servicos_gerados_grupos_faturamento").insert({empresa_id:emp,cliente_chave:doc||cli,cliente_nome:itens[0].cliente,cnpj_cpf:itens[0].cnpj_cpf||null,tipo,status:"ABERTO",referencia_pagamento:ref||null,valor_total:total}).select("*").single();if(g.error)throw g.error;const grupoId=g.data.id;const gi=await sb.from("servicos_gerados_grupos_itens").insert(itens.map((x:any)=>({grupo_id:grupoId,servico_id:x.id,valor:Number(x.valor_faturar||x.valor_original||0)})));if(gi.error){await limparGrupo(grupoId);if(String(gi.error.message||"").toLowerCase().includes("duplicate")||String(gi.error.code||"")==="23505")throw new Error("Uma ou mais OS já pertencem a outro agrupamento.");throw gi.error}if(usaOmie){const u=await sb.from("servicos_gerados").update({referencia_pagamento:ref,pagamento_referencia:ref,updated_at:new Date().toISOString(),updated_by:txt(cr.sub)||"direcao"}).in("id",ids);if(u.error){await limparGrupo(grupoId);throw u.error}}return out({ok:true,grupo:{...g.data,usaOmie,empresaNome:empresa?.nome,os:itens.map((x:any)=>x.os_numero),servicos:itens}})}catch(e:any){console.error(e);return out({erro:e?.message||"Falha ao agrupar OS."},409)}});
+async function limparGrupo(id:string){await sb.from("servicos_gerados_grupos_itens").delete().eq("grupo_id",id);await sb.from("servicos_gerados_grupos_faturamento").delete().eq("id",id)}
+async function grupoComItens(grupoId:string){
+  const gq=await sb.from("servicos_gerados_grupos_faturamento").select("*,empresa:empresas(id,nome,usa_omie)").eq("id",grupoId).single();
+  if(gq.error||!gq.data)throw new Error("Agrupamento não encontrado.");
+  const iq=await sb.from("servicos_gerados_grupos_itens").select("valor,servico:servicos_gerados(id,empresa_id,os_numero,contrato_proposta,cliente,cnpj_cpf,servico,valor_original,valor_faturar,data_emissao,data_vencimento,forma_pagamento,numero_nf,status_faturamento,referencia_pagamento)").eq("grupo_id",grupoId).order("created_at");
+  if(iq.error)throw iq.error;
+  return {...gq.data,itens:(iq.data||[]).map((x:any)=>({...x.servico,valor_grupo:x.valor}))};
+}
+async function idsDoGrupo(grupoId:string){const q=await sb.from("servicos_gerados_grupos_itens").select("servico_id").eq("grupo_id",grupoId);if(q.error)throw q.error;return (q.data||[]).map((x:any)=>x.servico_id)}
+async function recalcular(grupoId:string){const q=await sb.from("servicos_gerados_grupos_itens").select("valor").eq("grupo_id",grupoId);if(q.error)throw q.error;const total=(q.data||[]).reduce((s:number,x:any)=>s+Number(x.valor||0),0);const u=await sb.from("servicos_gerados_grupos_faturamento").update({valor_total:total,updated_at:new Date().toISOString()}).eq("id",grupoId);if(u.error)throw u.error;return total}
+
+Deno.serve(async req=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:C});
+  if(req.method!=="POST")return out({erro:"Use POST."},405);
+  const m=txt(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i),cr=m?await jwt(m[1]):null;
+  if(!cr)return out({erro:"Entre no sistema."},401);
+  if(txt(cr?.papel)!=="direcao")return out({erro:"O financeiro é somente da direção."},403);
+  let b:any={};try{b=await req.json()}catch{return out({erro:"JSON inválido."},400)}
+  try{
+    if(b.action==="listarGrupos"){
+      const q=await sb.from("servicos_gerados_grupos_faturamento").select("*,empresa:empresas(id,nome,usa_omie)").eq("status","ABERTO").order("created_at",{ascending:false}).limit(200);
+      if(q.error)throw q.error;
+      const grupos=[];for(const g of q.data||[])grupos.push(await grupoComItens(g.id));
+      const eq=await sb.from("empresas").select("id,nome,usa_omie").eq("ativo",true).order("nome");
+      if(eq.error)throw eq.error;
+      return out({ok:true,grupos,empresas:eq.data||[]});
+    }
+    if(b.action==="obterGrupo")return out({ok:true,grupo:await grupoComItens(txt(b.grupoId))});
+    if(b.action==="desagrupar"){
+      const grupoId=txt(b.grupoId);if(!grupoId)return out({erro:"Agrupamento não informado."},400);
+      const g=await grupoComItens(grupoId);if(g.nota_fiscal_id||g.recebimento_id)throw new Error("Este agrupamento já possui nota fiscal ou recebimento vinculado e não pode ser desagrupado.");
+      await limparGrupo(grupoId);return out({ok:true,itensLiberados:g.itens.length});
+    }
+    if(b.action==="desagruparItem"){
+      const servicoId=txt(b.servicoId);if(!servicoId)return out({erro:"OS não informada."},400);
+      const lq=await sb.from("servicos_gerados_grupos_itens").select("grupo_id").eq("servico_id",servicoId).maybeSingle();if(lq.error)throw lq.error;if(!lq.data)throw new Error("Esta OS não pertence a um agrupamento.");
+      const grupoId=lq.data.grupo_id,g=await grupoComItens(grupoId);if(g.nota_fiscal_id||g.recebimento_id)throw new Error("Este agrupamento já possui nota fiscal ou recebimento vinculado e não pode ser alterado.");
+      const d=await sb.from("servicos_gerados_grupos_itens").delete().eq("grupo_id",grupoId).eq("servico_id",servicoId);if(d.error)throw d.error;
+      if(g.itens.length-1<2){await limparGrupo(grupoId);return out({ok:true,grupoEncerrado:true,itensLiberados:g.itens.length})}
+      const total=await recalcular(grupoId);return out({ok:true,grupoEncerrado:false,itensRestantes:g.itens.length-1,valorTotal:total});
+    }
+    if(b.action==="editarGrupo"){
+      const grupoId=txt(b.grupoId),campos=b.campos||{};if(!grupoId)return out({erro:"Agrupamento não informado."},400);
+      const g=await grupoComItens(grupoId);if(g.status!=="ABERTO")throw new Error("Somente agrupamentos abertos podem ser editados.");if(g.nota_fiscal_id||g.recebimento_id)throw new Error("O grupo já possui nota fiscal ou recebimento vinculado e não permite esta alteração em lote.");
+      const ids=g.itens.map((x:any)=>x.id),patchGrupo:any={updated_at:new Date().toISOString()},patchItens:any={updated_at:new Date().toISOString(),updated_by:txt(cr.sub)||"direcao"};
+      const mapa:any={data_vencimento:"data_vencimento",data_emissao:"data_emissao",numero_nf:"numero_nf",forma_pagamento:"forma_pagamento",status_faturamento:"status_faturamento",referencia_pagamento:"referencia_pagamento"};
+      for(const [entrada,coluna] of Object.entries(mapa))if(Object.prototype.hasOwnProperty.call(campos,entrada)){const v=vazio(campos[entrada]);patchGrupo[coluna]=v;patchItens[coluna]=v;if(entrada==="referencia_pagamento")patchItens.pagamento_referencia=v}
+      if(Object.prototype.hasOwnProperty.call(campos,"empresa_id")){
+        const empresaId=txt(campos.empresa_id);if(!empresaId)throw new Error("Selecione a empresa do agrupamento.");const eq=await sb.from("empresas").select("id,nome,usa_omie").eq("id",empresaId).single();if(eq.error||!eq.data)throw new Error("Empresa não encontrada.");patchGrupo.empresa_id=empresaId;patchGrupo.tipo=eq.data.usa_omie?"OMIE":"FATURAMENTO";patchItens.empresa_id=empresaId;
+      }
+      if(Object.keys(patchGrupo).length===1)return out({erro:"Nenhum campo compartilhado foi alterado."},400);
+      const ug=await sb.from("servicos_gerados_grupos_faturamento").update(patchGrupo).eq("id",grupoId);if(ug.error)throw ug.error;
+      const ui=await sb.from("servicos_gerados").update(patchItens).in("id",ids);if(ui.error)throw ui.error;
+      return out({ok:true,quantidade:ids.length,grupo:await grupoComItens(grupoId)});
+    }
+
+    const ids=[...new Set((Array.isArray(b.servicoIds)?b.servicoIds:[]).map(txt).filter(Boolean))],grupoExistenteId=txt(b.grupoId);
+    if(grupoExistenteId&&ids.length<1)return out({erro:"Selecione ao menos uma OS para adicionar ao grupo."},400);
+    if(!grupoExistenteId&&ids.length<2)return out({erro:"Selecione pelo menos duas OS para agrupar."},400);
+    const q=await sb.from("servicos_gerados").select("id,empresa_id,cliente,cnpj_cpf,os_numero,contrato_proposta,valor_faturar,valor_original,data_emissao,data_vencimento,forma_pagamento,numero_nf,status_faturamento,referencia_pagamento,empresa:empresas(nome,usa_omie)").in("id",ids).eq("apagado",false);
+    if(q.error)throw q.error;const itens=q.data||[];if(itens.length!==ids.length)throw new Error("Uma ou mais OS não foram encontradas.");if(itens.some((x:any)=>x.status_faturamento!=="PRONTO PARA FATURAR"))throw new Error("Somente OS com status Pronto para faturar podem ser agrupadas.");
+    const emp=itens[0].empresa_id,doc=dig(itens[0].cnpj_cpf),cli=txt(itens[0].cliente).toUpperCase();if(!emp||itens.some((x:any)=>x.empresa_id!==emp))throw new Error("As OS precisam pertencer à mesma empresa de emissão.");if(itens.some((x:any)=>(doc&&dig(x.cnpj_cpf)!==doc)||(!doc&&txt(x.cliente).toUpperCase()!==cli)))throw new Error("As OS precisam pertencer ao mesmo cliente/CNPJ.");
+    const empresa=Array.isArray(itens[0].empresa)?itens[0].empresa[0]:itens[0].empresa,usaOmie=!!empresa?.usa_omie,tipo=usaOmie?"OMIE":"FATURAMENTO",refInformada=txt(b.referenciaPagamento),refs=[...new Set(itens.map((x:any)=>txt(x.referencia_pagamento)).filter((v:string)=>v&&!refProvisoria(v)))];
+    if(grupoExistenteId){
+      const g=await grupoComItens(grupoExistenteId);if(g.status!=="ABERTO")throw new Error("Somente agrupamentos abertos podem receber novas OS.");if(g.nota_fiscal_id||g.recebimento_id)throw new Error("Este agrupamento já possui nota fiscal ou recebimento e não aceita novas OS.");if(g.empresa_id!==emp)throw new Error("A OS e o agrupamento precisam pertencer à mesma empresa.");if(txt(g.cliente_chave).toUpperCase()!==txt(doc||cli).toUpperCase())throw new Error("A OS precisa pertencer ao mesmo cliente/CNPJ do agrupamento.");
+      const dup=await sb.from("servicos_gerados_grupos_itens").select("servico_id").in("servico_id",ids);if(dup.error)throw dup.error;if((dup.data||[]).length)throw new Error("Uma ou mais OS já pertencem a um agrupamento.");
+      const gi=await sb.from("servicos_gerados_grupos_itens").insert(itens.map((x:any)=>({grupo_id:grupoExistenteId,servico_id:x.id,valor:Number(x.valor_faturar||x.valor_original||0)})));if(gi.error)throw gi.error;
+      const herdados:any={updated_at:new Date().toISOString(),updated_by:txt(cr.sub)||"direcao"};for(const c of ["data_vencimento","data_emissao","numero_nf","forma_pagamento","status_faturamento","referencia_pagamento"])if(g[c]!=null)herdados[c]=g[c];if(g.referencia_pagamento)herdados.pagamento_referencia=g.referencia_pagamento;const uh=await sb.from("servicos_gerados").update(herdados).in("id",ids);if(uh.error)throw uh.error;
+      await recalcular(grupoExistenteId);return out({ok:true,grupo:await grupoComItens(grupoExistenteId),adicionados:itens.map((x:any)=>x.os_numero)});
+    }
+    if(usaOmie&&refs.length>1)throw new Error("As OS possuem Pedidos/Referências Omie diferentes e não podem ser agrupadas juntas.");if(usaOmie&&refs.length===1&&refInformada&&refInformada.toUpperCase()!==refs[0].toUpperCase())throw new Error(`A referência informada não confere com o Pedido Omie já vinculado (${refs[0]}).`);
+    const ref=usaOmie?(refs[0]||refInformada):refInformada;if(usaOmie&&(!ref||refProvisoria(ref)))throw new Error("Informe um Pedido/Referência Omie definitivo para o grupo.");
+    const total=itens.reduce((s:number,x:any)=>s+Number(x.valor_faturar||x.valor_original||0),0),unico=(campo:string)=>{const a=[...new Set(itens.map((x:any)=>x[campo]).filter(Boolean))];return a.length===1?a[0]:null};
+    const ins:any={empresa_id:emp,cliente_chave:doc||cli,cliente_nome:itens[0].cliente,cnpj_cpf:itens[0].cnpj_cpf||null,tipo,status:"ABERTO",referencia_pagamento:ref||null,valor_total:total,data_vencimento:unico("data_vencimento"),data_emissao:unico("data_emissao"),numero_nf:unico("numero_nf"),forma_pagamento:unico("forma_pagamento"),status_faturamento:unico("status_faturamento")};
+    const g=await sb.from("servicos_gerados_grupos_faturamento").insert(ins).select("*").single();if(g.error)throw g.error;const grupoId=g.data.id;const gi=await sb.from("servicos_gerados_grupos_itens").insert(itens.map((x:any)=>({grupo_id:grupoId,servico_id:x.id,valor:Number(x.valor_faturar||x.valor_original||0)})));if(gi.error){await limparGrupo(grupoId);throw gi.error}
+    if(ref){const u=await sb.from("servicos_gerados").update({referencia_pagamento:ref,pagamento_referencia:ref,updated_at:new Date().toISOString(),updated_by:txt(cr.sub)||"direcao"}).in("id",ids);if(u.error){await limparGrupo(grupoId);throw u.error}}
+    return out({ok:true,grupo:{...(await grupoComItens(grupoId)),usaOmie,empresaNome:empresa?.nome}});
+  }catch(e:any){console.error(e);return out({erro:e?.message||"Falha ao gerenciar agrupamento de OS."},409)}
+});
