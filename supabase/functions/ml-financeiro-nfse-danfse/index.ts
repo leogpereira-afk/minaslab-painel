@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import forge from "npm:node-forge@1.3.1";
+import templateDanfseV1 from "./template-danfse-montes-claros-v1.ts";
 
 const U=Deno.env.get("SUPABASE_URL")!;
 const K=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -66,7 +67,7 @@ async function tentarAdnOficial(chave:string){
 }
 
 async function gerarPdfLocal(xml:string,n:any){
-  const b64=(await Deno.readTextFile(new URL("./template-danfse-montes-claros-v1.b64",import.meta.url))).trim();
+  const b64=templateDanfseV1;
   const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
   const pdf=await PDFDocument.load(raw),page=pdf.getPages()[0],font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),H=page.getHeight(),white=rgb(1,1,1),black=rgb(0,0,0);
   const erase=(x,top,w,h)=>page.drawRectangle({x,y:H-top-h,width:w,height:h,color:white});
