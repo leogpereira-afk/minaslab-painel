@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Download, FileText, LoaderCircle, Trash2, Upload } from "lucide-react";
 import {
   rhDocumentoConfirmarPreenchimento, rhDocumentoExcluir, rhDocumentoUrl,
-  rhDocumentoUpload, rhDocumentosListar,
+  rhDocumentoAtualizar, rhDocumentoUpload, rhDocumentosListar,
 } from "../../services/dados.js";
 import { extrairDadosKit, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 import { Card, Empty } from "../ui.jsx";
@@ -17,8 +17,13 @@ const ROTULOS = {
   cidade:"Cidade", cep:"CEP", email:"E-mail", setor:"Setor/Local", jornada:"Jornada",
   horasSemanais:"Horas semanais", estadoCivil:"Estado civil", escolaridade:"Escolaridade",
   empresa:"Empresa", matriculaEsocial:"Matrícula eSocial", pis:"PIS/PASEP", ctps:"CTPS",
-  vinculo:"Vínculo",
+  vinculo:"Vínculo", nacionalidade:"Nacionalidade", naturalidade:"Naturalidade", sexo:"Sexo",
+  orgaoEmissorRg:"Órgão emissor do RG", ufRg:"UF do RG", nomeMae:"Nome da mãe", nomePai:"Nome do pai",
+  serieCtps:"Série CTPS", ufCtps:"UF CTPS", tipoSalario:"Tipo de salário", centroCusto:"Centro de custo",
 };
+const TIPOS_CADASTRO = new Set(["Ficha de Registro", "Kit Admissional", "Contrato de Trabalho", "Documentos Pessoais"]);
+const TIPOS_EVENTO = new Set(["ASO", "NR / Certificado de Treinamento", "Ordem de Serviço SST"]);
+const hoje = () => new Date().toISOString().slice(0, 10);
 
 function lerArquivo(file) {
   return new Promise((resolve, reject) => {
@@ -68,7 +73,8 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
           ? "Campos encontrados aguardando confirmação humana."
           : "Documento armazenado; requer conferência manual.",
       });
-      setPendente({ doc, dados: leitura.dados, conflitos: leitura.conflitos, camposEncontrados: leitura.camposEncontrados });
+      const meta = TIPOS_EVENTO.has(tipo) ? { dataRealizacao: "", validade: "", observacoes: "" } : {};
+      setPendente({ doc, tipo, dados: leitura.dados, conflitos: leitura.conflitos, camposEncontrados: leitura.camposEncontrados, meta });
       setMensagem(leitura.camposEncontrados.length
         ? "Ficha/Kit lido. Confira todos os campos encontrados antes de confirmar."
         : "Arquivo armazenado, mas não foi possível extrair texto automaticamente.");
@@ -80,8 +86,24 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
   async function confirmar() {
     if (!pendente) return;
     try {
-      const r = await rhDocumentoConfirmarPreenchimento(pendente.doc.id, pessoa.id, pendente.dados);
-      setMensagem("Cadastro preenchido: " + ((r.camposAlterados || []).join(", ") || "nenhum campo novo") + ".");
+      if (TIPOS_EVENTO.has(pendente.tipo)) {
+        if (!pendente.meta?.dataRealizacao) {
+          setMensagem("Informe a data de realização/preenchimento antes de confirmar.");
+          return;
+        }
+        await rhDocumentoAtualizar(pendente.doc.id, {
+          dataRealizacao: pendente.meta.dataRealizacao,
+          validade: pendente.meta.validade || null,
+          observacoes: pendente.meta.observacoes || "",
+          status: "CONFIRMADO",
+          leituraStatus: pendente.doc.leitura_status || "REQUER_CONFERENCIA",
+          dadosExtraidos: { ...(pendente.dados || {}), revisadoEm: hoje() },
+        });
+        setMensagem("Documento conferido e dados de realização gravados.");
+      } else {
+        const r = await rhDocumentoConfirmarPreenchimento(pendente.doc.id, pessoa.id, pendente.dados);
+        setMensagem("Cadastro preenchido após revisão: " + ((r.camposAlterados || []).join(", ") || "nenhum campo alterado") + ".");
+      }
       setPendente(null); await carregar();
     } catch (e) { setMensagem(e.message); }
   }
@@ -112,10 +134,36 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
       {mensagem && <p className="mb-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">{mensagem}</p>}
       {pendente && (
         <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3">
-          <div className="mb-2 flex items-center gap-2 font-display text-sm font-semibold"><CheckCircle2 size={16}/> Informações da Ficha/Kit — confira antes de preencher</div>
-          {pendente.conflitos?.length > 0 && <p className="mb-2 text-xs text-warn-800">Existem divergências com o cadastro atual. A confirmação usará somente os valores exibidos abaixo.</p>}
-          {pendente.camposEncontrados?.length ? <div className="grid gap-2 md:grid-cols-2">{pendente.camposEncontrados.map(campo => <label key={campo} className="text-xs text-slate-600">{ROTULOS[campo] || campo}<input className="input mt-1" value={pendente.dados[campo] || ""} onChange={e => setPendente(p => ({...p, dados:{...p.dados, [campo]:e.target.value}}))} /></label>)}</div> : <p className="text-xs text-slate-600">Nenhum campo foi extraído automaticamente. Abra o original e faça a conferência manual.</p>}
-          <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-primary" onClick={confirmar} disabled={!pendente.camposEncontrados?.length}>Confirmar e preencher cadastro</button><button type="button" className="btn-outline" onClick={() => setPendente(null)}>Cancelar confirmação</button></div>
+          <div className="mb-1 flex items-center gap-2 font-display text-sm font-semibold"><CheckCircle2 size={16}/> Revisar antes de confirmar — {pendente.tipo}</div>
+          <p className="mb-3 text-xs text-slate-600">Nada é gravado na ficha da pessoa sem esta revisão. Corrija qualquer informação antes de confirmar.</p>
+          {TIPOS_CADASTRO.has(pendente.tipo) && (
+            <>
+              {pendente.camposEncontrados?.length ? <div className="space-y-2">{pendente.camposEncontrados.map(campo => {
+                const atual = String(pessoa?.[campo] ?? "").trim();
+                const documento = String(pendente.dados?.[campo] ?? "").trim();
+                const mudou = atual && atual !== documento;
+                return <div key={campo} className={"rounded-lg border p-2 " + (mudou ? "border-warn-200 bg-warn-50" : "border-slate-200 bg-white")}>
+                  <label className="text-xs font-medium text-slate-700">{ROTULOS[campo] || campo}</label>
+                  <div className="mt-1 grid gap-2 md:grid-cols-2">
+                    <div><span className="text-[11px] text-slate-500">Cadastro atual</span><div className="min-h-9 rounded-md bg-slate-50 px-2 py-2 text-xs text-slate-700">{atual || "— vazio —"}</div></div>
+                    <label><span className="text-[11px] text-slate-500">Valor que será gravado</span><input className="input mt-0.5" value={pendente.dados[campo] || ""} onChange={e => setPendente(p => ({...p, dados:{...p.dados, [campo]:e.target.value}}))} /></label>
+                  </div>
+                  {mudou && <p className="mt-1 text-[11px] font-medium text-warn-800">Divergência: confirme conscientemente antes de substituir o valor atual.</p>}
+                </div>;
+              })}</div> : <p className="text-xs text-slate-600">Nenhum campo foi extraído automaticamente. O documento foi salvo e pode ser conferido manualmente.</p>}
+            </>
+          )}
+          {TIPOS_EVENTO.has(pendente.tipo) && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-xs text-slate-600">Data de realização / preenchimento *<input type="date" className="input mt-1" value={pendente.meta?.dataRealizacao || ""} onChange={e => setPendente(p => ({...p, meta:{...p.meta, dataRealizacao:e.target.value}}))}/></label>
+              <label className="text-xs text-slate-600">Validade / próximo vencimento, quando houver<input type="date" className="input mt-1" value={pendente.meta?.validade || ""} onChange={e => setPendente(p => ({...p, meta:{...p.meta, validade:e.target.value}}))}/></label>
+              <label className="text-xs text-slate-600 md:col-span-2">Dados/observações conferidos<input className="input mt-1" placeholder={pendente.tipo === "ASO" ? "ex.: periódico, apto, clínica..." : pendente.tipo.startsWith("NR") ? "ex.: NR-06, instrutor, carga horária..." : "ex.: função, riscos, ciência..."} value={pendente.meta?.observacoes || ""} onChange={e => setPendente(p => ({...p, meta:{...p.meta, observacoes:e.target.value}}))}/></label>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="btn-primary" onClick={confirmar} disabled={TIPOS_CADASTRO.has(pendente.tipo) && !pendente.camposEncontrados?.length}>{TIPOS_EVENTO.has(pendente.tipo) ? "Confirmar dados do documento" : "Confirmar e preencher cadastro"}</button>
+            <button type="button" className="btn-outline" onClick={() => setPendente(null)}>Salvar somente o documento</button>
+          </div>
         </div>
       )}
       {documentos.length === 0 ? <Empty>Nenhum documento enviado.</Empty> : <ul className="divide-y" style={{ borderColor:"var(--fio-lista)" }}>{documentos.map(doc => <li key={doc.id} className="flex flex-wrap items-center gap-3 py-2 text-sm"><FileText size={16} className="text-brand-600"/><span className="min-w-0 flex-1 truncate">{doc.nome_original}</span><span className="chip">{doc.tipo}</span><span className="text-xs text-slate-500">{doc.status === "CONFIRMADO" ? "Confirmado" : doc.leitura_status === "REQUER_CONFERENCIA" ? "Conferência manual" : doc.leitura_status}</span><button type="button" className="btn-ghost py-1 text-xs" onClick={() => abrir(doc)}><Download size={14}/> Abrir</button>{editavel && <button type="button" className="btn-ghost py-1 text-xs text-bad-700" onClick={() => excluir(doc)}><Trash2 size={14}/> Retirar</button>}</li>)}</ul>}
