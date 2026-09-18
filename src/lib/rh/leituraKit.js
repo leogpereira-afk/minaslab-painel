@@ -7,10 +7,19 @@ const cpf = v => String(v || "").match(CPF)?.[0]?.replace(/\D/g, "") || "";
 function escaparPdf(v) {
   return String(v || "").replace(/\\([\\()])/g, "$1").replace(/\\n/g, " ").replace(/\\r/g, " ");
 }
+const ROTULOS = [
+  "nome completo", "nome do colaborador", "nome", "cpf",
+  "data de nascimento", "nascimento", "data de admissão", "data de admissao",
+  "admissão", "admissao", "cargo", "função", "funcao", "salário", "salario",
+  "telefone", "celular", "endereço", "endereco"
+];
 function depoisDe(texto, labels) {
+  const proximos = ROTULOS.filter(label => !labels.includes(label))
+    .sort((a, b) => b.length - a.length);
   const re = new RegExp("(?:"
     + labels.join("|")
-    + ")\\s*[:\\-]?\\s*([^\\n|]{2,120})", "i");
+    + ")\\s*[:\\-]?\\s*([^\\n|]{2,120}?)"
+    + "(?=\\s+(?:" + proximos.join("|") + ")\\s*[:\\-]|$)", "i");
   return limpar(texto.match(re)?.[1]);
 }
 function nomeProvavel(texto) { return depoisDe(texto, ["nome completo", "nome do colaborador", "nome"]) || ""; }
