@@ -856,8 +856,6 @@ function FormPessoa({
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 xl:sticky xl:top-4">
               <div className="mb-2 font-display text-sm font-semibold text-brand-900">Pré-visualização da Ficha de Registro</div>
               <div className="rounded-lg border border-slate-300 bg-white p-4 text-[11px] leading-relaxed shadow-sm">
-        <div className="mb-2 font-display text-sm font-semibold text-brand-900">Pré-visualização da Ficha de Registro</div>
-        <div className="rounded-lg border border-slate-300 bg-white p-4 text-[11px] leading-relaxed shadow-sm">
           <div className="border-b pb-2 text-center"><strong>REGISTRO DE EMPREGADOS</strong><div>{form.empresa || "Empresa"} · Ficha {form.numeroFichaRegistro || form.matricula || "—"}</div></div>
           <div className="mt-3 grid grid-cols-2 gap-1"><b>Colaborador</b><span>{form.nome||"—"}</span><span>Nascimento</span><span>{form.dataNascimento||"—"}</span><span>Naturalidade</span><span>{[form.naturalidade,form.uf].filter(Boolean).join(" / ")||"—"}</span><span>Nacionalidade</span><span>{form.nacionalidade||"—"}</span><span>Mãe</span><span>{form.nomeMae||"—"}</span><span>Pai</span><span>{form.nomePai||"—"}</span></div>
           <div className="mt-3 border-y bg-slate-100 px-2 py-1 font-semibold">Documentos</div>
