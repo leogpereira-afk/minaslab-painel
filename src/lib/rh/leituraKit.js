@@ -197,6 +197,7 @@ function cidadeProvavel(texto) {
 function extrairRegistroEmpregados(texto) {
   if (!/Registro de Empregados/i.test(texto)) return {};
   const linhas = String(texto || "").split(/\n+/).map(limpar).filter(Boolean);
+  const dados = {};
   const linha = (re) => linhas.find(l => re.test(l)) || "";
   const valor = (re, campo) => linha(re).match(campo)?.[1] || "";
 
