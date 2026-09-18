@@ -426,10 +426,12 @@ function FormPessoa({
   eventos, editavel, aoSalvar, aoFechar, aoAbrirDesligamento, aoReativar, aoEfetivar,
   aoRegistrarAcontecimento, aoApagarEvento, aoBaixarHistorico,
 }) {
-  if (!form) return null;
+  // Hooks precisam ser executados em todas as renderizações. O formulário
+  // começa fechado (form=null) e depois abre com a pessoa selecionada.
   const [lendoFicha, setLendoFicha] = useState(false);
   const [revisaoFicha, setRevisaoFicha] = useState(null);
   const [etapa, setEtapa] = useState(1);
+  if (!form) return null;
   const etapasCadastro = ["Dados Pessoais", "Dados Profissionais", "Documentos", "Endereço e Contato", "Confirmação"];
   const camposFichaRegistro = [
     ["nome","Nome completo"],["cpf","CPF"],["dataNascimento","Data de nascimento"],["rg","RG"],
