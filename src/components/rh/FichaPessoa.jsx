@@ -43,6 +43,7 @@ import { situacaoFerias, situacaoExperiencia, inicioDoHistorico } from "../../li
 import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadastro.js";
 import { radarExames, tempoDeCasa, chipVenc } from "./uteis.js";
 import { Card, Empty } from "../ui.jsx";
+import DocumentosFuncionario from "./DocumentosFuncionario.jsx";
 import { dataDe, resultadoDe, tipoDe, rotuloTipo, metaResultado } from "../../lib/rhExamesApresentacao.js";
 
 const txt = (v) => String(v ?? "").trim();
@@ -482,6 +483,8 @@ export default function FichaPessoa({
           )}
         </Card>
       )}
+
+      <DocumentosFuncionario pessoa={pessoa} editavel={editavel} />
 
       {aba === "historico" && (
         <Card>
