@@ -43,6 +43,21 @@ function tipoAso(obs) {
   return "periodico";
 }
 
+function resultadoAso(obs) {
+  const s = String(obs || "").toLowerCase();
+  if (/\\b(inapto|não\\s+apto|nao\\s+apto)\\b/.test(s)) return "inapto";
+  if (/\\bapto\\s+com\\s+restri/.test(s)) return "apto_com_restricao";
+  if (/\\bapto\\b/.test(s)) return "apto";
+  return "aguardando";
+}
+
+function tipoNr(obs) {
+  const m = String(obs || "").toUpperCase().match(/\\bNR[ -]?(\\d{1,2})\\b/);
+  if (!m) return "Outro";
+  const conhecido = `NR-${m[1].padStart(2, "0")}`;
+  return ["NR-06", "NR-10", "NR-35"].includes(conhecido) ? conhecido : "Outro";
+}
+
 function lerArquivo(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,14 +138,14 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
         if (pendente.tipo === "ASO") {
           await salvar("rh_exames", {
             pessoaId: pessoa.id, pessoaNome: pessoa.nome || "", tipo: tipoAso(pendente.meta.observacoes),
-            exame: "ASO", data: realizado, validadeMeses: validade ? 12 : "", vence: validade,
-            validade, resultado: /\\bapto\\b/i.test(pendente.meta.observacoes || "") ? "apto" : "aguardando",
+            exame: "ASO", data: realizado, validadeMeses: validadeInformada ? "" : (validade ? 12 : ""), vence: validade,
+            validade, resultado: resultadoAso(pendente.meta.observacoes || ""),
             restricao: "", clinica: "", medico: "", obs: pendente.meta.observacoes || "",
             documentoId: pendente.doc.id,
           });
         } else if (pendente.tipo === "NR / Certificado de Treinamento" && validade) {
           await salvar("rh_vencimentos", {
-            pessoaId: pessoa.id, pessoaNome: pessoa.nome || "", tipo: "NR",
+            pessoaId: pessoa.id, pessoaNome: pessoa.nome || "", tipo: tipoNr(pendente.meta.observacoes),
             descricao: pendente.meta.observacoes || "Certificado de treinamento", vence: validade,
             realizadoEm: realizado, documentoId: pendente.doc.id,
           });
