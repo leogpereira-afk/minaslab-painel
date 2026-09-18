@@ -109,7 +109,7 @@ function primeiroNome(texto) {
   ];
   for (const p of padroes) {
     const valor = limpar(texto.match(p)?.[1]);
-    if (valor && !/histórico|contratual|empregador|documentos/i.test(valor)) return valor;
+    if (valor && !/histórico|contratual|empregador|documentos/i.test(valor)) return limpar(valor.replace(/\s+(?:CPF|Data|Cargo|Salário|Endereço|Telefone)\b.*$/i, ""));
   }
   return depoisDe(texto, ["nome completo", "nome do colaborador", "nome"]) || "";
 }
