@@ -431,6 +431,16 @@ function FormPessoa({
   const [revisaoFicha, setRevisaoFicha] = useState(null);
   const [etapa, setEtapa] = useState(1);
   const etapasCadastro = ["Dados Pessoais", "Dados Profissionais", "Documentos", "Endereço e Contato", "Confirmação"];
+  const camposFichaRegistro = [
+    ["nome","Nome completo"],["cpf","CPF"],["dataNascimento","Data de nascimento"],["rg","RG"],
+    ["orgaoEmissorRg","Órgão emissor RG"],["estadoCivil","Estado civil"],["sexo","Sexo"],
+    ["nacionalidade","Nacionalidade"],["naturalidade","Naturalidade"],["nomeMae","Nome da mãe"],
+    ["nomePai","Nome do pai"],["admissao","Data de admissão"],["cargo","Cargo"],["cbo","CBO"],
+    ["salario","Salário"],["matricula","Nº ficha / matrícula"],["matriculaEsocial","Matrícula eSocial"],
+    ["pis","PIS/PASEP"],["ctps","CTPS"],["serieCtps","Série CTPS"],["setor","Setor / local"],
+    ["jornada","Jornada"],["horasSemanais","Horas semanais"],["telefone","Telefone"],["email","E-mail"],
+    ["endereco","Endereço"],["bairro","Bairro"],["cep","CEP"],["cidade","Cidade"],["uf","UF"],
+  ];
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
 
   async function lerFichaRegistro(e) {
@@ -546,6 +556,22 @@ function FormPessoa({
                 );
               })}
             </div>
+            {(() => {
+              const encontrados = new Set(revisaoFicha.camposEncontrados || []);
+              const ausentes = camposFichaRegistro.filter(([campo]) => !encontrados.has(campo));
+              if (!ausentes.length) return null;
+              return (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-700">Não encontrados no PDF</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Complete manualmente na Ficha da Pessoa os campos que o documento não trouxe.</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {ausentes.map(([campo, rotulo]) => (
+                      <span key={campo} className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600">{rotulo}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {revisaoFicha.camposEncontrados.length === 0 && (
               <p className="text-xs text-warn-700">Nenhuma informação foi reconhecida automaticamente. Confira se o PDF contém texto pesquisável.</p>
             )}
