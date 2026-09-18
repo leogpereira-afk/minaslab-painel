@@ -85,7 +85,31 @@ async function extrairTextoPdfCompleto(file) {
   for (let pagina = 1; pagina <= documento.numPages; pagina++) {
     const objeto = await documento.getPage(pagina);
     const conteudo = await objeto.getTextContent();
-    paginas.push((conteudo.items || []).map(item => item.str || "").join(" "));
+    // O relatório "Registro de Empregados" usa colunas. A ordem interna dos
+    // objetos PDF não acompanha a ordem visual; por isso rótulo e valor ficam
+    // separados quando simplesmente fazemos join(). Reconstruímos linhas por
+    // coordenadas Y e ordenamos cada linha por X antes de interpretar campos.
+    const itens = (conteudo.items || [])
+      .filter(item => String(item.str || "").trim())
+      .map(item => ({
+        texto: String(item.str || "").trim(),
+        x: Number(item.transform?.[4] || 0),
+        y: Number(item.transform?.[5] || 0),
+      }))
+      .sort((a, b) => Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x);
+    const linhas = [];
+    for (const item of itens) {
+      let linha = linhas.find(l => Math.abs(l.y - item.y) <= 2);
+      if (!linha) {
+        linha = { y: item.y, itens: [] };
+        linhas.push(linha);
+      }
+      linha.itens.push(item);
+    }
+    paginas.push(linhas
+      .sort((a, b) => b.y - a.y)
+      .map(linha => linha.itens.sort((a, b) => a.x - b.x).map(i => i.texto).join(" "))
+      .join("\n"));
   }
   return paginas.join("\n").replace(/\s+/g, " ").trim();
 }
@@ -171,7 +195,7 @@ function cidadeProvavel(texto) {
 }
 
 export function extrairDadosKit(texto, pessoaAtual = {}) {
-  const bruto = limpar(texto);
+  const bruto = String(texto || "").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
   const dados = {};
   const nome = normalizar(
     bruto.match(/Ficha\.?\s*:?\s*\d+\s+\d+\s*-\s*([A-Za-zÀ-ÿ' ]{5,100}?)(?=\s+Empregador|\s+Colaborador)/i)?.[1]
