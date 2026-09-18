@@ -80,11 +80,13 @@ import { PageTitle, Card, Segmented, CarregandoModulo, ErroModulo, Aviso } from 
 const AbaPonto = lazy(() => import("../components/rh/AbaPonto.jsx"));
 const Faltas = lazy(() => import("../components/ponto/Faltas.jsx"));
 const Relatorios = lazy(() => import("../components/ponto/Relatorios.jsx"));
+const FolhaMensal = lazy(() => import("../components/ponto/FolhaMensal.jsx"));
 
 const ABAS = [
   { valor: "ponto", rotulo: "Fechamento e ajustes" },
   { valor: "faltas", rotulo: "Faltas" },
   { valor: "relatorios", rotulo: "Visão geral e relatórios" },
+  { valor: "folha", rotulo: "Folha Mensal" },
 ];
 
 /* ============================================================================
@@ -782,6 +784,15 @@ export default function Ponto() {
           pontoDia={dados.pontoDia}
           hojeISO={hojeISO}
           setAviso={setAviso}
+        />
+      )}
+
+      {aba === "folha" && (
+        <FolhaMensal
+          pessoas={dados.pessoas}
+          pontoDia={dados.pontoDia}
+          competencia={competencia}
+          editavel={editavel}
         />
       )}
       </Suspense>
