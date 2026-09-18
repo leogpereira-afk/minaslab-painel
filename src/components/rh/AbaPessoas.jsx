@@ -483,11 +483,20 @@ function FormPessoa({
               <Escolha id="p-civil" rotulo="Estado civil" valor={form.estadoCivil} aoMudar={setCampo("estadoCivil")} opcoes={ESTADOS_CIVIS} />
               <Campo id="p-cpf" rotulo="CPF" inputMode="numeric" placeholder="000.000.000-00" valor={form.cpf} aoMudar={setCampo("cpf")} />
               <Campo id="p-rg" rotulo="RG" valor={form.rg} aoMudar={setCampo("rg")} />
+              <Campo id="p-orgao-rg" rotulo="Órgão emissor do RG" valor={form.orgaoEmissorRg} aoMudar={setCampo("orgaoEmissorRg")} />
+              <Campo id="p-uf-rg" rotulo="UF do RG" maxLength={2} valor={form.ufRg} aoMudar={setCampo("ufRg")} />
+              <Campo id="p-sexo" rotulo="Sexo" valor={form.sexo} aoMudar={setCampo("sexo")} />
+              <Campo id="p-nacionalidade" rotulo="Nacionalidade" valor={form.nacionalidade} aoMudar={setCampo("nacionalidade")} />
+              <Campo id="p-naturalidade" rotulo="Naturalidade" valor={form.naturalidade} aoMudar={setCampo("naturalidade")} />
+              <Campo id="p-mae" rotulo="Nome da mãe" valor={form.nomeMae} aoMudar={setCampo("nomeMae")} />
+              <Campo id="p-pai" rotulo="Nome do pai" valor={form.nomePai} aoMudar={setCampo("nomePai")} />
               <Campo id="p-telefone" rotulo="Telefone" tipo="tel" placeholder="(31) 99999-0000" valor={form.telefone} aoMudar={setCampo("telefone")} />
               <Campo id="p-email" rotulo="E-mail" tipo="email" placeholder="nome@minaslab.com.br" valor={form.email} aoMudar={setCampo("email")} />
               <div className="sm:col-span-2">
                 <Campo id="p-endereco" rotulo="Endereço" placeholder="rua, número, bairro" valor={form.endereco} aoMudar={setCampo("endereco")} />
               </div>
+              <Campo id="p-bairro" rotulo="Bairro" valor={form.bairro} aoMudar={setCampo("bairro")} />
+              <Campo id="p-cep" rotulo="CEP" valor={form.cep} aoMudar={setCampo("cep")} />
               <Campo id="p-cidade" rotulo="Cidade" valor={form.cidade} aoMudar={setCampo("cidade")} />
               <Campo id="p-uf" rotulo="UF" maxLength={2} placeholder="MG" valor={form.uf} aoMudar={setCampo("uf")} />
               {/* CNH fica escrito à mão (e não com o <Escolha>): os valores
@@ -520,10 +529,19 @@ function FormPessoa({
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <Campo id="p-matricula" rotulo="Matrícula" valor={form.matricula} aoMudar={setCampo("matricula")} />
+              <Campo id="p-matricula-esocial" rotulo="Matrícula eSocial" valor={form.matriculaEsocial} aoMudar={setCampo("matriculaEsocial")} />
               <Campo id="p-admissao" rotulo="Admissão" tipo="date" valor={form.admissao} aoMudar={setCampo("admissao")} />
               <Campo id="p-cargo" rotulo="Cargo" valor={form.cargo} aoMudar={setCampo("cargo")} />
+              <Campo id="p-cbo" rotulo="CBO" valor={form.cbo} aoMudar={setCampo("cbo")} />
+              <Campo id="p-pis" rotulo="PIS/PASEP" valor={form.pis} aoMudar={setCampo("pis")} />
+              <Campo id="p-ctps" rotulo="CTPS" valor={form.ctps} aoMudar={setCampo("ctps")} />
+              <Campo id="p-serie-ctps" rotulo="Série CTPS" valor={form.serieCtps} aoMudar={setCampo("serieCtps")} />
+              <Campo id="p-uf-ctps" rotulo="UF CTPS" maxLength={2} valor={form.ufCtps} aoMudar={setCampo("ufCtps")} />
               <Escolha id="p-setor" rotulo="Setor" valor={form.setor} aoMudar={setCampo("setor")} opcoes={SETORES} />
               <Escolha id="p-contrato" rotulo="Tipo de contrato" valor={form.tipoContrato} aoMudar={setCampo("tipoContrato")} opcoes={TIPOS_CONTRATO} />
+              <Campo id="p-vinculo" rotulo="Vínculo" valor={form.vinculo} aoMudar={setCampo("vinculo")} />
+              <Campo id="p-tipo-salario" rotulo="Tipo de salário" placeholder="mensal, hora..." valor={form.tipoSalario} aoMudar={setCampo("tipoSalario")} />
+              <Campo id="p-centro-custo" rotulo="Centro de custo" valor={form.centroCusto} aoMudar={setCampo("centroCusto")} />
               <Campo
                 id="p-salario"
                 rotulo="Salário (R$)"
