@@ -429,6 +429,8 @@ function FormPessoa({
   if (!form) return null;
   const [lendoFicha, setLendoFicha] = useState(false);
   const [revisaoFicha, setRevisaoFicha] = useState(null);
+  const [etapa, setEtapa] = useState(1);
+  const etapasCadastro = ["Dados Pessoais", "Dados Profissionais", "Documentos", "Endereço e Contato", "Confirmação"];
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
 
   async function lerFichaRegistro(e) {
@@ -475,12 +477,15 @@ function FormPessoa({
   const gestorForaDoQuadro = form.gestorId && !ativos.some((x) => x.id === form.gestorId);
 
   return (
-    <Modal titulo={form.id ? "Ficha da pessoa" : "Nova pessoa"} aberto={!!form} aoFechar={aoFechar} largura="max-w-2xl">
+    <Modal titulo={form.id ? "Ficha da Pessoa" : "Novo Colaborador"} aberto={!!form} aoFechar={aoFechar} largura="max-w-[1380px]">
       {desligada && (
         <p className="mb-3 text-sm text-slate-500">
           Desligado(a) em {form.desligadoEm ? dataLonga(form.desligadoEm) : "data sem registro"}.
         </p>
       )}
+      <div className="mb-3 flex min-w-0 items-center gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white px-4 py-3">
+        {etapasCadastro.map((nome, i) => { const n=i+1; return <button key={nome} type="button" onClick={()=>setEtapa(n)} className={"flex min-w-[150px] items-center gap-2 text-xs font-medium "+(etapa===n?"text-brand-700":"text-slate-500")}><span className={"grid h-8 w-8 place-items-center rounded-full border "+(etapa===n?"border-brand-600 bg-brand-600 text-white":"border-slate-300 bg-slate-50")}>{n}</span>{nome}</button>; })}
+      </div>
       <BarraCompletude c={cc} />
       {exp && (
         <AvisoExperiencia s={exp} podeEfetivar={!!form.id} salvando={salvando} aoEfetivar={aoEfetivar} />
@@ -820,6 +825,19 @@ function FormPessoa({
           </span>
         </div>
       </form>
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 xl:fixed xl:right-8 xl:top-32 xl:z-50 xl:w-[390px] xl:max-h-[72vh] xl:overflow-auto">
+        <div className="mb-2 font-display text-sm font-semibold text-brand-900">Pré-visualização da Ficha de Registro</div>
+        <div className="rounded-lg border border-slate-300 bg-white p-4 text-[11px] leading-relaxed shadow-sm">
+          <div className="border-b pb-2 text-center"><strong>REGISTRO DE EMPREGADOS</strong><div>{form.empresa || "Empresa"} · Ficha {form.numeroFichaRegistro || form.matricula || "—"}</div></div>
+          <div className="mt-3 grid grid-cols-2 gap-1"><b>Colaborador</b><span>{form.nome||"—"}</span><span>Nascimento</span><span>{form.dataNascimento||"—"}</span><span>Naturalidade</span><span>{[form.naturalidade,form.uf].filter(Boolean).join(" / ")||"—"}</span><span>Nacionalidade</span><span>{form.nacionalidade||"—"}</span><span>Mãe</span><span>{form.nomeMae||"—"}</span><span>Pai</span><span>{form.nomePai||"—"}</span></div>
+          <div className="mt-3 border-y bg-slate-100 px-2 py-1 font-semibold">Documentos</div>
+          <div className="mt-2 grid grid-cols-2 gap-1"><span>CPF</span><span>{form.cpf||"—"}</span><span>RG</span><span>{form.rg||"—"}</span><span>CTPS</span><span>{[form.ctps,form.serieCtps,form.ufCtps].filter(Boolean).join(" / ")||"—"}</span><span>PIS/PASEP</span><span>{form.pis||"—"}</span></div>
+          <div className="mt-3 border-y bg-slate-100 px-2 py-1 font-semibold">Histórico Contratual</div>
+          <div className="mt-2 grid grid-cols-2 gap-1"><span>Admissão</span><span>{form.admissao||"—"}</span><span>Cargo</span><span>{form.cargo||"—"}</span><span>CBO</span><span>{form.cbo||"—"}</span><span>Salário</span><span>{form.salario||"—"}</span><span>Local</span><span>{form.setor||"—"}</span><span>Jornada</span><span>{form.jornada||"—"}</span></div>
+          <div className="mt-3 border-y bg-slate-100 px-2 py-1 font-semibold">Endereço e Contato</div>
+          <div className="mt-2 grid grid-cols-2 gap-1"><span>Endereço</span><span>{form.endereco||"—"}</span><span>Bairro</span><span>{form.bairro||"—"}</span><span>Município/UF</span><span>{[form.cidade,form.uf].filter(Boolean).join(" / ")||"—"}</span><span>CEP</span><span>{form.cep||"—"}</span><span>Telefone</span><span>{form.telefone||"—"}</span></div>
+        </div>
+      </div>
 
       {/* O histórico fica FORA do <form> acima: formulário dentro de formulário
           é HTML inválido, e o modal de acontecimento traz um form próprio. */}
