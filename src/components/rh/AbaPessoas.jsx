@@ -497,6 +497,8 @@ function FormPessoa({
         }}
         className="space-y-4"
       >
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="min-w-0 space-y-4">
         <div className="rounded-xl border border-brand-200 bg-brand-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -829,15 +831,23 @@ function FormPessoa({
               <button type="button" className="btn-outline text-bad-700" onClick={aoAbrirDesligamento} disabled={salvando}>Desligar</button>
             ))}
           </span>
-          <span className="flex gap-2">
+          <span className="flex flex-wrap gap-2">
             <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
-            <button type="submit" className="btn-primary" disabled={salvando || !String(form.nome).trim()}>
-              {salvando ? "Gravando..." : "Gravar"}
-            </button>
+            {etapa > 1 && <button type="button" className="btn-outline" onClick={() => setEtapa((x) => Math.max(1, x - 1))}>Voltar</button>}
+            {etapa < etapasCadastro.length ? (
+              <button type="button" className="btn-primary" onClick={() => setEtapa((x) => Math.min(etapasCadastro.length, x + 1))}>Avançar</button>
+            ) : (
+              <button type="submit" className="btn-primary" disabled={salvando || !String(form.nome).trim()}>
+                {salvando ? "Gravando..." : "Gravar"}
+              </button>
+            )}
           </span>
         </div>
-      </form>
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 xl:fixed xl:right-8 xl:top-32 xl:z-50 xl:w-[390px] xl:max-h-[72vh] xl:overflow-auto">
+          </div>
+          <aside className="min-w-0">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 xl:sticky xl:top-4">
+              <div className="mb-2 font-display text-sm font-semibold text-brand-900">Pré-visualização da Ficha de Registro</div>
+              <div className="rounded-lg border border-slate-300 bg-white p-4 text-[11px] leading-relaxed shadow-sm">
         <div className="mb-2 font-display text-sm font-semibold text-brand-900">Pré-visualização da Ficha de Registro</div>
         <div className="rounded-lg border border-slate-300 bg-white p-4 text-[11px] leading-relaxed shadow-sm">
           <div className="border-b pb-2 text-center"><strong>REGISTRO DE EMPREGADOS</strong><div>{form.empresa || "Empresa"} · Ficha {form.numeroFichaRegistro || form.matricula || "—"}</div></div>
@@ -848,8 +858,11 @@ function FormPessoa({
           <div className="mt-2 grid grid-cols-2 gap-1"><span>Admissão</span><span>{form.admissao||"—"}</span><span>Cargo</span><span>{form.cargo||"—"}</span><span>CBO</span><span>{form.cbo||"—"}</span><span>Salário</span><span>{form.salario||"—"}</span><span>Local</span><span>{form.setor||"—"}</span><span>Jornada</span><span>{form.jornada||"—"}</span></div>
           <div className="mt-3 border-y bg-slate-100 px-2 py-1 font-semibold">Endereço e Contato</div>
           <div className="mt-2 grid grid-cols-2 gap-1"><span>Endereço</span><span>{form.endereco||"—"}</span><span>Bairro</span><span>{form.bairro||"—"}</span><span>Município/UF</span><span>{[form.cidade,form.uf].filter(Boolean).join(" / ")||"—"}</span><span>CEP</span><span>{form.cep||"—"}</span><span>Telefone</span><span>{form.telefone||"—"}</span></div>
+              </div>
+            </div>
+          </aside>
         </div>
-      </div>
+      </form>
 
       {/* O histórico fica FORA do <form> acima: formulário dentro de formulário
           é HTML inválido, e o modal de acontecimento traz um form próprio. */}
