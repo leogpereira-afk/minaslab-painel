@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Download, FileText, LoaderCircle, Trash2, Upload } from "lucide-react";
 import {
   rhDocumentoConfirmarPreenchimento, rhDocumentoExcluir, rhDocumentoUrl,
-  rhDocumentoAtualizar, rhDocumentoUpload, rhDocumentosListar,
+  rhDocumentoAtualizar, rhDocumentoUpload, rhDocumentosListar, salvar,
 } from "../../services/dados.js";
 import { extrairDadosKit, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 import { Card, Empty } from "../ui.jsx";
@@ -24,6 +24,24 @@ const ROTULOS = {
 const TIPOS_CADASTRO = new Set(["Ficha de Registro", "Kit Admissional", "Contrato de Trabalho", "Documentos Pessoais"]);
 const TIPOS_EVENTO = new Set(["ASO", "NR / Certificado de Treinamento", "Ordem de Serviço SST"]);
 const hoje = () => new Date().toISOString().slice(0, 10);
+
+function somarMeses(iso, meses) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  const base = new Date(a, m - 1, 1);
+  base.setMonth(base.getMonth() + meses);
+  const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
+}
+
+function tipoAso(obs) {
+  const s = String(obs || "").toLowerCase();
+  if (s.includes("admiss")) return "admissional";
+  if (s.includes("demiss")) return "demissional";
+  if (s.includes("retorno")) return "retorno";
+  if (s.includes("mudança") || s.includes("mudanca")) return "mudanca_funcao";
+  return "periodico";
+}
 
 function lerArquivo(file) {
   return new Promise((resolve, reject) => {
@@ -91,15 +109,37 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
           setMensagem("Informe a data de realização/preenchimento antes de confirmar.");
           return;
         }
+        const realizado = pendente.meta.dataRealizacao;
+        const validadeInformada = pendente.meta.validade || "";
+        const validade = pendente.tipo === "ASO" && !validadeInformada ? somarMeses(realizado, 12) : validadeInformada;
         await rhDocumentoAtualizar(pendente.doc.id, {
-          dataRealizacao: pendente.meta.dataRealizacao,
-          validade: pendente.meta.validade || null,
+          dataRealizacao: realizado,
+          validade: validade || null,
           observacoes: pendente.meta.observacoes || "",
           status: "CONFIRMADO",
           leituraStatus: pendente.doc.leitura_status || "REQUER_CONFERENCIA",
           dadosExtraidos: { ...(pendente.dados || {}), revisadoEm: hoje() },
         });
-        setMensagem("Documento conferido e dados de realização gravados.");
+        if (pendente.tipo === "ASO") {
+          await salvar("rh_exames", {
+            pessoaId: pessoa.id, pessoaNome: pessoa.nome || "", tipo: tipoAso(pendente.meta.observacoes),
+            exame: "ASO", data: realizado, validadeMeses: validade ? 12 : "", vence: validade,
+            validade, resultado: /\\bapto\\b/i.test(pendente.meta.observacoes || "") ? "apto" : "aguardando",
+            restricao: "", clinica: "", medico: "", obs: pendente.meta.observacoes || "",
+            documentoId: pendente.doc.id,
+          });
+        } else if (pendente.tipo === "NR / Certificado de Treinamento" && validade) {
+          await salvar("rh_vencimentos", {
+            pessoaId: pessoa.id, pessoaNome: pessoa.nome || "", tipo: "NR",
+            descricao: pendente.meta.observacoes || "Certificado de treinamento", vence: validade,
+            realizadoEm: realizado, documentoId: pendente.doc.id,
+          });
+        }
+        setMensagem(pendente.tipo === "ASO"
+          ? `ASO confirmado. Próximo vencimento: ${validade || "não informado"}.`
+          : validade
+            ? `Documento confirmado. Próximo vencimento: ${validade}.`
+            : "Documento confirmado. Informe a validade quando o certificado tiver prazo para o radar acompanhar.");
       } else {
         const r = await rhDocumentoConfirmarPreenchimento(pendente.doc.id, pessoa.id, pendente.dados);
         setMensagem("Cadastro preenchido após revisão: " + ((r.camposAlterados || []).join(", ") || "nenhum campo alterado") + ".");
