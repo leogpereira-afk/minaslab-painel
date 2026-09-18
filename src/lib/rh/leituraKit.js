@@ -171,31 +171,50 @@ function cidadeProvavel(texto) {
 export function extrairDadosKit(texto, pessoaAtual = {}) {
   const bruto = limpar(texto);
   const dados = {};
-  const nome = primeiroNome(bruto);
+  const nome = primeiroNome(bruto)
+    || normalizar(bruto.match(/Registro de Empregados\s+\d+\s*-\s*([A-Za-zÀ-ÿ' ]{5,100})/i)?.[1] || "");
   const cpfEncontrado = cpf(bruto);
-  const nascimento = pertoDoRotulo(bruto, ["data nascimento", "data de nascimento", "nascimento"], DATA);
-  const admissao = pertoDoRotulo(bruto, ["data admissão", "data de admissão", "admissão", "admissao"], DATA);
+  // Os relatórios de Registro de Empregados da contabilidade posicionam o
+  // valor antes do rótulo. Nestes PDFs, procurar só "perto" do rótulo pode
+  // capturar a data de emissão/inclusão. Preferimos a sequência estrutural.
+  const cabecalhoColaborador = bruto.match(/Colaborador\s+Histórico Contratual\s+(\d{2}\/\d{2}\/\d{4})\s+\d+\s*-\s*[A-Za-zÀ-ÿ]+\s+([A-Za-zÀ-ÿ ]+\s*-\s*[A-Z]{2})/i);
+  const nascimento = cabecalhoColaborador?.[1]
+    || pertoDoRotulo(bruto, ["data nascimento", "data de nascimento", "nascimento"], DATA);
+  const admissaoEstrutural = bruto.match(/Nr\. Ficha Registro:\s*Data\s+Admissão:\s*Cargo:\s*Salário\/Cpl\. Sal\.\s*\d{1,2}:\d{2}\s+\d+\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1];
+  const admissao = admissaoEstrutural
+    || bruto.match(/\b(\d{2}\/\d{2}\/\d{4})\s+\d{4}\s+Grupo Minas Lab\s+\d{4}\s+\d{3}\s+Admissão/i)?.[1]
+    || pertoDoRotulo(bruto, ["data admissão", "data de admissão", "admissão", "admissao"], DATA);
   const salario = salarioProvavel(bruto);
   const telefone = telefoneProvavel(bruto);
   const endereco = enderecoProvavel(bruto);
   const cidade = cidadeProvavel(bruto);
-  const cep = bruto.match(/\b\d{2,5}[\.-]?\d{3}[-]\d{3}\b/)?.[0] || bruto.match(/\b\d{2}\.\d{3}-\d{3}\b/)?.[0] || "";
+  const enderecoEmpresa = bruto.match(/M Lab Servicos Ltda[\s\S]{0,350}?(\d{2}\.\d{3}-\d{3})/i)?.[1] || "";
+  const cep = bruto.match(/(?:Endereço:\s*[^:]{0,160})?CEP:\s*(\d{2}\.\d{3}-\d{3})/i)?.[1]
+    || (bruto.match(/\b\d{2}\.\d{3}-\d{3}\b/g) || []).find(x => x !== enderecoEmpresa)
+    || "";
   const escolaridade = bruto.match(/\b\d+\s*-\s*(Superior Completo|Superior|Médio Completo|Médio|Fundamental[^,\n]*)\b/i)?.[1] || "";
   const estadoCivil = bruto.match(/(?:estado civil:\s*|informações gerais\s*.*?)(Solteiro|Solteira|Casado|Casada|Divorciado|Divorciada|Viúvo|Viúva)/i)?.[1] || "";
   const jornadaMatch = bruto.match(/(\d{1,3})\s*horas?\s+semanais/i);
-  const jornada = jornadaMatch ? jornadaMatch[1] + " horas semanais" : "";
+  const escalaRegistro = bruto.match(/Escala:\s*([^%]{4,100}?)(?=\s+Jornada Trabalho:|\s+DSR:)/i)?.[1] || "";
+  const horasRegistro = bruto.match(/Escala Horária[\s\S]{0,180}?(\d{2}:\d{2})\s+\d{2}:\d{2}/i)?.[1] || "";
+  const jornada = jornadaMatch ? jornadaMatch[1] + " horas semanais" : normalizar(escalaRegistro);
+  const horasSemanais = jornadaMatch?.[1] || (horasRegistro ? horasRegistro.replace(":00", "") : "");
   const matriculaEsocial = bruto.match(/matrícula esocial:\s*([A-Z0-9.-]+)/i)?.[1] || "";
   const rg = bruto.match(/(?:\bRG\b|identidade)\s*[:\-]?\s*([0-9A-Z.\/-]{4,25})/i)?.[1] || "";
   const orgaoEmissorRg = bruto.match(/(?:órgão emissor|orgao emissor)\s*[:\-]?\s*([A-Z0-9./ -]{2,30})/i)?.[1] || "";
   const nacionalidade = bruto.match(/nacionalidade\s*[:\-]?\s*([A-Za-zÀ-ÿ ]{3,40})/i)?.[1] || "";
   const naturalidade = bruto.match(/naturalidade\s*[:\-]?\s*([A-Za-zÀ-ÿ /-]{3,60})/i)?.[1] || "";
   const sexo = bruto.match(/(?:sexo|gênero|genero)\s*[:\-]?\s*(masculino|feminino|m|f)\b/i)?.[1] || "";
-  const nomeMae = bruto.match(/(?:nome da mãe|nome da mae|mãe|mae)\s*[:\-]?\s*([A-Za-zÀ-ÿ' ]{5,100})/i)?.[1] || "";
-  const nomePai = bruto.match(/(?:nome do pai|pai)\s*[:\-]?\s*([A-Za-zÀ-ÿ' ]{5,100})/i)?.[1] || "";
+  const filiacaoRegistro = bruto.match(/PIS\/PASEP:\s*Mãe:\s*[0-9.]+\s+([A-Za-zÀ-ÿ' ]{5,100}?)\s+([A-Za-zÀ-ÿ' ]{5,100}?)\s+Pai:/i);
+  const nomeMae = filiacaoRegistro?.[1] || bruto.match(/(?:nome da mãe|nome da mae|mãe|mae)\s*[:\-]?\s*([A-Za-zÀ-ÿ' ]{5,100})/i)?.[1] || "";
+  const nomePai = filiacaoRegistro?.[2] || bruto.match(/(?:nome do pai|pai)\s*[:\-]?\s*([A-Za-zÀ-ÿ' ]{5,100})/i)?.[1] || "";
   const pis = bruto.match(/PIS\/PASEP:\s*([0-9. -]{8,20})/i)?.[1] || "";
   const ctps = bruto.match(/(?:carteira profissional nº|ctps\/série\/uf:)\s*([0-9 -]{4,30})/i)?.[1] || "";
-  const cbo = bruto.match(/\bCBO:\s*(\d{4,6})\b/i)?.[1] || "";
-  const empresa = bruto.match(/EMPRESA\s*-\s*([A-Za-zÀ-ÿ ]{3,80})\s+CNPJ/i)?.[1] || bruto.match(/razão social:\s*([A-Za-zÀ-ÿ ]{3,80})/i)?.[1] || "";
+  const cbo = bruto.match(/\bCBO:\s*(\d{4,6})\b/i)?.[1]
+    || bruto.match(/\bCargos\s+Alteração\s+Estrutura\s+Cargo\s+Descrição\s+CBO2\s+CBO\s+Motivo\s+\d{2}\/\d{2}\/\d{4}\s+\d+\s+Grupo Minas Lab\s+\d+\s+\d+\s+Admissão\s+(\d{4,6})/i)?.[1]
+    || "";
+  const empresa = bruto.match(/EMPRESA\s*-\s*([A-Za-zÀ-ÿ ]{3,80})\s+CNPJ/i)?.[1]
+    || (bruto.match(/\b(M Lab Servicos Ltda|Minas Lab[^\d]{0,30})\b/i)?.[1] || "");
   const setor = bruto.match(/(?:novo local|local):\s*([0-9. -]*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .-]{2,80})/i)?.[1] || "";
   const vinculo = bruto.match(/vínculos[\s\S]{0,120}?\d+\s+([A-Za-zÀ-ÿ., ]{3,60})/i)?.[1] || "";
   if (nome && nome.length >= 5) dados.nome = normalizar(nome);
@@ -212,6 +231,7 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   if (estadoCivil) dados.estadoCivil = estadoCivil;
   if (escolaridade) dados.escolaridade = escolaridade;
   if (jornada) dados.jornada = jornada;
+  if (horasSemanais) dados.horasSemanais = horasSemanais;
   if (matriculaEsocial) dados.matriculaEsocial = matriculaEsocial;
   if (rg) dados.rg = limpar(rg);
   if (orgaoEmissorRg) dados.orgaoEmissorRg = limpar(orgaoEmissorRg);
@@ -221,9 +241,15 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   if (nomeMae) dados.nomeMae = normalizar(nomeMae.replace(/\s+(?:Pai|CPF|RG|Nascimento)\b.*$/i, ""));
   if (nomePai) dados.nomePai = normalizar(nomePai.replace(/\s+(?:CPF|RG|Nascimento)\b.*$/i, ""));
   if (pis) dados.pis = limpar(pis);
-  if (ctps) dados.ctps = limpar(ctps);
+  if (ctps) {
+    const partesCtps = limpar(ctps).split(/\s*-\s*/).filter(Boolean);
+    if (partesCtps[0]) dados.ctps = partesCtps[0];
+    if (partesCtps[1]) dados.serieCtps = partesCtps[1];
+  }
   if (cbo) dados.cbo = cbo;
   if (empresa) dados.empresa = limpar(empresa);
+  const fichaRegistro = bruto.match(/Nr\. Ficha Registro:[\s\S]{0,100}?(\d{6,12})/i)?.[1];
+  if (fichaRegistro) dados.matricula = String(Number(fichaRegistro));
   if (setor) dados.setor = normalizar(setor);
   if (vinculo) dados.vinculo = normalizar(vinculo);
   const camposEncontrados = Object.keys(dados);
