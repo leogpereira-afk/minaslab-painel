@@ -497,12 +497,11 @@ function FormPessoa({
         }}
         className="space-y-4"
       >
-        {!form.id && (
-          <div className="rounded-xl border border-brand-200 bg-brand-50 p-3">
+        <div className="rounded-xl border border-brand-200 bg-brand-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-display text-sm font-semibold text-slate-900">Preencher pela Ficha de Registro</p>
-                <p className="mt-0.5 text-xs text-slate-600">Envie o PDF. O sistema lê os dados e mostra uma conferência antes de preencher o novo colaborador.</p>
+                <p className="mt-0.5 text-xs text-slate-600">Envie a Ficha de Registro ou o Kit Admissional em PDF. O sistema lê os dados e mostra a conferência antes de alterar o cadastro.</p>
               </div>
               <label className="btn-outline cursor-pointer">
                 <FileUp size={15} />
@@ -512,25 +511,38 @@ function FormPessoa({
             </div>
             {revisaoFicha?.erro && <p className="mt-2 text-xs text-bad-700">{revisaoFicha.erro}</p>}
           </div>
-        )}
 
         {revisaoFicha?.dados && (
           <div className="rounded-xl border border-brand-200 bg-white p-3 shadow-sm">
             <div className="mb-3">
-              <p className="font-display text-sm font-semibold text-slate-900">Conferir informações encontradas</p>
-              <p className="text-xs text-slate-500">{revisaoFicha.arquivo} · confira e edite antes de preencher o cadastro.</p>
+              <p className="font-display text-sm font-semibold text-slate-900">Revisar dados extraídos</p>
+              <p className="text-xs text-slate-500">{revisaoFicha.arquivo} · confira e edite antes de preencher o cadastro. Nenhuma informação é gravada até sua confirmação.</p>
+              {revisaoFicha.conflitos?.length > 0 && (
+                <p className="mt-2 rounded-lg border border-warn-200 bg-warn-50 px-3 py-2 text-xs text-warn-800">
+                  {revisaoFicha.conflitos.length} {revisaoFicha.conflitos.length === 1 ? "campo já preenchido está diferente" : "campos já preenchidos estão diferentes"}. Confira o valor atual antes de confirmar.
+                </p>
+              )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {revisaoFicha.camposEncontrados.map((campo) => (
-                <label key={campo} className="text-xs text-slate-600">
-                  {campo}
-                  <input
-                    className="input mt-1"
-                    value={revisaoFicha.dados[campo] ?? ""}
-                    onChange={(e) => setRevisaoFicha((r) => ({ ...r, dados: { ...r.dados, [campo]: e.target.value } }))}
-                  />
-                </label>
-              ))}
+              {revisaoFicha.camposEncontrados.map((campo) => {
+                const conflito = revisaoFicha.conflitos?.find((x) => x.campo === campo);
+                const atual = String(form[campo] ?? "").trim();
+                return (
+                  <div key={campo} className={"rounded-lg border p-2 " + (conflito ? "border-warn-300 bg-warn-50" : "border-slate-200 bg-slate-50")}>
+                    <label className="text-xs font-medium text-slate-700">
+                      {campo}
+                      <input
+                        className="input mt-1 bg-white"
+                        value={revisaoFicha.dados[campo] ?? ""}
+                        onChange={(e) => setRevisaoFicha((r) => ({ ...r, dados: { ...r.dados, [campo]: e.target.value } }))}
+                      />
+                    </label>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Cadastro atual: <span className={conflito ? "font-semibold text-warn-800" : ""}>{atual || "— vazio —"}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {revisaoFicha.camposEncontrados.length === 0 && (
               <p className="text-xs text-warn-700">Nenhuma informação foi reconhecida automaticamente. Confira se o PDF contém texto pesquisável.</p>
@@ -538,7 +550,7 @@ function FormPessoa({
             <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button type="button" className="btn-outline" onClick={() => setRevisaoFicha(null)}>Cancelar</button>
               <button type="button" className="btn-primary" disabled={!revisaoFicha.camposEncontrados.length} onClick={confirmarFichaRegistro}>
-                Confirmar e preencher colaborador
+                Confirmar e preencher cadastro
               </button>
             </div>
           </div>
