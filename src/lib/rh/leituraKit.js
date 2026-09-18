@@ -95,6 +95,32 @@ export async function extrairTextoPdf(file) {
   if (!extraidos.length) extraidos.push(textoPdfOperadores(bin), bin);
   return extraidos.join(" ").replace(/\s+/g, " ").trim();
 };
+
+async function extrairTextoPdfCompleto(file) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const data = new Uint8Array(await file.arrayBuffer());
+  const documento = await pdfjs.getDocument({
+    data,
+    disableWorker: true,
+    useWorkerFetch: false,
+    isEvalSupported: false,
+  }).promise;
+  const paginas = [];
+  for (let pagina = 1; pagina <= documento.numPages; pagina++) {
+    const objeto = await documento.getPage(pagina);
+    const conteudo = await objeto.getTextContent();
+    paginas.push((conteudo.items || []).map(item => item.str || "").join(" "));
+  }
+  return paginas.join("\n").replace(/\s+/g, " ").trim();
+}
+export async function extrairTextoPdf(file) {
+  try {
+    const texto = await extrairTextoPdfCompleto(file);
+    if (texto.length > 80) return texto;
+  } catch {
+    // PDFs incompatíveis continuam seguindo para o leitor leve/manual.
+  }
+  return extrairTextoPdfLeve(file);
 }
 
 const ROTULOS = [
