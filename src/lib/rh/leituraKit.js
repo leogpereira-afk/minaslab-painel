@@ -1,18 +1,20 @@
-const CPF = /\\b\\d{3}[.\\s]?\\d{3}[.\\s]?\\d{3}[-\\s]?\\d{2}\\b/;
-const DATA = /\\b(\\d{2})[\\/.\\-](\\d{2})[\\/.\\-](\\d{4})\\b/;
-const limpar = v => String(v || "").replace(/\\s+/g, " ").trim();
-const iso = v => { const m=String(v||"").match(DATA); return m ? \`${m[3]}-${m[2]}-${m[1]}\` : ""; };
-const cpf = v => String(v || "").match(CPF)?.[0]?.replace(/\\D/g, "") || "";
+const CPF = /\b\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}\b/;
+const DATA = /\b(\d{2})[\/\.-](\d{2})[\/\.-](\d{4})\b/;
+const limpar = v => String(v || "").replace(/\s+/g, " ").trim();
+const iso = v => { const m=String(v||"").match(DATA); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+const cpf = v => String(v || "").match(CPF)?.[0]?.replace(/\D/g, "") || "";
 
 function escaparPdf(v) {
   return String(v || "").replace(/\\([\\()])/g, "$1").replace(/\\n/g, " ").replace(/\\r/g, " ");
 }
 function depoisDe(texto, labels) {
-  const re = new RegExp(\`(?:${labels.join("|")})\\\\s*[:\\\\-]?\\\\s*([^\\\\n|]{2,120})\`, "i");
+  const re = new RegExp("(?:"
+    + labels.join("|")
+    + ")\\s*[:\\-]?\\s*([^\\n|]{2,120})", "i");
   return limpar(texto.match(re)?.[1]);
 }
 function nomeProvavel(texto) { return depoisDe(texto, ["nome completo", "nome do colaborador", "nome"]) || ""; }
-function telefoneProvavel(texto) { return (texto.match(/(?:\\(?\\d{2}\\)?\\s*)?9?\\d{4,5}[-\\s]?\\d{4}/)?.[0] || "").trim(); }
+function telefoneProvavel(texto) { return (texto.match(/(?:\(?\d{2}\)?\s*)?9?\d{4,5}[-\s]?\d{4}/)?.[0] || "").trim(); }
 
 export async function extrairTextoPdf(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -20,14 +22,14 @@ export async function extrairTextoPdf(file) {
   const limite = Math.min(bytes.length, 20 * 1024 * 1024);
   for (let i = 0; i < limite; i++) bin += String.fromCharCode(bytes[i]);
   const encontrados = [];
-  const re = /\\(((?:\\\\.|[^\\\\)])*)\\)\\s*T[Jj]/g;
+  const re = /\(((?:\\.|[^\\)])*)\)\s*T[Jj]/g;
   let m;
   while ((m = re.exec(bin))) encontrados.push(escaparPdf(m[1]));
   if (!encontrados.length) {
-    const ascii = bin.match(/[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .,:;\\/-]{3,120}/g) || [];
+    const ascii = bin.match(/[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .,:;\/-]{3,120}/g) || [];
     encontrados.push(...ascii.slice(0, 500));
   }
-  return encontrados.join(" ").replace(/\\s+/g, " ").trim();
+  return encontrados.join(" ").replace(/\s+/g, " ").trim();
 }
 
 export function extrairDadosKit(texto, pessoaAtual = {}) {
