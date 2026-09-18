@@ -128,7 +128,8 @@ function enderecoProvavel(texto) {
   return normalizar(valor);
 }
 function cargoProvavel(texto) {
-  const cbo = texto.match(/CBO:\s*\d+\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 /-]{3,80})/i)?.[1];
+  const cbo = texto.match(/CBO:\s*\d+\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 /-]{3,80})/i)?.[1]
+    ?.replace(/\s+(?:Salário|Data|Endereço|CPF)\b.*$/i, "");
   if (cbo && !/data|salário|cargo|admissão/i.test(cbo)) return normalizar(cbo);
   const valor = depoisDe(texto, ["cargo", "função", "funcao"]);
   return valor && !/data|salário|admissão/i.test(valor) ? normalizar(valor) : "";
