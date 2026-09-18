@@ -194,6 +194,60 @@ function cidadeProvavel(texto) {
   return normalizar(valor.replace(/\s+(?:CEP|Bairro|Estado)\b.*$/i, ""));
 }
 
+function extrairRegistroEmpregados(texto) {
+  if (!/Registro de Empregados/i.test(texto)) return {};
+  const linhas = String(texto || "").split(/\n+/).map(limpar).filter(Boolean);
+  const dados = extrairRegistroEmpregados(bruto);
+  const linha = (re) => linhas.find(l => re.test(l)) || "";
+  const valor = (re, campo) => linha(re).match(campo)?.[1] || "";
+
+  const cab = linha(/Ficha\s*:/i);
+  const nome = cab.match(/Ficha\s*:\s*\d+\s+(?:\d+\s*-\s*)?([A-Za-zÀ-ÿ' ]{5,100})$/i)?.[1]
+    || linha(/\d+\s*-\s*[A-Za-zÀ-ÿ' ]{5,100}$/).match(/\d+\s*-\s*([A-Za-zÀ-ÿ' ]{5,100})$/)?.[1];
+  if (nome) dados.nome = normalizar(nome);
+
+  const nascimento = valor(/Data Nascimento:/i, /Data Nascimento:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  if (nascimento) dados.dataNascimento = iso(nascimento);
+  const naturalidade = valor(/Naturalidade:/i, /Naturalidade:\s*(.+?)(?=\s+Nacionalidade:|$)/i);
+  if (naturalidade) dados.naturalidade = normalizar(naturalidade);
+  const nacionalidade = valor(/Nacionalidade:/i, /Nacionalidade:\s*(?:\d+\s*-\s*)?(.+)$/i);
+  if (nacionalidade) dados.nacionalidade = normalizar(nacionalidade);
+
+  const cpfRotulado = valor(/\bCPF\s*:/i, /\bCPF\s*:\s*(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})/i);
+  if (cpfRotulado) dados.cpf = cpfRotulado.replace(/\D/g, "");
+  const pisRotulado = valor(/PIS\/PASEP\s*:/i, /PIS\/PASEP\s*:\s*([0-9. -]{8,20})/i);
+  if (pisRotulado) dados.pis = limpar(pisRotulado);
+  const ctpsRotulada = valor(/CTPS\/Série\/UF\s*:/i, /CTPS\/Série\/UF\s*:\s*([0-9]+)\s*-\s*([0-9]+)/i);
+  const ctpsLinha = linha(/CTPS\/Série\/UF\s*:/i).match(/CTPS\/Série\/UF\s*:\s*([0-9]+)\s*-\s*([0-9]+)/i);
+  if (ctpsLinha) { dados.ctps = ctpsLinha[1]; dados.serieCtps = ctpsLinha[2]; }
+
+  const pai = valor(/\bPai\s*:/i, /\bPai\s*:\s*(.+?)(?=\s+(?:Mãe|Mae):|$)/i);
+  if (pai) dados.nomePai = normalizar(pai);
+  const mae = valor(/(?:Mãe|Mae)\s*:/i, /(?:Mãe|Mae)\s*:\s*(.+)$/i);
+  if (mae) dados.nomeMae = normalizar(mae);
+
+  const admissao = valor(/Data Admissão:/i, /Data Admissão:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  if (admissao) dados.admissao = iso(admissao);
+  const ficha = valor(/Nr\. Ficha Registro:/i, /Nr\. Ficha Registro:\s*(0*\d+)/i);
+  if (ficha) dados.matricula = String(Number(ficha));
+  const esocial = valor(/Matrícula eSocial:/i, /Matrícula eSocial:\s*([A-Z0-9.-]+)/i);
+  if (esocial) dados.matriculaEsocial = esocial;
+  const cargo = valor(/^Cargo:/i, /^Cargo:\s*(?:\d+\s+)?(.+)$/i);
+  if (cargo) dados.cargo = normalizar(cargo);
+  const sal = valor(/Salário\/Cpl\. Sal\./i, /Salário\/Cpl\. Sal\.\s*([\d.]+,\d{2,4})/i);
+  if (sal) dados.salario = sal.replace(/\./g, "").replace(",", ".");
+  const local = valor(/^Local:/i, /^Local:\s*(.+)$/i);
+  if (local) dados.setor = normalizar(local);
+  const jornada = valor(/Jornada Trabalho:/i, /Jornada Trabalho:\s*(.+?)(?=\s+DSR:|$)/i);
+  if (jornada) dados.jornada = normalizar(jornada);
+  const histCargo = linhas.find(l => /Admissão/i.test(l) && /\b\d{6}\b/.test(l) && /Analista|Auxiliar|Técnic|Gerente|Assistente|Coordenador/i.test(l));
+  const cbo = histCargo?.match(/\b(\d{6})\b/)?.[1];
+  if (cbo) dados.cbo = cbo;
+  const horas = linhas.find(l => /\b\d{2}:\d{2}\b/.test(l) && /\b\d{2}:\d{2}\b.*\b\d{2}:\d{2}\b/.test(l))?.match(/\b(\d{2}):00\b/)?.[1];
+  if (horas) dados.horasSemanais = horas;
+  return dados;
+}
+
 export function extrairDadosKit(texto, pessoaAtual = {}) {
   const bruto = String(texto || "").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
   const dados = {};
@@ -262,13 +316,13 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   const setor = bruto.match(/(?:novo local|local)\s*:\s*([0-9. -]*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 .-]{2,80}?)(?=\s+Alterações|\s+Filiais|$)/i)?.[1] || "";
   const vinculo = bruto.match(/vínculos[\s\S]{0,120}?\d+\s+([A-Za-zÀ-ÿ., ]{3,60})/i)?.[1] || "";
   if (nome && nome.length >= 5) dados.nome = normalizar(nome);
-  if (cpfEncontrado) dados.cpf = cpfEncontrado;
+  if (cpfEncontrado && !dados.cpf) dados.cpf = cpfEncontrado;
   if (DATA.test(nascimento)) dados.dataNascimento = iso(nascimento);
   if (DATA.test(admissao)) dados.admissao = iso(admissao);
   const cargo = cargoProvavel(bruto);
   if (cargo) dados.cargo = cargo;
   if (salario) dados.salario = salario;
-  if (telefone) dados.telefone = telefone.replace(/\D/g, "");
+  if (telefone && !dados.telefone) dados.telefone = telefone.replace(/\D/g, "");
   if (endereco) dados.endereco = endereco;
   if (cidade) dados.cidade = cidade;
   if (cep) dados.cep = cep;
