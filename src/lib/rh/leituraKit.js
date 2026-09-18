@@ -135,9 +135,10 @@ function cargoProvavel(texto) {
   return valor && !/data|salário|admissão/i.test(valor) ? normalizar(valor) : "";
 }
 function cidadeProvavel(texto) {
-  return normalizar(texto.match(/endereço:\s*[^:\n]{3,80}\s+município:\s*([A-Za-zÀ-ÿ ]{3,60})/i)?.[1]
+  const valor = texto.match(/endereço:\s*[^:\n]{3,80}\s+município:\s*([A-Za-zÀ-ÿ ]{3,60})/i)?.[1]
     || texto.match(/município:\s*([A-Za-zÀ-ÿ ]{3,60})\s+cep:/i)?.[1]
-    || "");
+    || "";
+  return normalizar(valor.replace(/\s+(?:CEP|Bairro|Estado)\b.*$/i, ""));
 }
 
 export function extrairDadosKit(texto, pessoaAtual = {}) {
