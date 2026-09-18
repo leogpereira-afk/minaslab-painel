@@ -223,3 +223,15 @@ export const rhFolhaSalvar = (dados) =>
     if (!r?.folha?.id) throw new Error("O servidor não confirmou a Folha de Ponto.");
     return r.folha;
   });
+
+export const rhDocumentoExcluir = (documentoId) =>
+  chamar("rhDocumentoExcluir", { documentoId }).then((r) => {
+    if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do documento.");
+    return true;
+  });
+
+export const rhDocumentoConfirmarPreenchimento = (documentoId, pessoaId, dadosConfirmados) =>
+  chamar("rhDocumentoConfirmarPreenchimento", { documentoId, pessoaId, dadosConfirmados }).then((r) => {
+    if (!r?.pessoa?.id) throw new Error("O servidor não confirmou o preenchimento do cadastro.");
+    return r;
+  });
