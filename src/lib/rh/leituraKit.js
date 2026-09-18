@@ -104,7 +104,7 @@ function pertoDoRotulo(texto, labels, padrao, raio = 220) {
 }
 function primeiroNome(texto) {
   const padroes = [
-    /ficha\.?\s*:?\s*\d+\s*-\s*([A-ZÁÉÍÓÚÃÕÂÊÔÇ][A-Za-zÁÉÍÓÚÃÕÂÊÔÇ' ]{5,80})/i,
+    /ficha\.?\s*:?\s*\d+(?:\s+\d+)?\s*-\s*([A-ZÁÉÍÓÚÃÕÂÊÔÇ][A-Za-zÁÉÍÓÚÃÕÂÊÔÇ' ]{5,80})/i,
     /(?:empregado|colaborador)\s*:\s*([A-ZÁÉÍÓÚÃÕÂÊÔÇ][A-Za-zÁÉÍÓÚÃÕÂÊÔÇ' ]{5,80})/i
   ];
   for (const p of padroes) {
