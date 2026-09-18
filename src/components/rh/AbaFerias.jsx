@@ -102,7 +102,7 @@ function leituraCLT(p, periodos, hoje, desde) {
     const limite = somarMesesISO(p.admissao, 24);
     const detalhes = [
       direito ? `direito em ${dataLonga(direito)}` : "",
-      limite ? `conceder até ${dataLonga(limite)}` : "",
+      limite ? `prazo máximo para conceder: ${dataLonga(limite)}` : "",
     ].filter(Boolean);
     return {
       chip: "",
@@ -231,6 +231,27 @@ function conferirAgendamento(form, pessoa, registros, hoje, desde) {
   return { achados, dias };
 }
 
+function planejamentoFuturo(p, hoje) {
+  if (!p?.admissao) return [];
+  const adm = parseData(p.admissao);
+  if (!adm) return [];
+  const linhas = [];
+  // Mostra uma janela de 5 períodos para o RH conseguir planejar com
+  // antecedência. São prazos calculados, não lançamentos de férias.
+  for (let n = 0; n < 5; n += 1) {
+    const inicio = somarMesesISO(p.admissao, n * 12);
+    const fimAquisitivo = somarMesesISO(p.admissao, (n + 1) * 12);
+    const limiteConcessao = somarMesesISO(p.admissao, (n + 2) * 12);
+    if (!inicio || !fimAquisitivo || !limiteConcessao) continue;
+    const limite = parseData(limiteConcessao);
+    // Períodos já totalmente ultrapassados ficam no histórico/relógio CLT;
+    // aqui interessa o horizonte atual e futuro para programação.
+    if (limite && limite.getTime() < hoje.getTime()) continue;
+    linhas.push({ n: n + 1, inicio, fimAquisitivo, limiteConcessao });
+  }
+  return linhas;
+}
+
 function LinhaFerias({ linha, hoje, aberta, aoAlternar, editavel, acoes }) {
   const { p, periodos, presenca, clt } = linha;
   const Seta = aberta ? ChevronDown : ChevronRight;
@@ -315,6 +336,19 @@ function LinhaFerias({ linha, hoje, aberta, aoAlternar, editavel, acoes }) {
               </div>
             );
           })}
+          <div className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--hairline)" }}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Planejamento de férias — próximos períodos</p>
+            <div className="space-y-1.5">
+              {planejamentoFuturo(p, hoje).map((x) => (
+                <div key={x.n} className="grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
+                  <span><strong>{x.n}º período:</strong> {dataLonga(x.inicio)} a {dataLonga(x.fimAquisitivo)}</span>
+                  <span>Direito em <strong>{dataLonga(x.fimAquisitivo)}</strong></span>
+                  <span>Dar férias até <strong>{dataLonga(x.limiteConcessao)}</strong></span>
+                </div>
+              ))}
+              {planejamentoFuturo(p, hoje).length === 0 && <span className="text-xs text-slate-400">Sem admissão válida para calcular o planejamento.</span>}
+            </div>
+          </div>
           {editavel && (
             <button type="button" className="text-sm font-medium text-brand-700 hover:underline" onClick={() => acoes.marcar(p.id)}>
               + Marcar férias para {p.apelido || p.nome}
