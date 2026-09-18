@@ -50,6 +50,15 @@ import { dataDe, resultadoDe, tipoDe, rotuloTipo, metaResultado } from "../../li
 const txt = (v) => String(v ?? "").trim();
 const ehData = (v) => /^\d{4}-\d{2}-\d{2}$/.test(txt(v));
 
+function somarMesesISO(iso, meses) {
+  if (!ehData(iso)) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  const base = new Date(a, m - 1, 1);
+  base.setMonth(base.getMonth() + meses);
+  const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
+}
+
 /* Avatar de INICIAIS. A MinasLab não guarda foto, e um círculo cinza vazio
    fingiria um recurso que não existe — duas letras dizem de quem é a ficha. */
 function Iniciais({ nome }) {
@@ -123,7 +132,7 @@ export default function FichaPessoa({
   pessoa, ferias = [], todasFerias = [], exames = [], vencimentos = [], feedbacks = [], historico = [],
   hojeISO, editavel,
   aoVoltar, aoAnterior, aoProximo,
-  aoEditar, aoDesligar, aoEfetivar, aoIrParaAba, aoRegistrarAcontecimento,
+  aoEditar, aoDesligar, aoEfetivar, aoConferirAdmissao, aoIrParaAba, aoRegistrarAcontecimento,
 }) {
   const [aba, setAba] = useState("resumo");
   const tituloRef = useRef(null);
@@ -188,7 +197,7 @@ export default function FichaPessoa({
     if (pessoa.admissaoConferida === false && ehData(pessoa.admissao)) {
       avisos.push({
         texto: "A admissão veio do relógio de ponto (é a entrada NELE, não na empresa) e ainda não foi conferida — ela governa férias, experiência e 13º.",
-        acao: editavel ? "Conferir" : null, aoAgir: aoEditar,
+        acao: editavel ? "Conferir" : null, aoAgir: aoConferirAdmissao,
       });
     }
     /* O PRAZO É CALCULADO AQUI. Os registros chegam CRUS da casca — o campo
@@ -210,7 +219,7 @@ export default function FichaPessoa({
     }
 
     return { comp, sf, exp, radar, avisos, semHistoricoNaCasa };
-  }, [pessoa, ferias, todasFerias, exames, vencimentos, hojeISO, editavel, aoIrParaAba, aoEditar, aoEfetivar]);
+  }, [pessoa, ferias, todasFerias, exames, vencimentos, hojeISO, editavel, aoIrParaAba, aoEditar, aoEfetivar, aoConferirAdmissao]);
 
   if (!pessoa || !vm) return null;
   const { comp, sf, avisos, semHistoricoNaCasa } = vm;
@@ -359,11 +368,15 @@ export default function FichaPessoa({
             <Card>
               <h2 className="mb-3 font-display text-base font-semibold text-slate-900">Situação de férias (CLT)</h2>
               {!sf ? (
-                <p className="text-sm text-slate-500">
-                  {ehData(pessoa.admissao)
-                    ? "Ainda não completou 12 meses de casa — o primeiro período aquisitivo está correndo."
-                    : "Sem data de admissão na ficha: não dá para contar período aquisitivo."}
-                </p>
+                ehData(pessoa.admissao) ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Dado rotulo="1º período aquisitivo completa em" valor={dataLonga(somarMesesISO(pessoa.admissao, 12))} />
+                    <Dado rotulo="Prazo máximo para conceder" valor={dataLonga(somarMesesISO(pessoa.admissao, 24))} />
+                    <div className="col-span-2 text-xs text-slate-500">Ainda não completou 12 meses de casa. As datas acima são calculadas pela admissão cadastrada.</div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Sem data de admissão na ficha: não dá para contar período aquisitivo.</p>
+                )
               ) : sf.situacao === "sem-registro" || semHistoricoNaCasa ? (
                 /* "Não sei" dito com todas as letras. Afirmar vencida sobre
                    período anterior ao histórico foi o alarme falso que a
