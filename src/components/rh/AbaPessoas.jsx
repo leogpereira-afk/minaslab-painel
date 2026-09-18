@@ -558,16 +558,21 @@ function FormPessoa({
           </div>
         )}
 
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3">
+            <p className="font-display text-sm font-semibold text-slate-900">{etapasCadastro[etapa - 1]}</p>
+            <p className="text-xs text-slate-500">Etapa {etapa} de {etapasCadastro.length}. Os dados ficam no rascunho até a confirmação final.</p>
+          </div>
         {/* Nome e apelido ficam FORA das seções: são a identidade da ficha, e
             campo obrigatório escondido dentro de uma seção fechada trava o
             envio do formulário sem o navegador conseguir mostrar onde. */}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={etapa === 1 ? "grid gap-3 sm:grid-cols-2" : "hidden"}>
           <Campo id="p-nome" rotulo="Nome" valor={form.nome} aoMudar={setCampo("nome")} autoFocus required />
           <Campo id="p-apelido" rotulo="Apelido" valor={form.apelido} aoMudar={setCampo("apelido")} />
         </div>
 
-        <div className="space-y-2">
-          <Secao
+        <div className={etapa === 1 || etapa === 2 || etapa === 4 ? "space-y-2" : "hidden"}>
+          <div className={etapa === 1 || etapa === 4 ? "" : "hidden"}><Secao
             titulo="Identificação"
             sub="Documento, contato e endereço"
             aberta={aberta("identificacao")}
@@ -614,9 +619,9 @@ function FormPessoa({
                 aoMudar={setCampo("contatoEmergencia")}
               />
             </div>
-          </Secao>
+          </Secao></div>
 
-          <Secao
+          <div className={etapa === 2 ? "" : "hidden"}><Secao
             titulo="Contrato"
             sub="Vínculo, jornada, salário, ponto e a quem responde"
             aberta={aberta("contrato")}
@@ -721,9 +726,9 @@ function FormPessoa({
                 </select>
               </div>
             </div>
-          </Secao>
+          </Secao></div>
 
-          <Secao
+          <div className={etapa === 2 ? "" : "hidden"}><Secao
             titulo="Banco"
             sub="Para onde o pagamento vai"
             aberta={aberta("banco")}
@@ -735,9 +740,9 @@ function FormPessoa({
               <Campo id="p-conta" rotulo="Conta" valor={form.conta} aoMudar={setCampo("conta")} />
               <Campo id="p-pix" rotulo="Chave Pix" valor={form.chavePix} aoMudar={setCampo("chavePix")} />
             </div>
-          </Secao>
+          </Secao></div>
 
-          <Secao
+          <div className={etapa === 2 ? "" : "hidden"}><Secao
             titulo="Formação"
             sub="Escolaridade, curso e registro de conselho"
             aberta={aberta("formacao")}
@@ -757,7 +762,7 @@ function FormPessoa({
                 />
               </div>
             </div>
-          </Secao>
+          </Secao></div>
 
           {/* PERFIL — regra herdada da Impresilk: ponto forte é CARACTERÍSTICA
               que evolui, não evento de uma conversa. Por isso mora na FICHA, em
@@ -766,7 +771,7 @@ function FormPessoa({
               como o feedback. É TEXTO LIVRE de propósito: a palavra da casa
               ("segura o cliente difícil no telefone") vale mais que uma etiqueta
               genérica de catálogo comportamental. */}
-          <Secao
+          <div className={etapa === 2 ? "" : "hidden"}><Secao
             titulo="Perfil"
             sub="Como a pessoa trabalha e aprende — a versão de hoje, que muda com ela"
             aberta={aberta("perfil")}
@@ -802,12 +807,13 @@ function FormPessoa({
                 linhas={3}
               />
             </div>
-          </Secao>
+          </Secao></div>
         </div>
 
         {/* Observações gerais e o plano de desenvolvimento ficam sempre à vista:
             já eram assim antes das seções, e o plano muda a cadência do feedback
             — controle que muda outra tela não pode ficar escondido. */}
+        <div className={etapa === 5 ? "space-y-3" : "hidden"}>
         <CampoLongo id="p-obs" rotulo="Observações" valor={form.obs} aoMudar={setCampo("obs")} />
         <div className="flex items-start gap-2.5">
           <input
@@ -822,7 +828,9 @@ function FormPessoa({
             <span className="block text-xs text-slate-500">Com plano aberto, a cadência do feedback aperta para 45 dias.</span>
           </label>
         </div>
+        </div>
 
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>
             {form.id && (desligada ? (
