@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   AlertTriangle, BadgeCheck, Building2, ChevronDown, ChevronRight, CircleDot,
-  Download, GraduationCap, HandCoins, HeartPulse, Plus, Star, Trash2, UserMinus, UserPlus,
+  Download, FileUp, GraduationCap, HandCoins, HeartPulse, Plus, Star, Trash2, UserMinus, UserPlus,
 } from "lucide-react";
 import { moedaCheia, dataLonga, ymdLocal, paraNumero } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
@@ -38,6 +38,7 @@ import { situacaoExperiencia } from "../../lib/rh/clt.js";
 import { SectionTitle, Empty, Modal, Card } from "../ui.jsx";
 import { anoRuim, tempoDeCasa } from "./uteis.js";
 import FichaPessoa from "./FichaPessoa.jsx";
+import { extrairDadosFichaRegistro, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 
 // "Hoje" circula como "AAAA-MM-DD"; a lib da CLT quer Date. Meia-noite LOCAL:
 // new Date("AAAA-MM-DD") seria meia-noite UTC e o dia voltaria um no Brasil.
@@ -426,7 +427,35 @@ function FormPessoa({
   aoRegistrarAcontecimento, aoApagarEvento, aoBaixarHistorico,
 }) {
   if (!form) return null;
+  const [lendoFicha, setLendoFicha] = useState(false);
+  const [revisaoFicha, setRevisaoFicha] = useState(null);
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+
+  async function lerFichaRegistro(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    if (arquivo.type !== "application/pdf" && !arquivo.name.toLowerCase().endsWith(".pdf")) {
+      setRevisaoFicha({ erro: "Envie a Ficha de Registro em PDF." });
+      return;
+    }
+    setLendoFicha(true);
+    try {
+      const texto = await extrairTextoPdf(arquivo);
+      const leitura = extrairDadosFichaRegistro(texto, form);
+      setRevisaoFicha({ arquivo: arquivo.name, ...leitura });
+    } catch (erro) {
+      setRevisaoFicha({ erro: erro?.message || "Não foi possível ler a Ficha de Registro." });
+    } finally {
+      setLendoFicha(false);
+    }
+  }
+
+  function confirmarFichaRegistro() {
+    if (!revisaoFicha?.dados) return;
+    setForm({ ...form, ...revisaoFicha.dados, _fichaRegistroArquivo: revisaoFicha.arquivo });
+    setRevisaoFicha(null);
+  }
   const desligada = form.ativo === false;
   const aberta = (id) => secoes.includes(id);
   // Completude e experiência calculadas do RASCUNHO: preencher um campo ou
@@ -463,6 +492,53 @@ function FormPessoa({
         }}
         className="space-y-4"
       >
+        {!form.id && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-display text-sm font-semibold text-slate-900">Preencher pela Ficha de Registro</p>
+                <p className="mt-0.5 text-xs text-slate-600">Envie o PDF. O sistema lê os dados e mostra uma conferência antes de preencher o novo colaborador.</p>
+              </div>
+              <label className="btn-outline cursor-pointer">
+                <FileUp size={15} />
+                {lendoFicha ? "Lendo ficha..." : "Inserir Ficha de Registro"}
+                <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={lerFichaRegistro} disabled={lendoFicha} />
+              </label>
+            </div>
+            {revisaoFicha?.erro && <p className="mt-2 text-xs text-bad-700">{revisaoFicha.erro}</p>}
+          </div>
+        )}
+
+        {revisaoFicha?.dados && (
+          <div className="rounded-xl border border-brand-200 bg-white p-3 shadow-sm">
+            <div className="mb-3">
+              <p className="font-display text-sm font-semibold text-slate-900">Conferir informações encontradas</p>
+              <p className="text-xs text-slate-500">{revisaoFicha.arquivo} · confira e edite antes de preencher o cadastro.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {revisaoFicha.camposEncontrados.map((campo) => (
+                <label key={campo} className="text-xs text-slate-600">
+                  {campo}
+                  <input
+                    className="input mt-1"
+                    value={revisaoFicha.dados[campo] ?? ""}
+                    onChange={(e) => setRevisaoFicha((r) => ({ ...r, dados: { ...r.dados, [campo]: e.target.value } }))}
+                  />
+                </label>
+              ))}
+            </div>
+            {revisaoFicha.camposEncontrados.length === 0 && (
+              <p className="text-xs text-warn-700">Nenhuma informação foi reconhecida automaticamente. Confira se o PDF contém texto pesquisável.</p>
+            )}
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button type="button" className="btn-outline" onClick={() => setRevisaoFicha(null)}>Cancelar</button>
+              <button type="button" className="btn-primary" disabled={!revisaoFicha.camposEncontrados.length} onClick={confirmarFichaRegistro}>
+                Confirmar e preencher colaborador
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Nome e apelido ficam FORA das seções: são a identidade da ficha, e
             campo obrigatório escondido dentro de uma seção fechada trava o
             envio do formulário sem o navegador conseguir mostrar onde. */}
