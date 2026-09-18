@@ -179,11 +179,17 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
     || primeiroNome(bruto)
     || ""
   );
-  const cpfEncontrado = cpf(bruto);
+  // Em Registro de Empregados há CNPJ do empregador e CPF do colaborador.
+  // Nunca usar o primeiro número com formato de CPF encontrado no PDF.
+  const cpfEncontrado = bruto.match(/\bCPF\s*:\s*(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})\b/i)?.[1]?.replace(/\D/g, "") || "";
   // Os relatórios de Registro de Empregados da contabilidade posicionam o
   // valor antes do rótulo. Nestes PDFs, procurar só "perto" do rótulo pode
   // capturar a data de emissão/inclusão. Preferimos a sequência estrutural.
+  // pdf.js pode devolver os rótulos primeiro e os valores depois. Para este
+  // relatório, a sequência após "Colaborador Histórico Contratual" é estável.
+  const cabecalhoColaborador = bruto.match(/Colaborador\s+Histórico Contratual\s+(\d{2}\/\d{2}\/\d{4})\s+(?:\d+\s*-\s*)?([A-Za-zÀ-ÿ]+)\s+([A-Za-zÀ-ÿ ]+\s*-\s*[A-Z]{2})/i);
   const nascimento = bruto.match(/Data Nascimento:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1]
+    || cabecalhoColaborador?.[1]
     || pertoDoRotulo(bruto, ["data nascimento", "data de nascimento", "nascimento"], DATA);
   const admissaoEstrutural = bruto.match(/Data Admissão:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1]
     || bruto.match(/Nr\. Ficha Registro:\s*Data\s+Admissão:\s*Cargo:\s*Salário\/Cpl\. Sal\.\s*\d{1,2}:\d{2}\s+\d+\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1];
@@ -191,7 +197,10 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
     || bruto.match(/\b(\d{2}\/\d{2}\/\d{4})\s+\d{4}\s+Grupo Minas Lab\s+\d{4}\s+\d{3}\s+Admissão/i)?.[1]
     || pertoDoRotulo(bruto, ["data admissão", "data de admissão", "admissão", "admissao"], DATA);
   const salario = salarioProvavel(bruto);
-  const telefone = telefoneProvavel(bruto);
+  // Não inferir telefone de números soltos/datas/códigos da ficha.
+  // Só preencher quando houver um rótulo explícito de telefone/celular.
+  const telefone = bruto.match(/(?:telefone|celular)\s*[:\-]?\s*(\+?55\s*)?(\(?\d{2}\)?\s*9?\d{4,5}[-\s]?\d{4})/i)?.[0]
+    ?.replace(/^(?:telefone|celular)\s*[:\-]?\s*/i, "") || "";
   // "Endereço" no bloco Empregador é endereço da empresa, não da pessoa.
   // Só preencher endereço residencial quando o documento o identificar como tal.
   const endereco = bruto.match(/(?:endereço residencial|residência)\s*:\s*([^\n]{3,100})/i)?.[1] || "";
@@ -208,15 +217,18 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   const matriculaEsocial = bruto.match(/matrícula esocial:\s*([A-Z0-9.-]+)/i)?.[1] || "";
   const rg = bruto.match(/(?:\bRG\b|identidade)\s*[:\-]?\s*([0-9A-Z.\/-]{4,25})/i)?.[1] || "";
   const orgaoEmissorRg = bruto.match(/(?:órgão emissor|orgao emissor)\s*[:\-]?\s*([A-Z0-9./ -]{2,30})/i)?.[1] || "";
-  const nacionalidade = bruto.match(/nacionalidade\s*[:\-]?\s*(?:\d+\s*-\s*)?([A-Za-zÀ-ÿ ]{3,40})/i)?.[1] || "";
-  const naturalidade = bruto.match(/naturalidade\s*[:\-]?\s*([A-Za-zÀ-ÿ ]{3,60}(?:\s*-\s*[A-Z]{2})?)/i)?.[1] || "";
+  const nacionalidade = bruto.match(/nacionalidade\s*[:\-]?\s*(?:\d+\s*-\s*)?([A-Za-zÀ-ÿ ]{3,40})/i)?.[1]
+    || cabecalhoColaborador?.[2] || "";
+  const naturalidade = bruto.match(/naturalidade\s*[:\-]?\s*([A-Za-zÀ-ÿ ]{3,60}(?:\s*-\s*[A-Z]{2})?)/i)?.[1]
+    || cabecalhoColaborador?.[3] || "";
   const sexo = bruto.match(/(?:sexo|gênero|genero)\s*[:\-]?\s*(masculino|feminino|m|f)\b/i)?.[1] || "";
   const filiacaoRegistro = bruto.match(/PIS\/PASEP:\s*Mãe:\s*[0-9.]+\s+([A-Za-zÀ-ÿ' ]{5,100}?)\s+([A-Za-zÀ-ÿ' ]{5,100}?)\s+Pai:/i);
   const nomeMae = bruto.match(/(?:Mãe|Mae)\s*:\s*([A-Za-zÀ-ÿ' ]{5,100}?)(?=\s+Documentos|\s+CPF:|\s+Pai:|$)/i)?.[1]
     || filiacaoRegistro?.[1] || "";
   const nomePai = bruto.match(/Pai\s*:\s*([A-Za-zÀ-ÿ' ]{5,100}?)(?=\s+(?:Mãe|Mae):|\s+Documentos|$)/i)?.[1]
     || filiacaoRegistro?.[2] || "";
-  const pis = bruto.match(/PIS\/PASEP:\s*([0-9. -]{8,20})/i)?.[1] || "";
+  const pis = bruto.match(/PIS\/PASEP:\s*([0-9. -]{8,20})/i)?.[1]
+    || bruto.match(/PIS\/PASEP:\s*Mãe:\s*([0-9. -]{8,20})/i)?.[1] || "";
   const ctps = bruto.match(/(?:carteira profissional nº|ctps\/série\/uf:)\s*([0-9 -]{4,30})/i)?.[1] || "";
   const cbo = bruto.match(/\bCBO:\s*(\d{4,6})\b/i)?.[1]
     || bruto.match(/Cargos[\s\S]{0,300}?\b(\d{6})\b[\s\S]{0,50}?Admissão/i)?.[1]
@@ -256,7 +268,8 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   }
   if (cbo) dados.cbo = cbo;
   if (empresa) dados.empresa = limpar(empresa);
-  const fichaRegistro = bruto.match(/Nr\. Ficha Registro:[\s\S]{0,100}?(\d{6,12})/i)?.[1];
+  const fichaRegistro = bruto.match(/Nr\. Ficha Registro:[\s\S]{0,140}?\b(0{2,}\d{1,6})\b/i)?.[1]
+    || bruto.match(/Ficha\.?\s*:\s*(\d{1,8})\b/i)?.[1];
   if (fichaRegistro) dados.matricula = String(Number(fichaRegistro));
   if (setor) dados.setor = normalizar(setor);
   if (vinculo) dados.vinculo = normalizar(vinculo);
