@@ -180,3 +180,46 @@ export const recebimentosImportar = async (empresaId, itens, origemArquivo) => {
   }
   return r;
 };
+
+
+// -----------------------------------------------------------------------------
+// RH + Ponto — extensões retrocompatíveis na mesma porta ml-sync
+// -----------------------------------------------------------------------------
+export const rhDocumentosListar = (filtros = {}) =>
+  chamar("rhDocumentoListar", filtros).then((r) => r.documentos || []);
+
+export const rhDocumentoUpload = (dados) =>
+  chamar("rhDocumentoUpload", dados).then((r) => {
+    if (!r?.documento?.id) throw new Error("O servidor não confirmou o upload do documento.");
+    return r.documento;
+  });
+
+export const rhDocumentoUrl = (documentoId) =>
+  chamar("rhDocumentoUrl", { documentoId }).then((r) => r.url || null);
+
+export const rhDocumentoAtualizar = (documentoId, campos) =>
+  chamar("rhDocumentoAtualizar", { documentoId, ...campos }).then((r) => {
+    if (!r?.documento?.id) throw new Error("O servidor não confirmou a atualização do documento.");
+    return r.documento;
+  });
+
+export const rhBancoListar = (filtros = {}) =>
+  chamar("rhBancoListar", filtros).then((r) => ({
+    movimentos: r.movimentos || [],
+    saldoMinutos: r.saldoMinutos ?? null,
+  }));
+
+export const rhBancoRegistrar = (dados) =>
+  chamar("rhBancoRegistrar", dados).then((r) => {
+    if (!r?.movimento?.id) throw new Error("O servidor não confirmou o lançamento do banco de horas.");
+    return r;
+  });
+
+export const rhFolhaBuscar = (pessoaId, competencia) =>
+  chamar("rhFolhaBuscar", { pessoaId, competencia }).then((r) => r.folha || null);
+
+export const rhFolhaSalvar = (dados) =>
+  chamar("rhFolhaSalvar", dados).then((r) => {
+    if (!r?.folha?.id) throw new Error("O servidor não confirmou a Folha de Ponto.");
+    return r.folha;
+  });
