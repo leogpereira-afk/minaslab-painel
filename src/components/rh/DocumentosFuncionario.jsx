@@ -13,8 +13,11 @@ const TIPOS = [
 ];
 const ROTULOS = {
   nome:"Nome", cpf:"CPF", rg:"RG", dataNascimento:"Nascimento", admissao:"Admissão",
-  cargo:"Cargo/Função", salario:"Salário", telefone:"Telefone", endereco:"Endereço",
-  cidade:"Cidade", email:"E-mail", setor:"Setor", jornada:"Jornada",
+  cargo:"Cargo/Função", cbo:"CBO", salario:"Salário", telefone:"Telefone", endereco:"Endereço",
+  cidade:"Cidade", cep:"CEP", email:"E-mail", setor:"Setor/Local", jornada:"Jornada",
+  horasSemanais:"Horas semanais", estadoCivil:"Estado civil", escolaridade:"Escolaridade",
+  empresa:"Empresa", matriculaEsocial:"Matrícula eSocial", pis:"PIS/PASEP", ctps:"CTPS",
+  vinculo:"Vínculo",
 };
 
 function lerArquivo(file) {
@@ -66,7 +69,9 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
           : "Documento armazenado; requer conferência manual.",
       });
       setPendente({ doc, dados: leitura.dados, conflitos: leitura.conflitos, camposEncontrados: leitura.camposEncontrados });
-      setMensagem(leitura.camposEncontrados.length ? "Confira os campos encontrados antes de confirmar." : "Arquivo armazenado, mas não foi possível extrair texto automaticamente.");
+      setMensagem(leitura.camposEncontrados.length
+        ? "Ficha/Kit lido. Confira todos os campos encontrados antes de confirmar."
+        : "Arquivo armazenado, mas não foi possível extrair texto automaticamente.");
       await carregar();
     } catch (err) { setMensagem(err.message); }
     finally { setCarregando(false); }
@@ -76,13 +81,13 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
     if (!pendente) return;
     try {
       const r = await rhDocumentoConfirmarPreenchimento(pendente.doc.id, pessoa.id, pendente.dados);
-      setMensagem(`Cadastro preenchido: ${(r.camposAlterados || []).join(", ") || "nenhum campo novo"}.`);
+      setMensagem("Cadastro preenchido: " + ((r.camposAlterados || []).join(", ") || "nenhum campo novo") + ".");
       setPendente(null); await carregar();
     } catch (e) { setMensagem(e.message); }
   }
 
   async function excluir(doc) {
-    if (!window.confirm(`Retirar o documento "${doc.nome_original}" da ficha?`)) return;
+    if (!window.confirm("Retirar o documento \"" + doc.nome_original + "\" da ficha?")) return;
     try {
       await rhDocumentoExcluir(doc.id);
       if (pendente?.doc?.id === doc.id) setPendente(null);
@@ -101,13 +106,13 @@ export default function DocumentosFuncionario({ pessoa, editavel }) {
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div><h2 className="font-display text-base font-semibold text-slate-900">Documentos</h2><p className="text-xs text-slate-500">Original preservado no Storage privado.</p></div>
+        <div><h2 className="font-display text-base font-semibold text-slate-900">Documentos</h2><p className="text-xs text-slate-500">Ficha de Registro e Kit Admissional alimentam o cadastro após confirmação. Original preservado no Storage privado.</p></div>
         {editavel && <div className="flex flex-wrap items-center gap-2"><select className="select py-1 text-xs" value={tipo} onChange={e => setTipo(e.target.value)}>{TIPOS.map(t => <option key={t}>{t}</option>)}</select><label className="btn-primary cursor-pointer py-1 text-xs">{carregando ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />} Enviar documento<input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={enviar} disabled={carregando} /></label></div>}
       </div>
       {mensagem && <p className="mb-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">{mensagem}</p>}
       {pendente && (
         <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3">
-          <div className="mb-2 flex items-center gap-2 font-display text-sm font-semibold"><CheckCircle2 size={16}/> Informações encontradas — confira antes de preencher</div>
+          <div className="mb-2 flex items-center gap-2 font-display text-sm font-semibold"><CheckCircle2 size={16}/> Informações da Ficha/Kit — confira antes de preencher</div>
           {pendente.conflitos?.length > 0 && <p className="mb-2 text-xs text-warn-800">Existem divergências com o cadastro atual. A confirmação usará somente os valores exibidos abaixo.</p>}
           {pendente.camposEncontrados?.length ? <div className="grid gap-2 md:grid-cols-2">{pendente.camposEncontrados.map(campo => <label key={campo} className="text-xs text-slate-600">{ROTULOS[campo] || campo}<input className="input mt-1" value={pendente.dados[campo] || ""} onChange={e => setPendente(p => ({...p, dados:{...p.dados, [campo]:e.target.value}}))} /></label>)}</div> : <p className="text-xs text-slate-600">Nenhum campo foi extraído automaticamente. Abra o original e faça a conferência manual.</p>}
           <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-primary" onClick={confirmar} disabled={!pendente.camposEncontrados?.length}>Confirmar e preencher cadastro</button><button type="button" className="btn-outline" onClick={() => setPendente(null)}>Cancelar confirmação</button></div>
