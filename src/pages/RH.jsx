@@ -651,7 +651,7 @@ export default function RH() {
             )}
             {editavel && aba === "pessoas" && (
               <button type="button" className="btn-primary" onClick={() => abrirPessoa(null)}>
-                <Plus size={16} strokeWidth={2.5} /> Nova pessoa
+                <Plus size={16} strokeWidth={2.5} /> Novo colaborador
               </button>
             )}
             {editavel && aba === "ferias" && (
