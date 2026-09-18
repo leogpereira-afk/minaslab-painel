@@ -41,6 +41,16 @@ const plural = (n, um, muitos) => (n === 1 ? um : muitos);
 // local; toISOString aqui devolveria o dia anterior no Brasil).
 const dataDe = (d) => dataLonga(ymdLocal(d));
 
+function somarMesesISO(iso, meses) {
+  const m = String(iso || "").match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+  if (!m) return "";
+  const a = Number(m[1]), mes = Number(m[2]), dia = Number(m[3]);
+  const base = new Date(a, mes - 1, 1);
+  base.setMonth(base.getMonth() + meses);
+  const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  return ymdLocal(new Date(base.getFullYear(), base.getMonth(), Math.min(dia, ultimo)));
+}
+
 // Dias que um registro representa: calendário entre início e retorno + abono
 // vendido — a MESMA conta do clt.js. Sem uma das datas não dá para derivar: 0.
 function diasDoRegistro(r) {
@@ -85,7 +95,21 @@ function leituraCLT(p, periodos, hoje, desde) {
   }
   const s = situacaoFerias(p, periodos, hoje, desde);
   if (!s) {
-    return { chip: "", texto: "no 1º ano de casa — o direito ainda não nasceu", detalhes: [], gravidade: 3 };
+    // Mesmo no 1º ano o RH precisa enxergar o calendário futuro: quando nasce
+    // o direito e até quando a empresa poderá concedê-lo. O motor CLT retorna
+    // null antes de 12 meses; isso não significa ausência de prazo calculável.
+    const direito = somarMesesISO(p.admissao, 12);
+    const limite = somarMesesISO(p.admissao, 24);
+    const detalhes = [
+      direito ? `direito em ${dataLonga(direito)}` : "",
+      limite ? `conceder até ${dataLonga(limite)}` : "",
+    ].filter(Boolean);
+    return {
+      chip: "",
+      texto: "no 1º ano de casa — período aquisitivo em andamento",
+      detalhes,
+      gravidade: 3,
+    };
   }
 
   const detalhes = [];
