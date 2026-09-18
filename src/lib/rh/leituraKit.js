@@ -282,7 +282,7 @@ export function extrairDadosKit(texto, pessoaAtual = {}) {
   // "Endereço" no bloco Empregador é endereço da empresa, não da pessoa.
   // Só preencher endereço residencial quando o documento o identificar como tal.
   const endereco = bruto.match(/(?:endereço residencial|residência)\s*:\s*([^\n]{3,100})/i)?.[1] || "";
-  const cidade = bruto.match(/(?:cidade residencial|município residencial)\s*:\s*([A-Za-zÀ-ÿ ]{3,60})/i)?.[1] || "";
+  const cidade = bruto.match(/(?:cidade residencial|município residencial)\s*:\s*([A-Za-zÀ-ÿ ]{3,60})/i)?.[1] || cidadeProvavel(bruto) || "";
   const enderecoEmpresa = bruto.match(/M Lab Servicos Ltda[\s\S]{0,350}?(\d{2}\.\d{3}-\d{3})/i)?.[1] || "";
   const cep = bruto.match(/(?:CEP residencial|CEP residência)\s*:\s*(\d{2}\.\d{3}-\d{3})/i)?.[1] || "";
   const escolaridade = bruto.match(/\b\d+\s*-\s*(Superior Completo|Superior|Médio Completo|Médio|Fundamental[^,\n]*)\b/i)?.[1] || "";
