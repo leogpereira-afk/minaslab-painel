@@ -1184,6 +1184,7 @@ export default function AbaPessoas({
           aoEditar={() => aoAbrir(pessoaFicha)}
           aoDesligar={() => setDesligando({ ...pessoaFicha, data: hojeISO, motivo: "" })}
           aoEfetivar={() => aoEfetivar(pessoaFicha)}
+          aoConferirAdmissao={() => gravar("rh_pessoas", { ...pessoaFicha, admissaoConferida: true }, "Data de admissão conferida.")}
           aoIrParaAba={aoIrParaAba}
           aoRegistrarAcontecimento={() =>
             setAcontecimento({ pessoaId: pessoaFicha.id, pessoaNome: pessoaFicha.nome, data: hojeISO, tipo: "elogio", titulo: "", detalhe: "" })
