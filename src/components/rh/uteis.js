@@ -2,6 +2,7 @@
 // nenhuma aba importar da outra — a casca e as abas puxam deste arquivo.
 
 import { diasEntre, moedaCheia } from "../../lib/format.js";
+import { tipoDe } from "../../lib/rhExamesApresentacao.js";
 
 // O ano digitado com dígito a mais (20266) passa no input de data e andaria
 // 18 mil anos calado. Se o ano não tem 4 dígitos, devolve o ano para a frase.
@@ -83,7 +84,14 @@ export function radarExames(exames, pessoas, hojeISO) {
   const porChave = new Map();
   for (const e of exames || []) {
     if (e.pessoaId && desligados.has(e.pessoaId)) continue;
-    const chave = `${e.pessoaId || "?"}|${e.tipo || "?"}`;
+    const tipo = tipoDe(e);
+    // Admissional e periódico pertencem ao MESMO ciclo de vigilância
+    // ocupacional. Depois que existe um periódico posterior, o admissional
+    // continua no histórico, mas não pode seguir cobrando vencimento no radar.
+    // Retorno, mudança de função, demissional e complementares mantêm ciclos
+    // próprios porque têm finalidades diferentes.
+    const ciclo = tipo === "admissional" || tipo === "periodico" ? "ocupacional_regular" : (tipo || "?");
+    const chave = `${e.pessoaId || "?"}|${ciclo}`;
     const atual = porChave.get(chave);
     if (!atual || maisRecente(e, atual) > 0) {
       porChave.set(chave, e);
