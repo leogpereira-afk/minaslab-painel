@@ -58,9 +58,9 @@ const VAZIO_PESSOA = {
   cpf: "", cnh: "", contatoEmergencia: "", salario: "", obs: "",
   ativo: true, desligadoEm: "", experienciaDecididaEm: "", planoAberto: false,
   // Pessoais
-  dataNascimento: "", rg: "", estadoCivil: "", endereco: "", cidade: "", uf: "", email: "",
+  dataNascimento: "", rg: "", orgaoEmissorRg: "", ufRg: "", estadoCivil: "", sexo: "", nacionalidade: "", naturalidade: "", nomeMae: "", nomePai: "", endereco: "", bairro: "", cep: "", cidade: "", uf: "", email: "",
   // Contrato
-  matricula: "", tipoContrato: "", jornada: "", horasSemanais: "", setor: "",
+  matricula: "", matriculaEsocial: "", tipoContrato: "", vinculo: "", cbo: "", pis: "", ctps: "", serieCtps: "", ufCtps: "", tipoSalario: "", jornada: "", horasSemanais: "", setor: "", centroCusto: "",
   gestorId: "", gestorNome: "",
   // Ponto: PADRÃO SIM. Ficha antiga não tem o campo, e em TODA leitura ausente
   // vale true — quem já estava no quadro bate ponto até alguém dizer o
@@ -434,12 +434,13 @@ export default function RH() {
       cpf: txt(f.cpf),
       contatoEmergencia: txt(f.contatoEmergencia),
       obs: txt(f.obs),
-      rg: txt(f.rg),
-      endereco: txt(f.endereco),
+      rg: txt(f.rg), orgaoEmissorRg: txt(f.orgaoEmissorRg), ufRg: txt(f.ufRg).toUpperCase(),
+      sexo: txt(f.sexo), nacionalidade: txt(f.nacionalidade), naturalidade: txt(f.naturalidade), nomeMae: txt(f.nomeMae), nomePai: txt(f.nomePai),
+      endereco: txt(f.endereco), bairro: txt(f.bairro), cep: txt(f.cep),
       cidade: txt(f.cidade),
       uf: txt(f.uf).toUpperCase(),
       email: txt(f.email),
-      matricula: txt(f.matricula),
+      matricula: txt(f.matricula), matriculaEsocial: txt(f.matriculaEsocial), cbo: txt(f.cbo), pis: txt(f.pis), ctps: txt(f.ctps), serieCtps: txt(f.serieCtps), ufCtps: txt(f.ufCtps).toUpperCase(), vinculo: txt(f.vinculo), tipoSalario: txt(f.tipoSalario), centroCusto: txt(f.centroCusto),
       jornada: txt(f.jornada),
       banco: txt(f.banco),
       agencia: txt(f.agencia),
