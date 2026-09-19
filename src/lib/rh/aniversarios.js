@@ -36,7 +36,12 @@
 // `admissaoConferida`: o calendário mostra, mas avisa que o número ainda é do
 // relógio. Número de anos de casa exibido sem ressalva vira placa de bronze.
 
-const ehISO = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ""));
+const ehISO = (v) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ""))) return false;
+  const [ano, mes, dia] = String(v).split("-").map(Number);
+  const dias = [31, ehBissexto(ano) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return ano > 0 && mes >= 1 && mes <= 12 && dia >= 1 && dia <= dias[mes - 1];
+};
 
 /* Bissexto pela regra inteira (400 anos), não pelo "divisível por 4": 1900 não
    foi bissexto e 2000 foi. Errar isso desloca o 29/02 num ano de virada de

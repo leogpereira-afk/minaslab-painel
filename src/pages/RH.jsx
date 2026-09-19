@@ -140,12 +140,10 @@ export default function RH() {
   const [erro, setErro] = useState(null);
   const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const abaDoLink = params.get("aba");
-  const [aba, setAba] = useState("gestao");
-  useEffect(() => {
-    if (["gestao", "pessoas", "ferias", "feedback", "exames", "vencimentos", "relatorios"].includes(abaDoLink)) setAba(abaDoLink);
-  }, [abaDoLink]);
+  const aba = ["gestao", "pessoas", "ferias", "feedback", "exames", "vencimentos", "relatorios"].includes(abaDoLink) ? abaDoLink : "gestao";
+  const setAba = (valor) => setParams(atual => { const proximo = new URLSearchParams(atual); proximo.set("aba", valor); return proximo; });
   const [pessoaGestao, setPessoaGestao] = useState("");
   const [busca, setBusca] = useState("");
   const [verDesligados, setVerDesligados] = useState(false);
