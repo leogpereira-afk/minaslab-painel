@@ -44,6 +44,7 @@ import {
 } from "../components/ui.jsx";
 import { anoRuim, chipVenc, marcosDaFicha, radarExames } from "../components/rh/uteis.js";
 import AbaGestao from "../components/rh/AbaGestao.jsx";
+import { escopoEquipe } from "../lib/rh/escopoEquipe.js";
 import { montarGestao } from "../lib/rh/gestao.js";
 import AbaPessoas from "../components/rh/AbaPessoas.jsx";
 import AbaFerias from "../components/rh/AbaFerias.jsx";
@@ -159,7 +160,7 @@ export default function RH() {
     return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
       .then((r) => {
         if (r._recusadas?.length) throw new Error("Não foi possível consultar todas as informações do RH. Confira as permissões e tente novamente.");
-        setDados({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico });
+        setDados(escopoEquipe({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico }));
         setErro(null);
       })
       .catch((e) => {
