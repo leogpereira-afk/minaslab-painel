@@ -13,9 +13,10 @@ const curta = iso => iso.slice(8,10)+'/'+iso.slice(5,7);
 const longa = iso => `${curta(iso)}/${iso.slice(0,4)}`;
 const SEMANA=['dom.','seg.','ter.','qua.','qui.','sex.','sáb.'];
 const opcoes=[{valor:'dia',rotulo:'Dia'},{valor:'semana',rotulo:'Semana'},{valor:'mes',rotulo:'Mês'}];
-export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenciaSelecionada,aoMudarCompetencia,montarIndice,pessoasDoPeriodo,setAviso}) {
-  const [visao,setVisao]=useState('semana');
+export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenciaSelecionada,aoMudarCompetencia,montarIndice,pessoasDoPeriodo,setAviso,aoAbrirAjustes}) {
+  const [visao,setVisao]=useState('mes');
   const [referencia,setReferencia]=useState(hojeISO);
+  useEffect(()=>{if(competenciaSelecionada)setReferencia(atual=>atual.slice(0,7)===competenciaSelecionada?atual:`${competenciaSelecionada}-01`);},[competenciaSelecionada]);
   const [busca,setBusca]=useState('');
   const [quadro,setQuadro]=useState('ativos');
   const [pessoaId,setPessoaId]=useState('');
@@ -51,12 +52,12 @@ export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenci
   return <section className="pp-root" aria-label="Acompanhamento do ponto">
     <header className="pp-topo">
       <div className="pp-cabecalho">
-        <div className="pp-titulo"><span className="pp-legenda"><CalendarDays size={14}/> Acompanhamento da equipe</span><h2>{titulo}</h2></div>
+        <div className="pp-titulo"><span className="pp-legenda"><CalendarDays size={14}/> Conferência dos registros</span><h2>{titulo}</h2></div>
         <Segmented className="pp-visoes sem-impressao" opcoes={opcoes} valor={visao} onChange={trocar}/>
-        <div className="pp-acoes pp-exportar sem-impressao"><button className="btn-outline" onClick={exportar} disabled={!periodo}><Download size={15}/> Excel</button><button className="btn-primary" onClick={baixarPdf} disabled={gerandoPdf || !periodo}><Printer size={15}/> {gerandoPdf?'Gerando PDF…':'Baixar PDF'}</button></div>
+        <div className="pp-acoes pp-exportar sem-impressao"><button className="btn-outline" onClick={exportar} disabled={!periodo}><Download size={15}/> Excel do período</button><button className="btn-primary" onClick={baixarPdf} disabled={gerandoPdf || !periodo}><Printer size={15}/> {gerandoPdf?'Gerando PDF…':'PDF do período'}</button></div>
       </div>
       <div className="pp-filtros sem-impressao">
-        <div className="pp-acoes pp-navegar"><button className="btn-outline pp-seta" aria-label="Período anterior" onClick={()=>mudarRef(moverPeriodo(visao,ref,-1))}><ChevronLeft size={17}/></button><input aria-label="Data de referência" className="input pp-data" type={visao==='mes'?'month':'date'} value={visao==='mes'?ref.slice(0,7):ref} onChange={e=>mudarRef(visao==='mes'?`${e.target.value}-01`:e.target.value)}/><button className="btn-outline pp-seta" aria-label="Próximo período" onClick={()=>mudarRef(moverPeriodo(visao,ref,1))}><ChevronRight size={17}/></button><button className="btn-ghost" onClick={()=>mudarRef(hojeISO)}>Hoje</button></div>
+        <div className={`pp-acoes pp-navegar ${visao==='mes' && competenciaSelecionada?'hidden':''}`}><button className="btn-outline pp-seta" aria-label="Período anterior" onClick={()=>mudarRef(moverPeriodo(visao,ref,-1))}><ChevronLeft size={17}/></button><input aria-label="Data de referência" className="input pp-data" type={visao==='mes'?'month':'date'} value={visao==='mes'?ref.slice(0,7):ref} onChange={e=>mudarRef(visao==='mes'?`${e.target.value}-01`:e.target.value)}/><button className="btn-outline pp-seta" aria-label="Próximo período" onClick={()=>mudarRef(moverPeriodo(visao,ref,1))}><ChevronRight size={17}/></button><button className="btn-ghost" onClick={()=>mudarRef(hojeISO)}>Hoje</button></div>
         <label className="pp-busca"><Search size={16}/><input aria-label="Buscar pessoa" placeholder="Buscar pessoa…" value={busca} onChange={e=>{setBusca(e.target.value);setPessoaId('');}}/></label>
         <select aria-label="Quadro da equipe" className="select pp-quadro" value={quadro} onChange={e=>{setQuadro(e.target.value);setPessoaId('');}}><option value="ativos">Equipe atual</option><option value="todos">Todos, com histórico</option><option value="desligados">Desligados</option></select>
         {pessoa&&<button className="btn-outline pp-voltar" onClick={()=>setPessoaId('')}>← Toda a equipe</button>}
@@ -67,7 +68,8 @@ export default function PeriodoPonto({pessoas,ativos,pontoDia,hojeISO,competenci
       </div>
     </header>
     {(indice.repetidos>0 || indice.orfaos.length>0 || cfgErro)&&<p role="status" className="pp-aviso">{indice.repetidos>0&&`${indice.repetidos} registro(s) repetido(s) na base; sem somar em dobro. `}{indice.orfaos.length>0&&`${indice.orfaos.length} vínculo(s) com pessoas pendentes na base. `}{cfgErro&&'Escala não carregada; referências de jornada usam o padrão do sistema.'}</p>}
-    {exibidas.length>0&&<LeituraPonto pessoas={exibidas} datas={datas} indice={indice} hoje={hojeISO} jornada={jornada} visao={visao} pessoa={pessoa} abrirPessoa={setPessoaId} abrirDia={data=>{mudarRef(data);setVisao('dia');}} abrirRegistro={({p,data})=>{setPessoaId(p.id);mudarRef(data);setVisao('dia');}}/>}
+    {exibidas.length===0&&<p className="pc-empty">Nenhuma pessoa neste filtro. Altere a busca ou o quadro.</p>}
+    {exibidas.length>0&&<LeituraPonto aoAbrirAjustes={aoAbrirAjustes} pessoas={exibidas} datas={datas} indice={indice} hoje={hojeISO} jornada={jornada} visao={visao} pessoa={pessoa} abrirPessoa={setPessoaId} abrirDia={data=>{mudarRef(data);setVisao('dia');}} abrirRegistro={({p,data})=>{setPessoaId(p.id);mudarRef(data);setVisao('dia');}}/>}
     <details className="pp-tabela-completa"><summary>Ver tabela completa e valores de origem</summary>
     {exibidas.length===0?<Card><p>Nenhuma pessoa neste filtro. Altere a busca ou o quadro.</p></Card>:<>
       {visao==='semana'&&!pessoa&&<Card><div className="pp-grade"><table><caption className="sr-only">Semana da equipe — horas da folha por dia</caption><thead><tr><th>Pessoa</th>{datas.map(d=><th key={d}><button onClick={()=>{mudarRef(d);setVisao('dia');}}>{SEMANA[new Date(`${d}T12:00:00`).getDay()]}<br/>{curta(d)}</button></th>)}<th>Total</th></tr></thead><tbody>{exibidas.map(p=>{const ds=datas.filter(d=>d<=hojeISO).map(d=>indice.porPessoa.get(p.id)?.dias.get(d));return <tr key={p.id}><th><button onClick={()=>setPessoaId(p.id)}>{p.nome}</button></th>{datas.map(data=>{const d=indice.porPessoa.get(p.id)?.dias.get(data);return <td key={data}><button className={d?.emAberto?'pp-pendente':''} onClick={()=>{setPessoaId(p.id);mudarRef(data);setVisao('dia');}}>{data>hojeISO?'—':horas(d?composicaoIntervalo(d).folhaMin:null)}<small>{situacao(d,data,hojeISO,jornada)}</small></button></td>;})}<td><strong>{horas(resumirDias(ds.filter(Boolean)).folhaMin)}</strong></td></tr>;})}</tbody></table></div><p className="pp-fonte">Clique em um dia para detalhar as batidas e o intervalo. “Sem registro” não significa falta.</p></Card>}

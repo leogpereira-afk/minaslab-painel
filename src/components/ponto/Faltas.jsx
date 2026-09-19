@@ -593,7 +593,7 @@ function ModalAusencia({ form, onMudar, aoFechar, aoGravar, aoRemover, salvando,
               {form.repetidos > 1 && (
                 <li>
                   Há {form.repetidos} registros deste dia para esta pessoa. A ausência vai no registro
-                  que está na tela — confira os outros na aba Fechamento e Batidas.
+                  que está na tela — confira os outros em Ajustes e fechamento.
                 </li>
               )}
               {form.duplicataSuspeita && (
@@ -1189,7 +1189,7 @@ export default function Faltas({
       <Card className="mb-4">
         <SectionTitle
           titulo={`Ausências — ${rotuloCompetencia(competencia)}`}
-          sub="Falta, atestado, justificada, férias e folga. Clique no dia da pessoa para lançar. Dia sem batida e sem ausência lançada é “sem registro”, nunca falta."
+          sub="Clique no dia para registrar falta, atestado, justificativa, férias ou folga."
           acao={
             <div className="sem-impressao flex flex-wrap items-center gap-2">
               {/* Baixar não é escrita: quem só consulta também precisa da planilha. */}
@@ -1204,7 +1204,7 @@ export default function Faltas({
         />
 
         <div className="sem-impressao flex flex-wrap items-end gap-3">
-          <div>
+          <div className={competenciaSelecionada ? "hidden" : undefined}>
             <label className="label" htmlFor="fl-mes">Mês</label>
             <select id="fl-mes" className="select w-40" value={mes} onChange={(e) => setCompetencia(`${ano}-${e.target.value}`)}>
               {MESES_LONGOS.map((nome, i) => (
@@ -1216,7 +1216,7 @@ export default function Faltas({
               lista suspensa esconde justamente o quanto de história existe. Os
               anos vêm do que TEM DADO (mais o de hoje) — lista cravada
               envelhece virando o ano. */}
-          <div role="group" aria-label="Ano do ponto">
+          <div role="group" aria-label="Ano do ponto" className={competenciaSelecionada ? "hidden" : undefined}>
             <span className="label">Ano</span>
             <Pilulas opcoes={vm.anos} valor={ano} aoEscolher={(a) => setCompetencia(`${a}-${mes}`)} />
           </div>
@@ -1266,9 +1266,9 @@ export default function Faltas({
           quadradinho por pessoa por dia — e ninguém compara pessoas varrendo 31
           colunas. A pergunta que se faz ao abrir esta tela ("quem está
           faltando?") merece ser respondida na primeira linha. */}
-      <div className="mb-4">
+      {ranking.length > 0 && <div className="mb-4">
         <Secao
-          titulo="Quem mais faltou"
+          titulo="Faltas registradas por pessoa"
           sub={
             ranking.length === 0
               ? `nenhuma falta neste recorte (${rotuloDoRecorte(recorte)})`
@@ -1291,11 +1291,10 @@ export default function Faltas({
             </p>
           ) : (
             <>
-              <Explicacao>
+              <Explicacao titulo="Entender ausências e descontos">
                 O número forte é a <strong>falta que desconta</strong> — só ela tira 1/30 do salário, e só quando
                 alguém lançar em Fechamento. As duas colunas cinza contam, nesta ordem,{" "}
-                {ABONADAS_DO_RANKING.map((t) => t.curto).join(" e ")}: essas não descontam. A barra compara as
-                pessoas desta lista entre si. <strong>Toque numa pessoa</strong> para ver o mês dela dia a dia.
+                {ABONADAS_DO_RANKING.map((t) => t.curto).join(" e ")}: essas não descontam. <strong>Toque numa pessoa</strong> para ver o mês dela dia a dia.
               </Explicacao>
               <div className="space-y-0.5">
                 {ranking.map((l) => (
@@ -1331,11 +1330,11 @@ export default function Faltas({
             </>
           )}
         </Secao>
-      </div>
+      </div>}
 
-      <div className="mb-4 grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="pc-ausencias mb-4 grid min-w-0 grid-cols-1 gap-4">
         {/* ---- a grade ---- */}
-        <Card className="min-w-0 lg:col-span-2">
+        <Card className="min-w-0">
           <SectionTitle
             titulo="O mês, dia a dia"
             sub={
@@ -1423,7 +1422,7 @@ export default function Faltas({
         </Card>
 
         {/* ---- o resumo do mês, por pessoa ---- */}
-        <Card>
+        <details className="pc-grafico"><summary>Resumo de ausências e descontos</summary><Card>
           <SectionTitle titulo="Resumo do mês" sub="O que foi lançado, por pessoa" />
 
           <div className="mb-3 space-y-1 rounded-xl border p-3 text-xs" style={{ borderColor: "var(--hairline)" }}>
@@ -1485,7 +1484,7 @@ export default function Faltas({
               ))}
             </div>
           )}
-        </Card>
+        </Card></details>
       </div>
 
       {/* ---- os lançamentos, um por linha ---- */}
@@ -1497,7 +1496,7 @@ export default function Faltas({
         aberta={abertaLancamentos}
         aoAlternar={() => alternarSecao("lancamentos")}
       >
-        <Explicacao>
+        <Explicacao titulo="Entender ausências e descontos">
           Motivo e documento por extenso: na grade eles só existem no rótulo do quadradinho, e rótulo não sai no
           papel nem no PDF. Só a <strong>falta</strong> desconta — as outras explicam o dia sem tirar nada da folha.
         </Explicacao>

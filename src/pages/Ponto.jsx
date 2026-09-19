@@ -16,13 +16,10 @@
 // barra de verdade é o servidor, que confere o crachá em toda chamada.
 //
 // ============================================================================
-// AS TRÊS ABAS (eram cinco em 28/08/2026 de manhã)
-//
-//   "Ponto"       → AbaPonto (components/rh/AbaPonto.jsx), inteira, com as
-//                   mesmas props que a casca do RH passava. É o dia a dia:
-//                   fechamento do mês e batidas, alternados por dentro dela.
-//   "Faltas"      → components/ponto/Faltas.jsx
-//   "Relatórios"  → components/ponto/Relatorios.jsx
+// SEÇÕES DO PONTO
+// Conferência começa pela equipe e pelas ocorrências do mês.
+// Ajustes e fechamento recebe também a pessoa/data escolhidas na conferência.
+// Faltas e abonos, Relatórios e Folha mensal mantêm as ferramentas especializadas.
 //
 // A ABA "PESSOAS DO RELÓGIO" DEIXOU DE EXISTIR, e o arquivo TrazerDoRelogio.jsx
 // foi apagado junto — tela que ninguém abre mais é código que envelhece dizendo
@@ -41,7 +38,7 @@
 // pior que a falta dele. O alternador de verdade é o do próprio AbaPonto.
 //
 // ----------------------------------------------------------------------------
-// O mês selecionado é compartilhado entre a faixa e as três abas. Uma leitura
+// O mês selecionado é compartilhado entre a faixa e as seções. Uma leitura
 // já iniciada mantém o período capturado, mesmo se outro mês for consultado.
 // Dia, ano e comparação continuam com os próprios recortes explícitos.
 //
@@ -67,6 +64,8 @@
 // (`apenas-impressao`) só existe impresso, para a folha dizer de onde veio, de
 // quem e de quando. As regras estão em src/index.css.
 
+import "../components/ponto/pontoWorkspace.css";
+
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, ChevronDown, Printer, RefreshCw, Users } from "lucide-react";
@@ -83,10 +82,11 @@ const Relatorios = lazy(() => import("../components/ponto/Relatorios.jsx"));
 const FolhaMensal = lazy(() => import("../components/ponto/FolhaMensal.jsx"));
 
 const ABAS = [
-  { valor: "ponto", rotulo: "Fechamento e ajustes" },
-  { valor: "faltas", rotulo: "Faltas" },
-  { valor: "relatorios", rotulo: "Visão geral e relatórios" },
-  { valor: "folha", rotulo: "Folha Mensal" },
+  { valor: "relatorios", rotulo: "Conferência" },
+  { valor: "ponto", rotulo: "Ajustes e fechamento" },
+  { valor: "faltas", rotulo: "Faltas e abonos" },
+  { valor: "analises", rotulo: "Relatórios" },
+  { valor: "folha", rotulo: "Folha mensal" },
 ];
 
 /* ============================================================================
@@ -343,7 +343,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
      ler é pior que começar pequena. E o caso do servidor que NÃO respondeu não
      fica mudo — a linha recolhida é justamente onde o erro aparece. */
   const [escolha, setEscolha] = useState(lerFaixaAberta);
-  const aberta = escolha ?? (estado ? !estado.ultima?.em : false);
+  const aberta = escolha ?? false;
   const alternar = () => {
     const nova = !aberta;
     setEscolha(nova);
@@ -357,7 +357,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
       : "Perguntando ao servidor quando foi a última leitura...";
 
   return (
-    <Card className="sem-impressao mb-6 border-l-4 border-l-brand">
+    <Card className="ponto-sincronizacao sem-impressao mb-4">
       {/* Recolhida a faixa é UMA LINHA, e por isso `items-center`: com o
           alinhamento pelo topo a frase ficaria pendurada acima dos seletores. */}
       <div
@@ -417,7 +417,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
             {/* Recolhida, o rótulo continua para quem ouve a tela e sai da
                 frente de quem vê: o mês escolhido está escrito dentro do
                 seletor e outra vez no botão ("Puxar agosto/2026"). */}
-            <label className={aberta ? "label" : "sr-only"} htmlFor="fx-mes">Mês que vou puxar</label>
+            <label className={aberta ? "label" : "sr-only"} htmlFor="fx-mes">Mês de referência</label>
             <select
               id="fx-mes"
               className="select w-36"
@@ -575,6 +575,7 @@ export default function Ponto() {
      saber COMO ESTÁ — quem chegou no horário, quanto rendeu o mês —, não
      lançar. O lançamento é a exceção do dia; o olhar é a regra. */
   const [aba, setAba] = useState("relatorios");
+  const [focoAjuste, setFocoAjuste] = useState(null);
   const [salvando, setSalvando] = useState(false);
   // "Hoje" é ESTADO, nunca uma constante do módulo: esta tela fica aberta de um
   // dia para o outro na sala da direção, e um dia congelado faz a folha do mês
@@ -684,7 +685,7 @@ export default function Ponto() {
   if (!dados) return <CarregandoModulo />;
 
   return (
-    <div>
+    <div className="ponto-workspace">
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       {erro && (
         <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
@@ -701,7 +702,7 @@ export default function Ponto() {
           linhas de explicação empurrando o número para fora da primeira dobra. */}
       <PageTitle
         titulo="Ponto"
-        descricao="Presença, horas e pendências da equipe."
+        descricao="Confira registros, resolva pendências e feche o mês."
         acao={
           <div className="sem-impressao flex flex-wrap items-center gap-2">
             {/* Imprimir não é escrita: quem só consulta também leva a folha.
@@ -734,13 +735,14 @@ export default function Ponto() {
       {/* As abas não cabem na largura do celular. Sem o overflow aqui, a PÁGINA
           INTEIRA passava a rolar de lado. */}
       <div role="group" aria-label="Seções do Ponto" className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
-        <Segmented opcoes={ABAS} valor={aba} onChange={setAba} />
+        <Segmented opcoes={ABAS} valor={aba} onChange={v => { setFocoAjuste(null); setAba(v); }} />
       </div>
 
       {/* Só a área da aba espera pelo arquivo; cabeçalho e controles permanecem. */}
       <Suspense fallback={<CarregandoModulo />}>
       {aba === "ponto" && (
         <AbaPonto
+          foco={focoAjuste}
           competenciaSelecionada={competencia}
           aoMudarCompetencia={setCompetencia}
           pessoas={dados.pessoas}
@@ -774,8 +776,11 @@ export default function Ponto() {
         />
       )}
 
-      {aba === "relatorios" && (
+      {(aba === "relatorios" || aba === "analises") && (
         <Relatorios
+          key={aba}
+          modo={aba === "analises" ? "analises" : "conferencia"}
+          aoAbrirAjustes={editavel ? (pessoaId, data) => { setFocoAjuste({pessoaId, data}); setAba("ponto"); } : undefined}
           competenciaSelecionada={competencia}
           aoMudarCompetencia={setCompetencia}
           pessoas={dados.pessoas}

@@ -191,6 +191,7 @@ const SEM_VINCULO = "__sem_vinculo__";
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const txt = (v) => String(v ?? "").trim();
+const buscarNome = v => txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /* QUEM BATE PONTO — a leitura, num lugar só, e ela NÃO PODE SER INVERTIDA.
    Quem decide é a FICHA (campo `batePonto`, editado em rh/AbaPessoas.jsx):
@@ -2191,16 +2192,19 @@ const COLUNAS_BATIDAS = [
 
 export default function AbaPonto({
   pessoas, ativos, ponto, pontoDia, hojeISO, editavel, gravar, apagarReg, setAviso, recarregar,
-  competenciaSelecionada, aoMudarCompetencia,
+  competenciaSelecionada, aoMudarCompetencia, foco,
 }) {
   const [competenciaLocal, setCompetenciaLocal] = useState(() => competenciaDe(hojeISO));
   // Dentro do módulo, relatório, faltas e sincronização usam o mesmo mês.
   const competencia = competenciaSelecionada ?? competenciaLocal;
   const setCompetencia = aoMudarCompetencia ?? setCompetenciaLocal;
-  const [visao, setVisao] = useState("fechamento");
+  const [visao, setVisao] = useState(foco ? "batidas" : "fechamento");
   // Ativos | Todos | Desligados — a escolha nasce do que ficou guardado.
-  const [recorte, setRecorte] = useState(lerRecorte);
-  const [filtroPessoa, setFiltroPessoa] = useState("");
+  const [recorte, setRecorte] = useState(() => foco ? "todos" : lerRecorte());
+  const [filtroPessoa, setFiltroPessoa] = useState(foco?.pessoaId || "");
+  const [filtroData, setFiltroData] = useState(foco?.data || "");
+  useEffect(() => { setFiltroData(atual => atual.startsWith(competencia) ? atual : ""); }, [competencia]);
+  const [buscaFechamento, setBuscaFechamento] = useState("");
   const [formFechamento, setFormFechamento] = useState(null);
   const [formBatida, setFormBatida] = useState(null);
   const [formAusencia, setFormAusencia] = useState(null);
@@ -2214,7 +2218,7 @@ export default function AbaPonto({
   const [salvando, setSalvando] = useState(false);
   const [escolhasVinculo, setEscolhasVinculo] = useState({});
   // Quais seções estão abertas — a escolha volta do aparelho.
-  const [secoes, setSecoes] = useState(lerSecoes);
+  const [secoes, setSecoes] = useState(() => foco ? ["batidas"] : lerSecoes());
   /* QUEM ESTÁ ABERTO NA LISTA DO FECHAMENTO. Uma pessoa por vez: com as vinte
      contas escritas abertas ao mesmo tempo a lista deixa de ser lista, que é
      de onde esta tela vinha. "" = nenhuma. */
@@ -2573,11 +2577,9 @@ export default function AbaPonto({
   }, [pessoas, ativos, ponto, pontoDia, competencia, cfg, hojeISO, recorte]);
 
   // O recorte visível da aba Batidas — é ele que a planilha leva.
-  const batidasVisiveis = useMemo(() => {
-    if (!filtroPessoa) return vm.batidas;
-    if (filtroPessoa === SEM_VINCULO) return vm.batidas.filter((b) => !b.pessoa);
-    return vm.batidas.filter((b) => b.pessoa?.id === filtroPessoa);
-  }, [vm.batidas, filtroPessoa]);
+  const batidasVisiveis = useMemo(() => vm.batidas.filter(b =>
+    (!filtroData || b.d.data === filtroData) && (!filtroPessoa || (filtroPessoa === SEM_VINCULO ? !b.pessoa : b.pessoa?.id === filtroPessoa))
+  ), [vm.batidas, filtroPessoa, filtroData]);
 
   const disparar = async (colecao, registro, fraseOk, fechar) => {
     setSalvando(true);
@@ -2840,11 +2842,11 @@ export default function AbaPonto({
   const abrirBatidaNova = () =>
     setFormBatida({
       id: "",
-      pessoaId: "",
-      pessoaNome: "",
+      pessoaId: filtroPessoa === SEM_VINCULO ? "" : filtroPessoa,
+      pessoaNome: vm.pessoasVisiveis.find(p => p.id === filtroPessoa)?.nome || "",
       // Nasce no mês que está na tela, não em "hoje": quem está lançando
       // fevereiro não quer um dia de março.
-      data: competenciaDe(hojeISO) === competencia ? hojeISO : `${competencia}-01`,
+      data: filtroData?.startsWith(competencia) ? filtroData : competenciaDe(hojeISO) === competencia ? hojeISO : `${competencia}-01`,
       entrada: "",
       saida: "",
       pausa: "",
@@ -2995,11 +2997,11 @@ export default function AbaPonto({
       base: null,
       travado: false,
       jaTinha: false,
-      pessoaId: "",
-      pessoaNome: "",
+      pessoaId: filtroPessoa === SEM_VINCULO ? "" : filtroPessoa,
+      pessoaNome: vm.pessoasVisiveis.find(p => p.id === filtroPessoa)?.nome || "",
       // Nasce no mês que está na tela, não em "hoje": quem está lançando
       // fevereiro não quer um dia de março.
-      data: competenciaDe(hojeISO) === competencia ? hojeISO : `${competencia}-01`,
+      data: filtroData?.startsWith(competencia) ? filtroData : competenciaDe(hojeISO) === competencia ? hojeISO : `${competencia}-01`,
       entrada: "",
       saida: "",
       tipo: TIPOS_AUSENCIA[0].tipo,
@@ -3289,22 +3291,26 @@ export default function AbaPonto({
     (m, l) => (Number.isFinite(l.valorFinal) ? Math.max(m, Math.abs(l.valorFinal)) : m),
     0
   );
+  const mudarVisao = valor => {
+    setVisao(valor);
+    setSecoes(atual => atual.includes(valor) ? atual : [...atual, valor]);
+  };
   const abertaFechamento = secoes.includes("fechamento");
   const abertaBatidas = secoes.includes("batidas");
 
   return (
     <>
-      <Card className="mb-4">
+      <Card className="mb-4 pc-ajustes-topo">
         <SectionTitle
-          titulo={`Relógio de ponto — ${rotuloCompetencia(competencia)}`}
-          sub="As batidas do Jibble e o fechamento por pessoa. Sem batida importada, as horas se lançam à mão."
+          titulo={visao === "batidas" ? "Ajustar registros" : "Fechamento por pessoa"}
+          sub="Confira os registros antes de fechar a competência."
           acao={
             <div className="flex flex-wrap items-center gap-2">
               {/* Baixar não é escrita: quem só consulta também precisa da planilha. */}
               <button type="button" className="btn-outline" onClick={baixar}>
                 <Download size={16} strokeWidth={2.5} /> Baixar planilha
               </button>
-              {editavel && (
+              {editavel && !competenciaSelecionada && (
                 <button
                   type="button"
                   className="btn-outline"
@@ -3341,7 +3347,7 @@ export default function AbaPonto({
         />
 
         <div className="flex flex-wrap items-end gap-3">
-          <div>
+          <div className={competenciaSelecionada ? "hidden" : undefined}>
             <label className="label" htmlFor="pt-mes">Mês</label>
             <select
               id="pt-mes"
@@ -3358,7 +3364,7 @@ export default function AbaPonto({
               lista suspensa esconde justamente o quanto de história existe.
               Os anos vêm do que TEM DADO (mais o de hoje) — lista cravada
               envelhece virando o ano. */}
-          <div role="group" aria-label="Ano do ponto">
+          <div role="group" aria-label="Ano do ponto" className={competenciaSelecionada ? "hidden" : undefined}>
             <span className="label">Ano</span>
             <Pilulas
               opcoes={vm.anos}
@@ -3373,6 +3379,7 @@ export default function AbaPonto({
             <span className="label">Quadro</span>
             <Segmented opcoes={RECORTES} valor={recorte} onChange={mudarRecorte} />
           </div>
+          {visao === "fechamento" && <div className="flex-1 min-w-40"><label className="label" htmlFor="pt-busca-fechamento">Pessoa</label><input id="pt-busca-fechamento" className="input" placeholder="Buscar pessoa" value={buscaFechamento} onChange={e => setBuscaFechamento(e.target.value)}/></div>}
           <div role="group" aria-label="Visão do ponto" className="ml-auto">
             <span className="label">Visão</span>
             <Segmented
@@ -3381,11 +3388,12 @@ export default function AbaPonto({
                 { valor: "batidas", rotulo: "Batidas" },
               ]}
               valor={visao}
-              onChange={setVisao}
+              onChange={mudarVisao}
             />
           </div>
         </div>
 
+        <details className="pc-parametros"><summary>Jornada e regras de apuração{cfgFalhou || cfg.jornada.ignorados > 0 ? " · conferir configuração" : ""}</summary>
         <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
           <Settings2 size={13} className="text-slate-400" />
           <span className="tnum">
@@ -3424,9 +3432,10 @@ export default function AbaPonto({
             </span>
           )}
         </p>
+        </details>
       </Card>
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {visao === "fechamento" && <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           rotulo="Fechamentos lançados"
           valor={`${vm.kpi.lancadas}/${vm.kpi.total}`}
@@ -3439,7 +3448,7 @@ export default function AbaPonto({
                 : undefined
           }
           icone={CalendarClock}
-          onClick={() => setVisao("fechamento")}
+          onClick={() => mudarVisao("fechamento")}
           ativo={visao === "fechamento"}
         />
         <StatCard
@@ -3451,7 +3460,7 @@ export default function AbaPonto({
           icone={AlarmClock}
         />
         <StatCard
-          rotulo="Total em R$"
+          rotulo="Ajustes lançados em R$"
           valor={vm.kpi.totalRS === null ? "—" : moedaCheia(vm.kpi.totalRS)}
           tom={vm.kpi.totalRS === null ? "neutral" : vm.kpi.totalRS < 0 ? "bad" : "brand"}
           sub={
@@ -3464,7 +3473,7 @@ export default function AbaPonto({
           icone={Wallet}
         />
         <StatCard
-          rotulo="Pendências"
+          rotulo="Problemas de cadastro"
           valor={String(vm.kpi.pendencias)}
           tom={vm.kpi.pendencias > 0 ? "bad" : "ok"}
           sub={
@@ -3475,11 +3484,11 @@ export default function AbaPonto({
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : "nada pendente"
+              : "nenhum problema de cadastro identificado"
           }
           icone={CircleAlert}
         />
-      </div>
+      </div>}
 
       {/* QUEM FICOU DE FORA, dito em voz baixa mas dito. Os cartões acima
           contam só o recorte à mostra, e cartão que conta menos gente do que a
@@ -3500,6 +3509,7 @@ export default function AbaPonto({
         acoes={{ vincular, desvincular }}
       />
 
+      {visao === "batidas" && filtroPessoa && filtroPessoa !== SEM_VINCULO && <p className="pc-contexto">Registros de {vm.pessoasVisiveis.find(p => p.id === filtroPessoa)?.nome || "pessoa selecionada"}{filtroData ? ` · ${dataLonga(filtroData)}` : ""}. Use o botão de correção na linha.</p>}
       {visao === "fechamento" ? (
         /* O SUB DIZ O TAMANHO DO RECORTE, com o recorte pelo nome. A primeira
            dúvida diante de um ranking é "isso aqui é tudo?", e um ranking que
@@ -3512,10 +3522,9 @@ export default function AbaPonto({
           aberta={abertaFechamento}
           aoAlternar={() => alternarSecao("fechamento")}
         >
-          <Explicacao>
+          <Explicacao titulo="Como conferir este fechamento">
             O valor forte é o <strong>mês em R$</strong> de cada pessoa: o valor lançado à mão, quando alguém
-            lançou um; senão, o que a conta do sistema produziu para o fechamento gravado. A barra compara as
-            pessoas desta lista entre si; as duas colunas cinza são as <strong>horas extras</strong> e as{" "}
+            lançou um; senão, o que a conta do sistema produziu para o fechamento gravado. As colunas de apoio são as <strong>horas extras</strong> e as{" "}
             <strong>faltas</strong> do lançamento. Quem não tem fechamento gravado aparece com travessão — é
             ausência de lançamento, não R$&nbsp;0,00. <strong>Toque numa pessoa</strong> para abrir a{" "}
             <strong>cascata do mês</strong> (registradas → intervalo → trabalhadas → folha, e a folha aberta em
@@ -3565,7 +3574,10 @@ export default function AbaPonto({
                primeiro. Nada saiu: o que era a linha inteira agora é o detalhe
                dela, com os mesmos botões. */
             <div className="space-y-0.5">
-              {vm.linhas.map((l) => {
+              {buscaFechamento.trim() && <p className="pc-ajuda">Lista filtrada por nome. Os indicadores acima mostram o quadro completo do mês.</p>}
+              <div className="pc-fechamento-head"><span>Pessoa / situação</span><span>Extras · faltas · ajustes lançados (R$)</span></div>
+              {!vm.linhas.some(l => buscarNome(l.pessoa.nome).includes(buscarNome(buscaFechamento))) && <p className="pc-empty">Nenhuma pessoa encontrada.</p>}
+              {vm.linhas.filter(l => buscarNome(l.pessoa.nome).includes(buscarNome(buscaFechamento))).map((l) => {
                 const aberta = pessoaAberta === l.pessoa.id;
                 const [extras, faltas] = apoiosDoFechamento(l);
                 return (
@@ -3578,7 +3590,7 @@ export default function AbaPonto({
                          lista mistura quem está e quem saiu, e o mês final de
                          quem saiu se confere de outro jeito. Vai no nome porque
                          a cor da linha já tem dono — é o estado do fechamento. */
-                      nome={l.pessoa.ativo === false ? `${l.pessoa.nome} (desligado)` : l.pessoa.nome}
+                      nome={<span>{l.pessoa.nome}{l.pessoa.ativo === false ? " (desligado)" : ""}<small>{!l.reg ? "Sem lançamento de fechamento" : l.reg.fechado ? "Fechado" : "Lançado · ainda aberto"}</small></span>}
                       valor={Number.isFinite(l.valorFinal) ? moedaCheia(l.valorFinal) : null}
                       apoios={[extras, faltas]}
                       medida={Number.isFinite(l.valorFinal) ? Math.abs(l.valorFinal) : null}
@@ -3628,10 +3640,11 @@ export default function AbaPonto({
                   <option key={p.id} value={p.id}>{p.nome}</option>
                 ))}
               </select>
+              <div className="mt-2 flex gap-2"><input className="input" aria-label="Dia para ajustar" type="date" value={filtroData} onChange={e => setFiltroData(e.target.value)}/>{filtroData && <button className="btn-ghost" onClick={() => setFiltroData("")}>Todos os dias</button>}</div>
             </div>
           }
         >
-          <Explicacao>
+          <Explicacao titulo="Como conferir as batidas">
             O extrato dia a dia: a <strong>duração</strong> do trecho entre as batidas, o <strong>crachá</strong>, o
             intervalo e o que vai para a <strong>folha</strong>. Os três não fecham por subtração, e o que sobra sai
             escrito na linha: é a <strong>diferença da escala</strong>, a dedução que o relógio aplica e que a ponte
@@ -3645,8 +3658,7 @@ export default function AbaPonto({
             </Empty>
           ) : batidasVisiveis.length === 0 ? (
             <Empty>
-              O mês tem batida, mas nenhuma neste recorte ({rotuloDoRecorte(recorte)}). Troque o quadro lá em cima ou
-              escolha outra pessoa no filtro.
+              Nenhuma batida para a pessoa e o dia selecionados. Confira os filtros ou use Lançar batida / Lançar ausência para incluir um registro.
             </Empty>
           ) : (
             <div className="space-y-2">
