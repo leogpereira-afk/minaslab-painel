@@ -70,7 +70,7 @@ export function montarEventos(dados, hojeISO, anos = []) {
         hora: "",
         texto: textoDoAniversario(o),
         cor: "ok",
-        origem: "aniversarios",
+        origem: o.tipo === "casa" ? "empresa" : "aniversarios",
         /* Viaja junto para a lista do dia poder pôr a ressalva onde a pessoa
            está olhando: a admissão destas fichas veio da primeira batida no
            relógio, não do contrato. */

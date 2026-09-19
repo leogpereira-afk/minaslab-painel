@@ -1,3 +1,4 @@
+import { nomesAtuais } from "../lib/rh/referenciasPessoa.js";
 // Compromissos — a agenda de trabalho da MinasLab: reunião, visita, retorno,
 // entrega de laudo, cobrança. O desenho é o do Painel da Impresilk, que a
 // equipe de lá usa todo dia: a tela abre pelo que está ATRASADO e depois por
@@ -289,6 +290,7 @@ export default function Compromissos() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    elenco().then(setEquipe).catch(() => {});
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     listar(COLECAO)
@@ -308,7 +310,7 @@ export default function Compromissos() {
   useEffect(() => {
     recarregar();
     // O elenco é só para o "responsável". Se falhar, a tela continua.
-    elenco().then(setEquipe).catch(() => {});
+
   }, [recarregar]);
 
   // Voltou para a aba: refaz a conta do dia e busca o que chegou.
@@ -326,7 +328,7 @@ export default function Compromissos() {
 
   const vm = useMemo(() => {
     if (!itens) return null;
-    const todos = itens.map((c) => {
+    const todos = nomesAtuais(itens, equipe, "responsavelId", "responsavelNome").map((c) => {
       const dias = c.data ? diasEntre(hojeISO, c.data) : null;
       return { ...c, dias, pz: prazo(dias), t: TIPOS[c.tipo] || TIPOS.outro };
     });
@@ -364,7 +366,7 @@ export default function Compromissos() {
       hoje: abertos.filter((c) => c.pz.grupo === "Hoje").length,
       semData: abertos.filter((c) => c.pz.grupo === "Sem data marcada").length,
     };
-  }, [itens, hojeISO]);
+  }, [itens, hojeISO, equipe]);
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);

@@ -1,3 +1,5 @@
+import FotoPessoa from "./FotoPessoa.jsx";
+import { prepararFoto } from "../../lib/rh/fotoPessoa.js";
 // Aba Pessoas do RH: o quadro (ativos + desligados), a ficha completa da pessoa
 // e o histórico dela. Estado e gravação da FICHA moram na casca (pages/RH.jsx);
 // aqui mora a renderização da aba, a inteligência de LEITURA — completude e
@@ -246,6 +248,7 @@ function LinhaPessoa({ p, hojeISO, aoAbrir }) {
       )}
       style={{ borderColor: "var(--hairline)" }}
     >
+      <FotoPessoa pessoa={p} pequena />
       <span className="min-w-0 flex-1 basis-48">
         <span className="block truncate font-display text-sm font-medium text-slate-900">
           {p.nome}
@@ -429,6 +432,8 @@ function FormPessoa({
   // Hooks precisam ser executados em todas as renderizações. O formulário
   // começa fechado (form=null) e depois abre com a pessoa selecionada.
   const [lendoFicha, setLendoFicha] = useState(false);
+  const [lendoFoto, setLendoFoto] = useState(false);
+  const [erroFoto, setErroFoto] = useState("");
   const [revisaoFicha, setRevisaoFicha] = useState(null);
   const [etapa, setEtapa] = useState(1);
   if (!form) return null;
@@ -505,7 +510,7 @@ function FormPessoa({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!salvando) aoSalvar();
+          if (!salvando && !lendoFoto) aoSalvar();
         }}
         className="space-y-4"
       >
@@ -595,6 +600,24 @@ function FormPessoa({
             campo obrigatório escondido dentro de uma seção fechada trava o
             envio do formulário sem o navegador conseguir mostrar onde. */}
         <div className={etapa === 1 ? "grid gap-3 sm:grid-cols-2" : "hidden"}>
+          <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+            <FotoPessoa pessoa={form} />
+            <div>
+              <label className="label" htmlFor="p-foto">Foto da pessoa</label>
+              <input id="p-foto" type="file" accept="image/jpeg,image/png,image/webp" disabled={lendoFoto || salvando} onChange={async (e) => {
+                const arquivo = e.target.files?.[0]; e.target.value = "";
+                if (!arquivo) return;
+                setLendoFoto(true); setErroFoto("");
+                const id = form.id;
+                try { const foto = await prepararFoto(arquivo); setForm(atual => atual && atual.id === id ? { ...atual, foto } : atual); }
+                catch (erro) { setErroFoto(erro.message); }
+                finally { setLendoFoto(false); }
+              }} />
+              <p className="text-xs text-slate-500">{lendoFoto ? "Preparando foto…" : "JPG, PNG ou WebP, até 5 MB. A foto só é gravada ao salvar a ficha."}</p>
+              {erroFoto && <p role="alert" className="text-sm text-bad-700">{erroFoto}</p>}
+              {form.foto && <button type="button" className="btn-outline mt-2" disabled={lendoFoto || salvando} onClick={() => setForm({ ...form, foto: "" })}>Remover foto</button>}
+            </div>
+          </div>
           <Campo id="p-nome" rotulo="Nome" valor={form.nome} aoMudar={setCampo("nome")} autoFocus required />
           <Campo id="p-apelido" rotulo="Apelido" valor={form.apelido} aoMudar={setCampo("apelido")} />
         </div>
@@ -873,7 +896,7 @@ function FormPessoa({
             {etapa < etapasCadastro.length ? (
               <button type="button" className="btn-primary" onClick={() => setEtapa((x) => Math.min(etapasCadastro.length, x + 1))}>Avançar</button>
             ) : (
-              <button type="submit" className="btn-primary" disabled={salvando || !String(form.nome).trim()}>
+              <button type="submit" className="btn-primary" disabled={salvando || lendoFoto || !String(form.nome).trim()}>
                 {salvando ? "Gravando..." : "Gravar"}
               </button>
             )}

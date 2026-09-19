@@ -36,6 +36,7 @@ import CalendarioMes from "../components/CalendarioMes.jsx";
 // Cada origem com sua cor, seu ícone e sua porta: a bolinha do filtro, o ponto
 // na grade e o ícone do painel "O dia" contam a mesma história.
 const ORIGENS = {
+  empresa: { rotulo: "Aniversário de empresa", cor: "ok", icone: Cake, link: "/rh?aba=pessoas", soDirecao: true },
   compromissos: { rotulo: "Compromissos", cor: "brand", icone: CalendarCheck, link: "/compromissos" },
   licitacoes: { rotulo: "Licitações", cor: "warn", icone: Gavel, link: "/licitacoes" },
   manutencoes: { rotulo: "Manutenções", cor: "warn", icone: Wrench, link: "/manutencoes" },
@@ -45,7 +46,7 @@ const ORIGENS = {
      moram em rh_pessoas, e a porta de dados recusa rh_* para quem não é
      direção (ver ehColecaoRH no ml-sync). Esconder o filtro é conforto; quem
      barra de verdade é o servidor. */
-  aniversarios: { rotulo: "Aniversários", cor: "ok", icone: Cake, link: "/rh?aba=pessoas", soDirecao: true },
+  aniversarios: { rotulo: "Aniversários pessoais", cor: "ok", icone: Cake, link: "/rh?aba=pessoas", soDirecao: true },
 };
 
 // As mesmas cores dos pontos do CalendarioMes — filtro e legenda apontam
@@ -695,7 +696,7 @@ export default function Calendario() {
       />
 
       {direcao && <div className="mb-5 rounded-xl border bg-white p-4 text-sm text-slate-600">
-        <p>🎂 Aniversários vêm da data de nascimento em <Link className="font-semibold underline" to="/rh?aba=pessoas">RH → Pessoas</Link>. 📄 Documentos e treinamentos vêm da data em <Link className="font-semibold underline" to="/rh?aba=vencimentos">RH → Vencimentos</Link>.</p>
+        <p>🎂 Aniversários pessoais vêm do nascimento e 🏅 aniversários de empresa vêm da admissão em <Link className="font-semibold underline" to="/rh?aba=pessoas">RH → Pessoas</Link>. 📄 Documentos e treinamentos vêm da data em <Link className="font-semibold underline" to="/rh?aba=vencimentos">RH → Vencimentos</Link>.</p>
         <p className="mt-1">Ao salvar no RH e abrir o calendário, as datas aparecem aqui. Use os filtros abaixo para escolher o que ver.</p>
       </div>}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
