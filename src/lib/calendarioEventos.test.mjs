@@ -41,3 +41,14 @@ test('aniversário de empresa tem filtro próprio, repete anualmente e usa admis
   assert.equal(eventos.find(e=>e.origem==='empresa').dia,'2026-09-20');
   assert.ok(!montarEventos(dados,'2025-09-19',[2025]).some(e=>e.origem==='empresa'));
 });
+
+
+test('licitações arquivadas saem da agenda e reabertas voltam sem perder a data', () => {
+  const dados = base();
+  dados.licitacoes = ['perdida', 'perdeu_data', 'nao_participamos', 'ganha'].map(status => ({ id: status, orgao: status, status, dataSessao: '2026-09-08' }));
+  assert.equal(montarEventos(dados, '2026-09-19').filter(e => e.origem === 'licitacoes').length, 0);
+  dados.licitacoes[1].status = 'estudando';
+  const eventos = montarEventos(dados, '2026-09-19').filter(e => e.origem === 'licitacoes');
+  assert.equal(eventos.length, 1);
+  assert.equal(eventos[0].dia, '2026-09-08');
+});

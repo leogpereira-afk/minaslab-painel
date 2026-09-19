@@ -7,10 +7,10 @@
 // componente da página, "hoje" como estado, aviso de resultado, recarrega do
 // servidor depois de gravar.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Pencil, Trash2, Gavel, CalendarClock, Trophy, Percent,
-  ChevronDown, ChevronUp, Download,
+  ChevronDown, ChevronUp, Download, Archive, RotateCcw,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
@@ -39,6 +39,7 @@ const STATUS_ROTULOS = {
   em_sessao: "Em sessão/disputa",
   ganha: "Ganha",
   perdida: "Perdida",
+  perdeu_data: "Perdeu a data",
   nao_participamos: "Não participamos",
 };
 
@@ -65,7 +66,7 @@ function prazoSessao(dias) {
 }
 
 const chipDesfecho = (status) =>
-  status === "ganha" ? "chip-ok" : status === "perdida" ? "chip-bad" : "chip";
+  status === "ganha" ? "chip-ok" : ["perdida", "perdeu_data"].includes(status) ? "chip-bad" : "chip";
 
 // Colunas da planilha: a ordem aqui é a ordem no arquivo. Os dois valores vão
 // como NÚMERO (tipo "dinheiro") — coluna de "R$ 79.500,00" em texto não soma,
@@ -105,7 +106,7 @@ function LinhaAndamento({ salvando, l, editavel, mudando, setMudando, acoes }) {
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors"
       style={{ borderColor: "var(--hairline)" }}
     >
-      <Gavel size={17} strokeWidth={2.2} className="shrink-0 text-brand-600" />
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700"><Gavel size={20} strokeWidth={2.2} /></span>
 
       <span className="min-w-0 flex-1 basis-48">
         <span className="block break-words font-display text-sm font-medium text-slate-900">
@@ -172,7 +173,12 @@ function LinhaAndamento({ salvando, l, editavel, mudando, setMudando, acoes }) {
       </span>
 
       {editavel && (
-        <span className="flex shrink-0 items-center gap-0.5">
+        <span className="flex max-w-full flex-wrap items-center gap-0.5">
+          <button type="button" disabled={salvando} onClick={() => acoes.arquivar(l)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+            aria-label={`Arquivar licitação: ${l.orgao}`}>
+            <Archive size={16} /> Perdida / Perdeu a data
+          </button>
           <button
             type="button"
             disabled={salvando}
@@ -231,7 +237,10 @@ function LinhaEncerrada({ salvando, l, editavel, acoes }) {
       </span>
 
       {editavel && (
-        <span className="flex shrink-0 items-center gap-0.5">
+        <span className="flex max-w-full flex-wrap items-center gap-0.5">
+          <button type="button" disabled={salvando} onClick={() => acoes.mudarStatus(l, "estudando")}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+            aria-label={`Reabrir licitação: ${l.orgao}`}><RotateCcw size={15} /> Reabrir</button>
           <button
             type="button"
             disabled={salvando}
@@ -353,6 +362,8 @@ export default function Licitacoes() {
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [arquivar, setArquivar] = useState(null);
+  const travaGravacao = useRef(false);
   const [mudando, setMudando] = useState(null);
   // O cartão "Sessão em 7 dias" vira recorte: clicar filtra, clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "sessao7" | null
@@ -453,23 +464,29 @@ export default function Licitacoes() {
   }, [itens, hojeISO]);
 
   const gravar = async (dados, fraseOk) => {
+    if (travaGravacao.current || !editavel) return;
+    travaGravacao.current = true;
     setSalvando(true);
     try {
       // Os campos derivados do render (dias, prazo) NÃO vão para o banco —
       // são conta da tela, e gravá-los criaria uma segunda verdade que envelhece.
       const { dias: _dias, pz: _pz, ...limpo } = dados;
-      await salvar(COLECAO, limpo);
+      const salvo = await salvar(COLECAO, limpo);
+      setItens(atuais => [...atuais.filter(item => item.id !== salvo.id), salvo]);
       setForm(null);
+      setArquivar(null);
       setAviso({ tipo: "ok", texto: fraseOk });
       recarregar();
     } catch (e) {
       setAviso({ tipo: "erro", texto: e.message });
     } finally {
+      travaGravacao.current = false;
       setSalvando(false);
     }
   };
 
   const acoes = {
+    arquivar: (l) => setArquivar(l),
     // Editar traz os valores de dinheiro como TEXTO pt-BR, do jeito que a
     // pessoa digita; gravar converte de volta (paraNumero). Não usar paraCampo
     // aqui: ele devolve "" para 0, e valor zero REGISTRADO não é a mesma
@@ -602,7 +619,7 @@ export default function Licitacoes() {
           valor={String(vm.ganhasNoAno)}
           tom="ok"
           icone={Trophy}
-          sub="mostrar ou esconder todas as encerradas"
+          sub="mostrar ou esconder as arquivadas"
           onClick={() => alternarEncerradas(!verEncerradas)}
           ativo={verEncerradas}
         />
@@ -653,13 +670,13 @@ export default function Licitacoes() {
         <Card>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Encerradas <span className="text-slate-400">({vm.encerradas.length})</span>
+              Arquivadas <span className="text-slate-400">({vm.encerradas.length})</span>
             </h2>
             <button
               type="button"
               onClick={() => alternarEncerradas(!verEncerradas)}
               aria-expanded={verEncerradas}
-              aria-label={verEncerradas ? "Esconder licitações encerradas" : "Mostrar licitações encerradas"}
+              aria-label={verEncerradas ? "Esconder licitações arquivadas" : "Mostrar licitações arquivadas"}
               className="flex min-h-11 items-center gap-1 font-display text-xs font-semibold text-slate-500 hover:text-slate-900"
             >
               {verEncerradas ? (
@@ -671,7 +688,7 @@ export default function Licitacoes() {
           </div>
           {verEncerradas &&
             (vm.encerradas.length === 0 ? (
-              <Empty>Nenhuma licitação encerrada ainda.</Empty>
+              <Empty>Nenhuma licitação arquivada ainda.</Empty>
             ) : (
               <div className="space-y-2">
                 {vm.encerradas.map((l) => (
@@ -682,6 +699,22 @@ export default function Licitacoes() {
         </Card>
       </div>
 
+      {arquivar && <Modal titulo="Arquivar licitação" aberto aoFechar={() => !salvando && setArquivar(null)}>
+        <p className="font-semibold text-slate-900">{arquivar.orgao}</p>
+        <p className="mt-2 text-sm text-slate-600">Escolha o motivo. A licitação sai de Em andamento e fica em Arquivadas, com os dados preservados. Você poderá reabri-la depois.</p>
+        <div className="mt-5 grid gap-3">
+          <button type="button" disabled={salvando} className="btn-outline min-h-14 justify-start border-rose-200 bg-rose-50 text-rose-700"
+            onClick={() => gravar({ ...arquivar, status: "perdida" }, "Licitação perdida. Movida para Arquivadas.")}>
+            <Archive size={19} /> Licitação perdida — participamos e não ganhamos
+          </button>
+          <button type="button" disabled={salvando} className="btn-outline min-h-14 justify-start border-amber-200 bg-amber-50 text-amber-800"
+            onClick={() => gravar({ ...arquivar, status: "perdeu_data" }, "Prazo perdido. Licitação movida para Arquivadas.")}>
+            <CalendarClock size={19} /> Perdeu a data — não participamos no prazo
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">Perdeu a data não conta como derrota na taxa de êxito das disputas.</p>
+        <div className="mt-5 flex justify-end"><button type="button" className="btn-outline" disabled={salvando} onClick={() => setArquivar(null)}>Cancelar</button></div>
+      </Modal>}
       <FormLicitacao
         form={form}
         setForm={setForm}

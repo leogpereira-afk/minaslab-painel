@@ -409,3 +409,9 @@ textarea {
  .ponto-mes-layout{display:block}
  .ponto-resumo{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:16px}
 }
+
+/* Ícones com identidade por módulo, sem movimento contínuo. */
+.menu-icone { display:grid; place-items:center; width:34px; height:34px; flex-shrink:0; border-radius:11px; box-shadow:inset 0 1px 0 #ffffffb3; transition:transform .18s ease, box-shadow .18s ease; }
+.menu-item:hover .menu-icone, .menu-item:focus-visible .menu-icone { transform:translateY(-1px) rotate(-5deg); box-shadow:0 3px 8px #18344218; }
+.menu-item[aria-current="page"] .menu-icone { box-shadow:inset 0 0 0 1px currentColor; }
+@media (prefers-reduced-motion:reduce) { .menu-icone {transition:none;} .menu-item:hover .menu-icone, .menu-item:focus-visible .menu-icone {transform:none;} }

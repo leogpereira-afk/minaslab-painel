@@ -48,6 +48,16 @@ const MODULOS = [
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
 
+const CORES_MODULO = {
+  inicio: ["#0f766e", "#d9f4ef"], calendario: ["#2563eb", "#e5edff"],
+  compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
+  marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
+  compras: ["#c2410c", "#ffeadc"], manutencoes: ["#475569", "#e6edf5"],
+  laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
+  ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"],
+  "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
+};
+
 const PAPEL_ROTULO = { direcao: "Direção", equipe: "Equipe", leitura: "Leitura" };
 
 function Marca() {
@@ -84,7 +94,7 @@ function ItensMenu({ sessao, aoNavegar }) {
               )
             }
           >
-            <Icone size={17} strokeWidth={2.2} />
+            <span className="menu-icone" style={{ color: CORES_MODULO[mo.id][0], backgroundColor: CORES_MODULO[mo.id][1] }}><Icone size={19} strokeWidth={2.2} aria-hidden="true" /></span>
             {mo.rotulo}
           </NavLink>
         );
