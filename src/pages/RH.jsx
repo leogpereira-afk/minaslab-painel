@@ -29,7 +29,7 @@
 //   baixava o mês inteiro de batidas sem precisar.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope, Clock } from "lucide-react";
 import { salvar, apagar, carregarColecoes } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
@@ -140,7 +140,12 @@ export default function RH() {
   const [erro, setErro] = useState(null);
   const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
+  const [params] = useSearchParams();
+  const abaDoLink = params.get("aba");
   const [aba, setAba] = useState("gestao");
+  useEffect(() => {
+    if (["gestao", "pessoas", "ferias", "feedback", "exames", "vencimentos", "relatorios"].includes(abaDoLink)) setAba(abaDoLink);
+  }, [abaDoLink]);
   const [pessoaGestao, setPessoaGestao] = useState("");
   const [busca, setBusca] = useState("");
   const [verDesligados, setVerDesligados] = useState(false);
@@ -655,9 +660,9 @@ export default function RH() {
                 <Download size={16} strokeWidth={2.5} /> Baixar planilha
               </button>
             )}
-            {editavel && aba === "pessoas" && (
-              <button type="button" className="btn-primary" onClick={() => abrirPessoa(null)}>
-                <Plus size={16} strokeWidth={2.5} /> Novo colaborador
+            {editavel && (
+              <button type="button" className="btn-primary" onClick={() => { setAba("pessoas"); abrirPessoa(null); }}>
+                <Plus size={16} strokeWidth={2.5} /> Cadastrar pessoa
               </button>
             )}
             {editavel && aba === "ferias" && (
