@@ -344,6 +344,11 @@ export function fimDaExperiencia(p, hoje = new Date()) {
  * @returns {SituacaoExperiencia|null}
  */
 export function situacaoExperiencia(p, hoje = new Date()) {
+  // Regra compartilhada por ficha, feedback e painel: vínculo não CLT
+  // explicitamente informado não entra na régua de experiência de 90 dias.
+  // Cadastro legado sem vínculo mantém a referência existente para conferência.
+  const contrato = String(p.tipoContrato || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (contrato && contrato !== "clt" && !contrato.includes("experiencia")) return null;
   const adm = parseData(p.admissao);
   if (!adm) return null;
   // Já decidido (efetivado/prorrogado) ou já fora do quadro: não há o que

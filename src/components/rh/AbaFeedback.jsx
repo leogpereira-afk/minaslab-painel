@@ -327,9 +327,9 @@ function FormFeedback({ form, setForm, hojeISO, salvando, aoSalvar, aoFechar }) 
 }
 
 export default function AbaFeedback({
-  pessoas, feedbacks, hojeISO, editavel, gravar, apagarReg, setAviso,
+  pessoas, feedbacks, hojeISO, editavel, gravar, apagarReg, setAviso, pessoaInicial = "",
 }) {
-  const [expandida, setExpandida] = useState(null);
+  const [expandida, setExpandida] = useState(pessoaInicial || null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
 

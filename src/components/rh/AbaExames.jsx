@@ -599,11 +599,11 @@ function FormExame({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
 // ---- A aba ------------------------------------------------------------------
 
 export default function AbaExames({
-  pessoas, ativos, exames, radar, hojeISO, editavel, gravar, apagarReg, setAviso,
+  pessoas, ativos, exames, radar, hojeISO, editavel, gravar, apagarReg, setAviso, pessoaInicial = "",
 }) {
   const [abertos, setAbertos] = useState(lerGrupos);
   const [expandida, setExpandida] = useState(null);
-  const [filtroPessoa, setFiltroPessoa] = useState("");
+  const [filtroPessoa, setFiltroPessoa] = useState(pessoaInicial);
   const [filtroTipo, setFiltroTipo] = useState("");
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
