@@ -22,3 +22,11 @@ test('todas as abas e indicadores excluem proprietária e preservam os dados ori
   assert.ok(!gestao.pendencias.some(p=>p.pessoaId==='dona'||p.detalhe.includes('dona')));
   assert.equal(JSON.stringify(dados),antes);
 });
+
+test('proprietária continua sendo uma referência válida de gestão sem integrar o quadro', () => {
+  const dados=escopoEquipe({pessoas:[{id:'dona',nome:'LIDYANE ALVES OLIVEIRA',ativo:true},{id:'e1',nome:'Equipe',ativo:true,gestorId:'dona'},{id:'e2',nome:'Outra',ativo:true,gestorId:'inexistente'}]});
+  const gestao=montarGestao(dados,'2026-09-19');
+  assert.equal(gestao.ativos.length,2);
+  assert.ok(!gestao.pendencias.some(p=>p.pessoaId==='e1' && p.titulo==='Gestor não localizado'));
+  assert.ok(gestao.pendencias.some(p=>p.pessoaId==='e2' && p.titulo==='Gestor não localizado'));
+});

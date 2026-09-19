@@ -81,7 +81,7 @@ export function montarGestao(dados, hojeISO, radar = { vigentes:[], emRisco:[], 
       if(ai && ar && bi && br && ar>ai && br>bi && ai<br && bi<ar) adicionar(p,'ferias','Períodos de férias sobrepostos','Confira os dois registros antes de planejar a ausência.','erro',a.inicio,`${a.id}:${b.id}`);
     }
     if (!(radar.vigentes || []).some(e=>e.pessoaId===p.id)) adicionar(p,'exames','Sem exame registrado','Confira quais exames se aplicam à pessoa; ausência de registro não comprova regularidade.','informacao');
-    if (p.gestorId && !porId.has(p.gestorId)) adicionar(p,'integridade','Gestor não localizado','O vínculo aponta para uma ficha que não está nesta base.','atencao');
+    if (p.gestorId && !porId.has(p.gestorId) && !(dados.gestoresForaDoQuadro || []).includes(p.gestorId)) adicionar(p,'integridade','Gestor não localizado','O vínculo aponta para uma ficha que não está nesta base.','atencao');
   }
   for (const e of [...(radar.emRisco || []),...(radar.semData || [])]) {
     const p=porId.get(e.pessoaId); if(!p || p.ativo===false) continue;
