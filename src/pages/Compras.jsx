@@ -89,6 +89,7 @@ export default function Compras() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
+    elenco().then(setEquipe).catch(() => {});
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     Promise.all([listar(COL_PEDIDOS), listar(COL_PRODUTOS), listar(COL_MOV), listar(COL_ORDENS)])
@@ -110,7 +111,7 @@ export default function Compras() {
     recarregar();
     // O elenco é só para o "quem" das saídas. Se falhar, a tela continua — o
     // campo fica sem opções e a retirada pode ser registrada sem nome.
-    elenco().then(setEquipe).catch(() => {});
+
   }, [recarregar]);
 
   // Voltou para a aba do navegador: refaz a conta do dia e busca o que chegou.

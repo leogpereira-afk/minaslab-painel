@@ -32,3 +32,12 @@ test('férias preservam início e excluem o retorno; cancelamento não entra na 
   const dados={...base(),ferias:[{status:'marcada',inicio:'2026-09-20',retorno:'2026-09-22',pessoaNome:'Pessoa'},{status:'cancelada',inicio:'2026-09-23',retorno:'2026-09-24'}]};
   assert.deepEqual(montarEventos(dados,'2026-09-19').map(e=>e.dia),['2026-09-20','2026-09-21']);
 });
+
+test('aniversário de empresa tem filtro próprio, repete anualmente e usa admissão do RH', () => {
+  const dados={...base(),quadro:[{id:'1',nome:'Pessoa',ativo:true,admissao:'2025-09-20',admissaoConferida:true,dataNascimento:'1990-09-20'}]};
+  const eventos=montarEventos(dados,'2026-09-19',[2026]);
+  assert.equal(eventos.filter(e=>e.origem==='empresa').length,1);
+  assert.equal(eventos.filter(e=>e.origem==='aniversarios').length,1);
+  assert.equal(eventos.find(e=>e.origem==='empresa').dia,'2026-09-20');
+  assert.ok(!montarEventos(dados,'2025-09-19',[2025]).some(e=>e.origem==='empresa'));
+});

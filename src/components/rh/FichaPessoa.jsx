@@ -1,3 +1,4 @@
+import FotoPessoa from "./FotoPessoa.jsx";
 // ============================================================================
 // A FICHA DA PESSOA — o retrato de quem trabalha aqui, no padrão da casa.
 //
@@ -57,17 +58,6 @@ function somarMesesISO(iso, meses) {
   base.setMonth(base.getMonth() + meses);
   const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
   return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
-}
-
-/* Avatar de INICIAIS. A MinasLab não guarda foto, e um círculo cinza vazio
-   fingiria um recurso que não existe — duas letras dizem de quem é a ficha. */
-function Iniciais({ nome }) {
-  const letras = txt(nome).split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-  return (
-    <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-brand-ink font-display text-xl font-semibold text-white">
-      {letras || "?"}
-    </span>
-  );
 }
 
 /* Um aviso do "Precisa de atenção": frase + o botão que resolve. */
@@ -247,7 +237,7 @@ export default function FichaPessoa({
       {/* ---- QUEM É ---- */}
       <Card>
         <div className="flex flex-wrap items-start gap-4">
-          <Iniciais nome={pessoa.nome} />
+          <FotoPessoa pessoa={pessoa} />
           <div className="min-w-0 flex-1 basis-40">
             <div className="flex flex-wrap items-center gap-2">
               <h2 ref={tituloRef} tabIndex={-1} className="min-w-0 max-w-full break-words font-display text-xl font-bold text-slate-900">{txt(pessoa.nome) || "sem nome"}</h2>

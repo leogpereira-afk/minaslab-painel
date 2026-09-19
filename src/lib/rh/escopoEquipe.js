@@ -1,3 +1,4 @@
+import { nomesAtuais } from "./referenciasPessoa.js";
 // Classificação informada expressamente pela direção em 19/09/2026.
 // Não inferir propriedade por cargo, salário ausente ou dispensa de ponto.
 const PROPRIETARIOS_CONFIRMADOS = new Set(['LIDYANE ALVES OLIVEIRA']);
@@ -17,7 +18,7 @@ export function escopoEquipe(dados) {
     gestoresForaDoQuadro: [...fora],
     pessoas: (dados.pessoas || []).filter(p => !fora.has(p.id)),
     ...Object.fromEntries(['ferias', 'feedbacks', 'exames', 'vencimentos', 'historico'].map(colecao => [
-      colecao, (dados[colecao] || []).filter(r => !fora.has(r.pessoaId)),
+      colecao, (colecao === "historico" ? dados[colecao] || [] : nomesAtuais(dados[colecao], dados.pessoas)).filter(r => !fora.has(r.pessoaId)),
     ])),
   };
 }
