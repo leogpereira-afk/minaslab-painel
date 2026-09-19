@@ -43,6 +43,8 @@ import {
   PageTitle, StatCard, Segmented, CarregandoModulo, ErroModulo, Aviso,
 } from "../components/ui.jsx";
 import { anoRuim, chipVenc, marcosDaFicha, radarExames } from "../components/rh/uteis.js";
+import AbaGestao from "../components/rh/AbaGestao.jsx";
+import { montarGestao } from "../lib/rh/gestao.js";
 import AbaPessoas from "../components/rh/AbaPessoas.jsx";
 import AbaFerias from "../components/rh/AbaFerias.jsx";
 import AbaFeedback from "../components/rh/AbaFeedback.jsx";
@@ -137,7 +139,8 @@ export default function RH() {
   const [erro, setErro] = useState(null);
   const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
-  const [aba, setAba] = useState("pessoas");
+  const [aba, setAba] = useState("gestao");
+  const [pessoaGestao, setPessoaGestao] = useState("");
   const [busca, setBusca] = useState("");
   const [verDesligados, setVerDesligados] = useState(false);
   const [expandida, setExpandida] = useState(null);
@@ -155,6 +158,7 @@ export default function RH() {
     setHojeISO(ymdLocal(new Date()));
     return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
       .then((r) => {
+        if (r._recusadas?.length) throw new Error("Não foi possível consultar todas as informações do RH. Confira as permissões e tente novamente.");
         setDados({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico });
         setErro(null);
       })
@@ -314,6 +318,7 @@ export default function RH() {
       vencimentos,
       pessoasComVenc,
       radarExames: radar,
+      gestao: montarGestao(dados, hojeISO, radar),
       cartaoExames,
       feriasAgora: linhasFerias.filter((l) => l.situacao.ordem === 0).length,
       feedbackEsperando,
@@ -675,7 +680,7 @@ export default function RH() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {aba !== "gestao" && aba !== "relatorios" && <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           rotulo="No quadro"
           valor={String(vm.ativos.length)}
@@ -717,23 +722,40 @@ export default function RH() {
           onClick={() => setAba("ferias")}
           ativo={aba === "ferias"}
         />
-      </div>
+      </div>}
 
-      {/* Cinco abas não cabem na largura do celular. Sem o overflow aqui, a
+      {/* As abas não cabem na largura do celular. Sem o overflow aqui, a
           PÁGINA INTEIRA passava a rolar de lado. */}
       <div role="group" aria-label="Seções do RH" className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented
           opcoes={[
+            { valor: "gestao", rotulo: "Visão geral" },
             { valor: "pessoas", rotulo: "Pessoas" },
             { valor: "ferias", rotulo: "Férias" },
             { valor: "feedback", rotulo: "Feedback" },
             { valor: "exames", rotulo: "Exames" },
             { valor: "vencimentos", rotulo: "Vencimentos" },
+            { valor: "relatorios", rotulo: "Relatórios" },
           ]}
           valor={aba}
-          onChange={setAba}
+          onChange={(valor) => { setPessoaGestao(""); setAba(valor); }}
         />
       </div>
+
+      {(aba === "gestao" || aba === "relatorios") && <AbaGestao
+        gestao={vm.gestao} dados={dados} hojeISO={hojeISO} relatorios={aba === "relatorios"} setAviso={setAviso}
+        aoNavegar={(destino, pessoaId) => {
+          setPessoaGestao(pessoaId || "");
+          if (destino === "pessoas") {
+            const pessoa = dados.pessoas.find(p => p.id === pessoaId);
+            setBusca(pessoa?.nome || "");
+            setVerDesligados(pessoa?.ativo === false);
+          }
+          if (destino === "vencimentos") setFiltroVenc(pessoaId || "");
+          if (destino === "ferias") setExpandida(pessoaId || null);
+          setAba(destino);
+        }}
+      />}
 
       {aba === "pessoas" && (
         <AbaPessoas
@@ -789,6 +811,7 @@ export default function RH() {
 
       {aba === "feedback" && (
         <AbaFeedback
+          pessoaInicial={pessoaGestao}
           pessoas={dados.pessoas}
           feedbacks={dados.feedbacks}
           hojeISO={hojeISO}
@@ -802,6 +825,7 @@ export default function RH() {
 
       {aba === "exames" && (
         <AbaExames
+          pessoaInicial={pessoaGestao}
           pessoas={dados.pessoas}
           ativos={vm.ativos}
           exames={dados.exames}
