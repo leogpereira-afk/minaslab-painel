@@ -131,3 +131,9 @@ test("entrada vazia ou estragada não quebra", () => {
   }
   assert.equal(textoDoAniversario(null), "");
 });
+
+test('datas impossíveis não viram aniversários e são contabilizadas como incompletas', () => {
+ for (const data of ['2025-02-29','1990-02-31','1990-13-01','1990-00-15','1990-04-31']) assert.equal(ocorrenciaNoAno(data,2026),null,data);
+ const r=aniversariosDoAno([P({dataNascimento:'1990-02-31',admissao:'2025-13-01'})],2026);
+ assert.equal(r.ocorrencias.length,0); assert.equal(r.semNascimento,1); assert.equal(r.semAdmissao,1);
+});

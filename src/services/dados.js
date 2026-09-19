@@ -4,7 +4,7 @@
 // leva o crachá e trata erro do mesmo jeito.
 
 import { SYNC } from "../lib/api.js";
-import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
+import { comCracha, mensagemDoStatus, getToken, aoMudarSessao } from "../lib/sessao.js";
 import { novoId } from "../lib/format.js";
 
 async function chamar(action, corpo = {}) {
@@ -76,9 +76,19 @@ export async function apagar(colecao, id) {
    dados, nunca de uma pergunta separada depois — senão uma escrita entre as
    duas chamadas carimbaria dados velhos como novos. */
 const memoria = new Map(); // colecao -> { marca, dados }
+let tokenCache = null;
+let geracaoCache = 0;
+aoMudarSessao(() => { memoria.clear(); tokenCache = null; geracaoCache += 1; });
 
 export async function carregarColecoes(nomes) {
+  const token = getToken();
+  if (token !== tokenCache) { memoria.clear(); tokenCache = token; geracaoCache += 1; }
+  const geracao = geracaoCache;
+  const conferirSessao = () => {
+    if (token !== getToken() || geracao !== geracaoCache) throw new Error("A sessão mudou durante a consulta. Abra a tela novamente.");
+  };
   const rev = await chamar("rev").then((r) => r.rev?.porColecao ?? {}).catch(() => null);
+  conferirSessao();
   // Sem rev (rede piscou), a resposta honesta é baixar tudo: cache sem
   // validação é dado velho fingindo ser novo.
   const desatualizadas = nomes.filter((n) => {
@@ -90,7 +100,9 @@ export async function carregarColecoes(nomes) {
   let recusadas = [];
   if (desatualizadas.length) {
     const r = await chamar("listarVarias", { colecoes: desatualizadas });
+    conferirSessao();
     recusadas = r.recusadas || [];
+    for (const n of recusadas) memoria.delete(n);
     const porColecao = r.rev?.porColecao ?? {};
     for (const n of desatualizadas) {
       if (recusadas.includes(n)) continue;
