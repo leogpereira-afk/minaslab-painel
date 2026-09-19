@@ -13,6 +13,8 @@ export function escopoEquipe(dados) {
   const fora = new Set((dados.pessoas || []).filter(ehProprietario).map(p => p.id));
   return {
     ...dados,
+    // Direção pode continuar como gestora, embora fique fora da equipe.
+    gestoresForaDoQuadro: [...fora],
     pessoas: (dados.pessoas || []).filter(p => !fora.has(p.id)),
     ...Object.fromEntries(['ferias', 'feedbacks', 'exames', 'vencimentos', 'historico'].map(colecao => [
       colecao, (dados[colecao] || []).filter(r => !fora.has(r.pessoaId)),
