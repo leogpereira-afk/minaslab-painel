@@ -1108,7 +1108,7 @@ function Fechamentos({ linhas }) {
       {semLancamento > 0 && (
         <span className="chip">{plural(semLancamento, "sem lançamento", "sem lançamento")}</span>
       )}
-      <span>Conferir e fechar é no módulo Ponto, visão Fechamento — este relatório só lê.</span>
+      <span>Para ajustar ou fechar o mês, abra Ajustes e fechamento.</span>
     </p>
   );
 }
@@ -2773,7 +2773,7 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
         <div className="ponto-controles sem-impressao flex min-w-0 flex-wrap items-center gap-3">
           <div role="group" aria-label="Período dos relatórios"><Segmented opcoes={VISOES} valor={visao} onChange={escolherVisao} /></div>
           {visao === "mes" && (
-            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2" role="group" aria-label="Mês e ano dos relatórios">
+            <div className={competenciaSelecionada ? "hidden" : "flex min-w-0 max-w-full flex-wrap items-center gap-2"} role="group" aria-label="Mês e ano dos relatórios">
               <div className="min-w-0 flex-1"><label className="sr-only" htmlFor="rel-mes">Mês do relatório</label>
                 <select id="rel-mes" className="select" value={competencia.split("-")[1]} onChange={e => setCompetencia(`${competencia.split("-")[0]}-${e.target.value}`)}>
                   {MESES_LONGOS.map((m, i) => <option key={m} value={String(i+1).padStart(2,"0")}>{m}</option>)}
@@ -3214,7 +3214,7 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
                       </>
                     )}
                     {vmMes.totais.estranhas > 0 &&
-                      ` E há ${plural(vmMes.totais.estranhas, "ausência de tipo desconhecido", "ausências de tipo desconhecido")}: confira na aba Faltas.`}
+                      ` E há ${plural(vmMes.totais.estranhas, "ausência de tipo desconhecido", "ausências de tipo desconhecido")}: confira em Faltas e abonos.`}
                   </p>
                 )}
                 {vmMes.linhas.length === 0 ? (
@@ -3354,53 +3354,14 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
               ================================================================ */}
           {visao === "ano" && (
             <>
-            {/* PRIMEIRO QUEM, DEPOIS COMO FOI O ANO. A lista responde "quem
-                trabalhou mais no ano" numa olhada; a matriz de doze colunas,
-                logo abaixo, é a TENDÊNCIA — e ali a lista não serve, porque
-                doze números por pessoa não cabem numa linha. */}
-            <Secao
-              titulo={`Ano de ${ano} — ${vmAno.medida.rotulo.toLowerCase()}`}
-              sub={tamanhoDoRecorte(vmAno.linhas.length, quadro, "neste ano", pessoaEscolhida)}
-              aberta={prefs.rankAno}
-              aoAlternar={() => salvar({ rankAno: !prefs.rankAno })}
-            >
-              <Explicacao titulo="Como ler este relatório">
-                O mesmo dado do <strong>relógio Jibble</strong>, já apurado pela escala da casa, somado o ano inteiro —
-                pontualidade não soma: é a razão dos dias juntados.{" "}
-                <strong>Toque numa pessoa para ver o dia a dia dela.</strong> A tendência mês a mês está na tabela logo
-                abaixo.
-              </Explicacao>
-              {vmAno.linhas.length === 0 ? (
-                <Empty>
-                  <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="neste ano" />
-                </Empty>
-              ) : (
-                <div>
-                  <RankingDoPonto
-                    itens={rankingAno.itens}
-                    medida={rankingAno.medida}
-                    abertaId={detalhe?.pessoaId}
-                    aoAbrir={abrirPessoa}
-                    total={rankingAno.total}
-                  />
-                  <RodapeDaLista
-                    semRegistro={rankingAno.semRegistro}
-                    semApuracao={rankingAno.semApuracao}
-                    onde="neste ano"
-                  />
-                </div>
-              )}
-            </Secao>
-
             <Card className="mt-4">
               <SectionTitle
                 titulo={`Mês a mês — ${ano}`}
-                sub={`${vmAno.medida.ajuda} Esta tabela é a TENDÊNCIA: uma coluna por mês, com o nome e o total presos nas pontas. A planilha sai sempre com os doze meses.`}
+                sub={`${vmAno.medida.rotulo} · clique em um mês para abrir os detalhes. A planilha inclui os 12 meses.`}
               />
               <Pendencias indice={indice} />
               <p className="mb-3 text-xs text-slate-500">
-                Célula com <Nada>—</Nada> é <strong>sem registro</strong>, e não zero: naquele mês não houve o que
-                medir (ninguém tinha entrado na casa, ou o relógio não trouxe o dia).
+                <Nada>—</Nada> significa <strong>sem registro</strong>.
                 {vmAno.medida.chave === "pontualidade" &&
                   " A linha de total é a razão dos dias juntados (pontuais ÷ medidos), nunca a média das porcentagens — quem trabalhou 2 dias não pode pesar como quem trabalhou 22."}
               </p>
@@ -3414,7 +3375,7 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
                   <span>
                     {mesesTodos
                       ? `Os 12 meses estão à mostra — ${plural(vmAno.vazios, "mês não tem", "meses não têm")} nenhum registro neste recorte.`
-                      : `${plural(vmAno.vazios, "mês sem nenhum registro está recolhido", "meses sem nenhum registro estão recolhidos")} — mês vazio não soma nada, então nenhum total muda por isso.`}
+                      : `${plural(vmAno.vazios, "mês sem nenhum registro está recolhido", "meses sem nenhum registro estão recolhidos")}.`}
                   </span>
                   <button
                     type="button"
@@ -3558,6 +3519,40 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
               )}
               <ForaDoRelatorio quadro={quadro} foraDoQuadro={vmAno.foraDoQuadro} semPonto={vmAno.semPonto} />
             </Card>
+            <div className="mt-4">
+            <Secao
+              titulo={`Ano de ${ano} — ${vmAno.medida.rotulo.toLowerCase()}`}
+              sub={tamanhoDoRecorte(vmAno.linhas.length, quadro, "neste ano", pessoaEscolhida)}
+              aberta={prefs.rankAno}
+              aoAlternar={() => salvar({ rankAno: !prefs.rankAno })}
+            >
+              <Explicacao titulo="Como ler este relatório">
+                O mesmo dado do <strong>relógio Jibble</strong>, já apurado pela escala da casa, somado o ano inteiro —
+                pontualidade não soma: é a razão dos dias juntados.{" "}
+                <strong>Toque numa pessoa para ver o dia a dia dela.</strong> A tendência mês a mês está na tabela acima.
+              </Explicacao>
+              {vmAno.linhas.length === 0 ? (
+                <Empty>
+                  <ListaVazia quadro={quadro} pessoa={pessoaEscolhida} onde="neste ano" />
+                </Empty>
+              ) : (
+                <div>
+                  <RankingDoPonto
+                    itens={rankingAno.itens}
+                    medida={rankingAno.medida}
+                    abertaId={detalhe?.pessoaId}
+                    aoAbrir={abrirPessoa}
+                    total={rankingAno.total}
+                  />
+                  <RodapeDaLista
+                    semRegistro={rankingAno.semRegistro}
+                    semApuracao={rankingAno.semApuracao}
+                    onde="neste ano"
+                  />
+                </div>
+              )}
+            </Secao>
+            </div>
             </>
           )}
 
@@ -3699,8 +3694,7 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
           (`sem-impressao`) porque a folha já sai assinada em cima, pelo bloco
           RecorteImpresso — e uma assinatura repetida é uma a menos que se lê. */}
       <p className="sem-impressao mt-6 text-center text-xs text-slate-400">
-        Painel MinasLab · Ponto → Relatórios · dado do relógio Jibble, com apenas o intervalo registrado descontado · esta aba só lê:
-        na aba Ponto, use Batidas para lançamentos e correções e Fechamento para conferir o mês. Ausências ficam em Faltas.
+        Fonte: Jibble e ajustes registrados. Para corrigir, use Ajustes e fechamento ou Faltas e abonos.
       </p>
 
       {/* O PAINEL DA PESSOA — fora da folha impressa (`sem-impressao`): a
@@ -3725,6 +3719,7 @@ function RelatoriosAvancados({ pessoas, ativos, ponto, pontoDia, hojeISO, setAvi
 }
 
 export default function Relatorios(props) {
- const [avancado, setAvancado] = useState(false);
- return <><div className="sem-impressao mb-4 flex flex-wrap gap-2"><button className={!avancado?"btn-primary":"btn-outline"} onClick={()=>setAvancado(false)}>Acompanhamento</button><button className={avancado?"btn-primary":"btn-outline"} onClick={()=>setAvancado(true)}>Análises e comparativos</button></div>{avancado?<RelatoriosAvancados {...props}/>:<PeriodoPonto {...props} montarIndice={montarIndice} pessoasDoPeriodo={pessoasDoPeriodo}/>}</>;
+  return props.modo === "analises"
+    ? <RelatoriosAvancados {...props}/>
+    : <PeriodoPonto {...props} montarIndice={montarIndice} pessoasDoPeriodo={pessoasDoPeriodo}/>;
 }

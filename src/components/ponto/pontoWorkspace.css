@@ -1,0 +1,53 @@
+.ponto-workspace{min-width:0;color:#243b46}
+.ponto-workspace .page-title{margin-bottom:14px}.ponto-workspace .page-title h1{font-size:25px}.ponto-workspace .page-title p{font-size:13px}
+.ponto-workspace .card{border-radius:12px;padding:16px;box-shadow:none;border:1px solid #e1e8e9}
+.ponto-workspace .ponto-sincronizacao{padding:12px 16px;background:#f9fbfb}
+.ponto-workspace .ponto-sincronizacao button,.ponto-workspace .ponto-sincronizacao select{font-size:12px;min-height:36px}
+.ponto-workspace .ponto-sincronizacao select{padding-top:7px;padding-bottom:7px}
+.ponto-workspace .ponto-sincronizacao [role=status]{font-size:12px}
+.ponto-workspace [aria-label="Seções do Ponto"]{border-bottom:1px solid #dce6e8;padding-bottom:8px;margin-bottom:12px}
+.ponto-workspace [aria-label="Seções do Ponto"]>.segmented{border:0!important;padding:0;background:none;gap:6px}
+.ponto-workspace [aria-label="Seções do Ponto"] button{min-height:38px;font-size:13px}
+.ponto-workspace h2{font-size:16px}.ponto-workspace .stat-card{padding:12px 14px;border-radius:10px}
+.ponto-workspace .stat-card .stat-value{font-size:23px;line-height:1.2}.ponto-workspace .stat-card .mt-3{margin-top:6px}
+.ponto-workspace .stat-card>div:first-child>span{width:25px;height:25px;border-radius:7px}.ponto-workspace .stat-card>div:first-child svg{width:14px;height:14px}
+.ponto-workspace .stat-card .label,.ponto-workspace .stat-card>p{font-size:11px;line-height:1.45}
+.ponto-workspace .explicacao-recolhivel{margin-bottom:10px;background:#f5f8f8;color:#536973;padding:7px 10px}
+.ponto-workspace .ranking-row{padding-top:10px;padding-bottom:10px;border-radius:7px}
+.ponto-workspace .ranking-name small{display:block;font-size:11px;color:#70838d;font-weight:400;margin-top:3px}
+.ponto-workspace .pp-topo{padding:0 0 12px}.ponto-workspace .pp-navegar.hidden{display:none}
+.ponto-workspace .pp-cabecalho{gap:12px;padding-bottom:10px}.ponto-workspace .pp-filtros{padding-top:8px}
+.ponto-workspace .pp-legenda{display:none}.ponto-workspace .pp-topo h2{font-size:17px;margin:0}
+.pc-conferencia{background:white;border:1px solid #dce6e8;border-radius:12px;overflow:hidden;min-width:0}
+.pc-filtros{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid #e7edef;background:#fafcfc}
+.pc-filtros button{display:flex;align-items:center;gap:8px;border:1px solid transparent;border-radius:8px;padding:8px 10px;min-height:38px;color:#526a76;font-size:12px}
+.pc-filtros button strong{font-size:13px;font-variant-numeric:tabular-nums;padding:1px 6px;border-radius:5px;background:#e9efef}
+.pc-filtros button[aria-pressed=true]{color:#116b66;border-color:#93c2bb;background:#eaf6f2}.pc-filtros .pc-filtro-atencao{color:#9b531a}
+.pc-resumo{padding:11px 16px 0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;color:#627682;font-size:12px}
+.pc-resumo strong{color:#274750;font-variant-numeric:tabular-nums}.pc-resumo>span:first-child strong{font-size:20px;margin-right:5px}
+.pc-ajuda,.pc-rodape{font-size:12px;line-height:1.5;color:#617783;padding:8px 16px;margin:0}.pc-rodape{border-top:1px solid #edf2f2;font-size:11px}
+.pc-tabela-scroll{overflow-x:auto;max-width:100%}.pc-tabela{width:100%;border-collapse:collapse;font-size:13px;min-width:850px}
+.pc-tabela th,.pc-tabela td{padding:11px 14px;border-bottom:1px solid #edf2f3;text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums}
+.pc-tabela thead th{background:#f5f8f9;color:#536a75;font-size:11px;font-weight:600;white-space:nowrap}
+.pc-tabela th:first-child{text-align:left}.pc-tabela tbody th{font-weight:550;width:30%;min-width:200px}
+.pc-tabela tbody th button{display:flex;align-items:center;gap:8px;text-align:left;min-height:26px}.pc-tabela tbody th svg{flex-shrink:0;color:#74918f}
+.pc-tabela tbody th small{display:block;font-size:11px;color:#72808d;font-weight:400}.pc-tabela tr:hover{background:#f9fcfb}
+.pc-alerta,.pc-lacuna{white-space:nowrap;font-size:11px;padding:5px 7px;border-radius:6px;background:#fff2df;color:#8d4c14;min-height:30px}.pc-lacuna{background:#eef3f6;color:#486777}
+.pc-abrir{color:#16716b;font-size:12px;min-height:32px}.pc-neutro{color:#93a0a7}.pc-empty{font-size:13px;color:#657b85;padding:24px 16px}
+.pc-dias{padding:0 16px}.pc-dias h3{font-weight:650;font-size:14px;padding:12px 0;border-bottom:1px solid #e7edef}
+.pc-dias .pl-registro>summary{padding:11px 0;gap:14px}.pc-dias .pl-total strong{font-size:17px}.pc-dias .pl-registro-nome small{font-size:11px}
+.pc-grafico{padding:0 16px;border-top:1px solid #e7edef}.pc-grafico>summary{font-size:12px;color:#396f73;padding:12px 0;cursor:pointer;min-height:40px}.pc-grafico .pl-grafico-scroll{padding:6px 0 12px}
+.pc-diferenca{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;font-size:12px;padding:10px 0;border-top:1px solid #edf2f3}
+.pc-contexto{padding:10px 12px;background:#eaf6f2;border:1px solid #c5e4dc;border-radius:9px;margin:0 0 12px;font-size:12px;color:#28685f}
+.pc-fechamento-head{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;background:#f6f8f9;font-size:11px;color:#647b84;border-radius:7px}
+.pc-conferencia button:focus-visible,.pc-grafico>summary:focus-visible{outline:2px solid #17887f;outline-offset:2px}
+@media(max-width:640px){.ponto-workspace .card{padding:12px}.ponto-workspace .page-title h1{font-size:23px}.ponto-workspace [aria-label="Seções do Ponto"]>.segmented{flex-wrap:nowrap;max-width:none}.ponto-workspace .stat-card .stat-value{font-size:21px}.pc-filtros{display:grid;grid-template-columns:1fr 1fr;gap:4px}.pc-filtros button{justify-content:space-between;padding:7px;font-size:11px;min-height:40px}.pc-resumo{padding:10px 12px 0;gap:5px 12px}.pc-tabela{min-width:770px}.pc-tabela th,.pc-tabela td{padding:10px}.pc-tabela thead th:first-child,.pc-tabela tbody th{position:sticky;left:0;background:#fff;z-index:1;min-width:160px;max-width:175px;border-right:1px solid #edf2f3}.pc-tabela thead th:first-child{background:#f5f8f9}.pc-dias{padding:0 12px}.pc-ajuda,.pc-rodape{padding-left:12px;padding-right:12px}}
+@media print{.pc-tabela{min-width:0;font-size:10px}.pc-tabela th,.pc-tabela td{padding:6px}.pc-tabela-scroll{overflow:visible}.pc-grafico{display:none}.pc-conferencia{border:0}.ponto-workspace .card{box-shadow:none}}
+
+.ponto-workspace .ranking-bar{display:none}
+
+.pc-parametros{margin-top:10px;border-top:1px solid #e8eeee;padding-top:8px;font-size:12px;color:#5a747e}.pc-parametros>summary{cursor:pointer;min-height:28px;align-content:center}
+.ponto-workspace .pc-ajustes-topo .section-title{margin-bottom:12px}
+.ponto-workspace .pc-ajustes-topo .btn-outline,.ponto-workspace .pc-ajustes-topo .btn-primary{font-size:12px;min-height:36px;padding:8px 12px}
+.ponto-workspace [aria-label="Seções do Ponto"] button{white-space:nowrap;flex-shrink:0}
+.ponto-workspace .pc-grafico:not([open])>:not(summary),.ponto-workspace .pp-tabela-completa:not([open])>:not(summary){display:none}
