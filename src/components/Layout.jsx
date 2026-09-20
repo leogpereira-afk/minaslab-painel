@@ -14,6 +14,7 @@ import {
   FolderOpen,
   ShoppingCart,
   Wrench,
+  Boxes,
   Users,
   Wallet,
   FlaskConical,
@@ -39,6 +40,7 @@ const MODULOS = [
   { id: "marketing", rotulo: "Marketing", caminho: "/marketing", icone: Megaphone },
   { id: "google-drive", rotulo: "Google Drive", caminho: "/google-drive", icone: FolderOpen },
   { id: "compras", rotulo: "Compras", caminho: "/compras", icone: ShoppingCart },
+  { id: "patrimonio", rotulo: "Patrimônio", caminho: "/patrimonio", icone: Boxes },
   { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", icone: Wrench },
   { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", icone: FlaskConical },
   { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users },
@@ -49,6 +51,7 @@ const MODULOS = [
 ];
 
 const CORES_MODULO = {
+  patrimonio: ["#0369a1", "#e0f2fe"],
   inicio: ["#0f766e", "#d9f4ef"], calendario: ["#2563eb", "#e5edff"],
   compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
