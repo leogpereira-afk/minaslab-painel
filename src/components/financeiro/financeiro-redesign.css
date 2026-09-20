@@ -490,3 +490,7 @@
     font-size: .75rem;
   }
 }
+
+/* Navegação compacta, com todas as rotas acessíveis. */
+.financeiro-shell .financeiro-nav-link{min-height:44px;padding:8px 10px;font-size:13px;flex-direction:row;gap:7px}
+@media(max-width:640px){.financeiro-shell .financeiro-nav-linha{display:flex;overflow-x:auto;gap:4px;scrollbar-width:thin}.financeiro-shell .financeiro-nav-link{flex:0 0 auto;min-height:44px;white-space:nowrap}.financeiro-shell .financeiro-navegacao{padding:6px}}

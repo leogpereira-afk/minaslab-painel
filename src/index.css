@@ -415,3 +415,11 @@ textarea {
 .menu-item:hover .menu-icone, .menu-item:focus-visible .menu-icone { transform:translateY(-1px) rotate(-5deg); box-shadow:0 3px 8px #18344218; }
 .menu-item[aria-current="page"] .menu-icone { box-shadow:inset 0 0 0 1px currentColor; }
 @media (prefers-reduced-motion:reduce) { .menu-icone {transition:none;} .menu-item:hover .menu-icone, .menu-item:focus-visible .menu-icone {transform:none;} }
+
+/* Espaçamento consistente entre seções, sem alterar tabelas ou formulários. */
+@media screen{
+ #conteudo-principal{padding-top:18px;padding-bottom:20px}
+ #conteudo-principal>.space-y-6>:not([hidden])~:not([hidden]),.financeiro-shell>.space-y-5>:not([hidden])~:not([hidden]){margin-top:16px}
+ .ponto-resumo .stat-card{padding:12px}
+ .ponto-resumo .stat-value{font-size:23px}
+}

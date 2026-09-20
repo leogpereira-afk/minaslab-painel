@@ -13,7 +13,7 @@ export default function Laboratorio() {
         titulo="Laboratório"
         descricao="Análises ambientais: amostras, ensaios e laudos."
       />
-      <Empty className="px-4 py-12 sm:py-16">
+      <Empty className="px-4 py-6">
         <span className="flex flex-col items-center gap-3">
           <FlaskConical size={32} aria-hidden="true" className="text-slate-500" />
           <span className="font-display text-base font-semibold text-slate-700">Módulo em planejamento</span>
