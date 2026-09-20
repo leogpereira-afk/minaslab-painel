@@ -47,7 +47,7 @@ export default function AbaGestao({gestao,dados,hojeISO,relatorios=false,aoNaveg
   const essenciais=gestao.completudes.filter(c=>c.faltamEssenciais>0).length;
   return <div className="rh-gestao space-y-5">
     <section className="rh-gestao-capa" aria-labelledby="rh-gestao-titulo">
-      <div><p className="rh-gestao-eyebrow">MINASLAB · GESTÃO DE PESSOAS</p><h2 id="rh-gestao-titulo">{relatorios?'Informação para decidir.':'Cuidar da equipe começa por enxergar.'}</h2>
+      <div><p className="rh-gestao-eyebrow">MINASLAB · GESTÃO DE PESSOAS</p><h2 id="rh-gestao-titulo">{relatorios?'Relatórios da equipe':'Prioridades da equipe'}</h2>
         <p>{relatorios?'Relatórios com origem, período e pendências visíveis.':'Prioridades, prazos e pessoas conectados em uma única visão.'}</p></div>
       <span className="rh-gestao-data"><CalendarDays size={17} /> Quadro em {dataLonga(hojeISO)}</span>
     </section>

@@ -695,11 +695,11 @@ export default function Calendario() {
         descricao="A agenda de tudo num lugar só — clique num dia para ver o detalhe e no evento para abrir o módulo."
       />
 
-      {direcao && <div className="mb-5 rounded-xl border bg-white p-4 text-sm text-slate-600">
+      {direcao && <details className="mb-3 rounded-xl border bg-white p-3 text-sm text-slate-600"><summary className="cursor-pointer font-semibold">Como as datas entram no calendário</summary><div className="mt-2">
         <p>🎂 Aniversários pessoais vêm do nascimento e 🏅 aniversários de empresa vêm da admissão em <Link className="font-semibold underline" to="/rh?aba=pessoas">RH → Pessoas</Link>. 📄 Documentos e treinamentos vêm da data em <Link className="font-semibold underline" to="/rh?aba=vencimentos">RH → Vencimentos</Link>.</p>
         <p className="mt-1">Ao salvar no RH e abrir o calendário, as datas aparecem aqui. Use os filtros abaixo para escolher o que ver.</p>
-      </div>}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      </div></details>}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard rotulo="Hoje" valor={String(vm.hoje)} tom={vm.hoje > 0 ? "brand" : "neutral"} icone={CalendarDays} />
         <StatCard rotulo="Esta semana" valor={String(vm.semana)} tom="neutral" icone={CalendarRange} />
         <StatCard

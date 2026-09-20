@@ -2,14 +2,14 @@
 .fin-relatorios-titulo,.fin-relatorios-subtitulo,.fin-relatorios-contexto { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
 .fin-relatorios-titulo>.btn-primary { flex-shrink:0; }
 .fin-relatorios-contexto { border-top:1px solid #e7edf2; padding-top:12px; font-size:12px; color:#64748b; }
-.fin-relatorios-bloco { background:#fff; border:1px solid #e2e8f0; border-radius:18px; padding:22px; min-width:0; }
+.fin-relatorios-bloco { background:#fff; border:1px solid #e2e8f0; border-radius:18px; padding:16px; min-width:0; }
 .fin-relatorios h2 { font-size:18px; font-weight:650; line-height:1.4; letter-spacing:-.02em; color:#23446f; }
 .fin-relatorios-subtitulo p,.fin-relatorios-nota { font-size:13px; color:#64748b; line-height:1.65; margin-top:6px; }
 .fin-relatorios-tag { font-size:12px; padding:6px 10px; background:#eff4fa; color:#395779; border-radius:20px; }
-.fin-relatorios-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:20px 0 14px; }
-.fin-relatorios-kpi { border:1px solid #e5eaf1; border-radius:14px; padding:17px; background:#fafcfe; min-width:0; }
+.fin-relatorios-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:12px 0; }
+.fin-relatorios-kpi { border:1px solid #e5eaf1; border-radius:14px; padding:12px; background:#fafcfe; min-width:0; }
 .fin-relatorios .fin-relatorios-kpi h3 { line-height:1.5; font-family:inherit; font-size:13px; font-weight:600; color:#53657c; }
-.fin-relatorios-kpi strong { display:block; font-size:clamp(21px,2vw,29px); letter-spacing:-.035em; line-height:1.35; margin:8px 0; overflow-wrap:anywhere; }
+.fin-relatorios-kpi strong { display:block; font-size:clamp(20px,1.8vw,25px); letter-spacing:-.035em; line-height:1.35; margin:8px 0; overflow-wrap:anywhere; }
 .fin-relatorios-kpi small { display:block; font-size:12px; color:#64748b; line-height:1.6; }
 .fin-relatorios-entradas strong { color:#14775e; }
 .fin-relatorios-saidas strong { color:#a43e4e; }
@@ -43,7 +43,7 @@
 @media(max-width:1100px) { .fin-relatorios-analises { grid-template-columns:1fr; } }
 @media(max-width:700px) {
   .fin-relatorios-kpis,.fin-relatorios-pendencias,.fin-relatorios-exports { grid-template-columns:1fr; }
-  .fin-relatorios-bloco { padding:17px; }
+  .fin-relatorios-bloco { padding:12px; }
   .fin-relatorios-titulo>.btn-primary { width:100%; justify-content:center; }
   .fin-relatorios-contexto { align-items:flex-start; }
 }

@@ -1,16 +1,16 @@
 .rh-gestao { min-width: 0; }
-.rh-gestao-capa { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:20px; padding:28px; border-radius:20px; color:#fff; background:linear-gradient(115deg,#075e5b,#087e79 65%,#11938a); }
+.rh-gestao-capa { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-radius:12px; color:#fff; background:linear-gradient(115deg,#075e5b,#087e79 65%,#11938a); }
 .rh-gestao-eyebrow { font-size:11px; font-weight:700; letter-spacing:.14em; color:#b8f0e9; }
-.rh-gestao-capa h2 { font-size:clamp(1.35rem,2.2vw,1.9rem); font-weight:700; line-height:1.25; margin:9px 0; }
+.rh-gestao-capa h2 { font-size:18px; font-weight:700; line-height:1.25; margin:3px 0; }
 .rh-gestao-capa p:not(.rh-gestao-eyebrow) { color:#e2f6f3; font-size:14px; }
 .rh-gestao-data { display:flex; align-items:center; gap:8px; padding:10px 13px; background:#ffffff18; border:1px solid #ffffff35; border-radius:12px; font-size:12px; }
 .rh-gestao-filtros { display:grid; grid-template-columns:1fr 1fr 1.3fr; gap:12px; }
 .rh-gestao-filtros label { min-width:0; font-size:12px; font-weight:600; color:#475569; }
 .rh-gestao-filtros .input { margin-top:6px; width:100%; }
-.rh-pendencia { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 18px; border:1px solid #e2e8f0; border-left:4px solid #94a3b8; border-radius:12px; }
+.rh-pendencia { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border:1px solid #e2e8f0; border-left:4px solid #94a3b8; border-radius:12px; }
 .rh-pendencia-erro { border-left-color:#dc5260; background:#fffafb; }
 .rh-pendencia-atencao { border-left-color:#d79820; background:#fffcf5; }
 .rh-pendencia h3 { color:#18363b; font-size:14px; font-weight:650; overflow-wrap:anywhere; }
 .rh-pendencia p { margin-top:4px; font-size:13px; color:#566579; overflow-wrap:anywhere; }
-@media(max-width:640px) { .rh-gestao-capa {padding:20px;} .rh-gestao-filtros {grid-template-columns:1fr;} .rh-pendencia {align-items:flex-start;flex-direction:column;padding:14px;} .rh-pendencia button {align-self:flex-end;} }
+@media(max-width:640px) { .rh-gestao-capa {padding:14px;} .rh-gestao-filtros {grid-template-columns:1fr;} .rh-pendencia {align-items:flex-start;flex-direction:column;padding:14px;} .rh-pendencia button {align-self:flex-end;} }
 @media print { .rh-gestao button,.rh-gestao-filtros {display:none;} .rh-gestao-capa {color:#173b39;background:white;border:1px solid #aaa;} .rh-gestao-capa p:not(.rh-gestao-eyebrow),.rh-gestao-eyebrow {color:#334155;} }

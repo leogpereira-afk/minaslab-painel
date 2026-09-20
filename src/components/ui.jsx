@@ -18,7 +18,7 @@ const TOM = {
 
 export const Card = forwardRef(function Card({ className, children, ...rest }, ref) {
   return (
-    <div ref={ref} className={clsx("card p-5 sm:p-6", className)} {...rest}>
+    <div ref={ref} className={clsx("card p-4", className)} {...rest}>
       {children}
     </div>
   );
@@ -36,7 +36,7 @@ export function StatCard({ rotulo, valor, sub, tom = "neutral", icone: Icone, te
       onClick={onClick}
       aria-pressed={clicavel && typeof ativo === "boolean" ? ativo : undefined}
       className={clsx(
-        "card stat-card min-w-0 w-full p-4 sm:p-5 text-left transition-all",
+        "card stat-card min-w-0 w-full p-3 sm:p-4 text-left transition-all",
         clicavel && "card-hover cursor-pointer",
         ativo && "ring-2 ring-brand ring-offset-2 ring-offset-transparent"
       )}
@@ -44,16 +44,16 @@ export function StatCard({ rotulo, valor, sub, tom = "neutral", icone: Icone, te
       <div className="flex items-start justify-between gap-3">
         <p className="label mb-0">{rotulo}</p>
         {Icone && (
-          <span className={clsx("grid h-9 w-9 shrink-0 place-items-center rounded-xl", t.bg, t.texto)}>
+          <span className={clsx("grid h-8 w-8 shrink-0 place-items-center rounded-xl", t.bg, t.texto)}>
             <Icone size={18} strokeWidth={2.2} />
           </span>
         )}
       </div>
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        <span className="stat-value font-display text-2xl sm:text-3xl font-semibold tnum text-slate-900">{valor}</span>
+      <div className="mt-1.5 flex flex-wrap items-end gap-2">
+        <span className="stat-value font-display text-xl sm:text-2xl font-semibold tnum text-slate-900">{valor}</span>
         {tendencia && <TrendArrow tendencia={tendencia} />}
       </div>
-      {sub && <p className={clsx("mt-1.5 text-sm", tom === "neutral" ? "text-slate-500" : t.texto)}>{sub}</p>}
+      {sub && <p className={clsx("mt-1 text-xs", tom === "neutral" ? "text-slate-500" : t.texto)}>{sub}</p>}
     </Comp>
   );
 }
@@ -66,10 +66,10 @@ export function TrendArrow({ tendencia }) {
 
 export function PageTitle({ titulo, descricao, acao }) {
   return (
-    <div className="page-title mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-title mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{titulo}</h1>
-        {descricao && <p className="mt-1 max-w-2xl text-slate-500">{descricao}</p>}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-2xl">{titulo}</h1>
+        {descricao && <p className="mt-1 max-w-2xl text-sm text-slate-500">{descricao}</p>}
       </div>
       {acao && <div className="page-actions sem-impressao">{acao}</div>}
     </div>
@@ -115,7 +115,7 @@ export function Segmented({ opcoes, valor, onChange, className }) {
 export function Empty({ children, className }) {
   return (
     <div
-      className={clsx("grid place-items-center rounded-xl border border-dashed py-10 text-center text-sm text-slate-500", className)}
+      className={clsx("grid place-items-center rounded-xl border border-dashed px-4 py-5 text-center text-sm text-slate-500", className)}
       style={{ borderColor: "var(--hairline)" }}
     >
       {children}
