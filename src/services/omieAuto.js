@@ -1,3 +1,4 @@
+import { invalidarCopiaFinanceira } from "./financeiroCache.js";
 import { FINANCEIRO_OMIE_AUTO } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
@@ -9,6 +10,7 @@ async function chamar(action) {
   });
   const body = await resp.json().catch(() => null);
   if (!resp.ok) throw new Error(body?.erro || mensagemDoStatus(resp.status));
+  if (action === "executar") invalidarCopiaFinanceira();
   return body || {};
 }
 

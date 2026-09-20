@@ -1,3 +1,4 @@
+import { invalidarCopiaFinanceira } from "./financeiroCache.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
 const URL = "https://reoghclxripktzpdwhiy.supabase.co/functions/v1/ml-financeiro-conciliacao";
@@ -18,5 +19,6 @@ export async function finConciliarAjustado(payload){
   const resp=await comCracha(URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"conciliar",...payload})});
   const body=await resp.json().catch(()=>null);
   if(!resp.ok)throw new Error(erroTexto(body)||mensagemDoStatus(resp.status));
+  invalidarCopiaFinanceira();
   return body||{};
 }
