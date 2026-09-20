@@ -1,8 +1,9 @@
+import { invalidarCopiaFinanceira } from "./financeiroCache.js";
 import { FINANCEIRO_SERVICOS, FINANCEIRO_SERVICOS_LISTAR, FINANCEIRO_SERVICOS_IMPORT, FINANCEIRO_SERVICOS_EMPRESA, FINANCEIRO_SERVICOS_FATURAR, FINANCEIRO_SERVICOS_SYNC, FINANCEIRO_SERVICOS_GRUPAR, FINANCEIRO_SERVICOS_NFSE_VINCULAR } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
 
 function erroTexto(v){if(v==null)return"";if(typeof v==="string")return v.trim();if(typeof v==="number"||typeof v==="boolean")return String(v);if(v instanceof Error)return v.message||String(v);if(Array.isArray(v))return v.map(erroTexto).filter(Boolean).join(" ");if(typeof v==="object"){for(const k of["erro","message","mensagem","error_description","details","hint","code"]){const s=erroTexto(v[k]);if(s)return s}try{return JSON.stringify(v)}catch{return"Falha inesperada no Financeiro."}}return String(v)}
-async function chamarUrl(url,corpo={}){const resp=await comCracha(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});const body=await resp.json().catch(()=>null);if(!resp.ok)throw new Error(erroTexto(body)||mensagemDoStatus(resp.status));return body||{}}
+async function chamarUrl(url,corpo={}){const resp=await comCracha(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});const body=await resp.json().catch(()=>null);if(!resp.ok)throw new Error(erroTexto(body)||mensagemDoStatus(resp.status));if(!["listar","historico","modelo"].includes(corpo.action)&&url!==FINANCEIRO_SERVICOS_LISTAR)invalidarCopiaFinanceira();return body||{}}
 const chamar=(action,corpo={})=>chamarUrl(FINANCEIRO_SERVICOS,{action,...corpo});
 export const servicosGeradosListar=(filtros={})=>chamarUrl(FINANCEIRO_SERVICOS_LISTAR,{filtros});
 export const servicoGeradoSalvar=registro=>chamar("salvar",{registro}).then(r=>r.item);

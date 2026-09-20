@@ -22,7 +22,7 @@ function guardar(chave, valor, modo = 'readwrite') {
   });
 }
 aoMudarSessao(() => { if (!getToken()) guardar(null).catch(() => {}); });
-export async function carregarCopiaFinanceira({ atualizar = false } = {}) {
+async function lerCopiaFinanceira({ atualizar = false } = {}) {
   const sessao = getSessao(), token = getToken();
   if (!sessao || sessao.papel !== 'direcao' || !token) throw new Error('Entre novamente para acessar o financeiro.');
   let validade = 0;
@@ -54,4 +54,20 @@ export async function carregarCopiaFinanceira({ atualizar = false } = {}) {
     if (anterior) return { ...anterior, salvo: true, aviso: `Não foi possível atualizar. Exibindo a última cópia salva. ${erro.message}` };
     throw erro;
   }
+}
+
+export async function consultarBaseFinanceira(empresa = '', atualizar = false) {
+ const copia = await carregarCopiaFinanceira({atualizar});
+ const lista = nome => copia.listas[nome].itens.filter(x=>!empresa||x.empresa_id===empresa);
+ return {empresa,opcoes:copia.opcoes,movimentos:lista('movimentosListar'),recebimentos:lista('recebimentosListar'),despesas:lista('despesasListar'),notas:lista('notasListar'),consultadoEm:new Date(copia.atualizadoEm),aviso:copia.aviso||(!copia.salvo?'Não foi possível salvar a cópia neste navegador.':'')};
+}
+
+let emCurso = null;
+export function carregarCopiaFinanceira(opcoes = {}) {
+ const token=getToken();
+ if(emCurso?.token===token)return emCurso.tarefa;
+ const atual={token};
+ atual.tarefa=lerCopiaFinanceira(opcoes).finally(()=>{if(emCurso===atual)emCurso=null;});
+ emCurso=atual;
+ return atual.tarefa;
 }

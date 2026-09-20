@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { consultarBaseFinanceira } from "../services/financeiroCache.js";
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, RefreshCw } from 'lucide-react';
-import { financeiroOpcoes, finMovimentosListar, finRecebimentosListar, finDespesasListar } from '../services/financeiro.js';
 import { montarPatrimonial } from '../lib/financeiroPatrimonial.js';
 import { moedaRelatorio as moeda, dataRelatorio as data, periodoValido } from '../lib/relatorioFinanceiro.js';
 import '../components/financeiro/relatoriosFinanceiro.css';
@@ -10,7 +10,8 @@ export default function PatrimonialFinanceiro({tipo}) {
  const [empresa,setEmpresa]=useState(''),[conta,setConta]=useState(''),[pessoa,setPessoa]=useState('');
  const [de,setDe]=useState(`${new Date().getFullYear()}-01-01`),[ate,setAte]=useState(hoje());
  const [dados,setDados]=useState(null),[op,setOp]=useState({empresas:[],contas:[]}),[erro,setErro]=useState(''),[versao,setVersao]=useState(0),[gerando,setGerando]=useState(false);
- useEffect(()=>{let ativo=true;setDados(null);setErro('');Promise.all([financeiroOpcoes(),finMovimentosListar(empresa),finRecebimentosListar(empresa),finDespesasListar(empresa)]).then(([o,m,r,d])=>{if(ativo){setOp(o);setDados({empresa,movimentos:m,recebimentos:r,despesas:d,consultadoEm:new Date()});}}).catch(e=>{if(ativo)setErro(e.message);});return()=>{ativo=false;};},[empresa,versao]);
+ const ultimaVersao=useRef(0);
+ useEffect(()=>{let ativo=true;setDados(null);setErro('');consultarBaseFinanceira(empresa,versao!==ultimaVersao.current).then(base=>{if(ativo){setOp(base.opcoes);setDados(base);}}).catch(e=>{if(ativo)setErro(e.message);});ultimaVersao.current=versao;return()=>{ativo=false;};},[empresa,versao]);
  const r=useMemo(()=>dados?.empresa===empresa&&periodoValido(de,ate)?montarPatrimonial({...dados,tipo,empresa,conta,pessoa,de,ate}):null,[dados,tipo,empresa,conta,pessoa,de,ate]);
  const aplicacoes=tipo==='aplicacoes',titulo=aplicacoes?'Aplicações financeiras':'Retiradas e movimentações dos sócios';
  const empresaNome=op.empresas.find(e=>e.id===empresa)?.nome||'Todas as empresas',contaNome=op.contas.find(c=>c.id===conta)?.nome||'Todas as contas';
@@ -25,6 +26,7 @@ export default function PatrimonialFinanceiro({tipo}) {
    <div className="flex flex-wrap gap-2 md:col-span-4"><button className="btn-outline" onClick={()=>{setDe(`${new Date().getFullYear()}-01-01`);setAte(hoje());setPessoa('');}}>Ano até hoje</button><button className="btn-outline" onClick={()=>{setDe(`${hoje().slice(0,7)}-01`);setAte(hoje());setPessoa('');}}>Este mês</button><button className="btn-outline" onClick={()=>setVersao(v=>v+1)}><RefreshCw size={14}/>Atualizar</button></div>
    {!aplicacoes&&r&&<label className="md:col-span-4"><span className="label">Sócio / favorecido identificado na origem</span><select className="input" value={pessoa} onChange={e=>setPessoa(e.target.value)}><option value="">Todos os favorecidos</option>{r.pessoas.map(p=><option key={p.id} value={p.id}>{p.nome}{p.empresa?` · ${p.empresa}`:''}</option>)}</select></label>}
   </section>
+  {dados?.aviso&&<p role="alert" className="rounded-xl bg-amber-50 p-3">{dados.aviso}</p>}
   {erro&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{erro}</p>}
   {!periodoValido(de,ate)&&<p role="alert">Confira as datas do período.</p>}
   {!dados&&!erro&&<p role="status">Consultando a base completa…</p>}
