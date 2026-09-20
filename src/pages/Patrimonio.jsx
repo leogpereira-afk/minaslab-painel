@@ -149,7 +149,7 @@ export default function Patrimonio() {
     </div>
     {msg&&!janela&&<p className={`pat-notice ${msg.erro?'is-error':''}`} role={msg.erro?'alert':'status'}>{msg.texto}</p>}
     {erroFotos&&<div className="pat-notice is-error" role="alert">Não foi possível conferir as fotos. A consulta dos bens continua disponível. <button onClick={carregarFotos} className="btn-ghost">Tentar novamente</button></div>}
-    {!vm.setores.length&&<div className="pat-empty"><Building2 size={30}/><h2>Organize os primeiros setores</h2><p>O setor identifica a localização e gera a etiqueta de cada bem.</p><div className="pat-actions"><button className="btn-primary" disabled={salvando} onClick={semear}>Usar os setores sugeridos para o MinasLab</button><button className="btn-outline" onClick={()=>abrirSetor()}>Criar setor</button></div></div>}
+    {!vm.setores.length&&<div className="pat-setup"><Building2 size={22}/><div className="pat-setup-copy"><h2>Cadastre os setores</h2><p>Defina a localização e as etiquetas dos bens.</p></div><div className="pat-actions"><button className="btn-primary" disabled={salvando} onClick={semear}>Usar setores sugeridos</button><button className="btn-outline" onClick={()=>abrirSetor()}>Criar setor</button></div></div>}
     <nav className="pat-tabs" aria-label="Visões do patrimônio">{[['inventario','Inventário'],['setores','Por setor'],['pendencias','Pendências']].map(([id,nome])=><button key={id} aria-current={aba===id?'page':undefined} onClick={()=>{setAba(id);setMsg(null);}}>{nome}{id==='pendencias'&&<span>{pendentes.length}</span>}</button>)}</nav>
 
     {aba==='inventario'&&<>
