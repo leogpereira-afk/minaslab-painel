@@ -122,7 +122,7 @@ export const podeEditar = (sessao = getSessao()) =>
 // "fin_clientes" e "fin_receber" — quem comprou, quanto e de quem. E o
 // faturamento da casa inteiro, so que arrumado por ranking; deixa-lo aberto a
 // equipe abriria pela porta da analise o que a porta de Financas ja fecha.
-const SO_DIRECAO = ["rh", "ponto", "financas", "acessos", "curva-abc"];
+const SO_DIRECAO = ["patrimonio", "rh", "ponto", "financas", "acessos", "curva-abc"];
 export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
