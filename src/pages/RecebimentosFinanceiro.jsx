@@ -1,8 +1,8 @@
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import { operacaoManual } from "../lib/financeiroIntegridade.js";
 import Modal from "../components/financeiro/ModalFinanceiro.jsx";
 import {
   LinhaFiltrosColuna,
-  ResumoFiltrosColuna,
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
 import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
@@ -151,13 +151,16 @@ export default function RecebimentosFinanceiro() {
     status: (x) => x.status,
     origem: (x) => (x.importacao_origem === "C6_BOLETOS" ? "C6" : x.origem),
   });
+  const consultas=useRef(criarControleConsulta());
   async function carregar(p = pagina) {
+    const vigente=consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
       const [o, d] = await Promise.all([
         financeiroOpcoes(),
         finRecebimentosPagina({
+          filtrosColuna: filtrosColuna.filtros,
           empresaId: empresa,
           busca,
           status,
@@ -167,21 +170,22 @@ export default function RecebimentosFinanceiro() {
           limite,
         }),
       ]);
+      if(!vigente())return;
       setOp(o);
       setItens(d.itens || []);
       setMeta({ total: d.total || 0, paginas: d.paginas || 1 });
       setResumo(d.resumo || { previsto: 0, recebido: 0, pendente: 0 });
       setPagina(d.pagina || p);
     } catch (e) {
-      setErro(e.message);
+      if(vigente())setErro(e.message);
     } finally {
-      setLoading(false);
+      if(vigente())setLoading(false);
     }
   }
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
-  }, [empresa, busca, status, ano, mes, limite]);
+  }, [empresa, busca, status, ano, mes, limite, filtrosColuna.filtros]);
   const empresaAtual = op.empresas.find((x) => x.id === empresa),
     mLab = !!empresaAtual && !empresaAtual.usa_omie;
   const irConciliacao = (x) =>
@@ -325,6 +329,7 @@ export default function RecebimentosFinanceiro() {
           descricao="MinasLab: Omie + manual. M Lab: manual + relatório de boletos C6."
         />
       </div>
+      <p className="text-xs text-slate-500">Totais sem cancelados. {resumo.cancelados||0} cancelado(s) · {moeda(resumo.valorCancelado||0)} fora dos totais.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border bg-white p-4">
           <p className="text-xs uppercase text-slate-500">Previsto</p>
@@ -506,7 +511,7 @@ export default function RecebimentosFinanceiro() {
                     "A RECEBER",
                     "VENCIDO",
                     "PARCIAL",
-                    "RECEBIDO",
+                    "PAGO",
                     "CANCELADO",
                   ],
                 },
@@ -523,14 +528,14 @@ export default function RecebimentosFinanceiro() {
                   Carregando...
                 </td>
               </tr>
-            ) : filtrosColuna.filtrados.length === 0 ? (
+            ) : itens.length === 0 ? (
               <tr>
                 <td colSpan="9" className="p-8 text-center text-slate-500">
                   Nenhum recebimento.
                 </td>
               </tr>
             ) : (
-              filtrosColuna.filtrados.map((x) => {
+              itens.map((x) => {
                 const ehMLab = operacaoManual(
                   op.empresas.find((e) => e.id === x.empresa_id),
                 );
@@ -628,10 +633,10 @@ export default function RecebimentosFinanceiro() {
         pagina={pagina}
         paginas={meta.paginas}
         porPagina={limite}
-        itensNaPagina={filtrosColuna.filtrados.length}
+        itensNaPagina={itens.length}
         onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
         onPagina={carregar}
-        extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
+        extra={<span className="ml-2">{filtrosColuna.quantidade>0&&"Filtros aplicados a toda a consulta"}</span>}
       />
       {detalhe && (
         <Modal

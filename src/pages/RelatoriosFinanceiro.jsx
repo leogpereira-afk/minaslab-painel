@@ -1,10 +1,10 @@
+import { consultarBaseFinanceira } from "../services/financeiroCache.js";
 import ReguaAnual from "../components/financeiro/ReguaAnual.jsx";
 import ComparativoMensal from "../components/financeiro/ComparativoMensal.jsx";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link } from 'react-router-dom';
 import { Download, FileText, RefreshCw, ArrowUpRight } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
-import { financeiroOpcoes, finMovimentosListar, finRecebimentosListar, finDespesasListar } from "../services/financeiro.js";
 import { montarRelatorioFinanceiro, periodoValido, variacaoFinanceira, moedaRelatorio as moeda, dataRelatorio as dataBR, notasRelatorio, celulaCsvFinanceiro as csv } from '../lib/relatorioFinanceiro.js';
 import '../components/financeiro/relatoriosFinanceiro.css';
 
@@ -35,13 +35,15 @@ export default function RelatoriosFinanceiro() {
   const [versao, setVersao] = useState(0);
   const [gerando, setGerando] = useState('');
   const [erroPdf, setErroPdf] = useState('');
+  const ultimaVersao=useRef(0);
   useEffect(() => {
     let ativo = true;
     setLoading(true); setErro(''); setDados(null);
-    Promise.all([financeiroOpcoes(), finMovimentosListar(empresa), finRecebimentosListar(empresa), finDespesasListar(empresa)])
-      .then(([o, m, r, d]) => { if (ativo) { setOp(o || { empresas: [], contas: [] }); setDados({ empresa, movimentos: m || [], recebimentos: r || [], despesas: d || [], consultadoEm: new Date() }); } })
+    consultarBaseFinanceira(empresa, versao !== ultimaVersao.current)
+      .then(base => { if (ativo) { setOp(base.opcoes); setDados(base); } })
       .catch(e => { if (ativo) setErro(e.message || 'Não foi possível carregar os relatórios.'); })
       .finally(() => { if (ativo) setLoading(false); });
+    ultimaVersao.current=versao;
     return () => { ativo = false; };
   }, [empresa, versao]);
   const empresas = useMemo(() => new Map((op.empresas || []).map(x => [x.id, x.nome])), [op.empresas]);
@@ -80,6 +82,7 @@ export default function RelatoriosFinanceiro() {
       <button type="button" className="btn-primary" disabled={!r || !!gerando} onClick={() => exportarPdf('executivo')}><FileText size={17}/>{gerando === 'executivo' ? 'Preparando PDF…' : 'Baixar análise em PDF'}</button>
     </div>
     <div className="flex flex-wrap gap-3"><Link className="btn-outline" to="/financas/aplicacoes">Aplicações financeiras</Link><Link className="btn-outline" to="/financas/socios">Retiradas dos sócios</Link></div>
+    {dados?.aviso&&<p role="alert" className="rounded-xl bg-amber-50 p-3">{dados.aviso}</p>}
     {erro && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{erro} <button className="underline" onClick={() => setVersao(v => v + 1)}>Tentar novamente</button></div>}
     {erroPdf && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{erroPdf}</div>}
     <section className="fin-relatorios-filtros grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-4" aria-label="Filtros dos relatórios">

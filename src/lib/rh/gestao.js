@@ -62,6 +62,7 @@ export function montarGestao(dados, hojeISO, radar = { vigentes:[], emRisco:[], 
       experiencias.push({pessoaId:p.id,nome:p.nome,...exp});
       if (exp.situacao!=='primeiro-periodo') adicionar(p,'experiencia','Conferir experiência',exp.situacao==='expirou' ? 'Prazo de referência ultrapassado. Confira a decisão na ficha.' : 'Prepare a conversa e confira a decisão de prorrogação ou efetivação.',exp.situacao==='expirou'?'erro':'atencao',ymdLocal(exp.fim));
     }
+    if (!exp && adm && dias(hoje,adm)>105 && !p.experienciaDecididaEm && !p.desligadoEm && (contrato==='clt'||contrato.includes('experiencia'))) adicionar(p,'experiencia','Conferir registro da decisão de experiência','O prazo de referência passou e não há decisão registrada. Confira o histórico; este alerta não determina o vínculo atual.','informacao');
     const meusFeedbacks = feedbacks.filter(f=>f.pessoaId===p.id);
     const cadencia = cadenciaDe(meusFeedbacks, adm && adm<=hoje ? p.admissao : null,hoje,cadenciaDaPessoa({emExperiencia:!!exp,comPlanoAberto:p.planoAberto===true}));
     if (cadencia.situacao==='atrasado') adicionar(p,'feedback','Conversa de acompanhamento pendente',`Cadência ultrapassada há ${Math.abs(cadencia.diasParaProximo)} dias.`);

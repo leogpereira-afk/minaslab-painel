@@ -42,7 +42,7 @@ const plural = (n, um, muitos) => (n === 1 ? um : muitos);
 const dataDe = (d) => dataLonga(ymdLocal(d));
 
 function somarMesesISO(iso, meses) {
-  const m = String(iso || "").match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return "";
   const a = Number(m[1]), mes = Number(m[2]), dia = Number(m[3]);
   const base = new Date(a, mes - 1, 1);
@@ -112,7 +112,10 @@ function leituraCLT(p, periodos, hoje, desde) {
     };
   }
 
-  const detalhes = [];
+  if (!periodos.some(f => f.status !== 'cancelada' && f.inicio && f.retorno)) {
+    return { chip:'chip-warn', texto:'Histórico de férias a conferir', detalhes:['Sem períodos registrados. Saldo e regularidade ainda não confirmados.'], gravidade:2 };
+  }
+  const detalhes = ['Estimativa pelos registros; conferir histórico, afastamentos e direito aplicável.'];
   if (!s.jaGozou && s.situacao !== "sem-registro") {
     detalhes.push(
       `${s.diasEmAberto} ${plural(s.diasEmAberto, "dia", "dias")} em aberto · conceder até ${dataDe(s.limiteConcessao)}`
@@ -153,7 +156,7 @@ function leituraCLT(p, periodos, hoje, desde) {
       detalhes, gravidade: 2,
     };
   }
-  return { chip: "chip-ok", texto: "férias em dia", detalhes, gravidade: 3 };
+  return { chip: "chip-ok", texto: "sem atraso pelo histórico registrado", detalhes, gravidade: 3 };
 }
 
 /* A conferência do formulário, em tempo real. Devolve { achados, dias }.

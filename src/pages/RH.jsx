@@ -1,3 +1,4 @@
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 // RH — a CASCA do módulo: carrega as 6 coleções, guarda o estado, calcula os
 // KPIs e orquestra as abas (Pessoas, Férias, Feedback, Exames, Vencimentos).
 // A renderização de cada aba mora em src/components/rh/Aba*.jsx;
@@ -28,7 +29,7 @@
 //   também deixaram de ser carregadas nesta casca: quem vinha ver férias
 //   baixava o mês inteiro de batidas sem precisar.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Download, Users, Sun, MessagesSquare, Stethoscope, Clock } from "lucide-react";
 import { salvar, apagar, carregarColecoes } from "../services/dados.js";
@@ -157,37 +158,48 @@ export default function RH() {
   // congelado mentia "de férias" para quem já tinha voltado.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
+  const recarga = useRef(criarControleConsulta());
+  const [consultadoEm,setConsultadoEm] = useState(null);
   const recarregar = useCallback(() => {
+    const vigente = recarga.current.iniciar();
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
       .then((r) => {
+        if(!vigente())return;
         if (r._recusadas?.length) throw new Error("Não foi possível consultar todas as informações do RH. Confira as permissões e tente novamente.");
         setDados(escopoEquipe({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico }));
+        setConsultadoEm(new Date());
         setErro(null);
       })
       .catch((e) => {
+        if(!vigente())return;
         setErro(e.message);
         // Depois da primeira carga boa o ErroModulo não aparece mais (vm
         // existe) — sem este aviso, a recarga que falha deixava a tela velha
         // em silêncio.
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
       })
-      .finally(() => setAtualizando(false));
+      .finally(() => {if(vigente())setAtualizando(false)});
   }, []);
 
   useEffect(() => {
     recarregar();
+    const controle=recarga.current;
+    return () => controle.cancelar();
   }, [recarregar]);
 
   // Voltou para a aba: refaz a conta do dia e busca o que chegou.
   useEffect(() => {
+    let timer;
     const aoVoltar = () => {
-      if (document.visibilityState === "visible") recarregar();
+      clearTimeout(timer);
+      if (document.visibilityState === "visible") timer=setTimeout(recarregar,120);
     };
     document.addEventListener("visibilitychange", aoVoltar);
     window.addEventListener("focus", aoVoltar);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("visibilitychange", aoVoltar);
       window.removeEventListener("focus", aoVoltar);
     };
@@ -730,6 +742,7 @@ export default function RH() {
 
       {/* As abas não cabem na largura do celular. Sem o overflow aqui, a
           PÁGINA INTEIRA passava a rolar de lado. */}
+      <p className="mb-3 text-xs text-slate-500" role="status">{atualizando?"Atualizando RH…":consultadoEm?`Última consulta: ${consultadoEm.toLocaleString("pt-BR")}`:""}</p>
       <div role="group" aria-label="Seções do RH" className="sem-impressao mb-4 max-w-full overflow-x-auto pb-1">
         <Segmented
           opcoes={[

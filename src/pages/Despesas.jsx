@@ -422,6 +422,7 @@ export default function Despesas() {
           descricao="Contas a pagar, leitura de boleto, pagamentos e comprovantes."
         />
       </div>
+      <p className="text-xs text-slate-500">Totais sem cancelados. {resumo.cancelados||0} cancelado(s) · {moeda(resumo.valorCancelado||0)} fora dos totais.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border bg-white p-4">
           <p className="text-xs uppercase text-slate-500">Total lançado</p>

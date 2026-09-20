@@ -18,7 +18,7 @@ export default function PaginacaoFinanceiro({
   return (
     <div className="financeiro-paginacao flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2 text-xs text-slate-600">
       <div>
-        {total > 0 ? `${inicio}–${fim} de ${total}` : "0 registros"}
+        {total > 0 ? (itensNaPagina > 0 ? `${inicio}–${fim} de ${total}` : `Nenhum resultado nesta página · ${total} registros na consulta`) : "0 registros"}
         {extra}
       </div>
       <div className="flex flex-wrap items-center gap-2">
