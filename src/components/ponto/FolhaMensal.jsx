@@ -1,6 +1,6 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Printer, Save } from "lucide-react";
-import { rhFolhaSalvar } from "../../services/dados.js";
+import { rhBancoListar, rhFolhaSalvar } from "../../services/dados.js";
 import { duracaoTexto, ausenciaDoDia } from "../../lib/rh/ponto.js";
 import { Card, Empty } from "../ui.jsx";
 import BancoHorasFuncionario from "../rh/BancoHorasFuncionario.jsx";
@@ -20,8 +20,9 @@ const ehFeriado=d=>Boolean(d.feriado||d.isHoliday||String(d.tipoDia||"").toLower
 const classeDia=d=>ehFeriado(d)?"bg-orange-100":ausenciaDoDia(d)?.tipo==="ferias"?"bg-sky-100":fimDeSemana(d.data)?"bg-green-100":"";
 
 export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel}){
- const[pessoaId,setPessoaId]=useState(""); const[mensagem,setMensagem]=useState("");
+ const[pessoaId,setPessoaId]=useState(""); const[mensagem,setMensagem]=useState(""); const[saldoAcumulado,setSaldoAcumulado]=useState(null);
  const pessoa=pessoas.find(p=>p.id===pessoaId);
+ useEffect(()=>{let vivo=true;if(!pessoaId){setSaldoAcumulado(null);return()=>{vivo=false}};rhBancoListar({pessoaId,ateCompetencia:competencia}).then(r=>{if(vivo)setSaldoAcumulado(r.saldoMinutos??0)}).catch(()=>{if(vivo)setSaldoAcumulado(null)});return()=>{vivo=false}},[pessoaId,competencia]);
  const linhas=useMemo(()=>pontoDia.filter(d=>d.pessoaId===pessoaId&&String(d.data||"").startsWith(competencia)).sort((a,b)=>String(a.data).localeCompare(String(b.data))),[pontoDia,pessoaId,competencia]);
  const linhasFolha=useMemo(()=>{
   const [ano,mes]=String(competencia).split("-").map(Number);
@@ -46,7 +47,7 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
    {porSemana.map(([s,dias])=>{const st=dias.reduce((n,d)=>n+minutos(d),0),sn=dias.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0),se=dias.reduce((n,d)=>n+Math.max(0,minutos(d)-previsto(d)),0);return <Fragment key={s}><tr className="border border-slate-400 bg-white text-center font-semibold"><td className="border border-slate-400 py-1" colSpan={6}>Semana {s}</td><td className="border border-slate-400 px-1">{hms(st)}</td><td className="border border-slate-400 px-1">{hms(sn)}</td><td className="border border-slate-400 px-1">{hms(se)}</td><td className="border border-slate-400 px-1">{hms(st-sn)}</td></tr>{dias.map(d=>{const t=minutos(d),p=previsto(d),n=Math.min(t,p),e=Math.max(0,t-p),oc=d.emAberto?"Em aberto":ausenciaDoDia(d)?.rotulo||d.ocorrencia||"";return <tr key={d.id||d.data} className={`border border-slate-400 ${classeDia(d)}`}><td className="border border-slate-400 px-1 py-1">{dataBR(d.data)}</td><td className="border border-slate-400 px-1 capitalize">{diaSemana(d.data)}</td><td className="border border-slate-400 px-1 text-center">{oc||hora(d.entrada,d.primeiraEntrada)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.inicioAlmoco,d.inicioIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.fimAlmoco,d.fimIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.saida,d.ultimaSaida)}</td><td className="border border-slate-400 px-1 text-center">{hms(t)}</td><td className="border border-slate-400 px-1 text-center">{hms(n)}</td><td className="border border-slate-400 px-1 text-center">{hms(e)}</td><td className="border border-slate-400 px-1 text-center">{hms(t-p)}</td></tr>})}</Fragment>})}
    <tr className="border border-slate-400 font-bold"><td className="border border-slate-400 p-1 text-right" colSpan={6}>Total de Horas</td><td className="border border-slate-400 p-1 text-center">{hms(total)}</td><td className="border border-slate-400 p-1 text-center">{hms(normais)}</td><td className="border border-slate-400 p-1 text-center">{hms(extras)}</td><td className="border border-slate-400 p-1 text-center">{hms(total-normais)}</td></tr></tbody></table>
    <div className="mt-4 grid gap-2 text-sm md:grid-cols-2"><div><strong>Total de Horas:</strong> {duracaoTexto(total)}</div><div><strong>Jornada semanal:</strong> {pessoa.horasSemanais||"—"}</div><div className="md:col-span-2"><strong>Horário previsto:</strong> {pessoa.jornada||"—"}</div></div>
-   <div className="mt-5 grid grid-cols-2 gap-8 text-xs"><div><div className="font-semibold text-orange-500">Horário de Trabalho</div><div className="mt-1">Jornada de trabalho</div><div className="mt-2 whitespace-pre-line">{pessoa.jornada||"Jornada não informada"}</div></div><div className="flex items-end justify-center pb-2"><div className="w-64 border-t border-black pt-1 text-center">Assinatura Colaborador</div></div></div>
+   <div className="mt-2 flex justify-end text-xs font-bold"><span className="mr-3">Total de Horas Acumuladas</span><span className="tnum min-w-24 text-right">{saldoAcumulado==null?"—":hms(saldoAcumulado)}</span></div><div className="mt-5 grid grid-cols-2 gap-8 text-xs"><div><div className="font-semibold text-orange-500">Horário de Trabalho</div><div className="mt-1">Jornada de trabalho</div><div className="mt-2 whitespace-pre-line">{pessoa.jornada||"Jornada não informada"}</div></div><div className="flex items-end justify-center pb-2"><div className="w-64 border-t border-black pt-1 text-center">Assinatura Colaborador</div></div></div>
   </div></div>}
  </Card>{pessoa&&<div className="sem-impressao"><BancoHorasFuncionario pessoa={pessoa} editavel={editavel}/></div>}</div>
 }
