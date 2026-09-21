@@ -3,6 +3,7 @@ import { Printer, Save } from "lucide-react";
 import { rhFolhaSalvar } from "../../services/dados.js";
 import { duracaoTexto, ausenciaDoDia } from "../../lib/rh/ponto.js";
 import { Card, Empty } from "../ui.jsx";
+import BancoHorasFuncionario from "../rh/BancoHorasFuncionario.jsx";
 
 const nomesMes = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const rotulo = c => { const [a,m] = String(c).split("-"); return nomesMes[Number(m)-1] ? `${nomesMes[Number(m)-1]} de ${a}` : c; };
@@ -30,7 +31,7 @@ export default function FolhaMensal({ pessoas = [], pontoDia = [], competencia, 
     } catch (e) { setMensagem(e.message); }
   }
 
-  return <Card>
+  return <div className="space-y-4"><Card>
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="font-display text-base font-semibold text-slate-900">Folha de Ponto Mensal</h2><p className="text-xs text-slate-500">Registros do mês · {rotulo(competencia)}</p></div>
       <div className="flex flex-wrap gap-2">
@@ -51,5 +52,7 @@ export default function FolhaMensal({ pessoas = [], pontoDia = [], competencia, 
       {linhas.length===0 ? <Empty>Nenhuma marcação encontrada nesta competência.</Empty> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Data</th><th className="p-2">Entrada</th><th className="p-2">Início almoço</th><th className="p-2">Fim almoço</th><th className="p-2">Saída</th><th className="p-2">Horas de origem</th><th className="p-2">Ocorrência</th></tr></thead><tbody>{linhas.map(d=><tr key={d.id||d.data} className="border-b"><td className="p-2">{dataBR(d.data)}</td><td className="p-2">{hora(d.entrada,d.primeiraEntrada)}</td><td className="p-2">{hora(d.inicioAlmoco,d.inicioIntervalo)}</td><td className="p-2">{hora(d.fimAlmoco,d.fimIntervalo)}</td><td className="p-2">{hora(d.saida,d.ultimaSaida)}</td><td className="p-2">{horasOrigem(d)}</td><td className="p-2">{d.emAberto ? "Em aberto" : ausenciaDoDia(d)?.rotulo || d.ocorrencia || "—"}</td></tr>)}</tbody></table></div>}
       <div className="mt-5 hidden border-t pt-8 text-center text-sm print:block">ASSINATURA DO COLABORADOR: ________________________________________________</div>
     </>}
-  </Card>;
+  </Card>
+    {pessoa && <BancoHorasFuncionario pessoa={pessoa} editavel={editavel} />}
+  </div>;
 }
