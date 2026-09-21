@@ -18,8 +18,17 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
  const[pessoaId,setPessoaId]=useState(""); const[mensagem,setMensagem]=useState("");
  const pessoa=pessoas.find(p=>p.id===pessoaId);
  const linhas=useMemo(()=>pontoDia.filter(d=>d.pessoaId===pessoaId&&String(d.data||"").startsWith(competencia)).sort((a,b)=>String(a.data).localeCompare(String(b.data))),[pontoDia,pessoaId,competencia]);
+ const linhasFolha=useMemo(()=>{
+  const [ano,mes]=String(competencia).split("-").map(Number);
+  if(!ano||!mes)return linhas;
+  const ultimo=new Date(ano,mes,0).getDate(), porData=new Map(linhas.map(d=>[d.data,d]));
+  return Array.from({length:ultimo},(_,i)=>{
+    const data=`${ano}-${String(mes).padStart(2,"0")}-${String(i+1).padStart(2,"0")}`;
+    return porData.get(data)||{id:`vazio_${data}`,data,pessoaId};
+  });
+ },[linhas,competencia,pessoaId]);
  const total=linhas.reduce((n,d)=>n+minutos(d),0), normais=linhas.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0), extras=linhas.reduce((n,d)=>n+Math.max(0,minutos(d)-previsto(d)),0);
- const porSemana=useMemo(()=>{const m=new Map();for(const d of linhas){const s=semana(d.data);if(!m.has(s))m.set(s,[]);m.get(s).push(d)}return[...m.entries()].sort((a,b)=>a[0]-b[0])},[linhas]);
+ const porSemana=useMemo(()=>{const m=new Map();for(const d of linhasFolha){const s=semana(d.data);if(!m.has(s))m.set(s,[]);m.get(s).push(d)}return[...m.entries()].sort((a,b)=>a[0]-b[0])},[linhasFolha]);
  async function fechar(){if(!pessoa)return setMensagem("Selecione um funcionário.");try{const folha=await rhFolhaSalvar({pessoaId:pessoa.id,empresa:pessoa.empresa||"",competencia,status:"FECHADA",dadosSnapshot:{pessoa,competencia,linhas,totalMinutos:total,geradoEm:new Date().toISOString()}});setMensagem(`Folha de ${rotulo(competencia)} salva e preservada.`);return folha}catch(e){setMensagem(e.message)}}
  return <div className="space-y-4"><Card>
   <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-display text-base font-semibold text-slate-900">Folha de Ponto Mensal</h2><p className="text-xs text-slate-500">Registros do mês · {rotulo(competencia)}</p></div><div className="flex flex-wrap gap-2"><select aria-label="Pessoa da folha mensal" className="select" value={pessoaId} onChange={e=>setPessoaId(e.target.value)}><option value="">Selecione o funcionário</option>{pessoas.filter(p=>p.ativo!==false).sort((a,b)=>String(a.nome).localeCompare(String(b.nome))).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select><button type="button" className="btn-outline" onClick={()=>window.print()} disabled={!pessoa||!linhas.length}><Printer size={15}/> Imprimir / PDF</button>{editavel&&<button type="button" className="btn-primary" onClick={fechar} disabled={!pessoa||!linhas.length}><Save size={15}/> Salvar folha mensal</button>}</div></div>
@@ -34,5 +43,5 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
    <div className="mt-4 grid gap-2 text-sm md:grid-cols-2"><div><strong>Total de Horas:</strong> {duracaoTexto(total)}</div><div><strong>Jornada semanal:</strong> {pessoa.horasSemanais||"—"}</div><div className="md:col-span-2"><strong>Horário previsto:</strong> {pessoa.jornada||"—"}</div></div>
    <div className="mt-8 border-t pt-8 text-center text-sm">ASSINATURA DO COLABORADOR: ________________________________________________</div>
   </div></div>}
- </Card>{pessoa&&<BancoHorasFuncionario pessoa={pessoa} editavel={editavel}/>}</div>
+ </Card>{pessoa&&<div className="sem-impressao"><BancoHorasFuncionario pessoa={pessoa} editavel={editavel}/></div>}</div>
 }
