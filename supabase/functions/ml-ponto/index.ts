@@ -660,7 +660,8 @@ Deno.serve(async (req) => {
         const ru = `${HOST_ATTENDANCE}/TimesheetsSummary` +
           `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
         const rr = await jibble(ru);
-        const pessoasResumo = (rr.value ?? []) as Record<string, any>[];\n        const pausas = await pausasDoPeriodo(de, ate);
+        const pessoasResumo = (rr.value ?? []) as Record<string, any>[];
+        const pausas = await pausasDoPeriodo(de, ate);
 
         // O de-para completo depois das criações: é ele que carimba o vínculo.
         const idFichaPorJibble = new Map<string, string>();
