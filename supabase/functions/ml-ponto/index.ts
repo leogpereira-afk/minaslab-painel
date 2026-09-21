@@ -201,6 +201,45 @@ const horaLocal = (iso: unknown): string => {
    própria pessoa vê no aplicativo — e número em que o RH não confia manda todo
    mundo de volta para a planilha. */
 
+/* Batidas cruas para localizar a pausa real. TimesheetsSummary informa a DURAÇÃO
+   da pausa, mas não os horários. No Jibble, iniciar pausa cria uma entrada Break
+   e encerrar pausa cria a próxima entrada In. Para a folha oficial precisamos
+   dos dois carimbos, então lemos TimeEntries e escolhemos a maior pausa do dia
+   (na prática, o almoço), sem recalcular as horas da folha. */
+async function pausasDoPeriodo(de: string, ate: string) {
+  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$filter=time ge ${de}T00:00:00Z and time le ${ate}T23:59:59Z`;
+  const r = await jibble(url);
+  const entradas = ((r.value ?? r.data ?? []) as Record<string, any>[])
+    .map((e) => ({
+      pessoaId: String(e.personId ?? e.person?.id ?? ""),
+      time: String(e.time ?? e.timestamp ?? e.startTime ?? ""),
+      tipo: String(e.type ?? e.timeEntryType ?? e.entryType ?? "").toLowerCase(),
+    }))
+    .filter((e) => e.pessoaId && /^\\d{4}-\\d{2}-\\d{2}T/.test(e.time))
+    .sort((a,b) => a.time.localeCompare(b.time));
+  const porPessoaDia = new Map<string, typeof entradas>();
+  for (const e of entradas) {
+    const dia = e.time.slice(0,10);
+    const k = `${e.pessoaId}|${dia}`;
+    if (!porPessoaDia.has(k)) porPessoaDia.set(k, []);
+    porPessoaDia.get(k)!.push(e);
+  }
+  const out = new Map<string,{inicioIntervalo:string;fimIntervalo:string}>();
+  for (const [k, es] of porPessoaDia) {
+    let melhor: {inicioIntervalo:string;fimIntervalo:string;dur:number}|null = null;
+    for (let i=0;i<es.length;i++) {
+      const e=es[i];
+      if (!e.tipo.includes("break")) continue;
+      const prox=es.slice(i+1).find(x => x.tipo.includes("in") && !x.tipo.includes("break"));
+      if (!prox) continue;
+      const dur=(new Date(prox.time).getTime()-new Date(e.time).getTime())/60000;
+      if (dur>0 && (!melhor || dur>melhor.dur)) melhor={inicioIntervalo:horaLocal(e.time),fimIntervalo:horaLocal(prox.time),dur};
+    }
+    if (melhor) out.set(k,{inicioIntervalo:melhor.inicioIntervalo,fimIntervalo:melhor.fimIntervalo});
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- gravação
 async function bump(colecao: string) {
   const agora = Date.now();
@@ -437,7 +476,7 @@ Deno.serve(async (req) => {
         const url = `${HOST_ATTENDANCE}/TimesheetsSummary` +
           `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
         const r = await jibble(url);
-        const pessoas = (r.value ?? []) as Record<string, any>[];
+        const pessoas = (r.value ?? []) as Record<string, any>[];\n        const pausas = await pausasDoPeriodo(de, ate);
 
         /* Um registro por pessoa/dia, com o que o RELÓGIO apurou. Os nomes dos
            campos do Jibble e o que fazemos com cada um:
@@ -620,7 +659,7 @@ Deno.serve(async (req) => {
         const ru = `${HOST_ATTENDANCE}/TimesheetsSummary` +
           `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
         const rr = await jibble(ru);
-        const pessoasResumo = (rr.value ?? []) as Record<string, any>[];
+        const pessoasResumo = (rr.value ?? []) as Record<string, any>[];\n        const pausas = await pausasDoPeriodo(de, ate);
 
         // O de-para completo depois das criações: é ele que carimba o vínculo.
         const idFichaPorJibble = new Map<string, string>();
