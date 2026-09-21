@@ -513,6 +513,18 @@ Deno.serve(async (req) => {
               saida: horaLocal(d.lastOut),
               pausaMin: duracaoISO(d.unpaidBreak),
               pausaPagaMin: duracaoISO(d.paidBreak),
+              ...((pausas.get(`${jibbleId}|${dia}`) ?? {})),
+              feriado: Boolean(
+                d.isPublicHoliday || d.isHoliday || d.publicHoliday ||
+                d.dayType === "PublicHoliday" || d.dayType === "Holiday" ||
+                (duracaoISO(d.publicHolidayOvertime) ?? 0) > 0
+              ),
+              tipoDia: String(d.dayType ?? d.type ?? (
+                d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
+              )),
+              horasAtestadoMin: duracaoISO(
+                d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours
+              ),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
@@ -688,6 +700,18 @@ Deno.serve(async (req) => {
               saida: horaLocal(d.lastOut),
               pausaMin: duracaoISO(d.unpaidBreak),
               pausaPagaMin: duracaoISO(d.paidBreak),
+              ...((pausas.get(`${jibbleId}|${dia}`) ?? {})),
+              feriado: Boolean(
+                d.isPublicHoliday || d.isHoliday || d.publicHoliday ||
+                d.dayType === "PublicHoliday" || d.dayType === "Holiday" ||
+                (duracaoISO(d.publicHolidayOvertime) ?? 0) > 0
+              ),
+              tipoDia: String(d.dayType ?? d.type ?? (
+                d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
+              )),
+              horasAtestadoMin: duracaoISO(
+                d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours
+              ),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
