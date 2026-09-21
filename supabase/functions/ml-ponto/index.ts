@@ -476,7 +476,8 @@ Deno.serve(async (req) => {
         const url = `${HOST_ATTENDANCE}/TimesheetsSummary` +
           `?date=${de}&endDate=${ate}&period=Custom&$top=${tamanho}&$skip=${skip}`;
         const r = await jibble(url);
-        const pessoas = (r.value ?? []) as Record<string, any>[];\n        const pausas = await pausasDoPeriodo(de, ate);
+        const pessoas = (r.value ?? []) as Record<string, any>[];
+        const pausas = await pausasDoPeriodo(de, ate);
 
         /* Um registro por pessoa/dia, com o que o RELÓGIO apurou. Os nomes dos
            campos do Jibble e o que fazemos com cada um:
