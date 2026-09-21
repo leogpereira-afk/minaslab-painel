@@ -423,3 +423,16 @@ textarea {
  .ponto-resumo .stat-card{padding:12px}
  .ponto-resumo .stat-value{font-size:23px}
 }
+
+
+/* Folha mensal: ao imprimir pelo botão da própria folha, sai somente o documento oficial. */
+@media print{
+ body.imprimir-folha-mensal .ponto-workspace > :not(.folha-impressao-wrapper){display:none!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper .card{border:0!important;padding:0!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper .card>div:first-child,
+ body.imprimir-folha-mensal .folha-impressao-wrapper .card>p{display:none!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper .min-w-\[980px\]{min-width:0!important;border:0!important;padding:0!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper table{font-size:8pt!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper th,
+ body.imprimir-folha-mensal .folha-impressao-wrapper td{padding:2px 3px!important}
+}
