@@ -45,7 +45,6 @@ import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadas
 import { radarExames, tempoDeCasa, chipVenc } from "./uteis.js";
 import { Card, Empty } from "../ui.jsx";
 import DocumentosFuncionario from "./DocumentosFuncionario.jsx";
-import BancoHorasFuncionario from "./BancoHorasFuncionario.jsx";
 import { dataDe, resultadoDe, tipoDe, rotuloTipo, metaResultado } from "../../lib/rhExamesApresentacao.js";
 
 const txt = (v) => String(v ?? "").trim();
@@ -489,7 +488,6 @@ export default function FichaPessoa({
       )}
 
       <DocumentosFuncionario pessoa={pessoa} editavel={editavel} />
-      <BancoHorasFuncionario pessoa={pessoa} editavel={editavel} />
 
       {aba === "historico" && (
         <Card>
