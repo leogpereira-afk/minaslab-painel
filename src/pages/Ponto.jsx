@@ -793,12 +793,12 @@ export default function Ponto() {
       )}
 
       {aba === "folha" && (
-        <FolhaMensal
+        <div className="folha-impressao-wrapper"><FolhaMensal
           pessoas={dados.pessoas}
           pontoDia={dados.pontoDia}
           competencia={competencia}
           editavel={editavel}
-        />
+        /></div>
       )}
       </Suspense>
     </div>
