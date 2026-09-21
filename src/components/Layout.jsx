@@ -17,6 +17,7 @@ import {
   Boxes,
   Users,
   Wallet,
+  ContactRound,
   FlaskConical,
   KeyRound,
   LayoutDashboard,
@@ -46,6 +47,7 @@ const MODULOS = [
   { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users },
   { id: "ponto", rotulo: "Ponto", caminho: "/ponto", icone: Clock },
   { id: "financas", rotulo: "Finanças", caminho: "/financas", icone: Wallet },
+  { id: "crm", rotulo: "CRM", caminho: "https://crm-minaslab-2.vercel.app/dashboard", icone: ContactRound, externo: true },
   { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3 },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
@@ -57,7 +59,7 @@ const CORES_MODULO = {
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], manutencoes: ["#475569", "#e6edf5"],
   laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
-  ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"],
+  ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"],
   "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
 };
 
@@ -84,6 +86,19 @@ function ItensMenu({ sessao, aoNavegar }) {
     <nav aria-label="Módulos do MinasLab" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
       {MODULOS.filter((mo) => podeAbrir(mo.id, sessao)).map((mo) => {
         const Icone = mo.icone;
+        if (mo.externo) return (
+          <a
+            key={mo.id}
+            href={mo.caminho}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={aoNavegar}
+            className="menu-item flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 font-display text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
+          >
+            <span className="menu-icone" style={{ color: CORES_MODULO[mo.id][0], backgroundColor: CORES_MODULO[mo.id][1] }}><Icone size={19} strokeWidth={2.2} aria-hidden="true" /></span>
+            {mo.rotulo}
+          </a>
+        );
         return (
           <NavLink
             key={mo.id}
