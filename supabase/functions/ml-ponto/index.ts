@@ -188,6 +188,26 @@ const horaLocal = (iso: unknown): string => {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) ? s.slice(11, 16) : "";
 };
 
+/* TimeEntries devolve instantes UTC (sufixo Z), enquanto TimesheetsSummary já
+   devolve firstIn/lastOut no horário configurado da pessoa. Não podemos usar
+   `slice(11,16)` nas batidas cruas: 12:15 em Montes Claros chegava como
+   15:15Z e era impresso três horas adiante. */
+const partesBatidaBrasil = (iso: unknown): { dia: string; hora: string } | null => {
+  const s = String(iso ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return null;
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) return { dia: s.slice(0, 10), hora: s.slice(11, 16) };
+  const data = new Date(s);
+  if (Number.isNaN(data.getTime())) return null;
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(data).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== "literal") acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return { dia: `${partes.year}-${partes.month}-${partes.day}`, hora: `${partes.hour}:${partes.minute}` };
+};
+
 /* POR QUE NÃO REAGREGAMOS AS BATIDAS CRUAS.
    A primeira versão daqui montava o dia a partir dos pares entra→sai do
    TimeEntries. Media-se, então descobriu-se (27/08/2026, pela ação
@@ -225,7 +245,8 @@ async function pausasDoPeriodo(de: string, ate: string) {
     .sort((a,b) => a.time.localeCompare(b.time));
   const porPessoaDia = new Map<string, typeof entradas>();
   for (const e of entradas) {
-    const dia = e.time.slice(0,10);
+    const dia = partesBatidaBrasil(e.time)?.dia;
+    if (!dia) continue;
     const k = `${e.pessoaId}|${dia}`;
     if (!porPessoaDia.has(k)) porPessoaDia.set(k, []);
     porPessoaDia.get(k)!.push(e);
@@ -240,7 +261,9 @@ async function pausasDoPeriodo(de: string, ate: string) {
       const prox=es.slice(i+1).find(x => x.tipo.includes("in") && !x.tipo.includes("break"));
       if (!prox) continue;
       const dur=(new Date(prox.time).getTime()-new Date(e.time).getTime())/60000;
-      if (dur>0 && (!melhor || dur>melhor.dur)) melhor={inicioIntervalo:horaLocal(e.time),fimIntervalo:horaLocal(prox.time),dur};
+      const inicio = partesBatidaBrasil(e.time)?.hora ?? "";
+      const fim = partesBatidaBrasil(prox.time)?.hora ?? "";
+      if (dur>0 && inicio && fim && (!melhor || dur>melhor.dur)) melhor={inicioIntervalo:inicio,fimIntervalo:fim,dur};
     }
     if (melhor) out.set(k,{inicioIntervalo:melhor.inicioIntervalo,fimIntervalo:melhor.fimIntervalo});
   }

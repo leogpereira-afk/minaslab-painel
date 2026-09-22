@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Printer, Save } from "lucide-react";
 import { rhBancoListar, rhFolhaSalvar } from "../../services/dados.js";
-import { duracaoTexto, ausenciaDoDia, minutosPrevistosDoDia } from "../../lib/rh/ponto.js";
+import { duracaoTexto, ausenciaDoDia, minutosPrevistosDoDia, minutosTrabalhados } from "../../lib/rh/ponto.js";
 import { Card, Empty } from "../ui.jsx";
 import BancoHorasFuncionario from "../rh/BancoHorasFuncionario.jsx";
 
@@ -11,7 +11,10 @@ const periodo=c=>{const[a,m]=String(c).split("-").map(Number);if(!a||!m)return c
 const hms=min=>{const n=Math.round(Number(min)||0),s=n<0?"-":"";const a=Math.abs(n);return `${s}${String(Math.floor(a/60)).padStart(2,"0")}:${String(a%60).padStart(2,"0")}:00`};
 const dataBR=s=>{const p=String(s||"").split("-");return p.length===3?`${p[2]}/${p[1]}`:"—"};
 const hora=(...vs)=>vs.find(v=>v!=null&&String(v).trim())||"—";
-const minutos=d=>Number(d.trabalhadoMin??d.trackedMin??0);
+// O Jibble pode aplicar deduções automáticas em payrollHours. A folha oficial
+// da MinasLab considera as batidas reais menos o almoço registrado, exatamente
+// como as demais telas de conferência do Ponto.
+const minutos=d=>minutosTrabalhados(d)??0;
 const semana=iso=>Math.floor((Number(String(iso||"").slice(8,10))-1)/7)+1;
 const diaSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00");return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("pt-BR",{weekday:"long"})};
 const fimDeSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00").getDay();return d===0||d===6};
