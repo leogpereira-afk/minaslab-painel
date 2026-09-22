@@ -145,6 +145,15 @@ function fimDoMes(competencia) {
   return `${competencia}-${String(dia).padStart(2, "0")}`;
 }
 
+function mesesAnteriores(competencia, quantidade = 12) {
+  const [ano, mes] = String(competencia || "").split("-").map(Number);
+  if (!ano || !mes) return [];
+  return Array.from({ length: quantidade }, (_, i) => {
+    const d = new Date(ano, mes - 2 - i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }).reverse();
+}
+
 /* A frase da última leitura. Ela existe para responder, sem clicar em nada, a
    pergunta que o dono do sistema faz ao abrir a tela: "isto aqui está velho?".
    DADO AUSENTE NÃO É ZERO nem é "agora": sem carimbo, a frase diz que nunca
@@ -322,6 +331,52 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
     }
   };
 
+  const puxarHistorico = async () => {
+    if (rodando) return;
+    const competencias = mesesAnteriores(competencia);
+    if (!window.confirm(
+      `Atualizar os 12 meses anteriores a ${rotuloDoMes(competencia)}? ` +
+      "O processo será feito mês a mês e preservará dias corrigidos manualmente pelo RH."
+    )) return;
+    setRodando(true);
+    setResumo(null);
+    progressoRef.current = null;
+    let diasGravados = 0;
+    let preservados = 0;
+    let compAtual = competencia;
+    try {
+      for (let i = 0; i < competencias.length; i += 1) {
+        const comp = competencias[i];
+        compAtual = comp;
+        setCompetenciaDaRodada(comp);
+        setProgresso({ historico: true, mesAtual: i + 1, totalMeses: competencias.length });
+        const r = await sincronizarPeriodo(`${comp}-01`, fimDoMes(comp), (p) => {
+          progressoRef.current = p;
+          setProgresso({ ...p, historico: true, mesAtual: i + 1, totalMeses: competencias.length });
+        });
+        diasGravados += r.diasGravados || 0;
+        preservados += r.preservados || 0;
+      }
+      setResumo({
+        tom: "ok",
+        frase: `Histórico atualizado: 12 meses e ${plural(diasGravados, "dia trazido", "dias trazidos")}.`,
+        detalhes: preservados ? [`${plural(preservados, "ajuste manual preservado", "ajustes manuais preservados")}`] : [],
+      });
+      setAviso({ tipo: "ok", texto: "Histórico do ponto atualizado mês a mês." });
+    } catch (e) {
+      setResumo({
+        tom: "warn",
+        frase: `A atualização do histórico parou em ${rotuloDoMes(compAtual)}: ${e.message}`,
+      });
+      setAviso({ tipo: "erro", texto: `Não consegui terminar o histórico: ${e.message}` });
+    } finally {
+      setRodando(false);
+      setProgresso(null);
+      perguntarEstado();
+      aoTerminar?.();
+    }
+  };
+
   // A leitura em andamento mantém seu mês, mesmo se alguém consultar outro.
   const competenciaExibida = rodando ? competenciaDaRodada : competencia;
   const [ano, mes] = competenciaExibida.split("-");
@@ -466,6 +521,18 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
                 : `Sincronizar ${rotuloCurto}`}
             </button>
           )}
+          {editavel && !desligado && aberta && (
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={puxarHistorico}
+              disabled={rodando || consultandoEstado || !estado}
+              title="Atualiza, mês a mês, os 12 meses anteriores e preserva correções manuais"
+            >
+              <RefreshCw size={16} className={rodando ? "animate-spin" : undefined} />
+              Atualizar histórico
+            </button>
+          )}
         </div>
       </div>
 
@@ -488,7 +555,9 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
       {rodando && (
         <p className="mt-3 flex items-center gap-2 text-sm text-slate-600" aria-live="polite">
           <RefreshCw size={14} className="animate-spin text-brand" />
-          {fraseDoProgresso(progresso)}
+          {progresso?.historico
+            ? `Atualizando mês ${progresso.mesAtual} de ${progresso.totalMeses}: ${rotuloDoMes(competenciaExibida)}.`
+            : fraseDoProgresso(progresso)}
         </p>
       )}
 
