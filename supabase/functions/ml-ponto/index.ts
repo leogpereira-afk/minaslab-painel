@@ -207,13 +207,13 @@ const horaLocal = (iso: unknown): string => {
    dos dois carimbos, então lemos TimeEntries e escolhemos a maior pausa do dia
    (na prática, o almoço), sem recalcular as horas da folha. */
 async function pausasDoPeriodo(de: string, ate: string) {
-  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$filter=time ge ${de}T00:00:00Z and time le ${ate}T23:59:59Z`;
+  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$expand=person&$filter=belongsToDate ge ${de}T00:00:00Z and belongsToDate le ${ate}T23:59:59Z&$orderby=time asc`;
   const r = await jibble(url);
   const entradas = ((r.value ?? r.data ?? []) as Record<string, any>[])
     .map((e) => ({
       pessoaId: String(e.personId ?? e.person?.id ?? ""),
-      time: String(e.time ?? e.timestamp ?? e.startTime ?? ""),
-      tipo: String(e.type ?? e.timeEntryType ?? e.entryType ?? "").toLowerCase(),
+      time: String(e.time ?? e.dateTime ?? e.timestamp ?? e.startTime ?? ""),
+      tipo: String(e.type ?? e.timeEntryType ?? e.entryType ?? e.action ?? "").toLowerCase(),
     }))
     .filter((e) => e.pessoaId && /^\\d{4}-\\d{2}-\\d{2}T/.test(e.time))
     .sort((a,b) => a.time.localeCompare(b.time));
