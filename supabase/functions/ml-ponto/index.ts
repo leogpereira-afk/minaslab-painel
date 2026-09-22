@@ -207,7 +207,9 @@ const horaLocal = (iso: unknown): string => {
    folha oficial precisamos dos dois carimbos, então escolhemos a maior pausa do
    dia (na prática, o almoço), sem recalcular as horas da folha. */
 async function pausasDoPeriodo(de: string, ate: string) {
-  /* `time` é o campo de filtro aceito por TimeEntries e já é conferido pela\n     ação diagnostico. `belongsToDate` faz o Jibble responder 500. */\n  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$filter=time ge ${de}T00:00:00Z and time le ${ate}T23:59:59Z&$orderby=time asc`;
+  /* `time` é o campo de filtro aceito por TimeEntries e já é conferido pela
+     ação diagnostico. `belongsToDate` faz o Jibble responder 500. */
+  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$filter=time ge ${de}T00:00:00Z and time le ${ate}T23:59:59Z&$orderby=time asc`;
   const r = await jibble(url);
   const entradas = ((r.value ?? r.data ?? []) as Record<string, any>[])
     .map((e) => ({
@@ -233,7 +235,8 @@ async function pausasDoPeriodo(de: string, ate: string) {
     let melhor: {inicioIntervalo:string;fimIntervalo:string;dur:number}|null = null;
     for (let i=0;i<es.length;i++) {
       const e=es[i];
-      const iniciaPausa = e.tipo.includes("break") || e.tipo.includes("out");\n      if (!iniciaPausa) continue;
+      const iniciaPausa = e.tipo.includes("break") || e.tipo.includes("out");
+      if (!iniciaPausa) continue;
       const prox=es.slice(i+1).find(x => x.tipo.includes("in") && !x.tipo.includes("break"));
       if (!prox) continue;
       const dur=(new Date(prox.time).getTime()-new Date(e.time).getTime())/60000;
@@ -354,7 +357,8 @@ Deno.serve(async (req) => {
               idTemEspacos: CLIENT_ID !== CLIENT_ID.trim(),
               segredoTamanho: CLIENT_SECRET.length,
               segredoTemEspacos: CLIENT_SECRET !== CLIENT_SECRET.trim(),
-              segredoTemQuebraDeLinha: /[\r\n]/.test(CLIENT_SECRET),
+              segredoTemQuebraDeLinha: /[\r
+]/.test(CLIENT_SECRET),
               /* As pontas do segredo — 3 caracteres de cada lado, e só quando a
                  autenticação JÁ falhou. É o que distingue "colei o pedaço que
                  aparecia na tela" de "colei o valor inteiro": se o fim bate com
