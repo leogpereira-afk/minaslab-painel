@@ -202,12 +202,12 @@ const horaLocal = (iso: unknown): string => {
    mundo de volta para a planilha. */
 
 /* Batidas cruas para localizar a pausa real. TimesheetsSummary informa a DURAÇÃO
-   da pausa, mas não os horários. No Jibble, iniciar pausa cria uma entrada Break
-   e encerrar pausa cria a próxima entrada In. Para a folha oficial precisamos
-   dos dois carimbos, então lemos TimeEntries e escolhemos a maior pausa do dia
-   (na prática, o almoço), sem recalcular as horas da folha. */
+   da pausa, mas não os horários. No modo de pausa do Jibble ela pode aparecer
+   como Break→In; no modo rápido por reconhecimento facial, como Out→In. Para a
+   folha oficial precisamos dos dois carimbos, então escolhemos a maior pausa do
+   dia (na prática, o almoço), sem recalcular as horas da folha. */
 async function pausasDoPeriodo(de: string, ate: string) {
-  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$expand=person&$filter=belongsToDate ge ${de}T00:00:00Z and belongsToDate le ${ate}T23:59:59Z&$orderby=time asc`;
+  /* `time` é o campo de filtro aceito por TimeEntries e já é conferido pela\n     ação diagnostico. `belongsToDate` faz o Jibble responder 500. */\n  const url = `${HOST_TRACKING}/TimeEntries?$top=1000&$count=true&$filter=time ge ${de}T00:00:00Z and time le ${ate}T23:59:59Z&$orderby=time asc`;
   const r = await jibble(url);
   const entradas = ((r.value ?? r.data ?? []) as Record<string, any>[])
     .map((e) => ({
@@ -233,7 +233,7 @@ async function pausasDoPeriodo(de: string, ate: string) {
     let melhor: {inicioIntervalo:string;fimIntervalo:string;dur:number}|null = null;
     for (let i=0;i<es.length;i++) {
       const e=es[i];
-      if (!e.tipo.includes("break")) continue;
+      const iniciaPausa = e.tipo.includes("break") || e.tipo.includes("out");\n      if (!iniciaPausa) continue;
       const prox=es.slice(i+1).find(x => x.tipo.includes("in") && !x.tipo.includes("break"));
       if (!prox) continue;
       const dur=(new Date(prox.time).getTime()-new Date(e.time).getTime())/60000;
