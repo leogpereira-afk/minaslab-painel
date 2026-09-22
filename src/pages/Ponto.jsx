@@ -145,11 +145,11 @@ function fimDoMes(competencia) {
   return `${competencia}-${String(dia).padStart(2, "0")}`;
 }
 
-function mesesAnteriores(competencia, quantidade = 12) {
+function mesesAteCompetencia(competencia, quantidade = 12) {
   const [ano, mes] = String(competencia || "").split("-").map(Number);
   if (!ano || !mes) return [];
   return Array.from({ length: quantidade }, (_, i) => {
-    const d = new Date(ano, mes - 2 - i, 1);
+    const d = new Date(ano, mes - 1 - i, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }).reverse();
 }
@@ -333,9 +333,9 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
 
   const puxarHistorico = async () => {
     if (rodando) return;
-    const competencias = mesesAnteriores(competencia);
+    const competencias = mesesAteCompetencia(competencia);
     if (!window.confirm(
-      `Atualizar os 12 meses anteriores a ${rotuloDoMes(competencia)}? ` +
+      `Atualizar ${rotuloDoMes(competencia)} e os 11 meses anteriores? ` +
       "O processo será feito mês a mês e preservará dias corrigidos manualmente pelo RH."
     )) return;
     setRodando(true);
@@ -527,7 +527,7 @@ function FaixaDoRelogio({ competencia, setCompetencia, anos, hojeISO, editavel, 
               className="btn-outline"
               onClick={puxarHistorico}
               disabled={rodando || consultandoEstado || !estado}
-              title="Atualiza, mês a mês, os 12 meses anteriores e preserva correções manuais"
+              title="Atualiza o mês selecionado e os 11 anteriores, preservando correções manuais"
             >
               <RefreshCw size={16} className={rodando ? "animate-spin" : undefined} />
               Atualizar histórico
