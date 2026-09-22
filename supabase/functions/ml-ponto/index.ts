@@ -357,8 +357,7 @@ Deno.serve(async (req) => {
               idTemEspacos: CLIENT_ID !== CLIENT_ID.trim(),
               segredoTamanho: CLIENT_SECRET.length,
               segredoTemEspacos: CLIENT_SECRET !== CLIENT_SECRET.trim(),
-              segredoTemQuebraDeLinha: /[\r
-]/.test(CLIENT_SECRET),
+              segredoTemQuebraDeLinha: /[\r\n]/.test(CLIENT_SECRET),
               /* As pontas do segredo — 3 caracteres de cada lado, e só quando a
                  autenticação JÁ falhou. É o que distingue "colei o pedaço que
                  aparecia na tela" de "colei o valor inteiro": se o fim bate com
