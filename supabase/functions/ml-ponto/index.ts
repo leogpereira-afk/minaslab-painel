@@ -215,7 +215,11 @@ async function pausasDoPeriodo(de: string, ate: string) {
       time: String(e.time ?? e.dateTime ?? e.timestamp ?? e.startTime ?? ""),
       tipo: String(e.type ?? e.timeEntryType ?? e.entryType ?? e.action ?? "").toLowerCase(),
     }))
-    .filter((e) => e.pessoaId && /^\\d{4}-\\d{2}-\\d{2}T/.test(e.time))
+    /* RegExp literal usa uma única barra para as classes (\d). A versão
+       anterior tinha `\\d` dentro do literal e procurava os caracteres
+       "\\d" no texto; por isso TODAS as batidas reais eram descartadas antes
+       de formar os pares início/fim do almoço. */
+    .filter((e) => e.pessoaId && /^\d{4}-\d{2}-\d{2}T/.test(e.time))
     .sort((a,b) => a.time.localeCompare(b.time));
   const porPessoaDia = new Map<string, typeof entradas>();
   for (const e of entradas) {
