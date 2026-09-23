@@ -530,10 +530,13 @@ Deno.serve(async (req) => {
             if (!dia || dia < de || dia > ate) continue;
             const trabalhado = duracaoISO(d.payrollHours);
             const tracked = duracaoISO(d.tracked);
+            const horasAtestado = duracaoISO(
+              d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff
+            );
             /* DIA SEM MOVIMENTO NÃO VIRA REGISTRO. Gravar o dia vazio encheria
                a tela de zeros e faria "sem batida" parecer "trabalhou 0h" — e
                falta quem decide é a escala, não a ausência de linha aqui. */
-            if (!d.firstIn && !tracked) continue;
+            if (!d.firstIn && !tracked && !horasAtestado) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -552,9 +555,10 @@ Deno.serve(async (req) => {
               tipoDia: String(d.dayType ?? d.type ?? (
                 d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
               )),
-              horasAtestadoMin: duracaoISO(
-                d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours
-              ),
+              horasAtestadoMin: horasAtestado,
+              ...(horasAtestado ? { ausencia: {
+                tipo: "atestado", motivo: "Atestado médico lançado no Jibble", origem: "jibble",
+              } } : {}),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
@@ -719,7 +723,10 @@ Deno.serve(async (req) => {
             if (!dia || dia < de || dia > ate) continue;
             const trabalhado = duracaoISO(d.payrollHours);
             const tracked = duracaoISO(d.tracked);
-            if (!d.firstIn && !tracked) continue;
+            const horasAtestado = duracaoISO(
+              d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff
+            );
+            if (!d.firstIn && !tracked && !horasAtestado) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -739,9 +746,10 @@ Deno.serve(async (req) => {
               tipoDia: String(d.dayType ?? d.type ?? (
                 d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
               )),
-              horasAtestadoMin: duracaoISO(
-                d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours
-              ),
+              horasAtestadoMin: horasAtestado,
+              ...(horasAtestado ? { ausencia: {
+                tipo: "atestado", motivo: "Atestado médico lançado no Jibble", origem: "jibble",
+              } } : {}),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
