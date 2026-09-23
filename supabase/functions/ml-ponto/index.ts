@@ -179,6 +179,43 @@ function duracaoISO(v: unknown): number | null {
   return Math.round(total);
 }
 
+/* O TimesheetsSummary não usa um formato único para afastamentos. Em algumas
+   contas vem uma duração em paidTimeOff; em outras, como no atestado exibido
+   pelo Jibble, o dia vem sem batidas e payrollHours já contém as horas pagas,
+   enquanto o nome da política aparece em um objeto aninhado. */
+function ausenciaPagaDoJibble(d: Record<string, any>) {
+  const explicita = duracaoISO(
+    d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff,
+  );
+  const texto = JSON.stringify(d).toLocaleLowerCase("pt-BR");
+  const atestado = /atestado|medical|m[eé]dic|sick/.test(texto);
+  const rastreado = duracaoISO(d.tracked);
+  const pausa = duracaoISO(d.unpaidBreak) ?? 0;
+  const liquidoDasBatidas = rastreado === null ? null : Math.max(0, rastreado - pausa);
+  const temBatida = Boolean(d.firstIn || d.lastOut || rastreado);
+  const folha = duracaoISO(d.payrollHours);
+  /* No afastamento parcial o Jibble mistura, em payrollHours, o período
+     trabalhado e o período pago. Ex.: 1h14 de batidas + 4h de atestado =
+     5h14 de folha. A diferença positiva é o afastamento; num dia comum a
+     folha é menor que o rastreado por causa da pausa, então não há falso
+     positivo. */
+  const parcial = folha !== null && liquidoDasBatidas !== null && folha > liquidoDasBatidas
+    ? folha - liquidoDasBatidas
+    : null;
+  const horas = explicita ?? parcial ?? (!temBatida && folha ? folha : null);
+  if (!horas) return { horas: null, ausencia: null };
+  return {
+    horas,
+    ausencia: {
+      tipo: atestado ? "atestado" : "justificada",
+      motivo: atestado
+        ? "Atestado médico lançado no Jibble"
+        : "Afastamento pago lançado no Jibble",
+      origem: "jibble",
+    },
+  };
+}
+
 /* "2026-08-17T08:03:36.18107-03:00" → "08:03".
    O Jibble já devolve o instante NO FUSO DA PESSOA (o offset vem junto), então
    a hora local são os caracteres 11..16 — sem conversão nenhuma. Converter à
@@ -530,9 +567,8 @@ Deno.serve(async (req) => {
             if (!dia || dia < de || dia > ate) continue;
             const trabalhado = duracaoISO(d.payrollHours);
             const tracked = duracaoISO(d.tracked);
-            const horasAtestado = duracaoISO(
-              d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff
-            );
+            const afastamento = ausenciaPagaDoJibble(d);
+            const horasAtestado = afastamento.horas;
             /* DIA SEM MOVIMENTO NÃO VIRA REGISTRO. Gravar o dia vazio encheria
                a tela de zeros e faria "sem batida" parecer "trabalhou 0h" — e
                falta quem decide é a escala, não a ausência de linha aqui. */
@@ -556,9 +592,7 @@ Deno.serve(async (req) => {
                 d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
               )),
               horasAtestadoMin: horasAtestado,
-              ...(horasAtestado ? { ausencia: {
-                tipo: "atestado", motivo: "Atestado médico lançado no Jibble", origem: "jibble",
-              } } : {}),
+              ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
@@ -723,9 +757,8 @@ Deno.serve(async (req) => {
             if (!dia || dia < de || dia > ate) continue;
             const trabalhado = duracaoISO(d.payrollHours);
             const tracked = duracaoISO(d.tracked);
-            const horasAtestado = duracaoISO(
-              d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff
-            );
+            const afastamento = ausenciaPagaDoJibble(d);
+            const horasAtestado = afastamento.horas;
             if (!d.firstIn && !tracked && !horasAtestado) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
@@ -747,9 +780,7 @@ Deno.serve(async (req) => {
                 d.isPublicHoliday || d.isHoliday || d.publicHoliday ? "Feriado" : ""
               )),
               horasAtestadoMin: horasAtestado,
-              ...(horasAtestado ? { ausencia: {
-                tipo: "atestado", motivo: "Atestado médico lançado no Jibble", origem: "jibble",
-              } } : {}),
+              ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
               trabalhadoMin: trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
