@@ -11,10 +11,17 @@ const periodo=c=>{const[a,m]=String(c).split("-").map(Number);if(!a||!m)return c
 const hms=min=>{const n=Math.round(Number(min)||0),s=n<0?"-":"";const a=Math.abs(n);return `${s}${String(Math.floor(a/60)).padStart(2,"0")}:${String(a%60).padStart(2,"0")}:00`};
 const dataBR=s=>{const p=String(s||"").split("-");return p.length===3?`${p[2]}/${p[1]}`:"—"};
 const hora=(...vs)=>vs.find(v=>v!=null&&String(v).trim())||"—";
-// O Jibble pode aplicar deduções automáticas em payrollHours. A folha oficial
-// da MinasLab considera as batidas reais menos o almoço registrado, exatamente
-// como as demais telas de conferência do Ponto.
-const minutos=d=>minutosTrabalhados(d)??0;
+// Na folha mensal, "HRS FOLHA PAG." precisa repetir o fechamento do Jibble:
+// batidas menos almoço e também menos as deduções automáticas configuradas no
+// relógio. `trabalhadoMin` é o payrollHours final importado. Dia corrigido à
+// mão volta à conta pelas batidas, pois o total antigo do relógio não descreve
+// mais a correção feita pelo RH.
+const minutos=d=>{
+ if(d?.emAberto===true)return 0;
+ const folha=Number(d?.trabalhadoMin);
+ if(d?.corrigido!==true&&d?.origem==="jibble"&&Number.isFinite(folha)&&folha>=0)return Math.round(folha);
+ return minutosTrabalhados(d)??0;
+};
 const semana=iso=>Math.floor((Number(String(iso||"").slice(8,10))-1)/7)+1;
 const diaSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00");return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("pt-BR",{weekday:"long"})};
 const fimDeSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00").getDay();return d===0||d===6};
