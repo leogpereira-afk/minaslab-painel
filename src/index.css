@@ -432,7 +432,18 @@ textarea {
  body.imprimir-folha-mensal .folha-impressao-wrapper .card>div:first-child,
  body.imprimir-folha-mensal .folha-impressao-wrapper .card>p{display:none!important}
  body.imprimir-folha-mensal .folha-impressao-wrapper .min-w-\[980px\]{min-width:0!important;border:0!important;padding:0!important}
- body.imprimir-folha-mensal .folha-impressao-wrapper table{font-size:8pt!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper{width:100%!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper h3{font-size:12pt!important;line-height:1!important;margin:0 0 3px!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper table{font-size:6.2pt!important;line-height:1!important;table-layout:fixed!important}
  body.imprimir-folha-mensal .folha-impressao-wrapper th,
- body.imprimir-folha-mensal .folha-impressao-wrapper td{padding:2px 3px!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper td{padding:1px 2px!important;height:11px!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper th{padding:2px!important;height:15px!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper h3+div{font-size:7pt!important;line-height:1.05!important;margin-bottom:3px!important;gap:1px 8px!important}
+ body.imprimir-folha-mensal .folha-impressao-wrapper h3+div+div{font-size:6.5pt!important;margin-bottom:2px!important}
+ body.imprimir-folha-mensal .folha-saldos{font-size:7pt!important;margin-top:3px!important;max-width:290px!important;border-radius:0!important}
+ body.imprimir-folha-mensal .folha-saldos>div{padding:2px 4px!important}
+ body.imprimir-folha-mensal .folha-informacoes{font-size:6.5pt!important;line-height:1.1!important;margin-top:3px!important;gap:1px 8px!important}
+ body.imprimir-folha-mensal .folha-assinatura{font-size:6.5pt!important;margin-top:5px!important;gap:16px!important}
+ body.imprimir-folha-mensal .folha-assinatura .mt-1,
+ body.imprimir-folha-mensal .folha-assinatura .mt-2{margin-top:1px!important}
 }
