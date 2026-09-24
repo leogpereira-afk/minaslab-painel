@@ -12,6 +12,7 @@ export const servicosGeradosSincronizar=()=>chamarUrl(FINANCEIRO_SERVICOS_SYNC,{
 export const servicosGeradosAgrupar=(servicoIds,referenciaPagamento="")=>chamarUrl(FINANCEIRO_SERVICOS_GRUPAR,{servicoIds,referenciaPagamento});
 export const servicoGeradoDesagrupar=(servicoId)=>chamarUrl(FINANCEIRO_SERVICOS_GRUPAR,{action:"desagruparItem",servicoId});
 export const servicoGeradoHistorico=id=>chamar("historico",{id}).then(r=>r.itens||[]);
+export const servicoGeradoRegistrarTratamento=(servicoIds,justificativa)=>chamar("registrarTratamento",{servicoIds,justificativa});
 export const servicoGeradoEmpresa=(id,empresaId,lembrar=false)=>chamarUrl(FINANCEIRO_SERVICOS_EMPRESA,{id,empresaId:empresaId||null,lembrar}).then(r=>r.item);
 export const servicoGeradoConcluirFaturamento=id=>chamarUrl(FINANCEIRO_SERVICOS_FATURAR,{id});
 export const servicoGeradoVincularNfse=(servicoId,notaFiscalId)=>chamarUrl(FINANCEIRO_SERVICOS_NFSE_VINCULAR,{servicoId,notaFiscalId});
