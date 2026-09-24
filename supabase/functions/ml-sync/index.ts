@@ -217,10 +217,61 @@ const contaLimpa = (c: Record<string, unknown>) => ({
   papel: c.papel,
   ativo: c.ativo,
   criado_em: c.criado_em,
+  paginas_consulta: c.paginas_consulta ?? [],
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
 
+
+
+/* RH + PONTO — extensões aditivas. As coleções ml_registros/rh_* e a
+   autenticação desta função continuam sendo a fonte existente. Dados
+   documentais, banco de horas e snapshots ficam em tabelas próprias para
+   preservar auditoria e impedir que o JSON genérico vire uma segunda verdade. */
+const RH_DOC_BUCKET = "ml-arquivos";
+const RH_DOC_MAX_BYTES = 25 * 1024 * 1024;
+
+function nomeStorageSeguro(nome: string) {
+  return String(nome || "documento").normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160);
+}
+function bytesDoBase64(valor: string) {
+  const texto = String(valor || "").replace(/^data:[^;]+;base64,/, "");
+  const bin = atob(texto);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function saldoBancoPessoa(pessoaId: string) {
+  const { data, error } = await sb.from("rh_banco_horas_movimentos")
+    .select("credito_minutos, debito_minutos")
+    .eq("pessoa_id", pessoaId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).reduce((n, m) => n + Number(m.credito_minutos || 0) - Number(m.debito_minutos || 0), 0);
+}
+async function gravarPontoAuditoria(evento: string, dados: Record<string, unknown>, usuario: string) {
+  const { error } = await sb.from("rh_ponto_auditoria").insert({
+    pessoa_id: dados.pessoa_id ?? null,
+    empresa: dados.empresa ?? null,
+    folha_id: dados.folha_id ?? null,
+    movimento_id: dados.movimento_id ?? null,
+    documento_id: dados.documento_id ?? null,
+    evento,
+    dados,
+    usuario,
+  });
+  if (error) throw error;
+}
+
+
+const RH_CAMPOS_CONFIRMAVEIS = new Set([
+  "nome","cpf","rg","uf","dataNascimento","estadoCivil","sexo","nacionalidade","naturalidade",
+  "telefone","email","endereco","numero","complemento","bairro","cidade","cep",
+  "nomeMae","nomePai","pis","ctps","serieCtps","admissao","numeroFicha","matriculaEsocial",
+  "cargo","cbo","salario","tipoSalario","tipoContrato","jornada","escala","horasSemanais",
+  "empresa","setor","centroCusto","vinculo","escolaridade","formacao","registroConselho",
+  "contatoEmergencia"
+]);
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return resp({ erro: "Use POST." }, 405);
@@ -258,8 +309,9 @@ Deno.serve(async (req) => {
         const ok = await conferirSenha(senha, conta.senha ?? {});
         if (!ok) return resp({ erro: "Usuário ou senha errados." }, 401);
         await soltarFreio(usuario);
+        const paginas_consulta = Array.isArray(conta.paginas_consulta) ? conta.paginas_consulta : [];
         const token = await assinarJwt({ sub: usuario, nome: conta.nome, papel: conta.papel, sis: SIS }, JWT_SECRET);
-        return resp({ token, usuario, nome: conta.nome, papel: conta.papel });
+        return resp({ token, usuario, nome: conta.nome, papel: conta.papel, paginas_consulta });
       }
 
       /* BOOTSTRAP: a senha-mestra vale SÓ para "leo" e SÓ enquanto a conta
@@ -424,31 +476,219 @@ Deno.serve(async (req) => {
         return resp({ ok: true });
       }
 
+      
+      // ---------------- RH / PONTO — ações aditivas ----------------
+      case "rhDocumentoListar": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        let q = sb.from("rh_documentos").select("*").neq("status", "SUBSTITUIDO").order("created_at", { ascending: false });
+        if (body.pessoaId) q = q.eq("pessoa_id", String(body.pessoaId));
+        if (body.tipo) q = q.eq("tipo", String(body.tipo));
+        const { data, error } = await q;
+        if (error) throw error;
+        return resp({ documentos: data ?? [] });
+      }
+
+      case "rhDocumentoUpload": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        const pessoaId = String(body.pessoaId ?? "");
+        const tipo = String(body.tipo ?? "").trim();
+        const nomeOriginal = String(body.nomeOriginal ?? "").trim();
+        const base64 = String(body.arquivoBase64 ?? "");
+        if (!pessoaId || !tipo || !nomeOriginal || !base64) return resp({ erro: "pessoaId, tipo, nomeOriginal e arquivo são obrigatórios." }, 400);
+        const bytes = bytesDoBase64(base64);
+        if (bytes.byteLength > RH_DOC_MAX_BYTES) return resp({ erro: "O documento excede o limite de 25 MB." }, 413);
+        const id = crypto.randomUUID();
+        const path = `rh/${pessoaId}/${id}-${nomeStorageSeguro(nomeOriginal)}`;
+        const upload = await sb.storage.from(RH_DOC_BUCKET).upload(path, bytes, { contentType: String(body.mimeType || "application/octet-stream"), upsert: false });
+        if (upload.error) throw upload.error;
+        const { data, error } = await sb.from("rh_documentos").insert({
+          id, pessoa_id: pessoaId, empresa: body.empresa ? String(body.empresa) : null,
+          tipo, nome_original: nomeOriginal, storage_bucket: RH_DOC_BUCKET, storage_path: path,
+          mime_type: body.mimeType ? String(body.mimeType) : null, tamanho_bytes: bytes.byteLength,
+          data_emissao: body.dataEmissao || null, data_realizacao: body.dataRealizacao || null,
+          validade: body.validade || null, status: body.status || "PENDENTE",
+          leitura_status: body.leituraStatus || "REQUER_CONFERENCIA",
+          dados_extraidos: body.dadosExtraidos && typeof body.dadosExtraidos === "object" ? body.dadosExtraidos : {},
+          observacoes: body.observacoes ? String(body.observacoes) : null, criado_por: usuario, atualizado_por: usuario
+        }).select("*").single();
+        if (error) {
+          await sb.storage.from(RH_DOC_BUCKET).remove([path]);
+          throw error;
+        }
+        await sb.from("rh_documento_eventos").insert({ documento_id: id, pessoa_id: pessoaId, evento: "DOCUMENTO_ENVIADO", dados: { nome_original: nomeOriginal, tipo }, usuario });
+        await gravarPontoAuditoria("DOCUMENTO_ENVIADO", { documento_id: id, pessoa_id: pessoaId }, usuario);
+        return resp({ ok: true, documento: data });
+      }
+
+
+      case "rhDocumentoExcluir": {
+        if (!ehDirecao) return resp({ erro: "Somente a direção pode excluir documentos.", semPermissao: true }, 403);
+        const id = String(body.documentoId ?? "");
+        const { data: doc, error: de } = await sb.from("rh_documentos").select("id,pessoa_id,nome_original,tipo,status").eq("id", id).maybeSingle();
+        if (de) throw de;
+        if (!doc) return resp({ erro: "Documento não encontrado." }, 404);
+        const { error } = await sb.from("rh_documentos").update({
+          status: "SUBSTITUIDO", atualizado_por: usuario, observacoes: "Retirado pelo usuário; original preservado no Storage."
+        }).eq("id", id);
+        if (error) throw error;
+        await sb.from("rh_documento_eventos").insert({ documento_id: id, pessoa_id: doc.pessoa_id, evento: "DOCUMENTO_RETIRADO", dados: { nome_original: doc.nome_original, tipo: doc.tipo }, usuario });
+        await gravarPontoAuditoria("DOCUMENTO_RETIRADO", { documento_id: id, pessoa_id: doc.pessoa_id }, usuario);
+        return resp({ ok: true, preservado: true });
+      }
+
+      case "rhDocumentoConfirmarPreenchimento": {
+        if (!ehDirecao) return resp({ erro: "Somente a direção pode confirmar dados do RH.", semPermissao: true }, 403);
+        const pessoaId = String(body.pessoaId ?? "");
+        const documentoId = String(body.documentoId ?? "");
+        const confirmados = body.dadosConfirmados && typeof body.dadosConfirmados === "object" ? body.dadosConfirmados : {};
+        if (!pessoaId || !documentoId) return resp({ erro: "Documento e funcionário são obrigatórios." }, 400);
+        const { data: atual, error: ae } = await sb.from(T_REG).select("registro,apagado").eq("colecao","rh_pessoas").eq("id",pessoaId).maybeSingle();
+        if (ae) throw ae;
+        if (!atual || atual.apagado) return resp({ erro: "Funcionário não encontrado." }, 404);
+        const registro = { ...(atual.registro as Record<string, unknown>) };
+        const alterados: Record<string, unknown> = {};
+        for (const [campo, valor] of Object.entries(confirmados)) {
+          if (!RH_CAMPOS_CONFIRMAVEIS.has(campo) || valor === null || valor === undefined || String(valor).trim() === "") continue;
+          alterados[campo] = valor;
+          registro[campo] = valor;
+        }
+        registro.admissaoConferida = true;
+        registro.atualizadoPor = usuario;
+        registro.atualizadoEm = new Date().toISOString();
+        const { data: pessoa, error: pe } = await sb.from(T_REG).upsert({
+          colecao:"rh_pessoas", id:pessoaId, registro, apagado:false, atualizado_em:new Date().toISOString()
+        }).select("registro").single();
+        if (pe) throw pe;
+        const { error: de } = await sb.from("rh_documentos").update({
+          status:"CONFIRMADO", leitura_status:"CONCLUIDA", dados_extraidos: alterados, atualizado_por: usuario
+        }).eq("id", documentoId).eq("pessoa_id", pessoaId);
+        if (de) throw de;
+        await bump("rh_pessoas");
+        await sb.from("rh_documento_eventos").insert({ documento_id:documentoId, pessoa_id:pessoaId, evento:"DADOS_CONFIRMADOS", dados:{alterados}, usuario });
+        await gravarPontoAuditoria("DADOS_DOCUMENTAIS_CONFIRMADOS", { documento_id:documentoId, pessoa_id:pessoaId, campos:Object.keys(alterados) }, usuario);
+        return resp({ ok:true, pessoa:pessoa?.registro ?? registro, camposAlterados:Object.keys(alterados) });
+      }
+
+      case "rhDocumentoUrl": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        const id = String(body.documentoId ?? "");
+        const { data: doc, error: de } = await sb.from("rh_documentos").select("storage_bucket,storage_path").eq("id", id).maybeSingle();
+        if (de) throw de;
+        if (!doc) return resp({ erro: "Documento não encontrado." }, 404);
+        const { data, error } = await sb.storage.from(doc.storage_bucket).createSignedUrl(doc.storage_path, 3600);
+        if (error) throw error;
+        return resp({ url: data?.signedUrl ?? null, expiraEmSegundos: 3600 });
+      }
+
+      case "rhDocumentoAtualizar": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        const id = String(body.documentoId ?? "");
+        const campos: Record<string, unknown> = {};
+        for (const k of ["tipo","empresa","data_emissao","data_realizacao","validade","status","leitura_status","observacoes","dados_extraidos","atualizado_por"]) {
+          if (body[k] !== undefined) campos[k] = k === "atualizado_por" ? usuario : body[k];
+        }
+        const { data, error } = await sb.from("rh_documentos").update(campos).eq("id", id).select("*").maybeSingle();
+        if (error) throw error;
+        if (!data) return resp({ erro: "Documento não encontrado." }, 404);
+        await sb.from("rh_documento_eventos").insert({ documento_id: id, pessoa_id: data.pessoa_id, evento: "DADOS_ATUALIZADOS", dados: campos, usuario });
+        await gravarPontoAuditoria("DOCUMENTO_ATUALIZADO", { documento_id: id, pessoa_id: data.pessoa_id, campos }, usuario);
+        return resp({ ok: true, documento: data });
+      }
+
+      case "rhBancoListar": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        let q = sb.from("rh_banco_horas_movimentos").select("*").order("data_movimento", { ascending: true }).order("created_at", { ascending: true });
+        if (body.pessoaId) q = q.eq("pessoa_id", String(body.pessoaId));
+        if (body.competencia) q = q.eq("competencia", String(body.competencia));
+        const { data, error } = await q;
+        if (error) throw error;
+        const pessoaId = String(body.pessoaId || "");
+        return resp({ movimentos: data ?? [], saldoMinutos: pessoaId ? await saldoBancoPessoa(pessoaId) : null });
+      }
+
+      case "rhBancoRegistrar": {
+        if (!ehDirecao) return resp({ erro: "Somente a direção pode lançar banco de horas.", semPermissao: true }, 403);
+        const pessoaId = String(body.pessoaId ?? "");
+        const competencia = String(body.competencia ?? "");
+        const dataMovimento = String(body.dataMovimento ?? "");
+        const tipo = String(body.tipo ?? "").trim();
+        const motivo = String(body.motivo ?? "").trim();
+        const credito = Math.max(0, Number(body.creditoMinutos || 0));
+        const debito = Math.max(0, Number(body.debitoMinutos || 0));
+        if (!pessoaId || !competencia || !dataMovimento || !tipo || !motivo || (credito <= 0 && debito <= 0) || (credito > 0 && debito > 0)) return resp({ erro: "Informe funcionário, competência, data, tipo, motivo e uma única quantidade de crédito ou débito." }, 400);
+        const { data, error } = await sb.from("rh_banco_horas_movimentos").insert({
+          pessoa_id: pessoaId, empresa: body.empresa ? String(body.empresa) : null, competencia, data_movimento: dataMovimento,
+          tipo, credito_minutos: credito, debito_minutos: debito, motivo, observacao: body.observacao ? String(body.observacao) : null,
+          origem: body.origem || "MANUAL", estorna_id: body.estornaId || null, criado_por: usuario
+        }).select("*").single();
+        if (error) throw error;
+        const saldoMinutos = await saldoBancoPessoa(pessoaId);
+        await gravarPontoAuditoria("BANCO_HORAS_MOVIMENTADO", { movimento_id: data.id, pessoa_id: pessoaId, credito, debito, tipo, motivo }, usuario);
+        return resp({ ok: true, movimento: data, saldoMinutos });
+      }
+
+      case "rhFolhaBuscar": {
+        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        const { data, error } = await sb.from("rh_folhas_ponto").select("*").eq("pessoa_id", String(body.pessoaId ?? "")).eq("competencia", String(body.competencia ?? "")).maybeSingle();
+        if (error) throw error;
+        return resp({ folha: data ?? null });
+      }
+
+      case "rhFolhaSalvar": {
+        if (!ehDirecao) return resp({ erro: "Somente a direção pode gerar ou fechar a Folha.", semPermissao: true }, 403);
+        const pessoaId = String(body.pessoaId ?? "");
+        const competencia = String(body.competencia ?? "");
+        const snapshot = body.dadosSnapshot && typeof body.dadosSnapshot === "object" ? body.dadosSnapshot : {};
+        if (!pessoaId || !competencia) return resp({ erro: "pessoaId e competência são obrigatórios." }, 400);
+        const status = body.status === "FECHADA" ? "FECHADA" : "ABERTA";
+        const payload: Record<string, unknown> = {
+          pessoa_id: pessoaId, empresa: body.empresa ? String(body.empresa) : null, competencia, status, dados_snapshot: snapshot,
+          gerada_em: new Date().toISOString(), gerada_por: usuario
+        };
+        if (status === "FECHADA") { payload.fechada_em = new Date().toISOString(); payload.fechada_por = usuario; }
+        const { data, error } = await sb.from("rh_folhas_ponto").upsert(payload, { onConflict: "pessoa_id,empresa,competencia" }).select("*").single();
+        if (error) throw error;
+        await gravarPontoAuditoria(status === "FECHADA" ? "FOLHA_FECHADA" : "FOLHA_GERADA", { folha_id: data.id, pessoa_id: pessoaId, competencia }, usuario);
+        return resp({ ok: true, folha: data });
+      }
+
       // ================================================================
-      // FINANCEIRO — RECEBIMENTOS
+      // FINANCEIRO — RECEBIMENTOS COMPLETO
       // MinasLab + M Lab.
       // Somente a direção acessa.
-      // Exclusão sempre lógica.
       // Registros OMIE não podem ser alterados/excluídos manualmente.
+      // Exclusão sempre lógica.
       // ================================================================
+
+      case "finRecebimentosOpcoes": {
+        if (!ehDirecao) {
+          return resp({ erro: "As informações financeiras são somente da direção.", semPermissao: true }, 403);
+        }
+
+        const [re, rc, rb] = await Promise.all([
+          sb.from("empresas").select("*").order("nome"),
+          sb.from("categorias_financeiras").select("*").order("nome"),
+          sb.from("contas_bancarias").select("*").order("nome"),
+        ]);
+
+        if (re.error) throw re.error;
+        if (rc.error) throw rc.error;
+        if (rb.error) throw rb.error;
+
+        return resp({
+          empresas: re.data ?? [],
+          categorias: rc.data ?? [],
+          contas: rb.data ?? [],
+        });
+      }
 
       case "finRecebimentosListar": {
         if (!ehDirecao) {
-          return resp(
-            {
-              erro: "As informações financeiras são somente da direção.",
-              semPermissao: true,
-            },
-            403,
-          );
+          return resp({ erro: "As informações financeiras são somente da direção.", semPermissao: true }, 403);
         }
 
         const empresaId = String(body.empresaId ?? "").trim();
-
-        const limite = Math.min(
-          Math.max(Number(body.limite ?? 100), 1),
-          500,
-        );
+        const limite = Math.min(Math.max(Number(body.limite ?? 500), 1), 1000);
 
         let q = sb
           .from("recebimentos")
@@ -459,80 +699,88 @@ Deno.serve(async (req) => {
             conta_bancaria:contas_bancarias(id, nome)
           `)
           .eq("apagado", false)
-          .order("data_vencimento", { ascending: false })
+          .order("data_vencimento", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .limit(limite);
 
-        if (empresaId) {
-          q = q.eq("empresa_id", empresaId);
-        }
+        if (empresaId) q = q.eq("empresa_id", empresaId);
 
         const { data, error } = await q;
-
         if (error) throw error;
-
-        return resp({
-          recebimentos: data ?? [],
-        });
+        return resp({ recebimentos: data ?? [] });
       }
 
       case "finRecebimentoSalvar": {
         if (!ehDirecao) {
-          return resp(
-            {
-              erro: "Somente a direção pode alterar recebimentos.",
-              semPermissao: true,
-            },
-            403,
-          );
+          return resp({ erro: "Somente a direção pode alterar recebimentos.", semPermissao: true }, 403);
         }
 
-        const registro =
-          (body.registro ?? {}) as Record<string, unknown>;
-
+        const registro = (body.registro ?? {}) as Record<string, unknown>;
         const id = String(registro.id ?? "").trim();
         const empresaId = String(registro.empresa_id ?? "").trim();
         const cliente = String(registro.cliente ?? "").trim();
 
-        if (!empresaId) {
-          return resp({ erro: "Informe a empresa." }, 400);
-        }
-
-        if (!cliente) {
-          return resp({ erro: "Informe o cliente." }, 400);
-        }
+        if (!empresaId) return resp({ erro: "Informe a empresa." }, 400);
+        if (!cliente) return resp({ erro: "Informe o cliente." }, 400);
 
         const valorPrevisto = Number(registro.valor_previsto ?? 0);
-        const valorRecebido = Number(registro.valor_recebido ?? 0);
-
-        if (
-          !Number.isFinite(valorPrevisto) ||
-          !Number.isFinite(valorRecebido)
-        ) {
+        let valorRecebido = Number(registro.valor_recebido ?? 0);
+        if (!Number.isFinite(valorPrevisto) || !Number.isFinite(valorRecebido)) {
           return resp({ erro: "Valor financeiro inválido." }, 400);
         }
-
         if (valorPrevisto < 0 || valorRecebido < 0) {
-          return resp(
-            { erro: "Os valores não podem ser negativos." },
-            400,
-          );
+          return resp({ erro: "Os valores não podem ser negativos." }, 400);
         }
 
-        if (valorRecebido > valorPrevisto) {
-          return resp(
-            {
-              erro: "O valor recebido não pode ser maior que o valor previsto.",
-            },
-            400,
-          );
+        let status = String(registro.status ?? "A RECEBER").trim().toUpperCase();
+        if (["RECEBIDO", "LIQUIDADO"].includes(status)) status = "PAGO";
+        if (["A_RECEBER", "ARECEBER", "EM ABERTO", "EMABERTO", "A VENCER", "AVENCER"].includes(status)) status = "A RECEBER";
+        if (["CANCELADA"].includes(status)) status = "CANCELADO";
+        if (!["A RECEBER", "PAGO", "PARCIAL", "VENCIDO", "CANCELADO"].includes(status)) status = "A RECEBER";
+
+        let valorPendente = Math.max(valorPrevisto - valorRecebido, 0);
+        let dataPagamento = registro.data_pagamento || null;
+
+        if (status === "PAGO") {
+          valorRecebido = valorPrevisto;
+          valorPendente = 0;
+        } else if (status === "CANCELADO") {
+          valorRecebido = 0;
+          valorPendente = 0;
+          dataPagamento = null;
+        } else if (status === "A RECEBER" || status === "VENCIDO") {
+          valorRecebido = 0;
+          valorPendente = valorPrevisto;
+          dataPagamento = null;
+        } else if (status === "PARCIAL") {
+          if (valorRecebido <= 0 || valorRecebido >= valorPrevisto) {
+            return resp({ erro: "Para status PARCIAL, informe um valor recebido maior que zero e menor que o valor previsto." }, 400);
+          }
+          valorPendente = valorPrevisto - valorRecebido;
         }
 
         const agora = new Date().toISOString();
-
-        // ------------------------------------------------------------
-        // EDIÇÃO
-        // ------------------------------------------------------------
+        const base: Record<string, unknown> = {
+          empresa_id: empresaId,
+          cliente,
+          cnpj_cpf: registro.cnpj_cpf || null,
+          descricao: registro.descricao || null,
+          valor_previsto: valorPrevisto,
+          valor_recebido: valorRecebido,
+          valor_pendente: valorPendente,
+          data_vencimento: registro.data_vencimento || null,
+          data_pagamento: dataPagamento,
+          status,
+          categoria_id: registro.categoria_id || null,
+          conta_bancaria_id: registro.conta_bancaria_id || null,
+          categoria_texto: registro.categoria_texto || null,
+          conta_bancaria_texto: registro.conta_bancaria_texto || null,
+          forma_pagamento: registro.forma_pagamento || null,
+          numero_nf: registro.numero_nf || null,
+          observacao: registro.observacao || null,
+          updated_by: usuario || "maquina",
+          updated_at: agora,
+        };
 
         if (id) {
           const { data: atual, error: erroAtual } = await sb
@@ -542,157 +790,95 @@ Deno.serve(async (req) => {
             .maybeSingle();
 
           if (erroAtual) throw erroAtual;
-
-          if (!atual || atual.apagado) {
-            return resp(
-              { erro: "Recebimento não encontrado." },
-              404,
-            );
-          }
-
-          // Título controlado pela Omie não deve ser alterado manualmente.
+          if (!atual || atual.apagado) return resp({ erro: "Recebimento não encontrado." }, 404);
           if (String(atual.origem ?? "").toUpperCase() === "OMIE") {
-            return resp(
-              {
-                erro:
-                  "Este recebimento é controlado pela Omie e não pode ser alterado manualmente.",
-              },
-              409,
-            );
+            return resp({ erro: "Este recebimento é controlado pela Omie e não pode ser alterado manualmente." }, 409);
           }
-
-          const dadosAtualizacao: Record<string, unknown> = {
-            empresa_id: empresaId,
-            cliente,
-            cnpj_cpf: registro.cnpj_cpf || null,
-            descricao: registro.descricao || null,
-
-            valor_previsto: valorPrevisto,
-            valor_recebido: valorRecebido,
-            valor_pendente: Math.max(
-              valorPrevisto - valorRecebido,
-              0,
-            ),
-
-            data_vencimento: registro.data_vencimento || null,
-            data_pagamento: registro.data_pagamento || null,
-
-            status: registro.status || "A RECEBER",
-
-            categoria_id: registro.categoria_id || null,
-            conta_bancaria_id: registro.conta_bancaria_id || null,
-
-            numero_nf: registro.numero_nf || null,
-            observacao: registro.observacao || null,
-
-            updated_by: usuario || "maquina",
-            updated_at: agora,
-          };
 
           const { data, error } = await sb
             .from("recebimentos")
-            .update(dadosAtualizacao)
+            .update(base)
             .eq("id", id)
             .eq("apagado", false)
-            .select("*")
+            .select(`*, empresa:empresas(id,nome), categoria:categorias_financeiras(id,nome), conta_bancaria:contas_bancarias(id,nome)`)
             .maybeSingle();
 
           if (error) throw error;
-
-          if (!data) {
-            return resp(
-              { erro: "O servidor não confirmou a alteração." },
-              500,
-            );
-          }
-
-          return resp({
-            ok: true,
-            recebimento: data,
-          });
+          if (!data) return resp({ erro: "O servidor não confirmou a alteração." }, 500);
+          return resp({ ok: true, recebimento: data });
         }
-
-        // ------------------------------------------------------------
-        // NOVO RECEBIMENTO MANUAL
-        // ------------------------------------------------------------
-
-        const dadosNovo: Record<string, unknown> = {
-          empresa_id: empresaId,
-          cliente,
-          cnpj_cpf: registro.cnpj_cpf || null,
-          descricao: registro.descricao || null,
-
-          valor_previsto: valorPrevisto,
-          valor_recebido: valorRecebido,
-          valor_pendente: Math.max(
-            valorPrevisto - valorRecebido,
-            0,
-          ),
-
-          data_vencimento: registro.data_vencimento || null,
-          data_pagamento: registro.data_pagamento || null,
-
-          status: registro.status || "A RECEBER",
-
-          categoria_id: registro.categoria_id || null,
-          conta_bancaria_id: registro.conta_bancaria_id || null,
-
-          numero_nf: registro.numero_nf || null,
-          observacao: registro.observacao || null,
-
-          origem: "MANUAL",
-
-          apagado: false,
-
-          created_by: usuario || "maquina",
-          updated_by: usuario || "maquina",
-
-          created_at: agora,
-          updated_at: agora,
-        };
 
         const { data, error } = await sb
           .from("recebimentos")
-          .insert(dadosNovo)
-          .select("*")
+          .insert({
+            ...base,
+            origem: "MANUAL",
+            apagado: false,
+            created_by: usuario || "maquina",
+            created_at: agora,
+          })
+          .select(`*, empresa:empresas(id,nome), categoria:categorias_financeiras(id,nome), conta_bancaria:contas_bancarias(id,nome)`)
           .maybeSingle();
 
         if (error) throw error;
+        if (!data) return resp({ erro: "O servidor não confirmou a gravação." }, 500);
+        return resp({ ok: true, recebimento: data });
+      }
 
-        if (!data) {
-          return resp(
-            { erro: "O servidor não confirmou a gravação." },
-            500,
-          );
+      case "finRecebimentoLiquidar": {
+        if (!ehDirecao) {
+          return resp({ erro: "Somente a direção pode dar baixa em recebimentos.", semPermissao: true }, 403);
         }
 
-        return resp({
-          ok: true,
-          recebimento: data,
-        });
+        const id = String(body.id ?? "").trim();
+        const dataPagamento = String(body.dataPagamento ?? "").trim();
+        if (!id) return resp({ erro: "Informe o recebimento." }, 400);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataPagamento)) return resp({ erro: "Informe uma data de recebimento válida." }, 400);
+
+        const { data: atual, error: erroAtual } = await sb
+          .from("recebimentos")
+          .select("id, origem, apagado, valor_previsto, status")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (erroAtual) throw erroAtual;
+        if (!atual || atual.apagado) return resp({ erro: "Recebimento não encontrado." }, 404);
+        if (String(atual.origem ?? "").toUpperCase() === "OMIE") {
+          return resp({ erro: "Este recebimento é controlado pela Omie e deve ser atualizado pela integração." }, 409);
+        }
+        if (String(atual.status ?? "").toUpperCase() === "CANCELADO") {
+          return resp({ erro: "Um recebimento cancelado não pode ser liquidado." }, 409);
+        }
+
+        const agora = new Date().toISOString();
+        const { data, error } = await sb
+          .from("recebimentos")
+          .update({
+            valor_recebido: Number(atual.valor_previsto || 0),
+            valor_pendente: 0,
+            data_pagamento: dataPagamento,
+            status: "PAGO",
+            updated_by: usuario || "maquina",
+            updated_at: agora,
+          })
+          .eq("id", id)
+          .eq("apagado", false)
+          .select(`*, empresa:empresas(id,nome), categoria:categorias_financeiras(id,nome), conta_bancaria:contas_bancarias(id,nome)`)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return resp({ erro: "O servidor não confirmou a baixa." }, 500);
+        return resp({ ok: true, recebimento: data });
       }
 
       case "finRecebimentoExcluir": {
         if (!ehDirecao) {
-          return resp(
-            {
-              erro: "Somente a direção pode excluir recebimentos.",
-              semPermissao: true,
-            },
-            403,
-          );
+          return resp({ erro: "Somente a direção pode excluir recebimentos.", semPermissao: true }, 403);
         }
 
         const id = String(body.id ?? "").trim();
+        if (!id) return resp({ erro: "Informe o recebimento." }, 400);
 
-        if (!id) {
-          return resp(
-            { erro: "Informe o recebimento." },
-            400,
-          );
-        }
-
-        // Primeiro verifica o registro.
         const { data: atual, error: erroAtual } = await sb
           .from("recebimentos")
           .select("id, origem, apagado")
@@ -700,28 +886,12 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (erroAtual) throw erroAtual;
-
-        if (!atual || atual.apagado) {
-          return resp(
-            { erro: "Recebimento não encontrado." },
-            404,
-          );
-        }
-
-        // A Omie é dona dos títulos que ela criou.
+        if (!atual || atual.apagado) return resp({ erro: "Recebimento não encontrado." }, 404);
         if (String(atual.origem ?? "").toUpperCase() === "OMIE") {
-          return resp(
-            {
-              erro:
-                "Este recebimento é controlado pela Omie e não pode ser excluído manualmente.",
-            },
-            409,
-          );
+          return resp({ erro: "Este recebimento é controlado pela Omie e não pode ser excluído manualmente." }, 409);
         }
 
         const agora = new Date().toISOString();
-
-        // Exclusão lógica — nunca DELETE físico.
         const { data, error } = await sb
           .from("recebimentos")
           .update({
@@ -737,28 +907,137 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (error) throw error;
+        if (!data) return resp({ erro: "O servidor não confirmou a exclusão." }, 500);
+        return resp({ ok: true, id: data.id });
+      }
 
-        if (!data) {
+      case "finRecebimentosImportar": {
+        if (!ehDirecao) {
+          return resp({ erro: "Somente a direção pode importar recebimentos.", semPermissao: true }, 403);
+        }
+
+        const empresaId = String(body.empresaId ?? "").trim();
+        const origemArquivo = String(body.origemArquivo ?? "ARQUIVO").trim().toUpperCase().slice(0, 30);
+        const itens = Array.isArray(body.itens) ? body.itens as Record<string, unknown>[] : [];
+
+        if (!empresaId) return resp({ erro: "Selecione a empresa da importação." }, 400);
+        if (!itens.length) return resp({ erro: "O arquivo não possui registros para importar." }, 400);
+        if (itens.length > 1000) return resp({ erro: "Importe no máximo 1000 recebimentos por arquivo." }, 400);
+
+        const agora = new Date().toISOString();
+        const linhas: Record<string, unknown>[] = [];
+
+        for (let i = 0; i < itens.length; i++) {
+          const item = itens[i] || {};
+          const cliente = String(item.cliente ?? "").trim();
+          const valorPrevisto = Number(item.valor_previsto ?? 0);
+          if (!cliente) return resp({ erro: `Linha ${i + 2}: cliente não informado.` }, 400);
+          if (!Number.isFinite(valorPrevisto) || valorPrevisto < 0) return resp({ erro: `Linha ${i + 2}: valor inválido.` }, 400);
+
+          let status = String(item.status ?? "A RECEBER").trim().toUpperCase();
+          if (["RECEBIDO", "LIQUIDADO"].includes(status)) status = "PAGO";
+          if (["A_RECEBER", "ARECEBER", "EM ABERTO", "EMABERTO", "A VENCER", "AVENCER"].includes(status)) status = "A RECEBER";
+          if (status === "CANCELADA") status = "CANCELADO";
+          if (!["A RECEBER", "PAGO", "PARCIAL", "VENCIDO", "CANCELADO"].includes(status)) status = "A RECEBER";
+
+          let valorRecebido = Number(item.valor_recebido ?? 0);
+          if (!Number.isFinite(valorRecebido) || valorRecebido < 0) valorRecebido = 0;
+          let valorPendente = valorPrevisto;
+          let dataPagamento = item.data_pagamento || null;
+
+          if (status === "PAGO") {
+            valorRecebido = valorPrevisto;
+            valorPendente = 0;
+            if (!dataPagamento) dataPagamento = item.data_vencimento || null;
+          } else if (status === "CANCELADO") {
+            valorRecebido = 0;
+            valorPendente = 0;
+            dataPagamento = null;
+          } else if (status === "PARCIAL") {
+            valorRecebido = Math.min(Math.max(valorRecebido, 0), valorPrevisto);
+            if (valorRecebido <= 0 || valorRecebido >= valorPrevisto) {
+              status = "A RECEBER";
+              valorRecebido = 0;
+              valorPendente = valorPrevisto;
+              dataPagamento = null;
+            } else {
+              valorPendente = valorPrevisto - valorRecebido;
+            }
+          } else {
+            valorRecebido = 0;
+            valorPendente = valorPrevisto;
+            dataPagamento = null;
+          }
+
+          linhas.push({
+            empresa_id: empresaId,
+            cliente,
+            cnpj_cpf: item.cnpj_cpf || null,
+            descricao: item.descricao || "Importação de recebimentos",
+            valor_previsto: valorPrevisto,
+            valor_recebido: valorRecebido,
+            valor_pendente: valorPendente,
+            data_vencimento: item.data_vencimento || null,
+            data_pagamento: dataPagamento,
+            status,
+            categoria_id: item.categoria_id || null,
+            conta_bancaria_id: item.conta_bancaria_id || null,
+            categoria_texto: item.categoria_texto || null,
+            conta_bancaria_texto: item.conta_bancaria_texto || null,
+            forma_pagamento: item.forma_pagamento || null,
+            numero_nf: item.numero_nf || null,
+            observacao: item.observacao || null,
+            origem: "MANUAL",
+            importacao_origem: origemArquivo,
+            apagado: false,
+            created_by: usuario || "maquina",
+            updated_by: usuario || "maquina",
+            created_at: agora,
+            updated_at: agora,
+          });
+        }
+
+        const { data, error } = await sb
+          .from("recebimentos")
+          .insert(linhas)
+          .select("id");
+
+        if (error) throw error;
+        return resp({ ok: true, inseridos: data?.length ?? linhas.length });
+      }
+
+
+      case "getCfg": {
+        const { data } = await sb
+          .from(T_CFG)
+          .select("config")
+          .eq("id", true)
+          .maybeSingle();
+
+        return resp({ config: data?.config ?? null });
+      }
+
+      case "setCfg": {
+        if (!ehDirecao) {
           return resp(
-            { erro: "O servidor não confirmou a exclusão." },
-            500,
+            {
+              erro: "Só a direção mexe na configuração.",
+              semPermissao: true,
+            },
+            403,
           );
         }
 
-        return resp({
-          ok: true,
-          id: data.id,
-        });
-      }
+        const { error } = await sb
+          .from(T_CFG)
+          .upsert({
+            id: true,
+            config: body.config ?? {},
+            atualizado_em: new Date().toISOString(),
+          });
 
-      case "getCfg": {
-        const { data } = await sb.from(T_CFG).select("config").eq("id", true).maybeSingle();
-        return resp({ config: data?.config ?? null });
-      }
-      case "setCfg": {
-        if (!ehDirecao) return resp({ erro: "Só a direção mexe na configuração.", semPermissao: true }, 403);
-        const { error } = await sb.from(T_CFG).upsert({ id: true, config: body.config ?? {}, atualizado_em: new Date().toISOString() });
         if (error) throw error;
+
         await bump("cfg");
         return resp({ ok: true });
       }
@@ -796,6 +1075,8 @@ Deno.serve(async (req) => {
         const nome = String(body.nome ?? "").trim();
         const papelNovo = String(body.papel ?? "");
         const senha = String(body.senha ?? "");
+        const paginas = Array.isArray(body.paginas_consulta) ? body.paginas_consulta : [];
+        if (paginas.some((p: unknown) => p !== "financas/servicos-gerados")) return resp({ erro: "Página não reconhecida." }, 400);
         if (!u || !nome) return resp({ erro: "Informe usuário e nome." }, 400);
         if (!PAPEIS.includes(papelNovo)) return resp({ erro: `Papel desconhecido: ${papelNovo}` }, 400);
         if (senha.length < 6) return resp({ erro: "A senha precisa de ao menos 6 caracteres." }, 400);
@@ -803,12 +1084,23 @@ Deno.serve(async (req) => {
         if (jaTem) return resp({ erro: `Já existe a conta "${u}".` }, 409);
         const { data, error } = await sb
           .from(T_CONTAS)
-          .insert({ usuario: u, nome, papel: papelNovo, senha: await hashSenha(senha), ativo: true })
+          .insert({ usuario: u, nome, papel: papelNovo, senha: await hashSenha(senha), ativo: true, paginas_consulta: paginas })
           .select("*")
           .maybeSingle();
         if (error) throw error;
         CACHE_ATIVA.delete(u);
         return resp({ ok: true, conta: data ? contaLimpa(data) : null });
+      }
+
+      case "contaPaginas": {
+        if (!ehDirecao) return resp({ erro: "Só a direção administra acessos.", semPermissao: true }, 403);
+        const u = normalizarUsuario(body.usuario);
+        const paginas = body.paginas_consulta;
+        if (!Array.isArray(paginas) || paginas.some((p: unknown) => p !== "financas/servicos-gerados")) return resp({ erro: "Selecione páginas válidas." }, 400);
+        const { data, error } = await sb.from(T_CONTAS).update({ paginas_consulta: [...new Set(paginas)] }).eq("usuario", u).select("*").maybeSingle();
+        if (error) throw error;
+        if (!data) return resp({ erro: "Conta não encontrada." }, 404);
+        return resp({ ok: true, conta: contaLimpa(data) });
       }
 
       case "contaSenha": {

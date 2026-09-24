@@ -135,6 +135,7 @@ export const contasListar = () => chamar("contasListar").then((r) => r.contas ||
 export const contaCriar = (dados) => chamar("contaCriar", dados);
 export const contaSenha = (usuario, senha) => chamar("contaSenha", { usuario, senha });
 export const contaAtiva = (usuario, ativo) => chamar("contaAtiva", { usuario, ativo });
+export const contaPaginas = (usuario, paginas_consulta) => chamar("contaPaginas", { usuario, paginas_consulta });
 // A propria pessoa troca a propria senha (qualquer papel).
 export const trocarMinhaSenha = (senhaAtual, senhaNova) =>
   chamar("trocarSenha", { senhaAtual, senhaNova });

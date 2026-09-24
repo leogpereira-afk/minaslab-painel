@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, KeyRound, Copy, Check, Shield, Power, Dices, UserRound,
 } from "lucide-react";
-import { contasListar, contaCriar, contaSenha, contaAtiva } from "../services/dados.js";
+import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
 import { getSessao } from "../lib/sessao.js";
 import { dataLonga } from "../lib/format.js";
 import {
@@ -46,7 +46,7 @@ function normalizarUsuario(v) {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
-function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
+function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
   const ativa = conta.ativo !== false;
   const papel = papelDe(conta.papel);
   return (
@@ -72,6 +72,11 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva }) {
       <span className={ativa ? "chip-ok" : "chip-bad"}>{ativa ? "Ativa" : "Desativada"}</span>
 
       <span className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => aoPaginas(conta)}
+          className="btn-outline text-xs"
+        >Páginas</button>
         <button
           type="button"
           onClick={() => aoRedefinir(conta)}
@@ -161,6 +166,7 @@ function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
           </select>
           <p id="ac-papel-ajuda" className="mt-1 text-xs text-slate-600">{papelDe(form.papel).desc}</p>
         </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" className="mt-1" checked={form.paginas_consulta?.includes("financas/servicos-gerados") || false} onChange={e => setForm({ ...form, paginas_consulta: e.target.checked ? ["financas/servicos-gerados"] : [] })} />Financeiro → Serviços Gerados (somente visualizar)</label>
         <div>
           <label className="label" htmlFor="ac-senha">Senha inicial</label>
           {/* type="text" de propósito: a direção precisa LER a senha para
@@ -283,6 +289,7 @@ export default function Acessos() {
   const [aviso, setAviso] = useState(null);
   const [formNova, setFormNova] = useState(null); // { usuario, nome, papel, senha }
   const [alvoSenha, setAlvoSenha] = useState(null); // { usuario, senha }
+  const [alvoPaginas, setAlvoPaginas] = useState(null);
   const [senhaEntregue, setSenhaEntregue] = useState(null); // { usuario, senha }
   const [salvando, setSalvando] = useState(false);
   const [erroFormulario, setErroFormulario] = useState(null);
@@ -320,7 +327,7 @@ export default function Acessos() {
 
   const abrirNova = (predef) => {
     setErroFormulario(null);
-    setFormNova({ usuario: "", nome: "", papel: "equipe", senha: "", ...predef });
+    setFormNova({ usuario: "", nome: "", papel: "equipe", senha: "", paginas_consulta: [], ...predef });
   };
 
   const criar = async () => {
@@ -333,6 +340,7 @@ export default function Acessos() {
         nome: formNova.nome.trim(),
         papel: formNova.papel,
         senha: formNova.senha,
+        paginas_consulta: formNova.paginas_consulta,
       };
       await contaCriar(dados);
       setFormNova(null);
@@ -376,6 +384,17 @@ export default function Acessos() {
     } catch (e) {
       setAviso({ tipo: "erro", texto: e.message });
     }
+  };
+  const salvarPaginas = async () => {
+    setSalvando(true);
+    setErroFormulario(null);
+    try {
+      await contaPaginas(alvoPaginas.usuario, alvoPaginas.paginas_consulta);
+      setAlvoPaginas(null);
+      setAviso({ tipo: "ok", texto: "Permissões salvas. Peça ao usuário que entre novamente para atualizar o menu." });
+      recarregar();
+    } catch (e) { setErroFormulario(e.message); }
+    finally { setSalvando(false); }
   };
 
   if (erro && !vm) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
@@ -438,6 +457,7 @@ export default function Acessos() {
                 minha={c.usuario === sessao?.usuario}
                 aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
                 aoAlternarAtiva={alternarAtiva}
+                aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, paginas_consulta: conta.paginas_consulta || [] }); }}
               />
             ))}
           </div>
@@ -474,6 +494,14 @@ export default function Acessos() {
         aoSalvar={criar}
         aoFechar={() => setFormNova(null)}
       />
+      {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">Permissões adicionais de consulta. A Direção conserva acesso a todas as páginas.</p>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={alvoPaginas.paginas_consulta.includes("financas/servicos-gerados")} onChange={e => setAlvoPaginas(v => ({ ...v, paginas_consulta: e.target.checked ? ["financas/servicos-gerados"] : [] }))} />Financeiro → Serviços Gerados (somente visualizar)</label>
+          {erroFormulario && <p role="alert" className="text-sm text-red-700">{erroFormulario}</p>}
+          <div className="flex justify-end gap-2"><button type="button" className="btn-outline" onClick={() => setAlvoPaginas(null)}>Cancelar</button><button type="button" className="btn-primary" disabled={salvando} onClick={salvarPaginas}>{salvando ? "Salvando..." : "Salvar páginas"}</button></div>
+        </div>
+      </Modal>}
       <FormRedefinirSenha
         alvo={alvoSenha}
         setAlvo={setAlvoSenha}
