@@ -66,12 +66,12 @@ export function getSessao() {
   }
 }
 
-export function gravarSessao({ token, usuario, nome, papel }) {
+export function gravarSessao({ token, usuario, nome, papel, paginas_consulta }) {
   try {
     localStorage.setItem(K_TOKEN, token);
     localStorage.setItem(
       K_SESSAO,
-      JSON.stringify({ usuario, nome, papel: papel || "leitura", visto: Date.now() })
+      JSON.stringify({ usuario, nome, papel: papel || "leitura", paginas_consulta: Array.isArray(paginas_consulta) ? paginas_consulta : [], visto: Date.now() })
     );
   } catch {
     /* sem localStorage segue sem persistir */
@@ -125,9 +125,11 @@ export const podeEditar = (sessao = getSessao()) =>
 const SO_DIRECAO = ["patrimonio", "rh", "ponto", "financas", "acessos", "curva-abc"];
 export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
+  if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
   return true;
 }
+export const podeVerServicoGerado = (sessao = getSessao()) => ehDirecao(sessao) || sessao?.paginas_consulta?.includes("financas/servicos-gerados") === true;
 
 // fetch com o crachá. Sessao expirada (401) derruba para a tela de login em vez
 // de deixar a pessoa olhando um erro sem saber o que fazer.
