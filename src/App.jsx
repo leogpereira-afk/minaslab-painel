@@ -24,7 +24,6 @@ const Ponto = lazy(() => import("./pages/Ponto.jsx"));
 const ConferenciaFinanceiro = lazy(() => import("./pages/ConferenciaFinanceiro.jsx"));
 const FinanceiroDashboard = lazy(() => import("./pages/FinanceiroDashboard.jsx"));
 const ServicosGerados = lazy(() => import("./pages/ServicosGeradosAgrupado.jsx"));
-const ServicosGeradosConsulta = lazy(() => import("./pages/ServicosGeradosConsulta.jsx"));
 const Recebimentos = lazy(() => import("./pages/RecebimentosFinanceiro.jsx"));
 const Despesas = lazy(() => import("./pages/Despesas.jsx"));
 const NotasFiscais = lazy(() => import("./pages/NotasFiscais.jsx"));
@@ -49,7 +48,7 @@ const Acessos = lazy(() => import("./pages/Acessos.jsx"));
 function Guarda({ modulo, children }) { const sessao=getSessao(); const location=useLocation(); if(!sessao)return <Navigate to="/entrar" replace state={{de:location.pathname}}/>; if(modulo&&!podeAbrir(modulo,sessao))return <Navigate to="/" replace/>; return children; }
 
 function GuardaFinanceiro({children}) { const s=getSessao(), l=useLocation(); if(!s)return <Navigate to="/entrar" replace/>; if(ehDirecao(s))return children; return podeVerServicoGerado(s)&&l.pathname==="/financas/servicos-gerados"?children:<Navigate to={podeVerServicoGerado(s)?"/financas/servicos-gerados":"/"} replace/>; }
-function PaginaServicos() { return ehDirecao(getSessao())?<ServicosGerados/>:<ServicosGeradosConsulta/>; }
+function PaginaServicos() { return <ServicosGerados somenteLeitura={!ehDirecao(getSessao())}/>; }
 
 export default function App(){
  const[,setVersao]=useState(0);
