@@ -491,6 +491,36 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoqueDocumentoUpload": {
+        if (!podeEditarEstoque("fornecedores")) return resp({ erro:"Seu acesso lê, mas não edita fornecedores.", semPermissao:true },403);
+        const fornecedorId=String(body.fornecedorId??""), tipoDocumentoId=String(body.tipoDocumentoId??""), nomeOriginal=String(body.nomeOriginal??"").trim(), base64=String(body.arquivoBase64??"");
+        if(!fornecedorId||!tipoDocumentoId||!nomeOriginal||!base64) return resp({erro:"Fornecedor, tipo documental e arquivo são obrigatórios."},400);
+        const lerReg=async(colecao:string,id:string)=>{const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao",colecao).eq("id",id).maybeSingle();if(error)throw error;return data&&!data.apagado?data.registro as Record<string,unknown>:null};
+        const fornecedor=await lerReg("estoque_fornecedores",fornecedorId); if(!fornecedor)return resp({erro:"Fornecedor não localizado."},404);
+        const tipo=await lerReg("estoque_tipos_documentos_fornecedor",tipoDocumentoId); if(!tipo)return resp({erro:"Tipo documental não localizado."},404);
+        const {data:rr,error:re}=await sb.from(T_REG).select("registro").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false);if(re)throw re;
+        const regra=(rr??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.tipoFornecedor??"").toUpperCase()===String(fornecedor.tipoFornecedor??"").toUpperCase()&&String(r.tipoDocumentoId??"")===tipoDocumentoId&&String(r.ativo??"SIM").toUpperCase()!=="NÃO");
+        if(!regra||String(regra.regra??"").toUpperCase()==="NÃO SE APLICA")return resp({erro:"Documento não aplicável ou sem regra para este tipo de fornecedor."},409);
+        if(String(tipo.possuiValidade??"NÃO").toUpperCase()==="SIM"&&!body.dataValidade)return resp({erro:"Data de validade é obrigatória para este tipo documental."},400);
+        const bytes=bytesDoBase64(base64);if(bytes.byteLength>RH_DOC_MAX_BYTES)return resp({erro:"O documento excede o limite de 25 MB."},413);
+        const {data:docs,error:de}=await sb.from(T_REG).select("registro").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false);if(de)throw de;
+        const versoes=(docs??[]).map(x=>x.registro as Record<string,unknown>).filter(d=>String(d.fornecedorId??"")===fornecedorId&&String(d.tipoDocumentoId??"")===tipoDocumentoId).map(d=>Number(d.versao)||0);
+        const versao=(versoes.length?Math.max(...versoes):0)+1,id="DOC-"+crypto.randomUUID().slice(0,10).toUpperCase(),agora=new Date().toISOString();
+        const ext=nomeOriginal.includes(".")?"."+nomeOriginal.split(".").pop():"", nomeNovo=nomeStorageSeguro(`${fornecedorId}_${String(tipo.nomeDocumento??"DOCUMENTO")}_V${versao}_${agora.slice(0,10).replaceAll("-","")}${ext}`);
+        const storagePath=`estoque/fornecedores/${fornecedorId}/${id}-${nomeNovo}`, mime=String(body.mimeType||"application/octet-stream");
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:mime,upsert:false});if(up.error)throw up.error;
+        const registro:Record<string,unknown>={id,fornecedorId,cnpj:String(body.cnpj??fornecedor.cnpj??""),tipoDocumentoId,tipoDocumento:String(tipo.nomeDocumento??""),dataEmissao:body.dataEmissao||"",dataValidade:body.dataValidade||"",possuiValidade:String(tipo.possuiValidade??"NÃO"),versao,observacao:String(body.observacao??""),ativo:"SIM",usuarioRegistro:usuario,dataRegistro:agora,createdAt:agora,referencia:String(body.referencia??""),storageBucket:RH_DOC_BUCKET,storagePath,nomeArquivo:nomeNovo,tipoMime:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,atualizadoPor:usuario,atualizadoEm:agora};
+        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}
+        await bump("estoque_documentos_fornecedor");return resp({ok:true,documento:registro});
+      }
+
+      case "estoqueDocumentoUrl": {
+        if (!podeConsultarColecao("estoque_documentos_fornecedor")) return resp({erro:"Sem acesso aos documentos.",semPermissao:true},403);
+        const id=String(body.id??"");const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_documentos_fornecedor").eq("id",id).maybeSingle();if(error)throw error;if(!data||data.apagado)return resp({erro:"Documento não encontrado."},404);
+        const d=data.registro as Record<string,unknown>;if(d.storageBucket&&d.storagePath){const {data:u,error:ue}=await sb.storage.from(String(d.storageBucket)).createSignedUrl(String(d.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600})}
+        if(d.driveUrl)return resp({url:String(d.driveUrl),legado:true});return resp({erro:"Documento sem arquivo vinculado."},404);
+      }
+
       case "estoqueSalvar": {
         const colecao = String(body.colecao ?? "");
         const registro = body.registro as Record<string, unknown>;
