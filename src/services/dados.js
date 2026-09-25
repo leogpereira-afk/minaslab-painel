@@ -125,7 +125,7 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
-export const estoqueEntrada = (lote, movimento = {}) =>
+export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });\n\nexport const estoqueEntrada = (lote, movimento = {}) =>
   chamar("estoqueEntrada", { lote, movimento }).then((r) => {
     if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a entrada de estoque.");
     esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
