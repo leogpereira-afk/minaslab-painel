@@ -125,7 +125,7 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
-export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });\n\nexport const estoqueEntrada = (lote, movimento = {}) =>
+export const estoqueSalvar = (colecao, registro) => chamar("estoqueSalvar", { colecao, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a gravação."); esquecerColecao(colecao); return r.registro; });\n\nexport const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });\n\nexport const estoqueEntrada = (lote, movimento = {}) =>
   chamar("estoqueEntrada", { lote, movimento }).then((r) => {
     if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a entrada de estoque.");
     esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
