@@ -555,7 +555,7 @@ Deno.serve(async (req) => {
       }
 
       case "estoquePedidoExcluir": {
-        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
         const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String).filter(Boolean))] : [];
         if (!ids.length || ids.length > 100) return resp({ erro: "Informe de 1 a 100 itens do pedido." }, 400);
@@ -577,7 +577,7 @@ Deno.serve(async (req) => {
       }
 
       case "estoqueEntrada": {
-        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeEditarEstoque("entrada-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
           return resp({ erro: "Você não tem acesso à entrada de estoque.", semPermissao: true }, 403);
         }
@@ -602,7 +602,7 @@ Deno.serve(async (req) => {
       }
 
       case "estoqueRetirada": {
-        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeEditarEstoque("retirada-baixa")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
           return resp({ erro: "Você não tem acesso à saída de estoque.", semPermissao: true }, 403);
         }
