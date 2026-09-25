@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
 import { getSessao } from "../lib/sessao.js";
+import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
 import {
   PageTitle, Card, Empty, CarregandoModulo, ErroModulo, Aviso, Modal,
@@ -23,6 +24,21 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
+
+function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
+  return <div className="grid max-h-[55vh] gap-5 overflow-y-auto rounded-xl border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-3">
+    {GRUPOS_PERMISSOES.map(grupo => <section key={grupo.titulo}>
+      <h3 className="mb-2 font-semibold text-slate-900">{grupo.titulo}</h3>
+      <div className="space-y-2">{grupo.paginas.map(([id, rotulo]) => {
+        const disponivel = PERMISSOES_DISPONIVEIS.has(id);
+        return <label key={id} className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
+          <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id)} disabled={direcao || !disponivel} onChange={e => onChange(e.target.checked ? [...new Set([...paginas, id])] : paginas.filter(p => p !== id))}/>
+          <span>{rotulo}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
+        </label>;
+      })}</div>
+    </section>)}
+  </div>;
+}
 
 // Senha que dá para DITAR por telefone e anotar sem errar: palavra-numero-
 // palavra. Listas curtas de propósito — a força vem da combinação, e a pessoa
@@ -166,7 +182,7 @@ function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
           </select>
           <p id="ac-papel-ajuda" className="mt-1 text-xs text-slate-600">{papelDe(form.papel).desc}</p>
         </div>
-        <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" className="mt-1" checked={form.paginas_consulta?.includes("financas/servicos-gerados") || false} onChange={e => setForm({ ...form, paginas_consulta: e.target.checked ? ["financas/servicos-gerados"] : [] })} />Financeiro → Serviços Gerados (somente visualizar)</label>
+        <MatrizPaginas paginas={form.paginas_consulta} direcao={form.papel === "direcao"} onChange={paginas_consulta => setForm({ ...form, paginas_consulta })}/>
         <div>
           <label className="label" htmlFor="ac-senha">Senha inicial</label>
           {/* type="text" de propósito: a direção precisa LER a senha para
@@ -340,7 +356,7 @@ export default function Acessos() {
         nome: formNova.nome.trim(),
         papel: formNova.papel,
         senha: formNova.senha,
-        paginas_consulta: formNova.paginas_consulta,
+        paginas_consulta: formNova.papel === "direcao" ? [] : ["__matriz_v1", ...formNova.paginas_consulta],
       };
       await contaCriar(dados);
       setFormNova(null);
@@ -389,7 +405,7 @@ export default function Acessos() {
     setSalvando(true);
     setErroFormulario(null);
     try {
-      await contaPaginas(alvoPaginas.usuario, alvoPaginas.paginas_consulta);
+      await contaPaginas(alvoPaginas.usuario, alvoPaginas.papel === "direcao" ? [] : ["__matriz_v1", ...alvoPaginas.paginas_consulta]);
       setAlvoPaginas(null);
       setAviso({ tipo: "ok", texto: "Permissões salvas. Peça ao usuário que entre novamente para atualizar o menu." });
       recarregar();
@@ -457,7 +473,7 @@ export default function Acessos() {
                 minha={c.usuario === sessao?.usuario}
                 aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
                 aoAlternarAtiva={alternarAtiva}
-                aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, paginas_consulta: conta.paginas_consulta || [] }); }}
+                aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: (conta.paginas_consulta || []).filter(p => p !== "__matriz_v1") }); }}
               />
             ))}
           </div>
@@ -496,8 +512,8 @@ export default function Acessos() {
       />
       {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Permissões adicionais de consulta. A Direção conserva acesso a todas as páginas.</p>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={alvoPaginas.paginas_consulta.includes("financas/servicos-gerados")} onChange={e => setAlvoPaginas(v => ({ ...v, paginas_consulta: e.target.checked ? ["financas/servicos-gerados"] : [] }))} />Financeiro → Serviços Gerados (somente visualizar)</label>
+          <p className="text-sm text-slate-600">Selecione as páginas de consulta. A direção tem acesso a todas. Em Serviços Gerados, a equipe também pode conferir pagamentos.</p>
+          <MatrizPaginas paginas={alvoPaginas.paginas_consulta} direcao={alvoPaginas.papel === "direcao"} onChange={paginas_consulta => setAlvoPaginas(v => ({ ...v, paginas_consulta }))}/>
           {erroFormulario && <p role="alert" className="text-sm text-red-700">{erroFormulario}</p>}
           <div className="flex justify-end gap-2"><button type="button" className="btn-outline" onClick={() => setAlvoPaginas(null)}>Cancelar</button><button type="button" className="btn-primary" disabled={salvando} onClick={salvarPaginas}>{salvando ? "Salvando..." : "Salvar páginas"}</button></div>
         </div>
