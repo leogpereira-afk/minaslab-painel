@@ -393,6 +393,9 @@ Deno.serve(async (req) => {
       );
     };
     const podeEscrever = ehDirecao || (papel === "equipe" && !matrizAtiva);
+    const podeEditarEstoque = (secao: string) => ehDirecao || (papel === "equipe" && (
+      !matrizAtiva || permissoes.includes("gestao-estoque") || permissoes.includes("gestao-estoque/" + secao)
+    ));
 
     switch (action) {
       case "rev": {
@@ -486,6 +489,25 @@ Deno.serve(async (req) => {
           .eq("id", String(body.id))
           .maybeSingle();
         return resp({ registro: data && !data.apagado ? data.registro : null });
+      }
+
+      case "estoqueSalvar": {
+        const colecao = String(body.colecao ?? "");
+        const registro = body.registro as Record<string, unknown>;
+        const mapa: Record<string,string> = {
+          estoque_produtos_base:"cadastro-insumo", estoque_fornecedores:"fornecedores",
+          estoque_avaliacoes_fornecedor:"fornecedores", estoque_fapes:"fornecedores",
+          estoque_tipos_documentos_fornecedor:"configuracoes", estoque_regras_documentos_fornecedor:"configuracoes",
+          estoque_documentos_fornecedor:"fornecedores", estoque_pedidos:"pedido-compra",
+          estoque_inspecoes:"pedido-compra", estoque_config:"configuracoes",
+          estoque_historico_produto_base:"cadastro-insumo", estoque_logs_compras:"pedido-compra"
+        };
+        const secao = mapa[colecao];
+        if (!secao || !podeEditarEstoque(secao) || !podeConsultarColecao(colecao)) return resp({ erro:"Seu acesso lê, mas não edita esta parte da Gestão de Estoque.", semPermissao:true },403);
+        if (!registro?.id) registro.id = crypto.randomUUID();
+        registro.atualizadoPor = usuario || "maquina"; registro.atualizadoEm = new Date().toISOString();
+        const { data,error } = await sb.from(T_REG).upsert({colecao,id:String(registro.id),registro,apagado:false,atualizado_em:new Date().toISOString()}).select("registro").maybeSingle();
+        if(error) throw error; await bump(colecao); return resp({ok:true,registro:data?.registro??registro});
       }
 
       case "estoquePedidoExcluir": {
