@@ -507,15 +507,10 @@ Deno.serve(async (req) => {
           tipo: "ENTRADA", acao: "CADASTRO NOVO", quantidade: total,
           criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
         };
-        const { error: e1 } = await sb.from(T_REG).upsert({ colecao: "estoque_lotes", id: String(lote.id), registro: lote, apagado: false, atualizado_em: agora });
-        if (e1) throw e1;
-        const { error: e2 } = await sb.from(T_REG).upsert({ colecao: "estoque_movimentos", id: String(movimento.id), registro: movimento, apagado: false, atualizado_em: agora });
-        if (e2) {
-          await sb.from(T_REG).upsert({ colecao: "estoque_lotes", id: String(lote.id), registro: { id: lote.id, _apagado: true, atualizadoPor: usuario, atualizadoEm: agora }, apagado: true, atualizado_em: agora });
-          throw e2;
-        }
+        const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "entrada", p_lote: lote, p_movimento: movimento });
+        if (error) throw error;
         await bump("estoque_lotes"); await bump("estoque_movimentos");
-        return resp({ ok: true, lote, movimento });
+        return resp(gravado ?? { ok: true, lote, movimento });
       }
 
       case "estoqueRetirada": {
@@ -548,12 +543,13 @@ Deno.serve(async (req) => {
           observacao: String(body.observacao ?? ""), dataAbertura: body.dataAbertura || null,
           criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
         };
-        const { error: e1 } = await sb.from(T_REG).upsert({ colecao:"estoque_lotes", id:loteId, registro:lote, apagado:false, atualizado_em:agora });
-        if (e1) throw e1;
-        const { error: e2 } = await sb.from(T_REG).upsert({ colecao:"estoque_movimentos", id:String(movimento.id), registro:movimento, apagado:false, atualizado_em:agora });
-        if (e2) throw e2;
+        const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "retirada", p_lote: lote, p_movimento: movimento });
+        if (error) {
+          if (String(error.message || "").includes("saldo")) return resp({ erro: error.message }, 409);
+          throw error;
+        }
         await bump("estoque_lotes"); await bump("estoque_movimentos");
-        return resp({ ok:true, lote, movimento });
+        return resp(gravado ?? { ok:true, lote, movimento });
       }
 
       case "upsert": {
