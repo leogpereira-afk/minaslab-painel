@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";\nimport { jsPDF } from "jspdf";\nimport autoTable from "jspdf-autotable";
+import { useEffect, useMemo, useState } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   AlertTriangle, BarChart3, Boxes, ClipboardList, FileText, PackagePlus, PackageMinus,
   Plus, Search, Settings, Tags, Truck,
