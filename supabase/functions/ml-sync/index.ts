@@ -556,6 +556,18 @@ Deno.serve(async (req) => {
         if(error) throw error; await bump(colecao); return resp({ok:true,registro:data?.registro??registro});
       }
 
+      case "estoquePedidoSalvar": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        const codigo=String(body.pedidoCodigo??"").trim();
+        const itens=Array.isArray(body.itens)?body.itens:[];
+        if(!itens.length) return resp({erro:"Pedido deve possuir ao menos um item."},400);
+        const {data,error}=await sb.rpc("ml_estoque_pedido_salvar",{p_codigo:codigo||null,p_itens:itens,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
       case "estoquePedidoExcluir": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
