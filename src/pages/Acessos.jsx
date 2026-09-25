@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
 import { getSessao } from "../lib/sessao.js";
-import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS } from "../lib/catalogoPermissoes.js";
+import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
 import {
   PageTitle, Card, Empty, CarregandoModulo, ErroModulo, Aviso, Modal,
@@ -32,10 +32,19 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
       <h3 className="mb-2 font-semibold text-slate-900">{grupo.titulo}</h3>
       <div className="space-y-2">{grupo.paginas.map(([id, rotulo]) => {
         const disponivel = PERMISSOES_DISPONIVEIS.has(id);
-        return <label key={id} className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
-          <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id)} disabled={direcao || !disponivel} onChange={e => onChange(e.target.checked ? [...new Set([...paginas, id])] : paginas.filter(p => p !== id))}/>
-          <span>{rotulo}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
-        </label>;
+        return <div key={id}>
+          <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
+            <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id)} disabled={direcao || !disponivel} onChange={e => onChange(e.target.checked ? [...new Set([...paginas, id])] : paginas.filter(p => p !== id))}/>
+            <span>{rotulo}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
+          </label>
+          {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
+            {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title="A seleção separada desta aba ainda depende da proteção dos dados no servidor">
+              <input type="checkbox" disabled checked={direcao || (disponivel && paginas.includes(id))} aria-label={`${rotulo} — ${nome}: incluído no acesso à página`}/>
+              <span>{nome}</span>
+            </label>)}
+            <small className="block text-[11px] text-slate-400">Abas liberadas juntas com a página; separação individual em preparação.</small>
+          </div>}
+        </div>;
       })}</div>
     </section>)}
   </div>;
