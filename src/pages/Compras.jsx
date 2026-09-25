@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listar, salvar, apagar, elenco } from "../services/dados.js";
-import { getSessao, podeEditar } from "../lib/sessao.js";
+import { getSessao, podeEditar, podeVerSecao } from "../lib/sessao.js";
 import { ymdLocal, paraNumero, dataCurta } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
 import {
@@ -55,10 +55,18 @@ const ABAS = [
   { valor: "ordens", rotulo: "Ordens de compra" },
   { valor: "retiradas", rotulo: "Retiradas" },
 ];
+const COLECOES_POR_ABA = {
+  estoque: [COL_PRODUTOS, COL_MOV],
+  pedidos: [COL_PEDIDOS, COL_PRODUTOS, COL_MOV, COL_ORDENS],
+  ordens: [COL_ORDENS, COL_PEDIDOS, COL_PRODUTOS],
+  retiradas: [COL_MOV, COL_PRODUTOS],
+};
 
 export default function Compras() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
+  const abasPermitidas = ABAS.filter(item => podeVerSecao("compras", item.valor, sessao));
+  const colecoesPermitidas = [...new Set(abasPermitidas.flatMap(item => COLECOES_POR_ABA[item.valor]))];
 
   const [dados, setDados] = useState(null); // { pedidos, produtos, movs, ordens }
   const [equipe, setEquipe] = useState([]);
@@ -69,9 +77,9 @@ export default function Compras() {
   const [aba, setAba] = useState(() => {
     try {
       const guardada = localStorage.getItem(K_ABA);
-      return ABAS.some((a) => a.valor === guardada) ? guardada : "estoque";
+      return abasPermitidas.some((a) => a.valor === guardada) ? guardada : abasPermitidas[0]?.valor || "estoque";
     } catch {
-      return "estoque";
+      return abasPermitidas[0]?.valor || "estoque";
     }
   });
 
@@ -92,9 +100,10 @@ export default function Compras() {
     elenco().then(setEquipe).catch(() => {});
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
-    Promise.all([listar(COL_PEDIDOS), listar(COL_PRODUTOS), listar(COL_MOV), listar(COL_ORDENS)])
-      .then(([pedidos, produtos, movs, ordens]) => {
-        setDados({ pedidos, produtos, movs, ordens });
+    Promise.all(colecoesPermitidas.map(async nome => [nome, await listar(nome)]))
+      .then(entradas => {
+        const colecoes = Object.fromEntries(entradas);
+        setDados({ pedidos: colecoes[COL_PEDIDOS] || [], produtos: colecoes[COL_PRODUTOS] || [], movs: colecoes[COL_MOV] || [], ordens: colecoes[COL_ORDENS] || [] });
         setErro(null);
       })
       .catch((e) => {
@@ -132,6 +141,7 @@ export default function Compras() {
   const resumo = useMemo(() => resumoEstoque(dados?.movs || []), [dados]);
 
   const trocarAba = (valor) => {
+    if (!abasPermitidas.some(item => item.valor === valor)) return;
     setAba(valor);
     // Um recebimento aberto pertence à aba onde começou: levá-lo junto para
     // outra aba assustaria quem só queria olhar o estoque.
@@ -764,7 +774,7 @@ export default function Compras() {
       />
 
       <div role="group" aria-label="Seções de Compras" className="mb-6 max-w-full">
-        <Segmented opcoes={ABAS} valor={aba} onChange={trocarAba} className="!grid w-full grid-cols-2 sm:!flex sm:w-fit" />
+        <Segmented opcoes={abasPermitidas} valor={aba} onChange={trocarAba} className="!grid w-full grid-cols-2 sm:!flex sm:w-fit" />
       </div>
 
       {aba === "estoque" && (

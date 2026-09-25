@@ -221,7 +221,13 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "compras", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const COLECOES_COMPRA: Record<string, string[]> = {
+  compras: ["pedidos", "ordens"],
+  produtos: ["estoque", "pedidos", "ordens", "retiradas"],
+  estoque_mov: ["estoque", "pedidos", "retiradas"],
+  ordens: ["pedidos", "ordens"],
+};
 const COLECAO_PAGINA: Record<string, string> = {
   compromissos: "compromissos", licitacoes: "licitacoes",
   manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
@@ -362,6 +368,7 @@ Deno.serve(async (req) => {
       const pagina = COLECAO_PAGINA[colecao];
       return !!pagina && (
         permissoes.includes(pagina) ||
+        (pagina === "compras" && (COLECOES_COMPRA[colecao] || []).some(tab => permissoes.includes("compras/" + tab))) ||
         (permissoes.includes("calendario") && ["compromissos", "licitacoes", "manutencoes", "equipamentos", "carros"].includes(colecao)) ||
         (permissoes.includes("inicio") && ["compromissos", "licitacoes", "manutencoes", "compras"].includes(colecao))
       );
