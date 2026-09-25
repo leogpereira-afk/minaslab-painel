@@ -25,7 +25,7 @@ export const SUBPAGINAS_PERMISSOES = {
 // como concedida se suas chamadas de dados ainda exigem papel de direção.
 export const PERMISSOES_DISPONIVEIS = new Set([
   "inicio", "calendario", "compromissos", "licitacoes", "marketing",
-  "google-drive", "crm", "compras", "gestao-estoque", "compras/estoque", "compras/pedidos",
+  "google-drive", "crm", "compras", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras/estoque", "compras/pedidos",
   "compras/ordens", "compras/retiradas", "patrimonio",
   "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias",
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
