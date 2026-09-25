@@ -24,6 +24,7 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.startsWith("financas/"));
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
   return <div className="grid max-h-[55vh] gap-5 overflow-y-auto rounded-xl border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -473,7 +474,7 @@ export default function Acessos() {
                 minha={c.usuario === sessao?.usuario}
                 aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
                 aoAlternarAtiva={alternarAtiva}
-                aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: (conta.paginas_consulta || []).filter(p => p !== "__matriz_v1") }); }}
+                aoPaginas={conta => { setErroFormulario(null); const anteriores = conta.paginas_consulta || []; setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: anteriores.includes("__matriz_v1") || conta.papel === "direcao" ? anteriores.filter(p => p !== "__matriz_v1") : [...new Set([...PAGINAS_LEGADAS, ...anteriores])] }); }}
               />
             ))}
           </div>
@@ -512,7 +513,7 @@ export default function Acessos() {
       />
       {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Selecione as páginas de consulta. A direção tem acesso a todas. Em Serviços Gerados, a equipe também pode conferir pagamentos.</p>
+          <p className="text-sm text-slate-600">Ao salvar, somente as páginas marcadas ficarão disponíveis para consulta. A direção tem acesso a todas. Em Serviços Gerados, a equipe também pode conferir pagamentos.</p>
           <MatrizPaginas paginas={alvoPaginas.paginas_consulta} direcao={alvoPaginas.papel === "direcao"} onChange={paginas_consulta => setAlvoPaginas(v => ({ ...v, paginas_consulta }))}/>
           {erroFormulario && <p role="alert" className="text-sm text-red-700">{erroFormulario}</p>}
           <div className="flex justify-end gap-2"><button type="button" className="btn-outline" onClick={() => setAlvoPaginas(null)}>Cancelar</button><button type="button" className="btn-primary" disabled={salvando} onClick={salvarPaginas}>{salvando ? "Salvando..." : "Salvar páginas"}</button></div>
