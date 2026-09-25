@@ -493,6 +493,21 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoqueFornecedorAvaliar": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não qualifica fornecedores.",semPermissao:true},403);
+        const fornecedorId=String(body.fornecedorId??"").trim();
+        const avaliacao=(body.avaliacao??{}) as Record<string,unknown>;
+        if(!fornecedorId) return resp({erro:"Fornecedor obrigatório."},400);
+        const notas=[1,2,3,4].map(i=>Number(avaliacao[`c${i}`]??avaliacao[`criterio${i}Nota`]??avaliacao[`criterio_${i}_nota`]??0));
+        if(notas.some(x=>!Number.isInteger(x)||x<0||x>2)) return resp({erro:"As quatro notas devem ser inteiros entre 0 e 2."},400);
+        const total=notas.reduce((a,b)=>a+b,0);
+        avaliacao.notaFinal=total; avaliacao.classificacaoNota=total<=2?"RUIM":total<=5?"BOM":"ÓTIMO";
+        const {data,error}=await sb.rpc("ml_estoque_avaliar_fornecedor",{p_avaliacao:avaliacao,p_fornecedor_id:fornecedorId,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_avaliacoes_fornecedor"); await bump("estoque_fornecedores");
+        return resp(data??{ok:true});
+      }
+
       case "estoqueFapeUpload": {
         if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não edita fornecedores.",semPermissao:true},403);
         const fornecedorId=String(body.fornecedorId??""),base64=String(body.arquivoBase64??"");if(!fornecedorId||!base64)return resp({erro:"Fornecedor e PDF são obrigatórios."},400);
