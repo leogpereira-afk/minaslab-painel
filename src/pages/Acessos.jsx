@@ -24,7 +24,7 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/"));
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc"].includes(p));
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
   const alternarPagina = (id, marcado) => onChange(marcado
@@ -53,7 +53,7 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
               <input type="checkbox" disabled={direcao || !PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`)} checked={direcao || (disponivel && paginas.includes(id)) || paginas.includes(`${id}/${secao}`)} onChange={e => alternarSecao(id, secao, e.target.checked)} aria-label={`${rotulo} — ${nome}`}/>
               <span>{nome}</span>
             </label>)}
-            <small className="block text-[11px] text-slate-400">{id === "compras" ? "Marque Compras para todas as abas ou escolha cada uma." : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
+            <small className="block text-[11px] text-slate-400">{["compras", "patrimonio", "curva-abc"].includes(id) ? `Marque ${rotulo} para todas as abas ou escolha cada uma.` : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
           </div>}
         </div>;
       })}</div>
