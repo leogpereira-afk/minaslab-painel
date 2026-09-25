@@ -488,6 +488,28 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoquePedidoExcluir": {
+        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
+        const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String).filter(Boolean))] : [];
+        if (!ids.length || ids.length > 100) return resp({ erro: "Informe de 1 a 100 itens do pedido." }, 400);
+        const { data: linhas, error: buscaErro } = await sb.from(T_REG).select("id,registro,apagado").eq("colecao","estoque_pedidos").in("id",ids);
+        if (buscaErro) throw buscaErro;
+        const ativas = (linhas ?? []).filter(x => !x.apagado);
+        if (ativas.length !== ids.length) return resp({ erro: "O pedido mudou ou possui item não encontrado. Atualize a tela e tente novamente." }, 409);
+        if (ativas.some(x => String((x.registro as Record<string,unknown>)?.status ?? "PENDENTE").toUpperCase() !== "PENDENTE")) {
+          return resp({ erro: "Somente pedidos PENDENTES podem ser excluídos." }, 409);
+        }
+        const agora = new Date().toISOString();
+        for (const x of ativas) {
+          const registro = { ...(x.registro as Record<string,unknown>), atualizadoPor: usuario || "maquina", atualizadoEm: agora };
+          const { error } = await sb.from(T_REG).update({ registro, apagado:true, atualizado_em:agora }).eq("colecao","estoque_pedidos").eq("id",x.id).eq("apagado",false);
+          if (error) throw error;
+        }
+        await bump("estoque_pedidos");
+        return resp({ ok:true, excluidos:ativas.length });
+      }
+
       case "estoqueEntrada": {
         if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
