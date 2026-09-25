@@ -491,6 +491,20 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoqueFapeUpload": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não edita fornecedores.",semPermissao:true},403);
+        const fornecedorId=String(body.fornecedorId??""),base64=String(body.arquivoBase64??"");if(!fornecedorId||!base64)return resp({erro:"Fornecedor e PDF são obrigatórios."},400);
+        const {data:fr,error:fe}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fornecedores").eq("id",fornecedorId).maybeSingle();if(fe)throw fe;if(!fr||fr.apagado)return resp({erro:"Fornecedor não localizado."},404);
+        const {data:avs,error:ae}=await sb.from(T_REG).select("registro").eq("colecao","estoque_avaliacoes_fornecedor").eq("apagado",false);if(ae)throw ae;
+        const lista=(avs??[]).map(x=>x.registro as Record<string,unknown>).filter(a=>String(a.fornecedorId??"")===fornecedorId),inicial=lista.find(a=>String(a.tipoAvaliacao??"").toUpperCase()==="INICIAL");
+        if(!inicial)return resp({erro:"A FAPE exige uma avaliação inicial do fornecedor."},409);
+        const reavs=lista.filter(a=>String(a.tipoAvaliacao??"").toUpperCase()==="REAVALIACAO_SEMESTRAL"),bytes=bytesDoBase64(base64);if(bytes.byteLength>RH_DOC_MAX_BYTES)return resp({erro:"O PDF excede 25 MB."},413);
+        const agora=new Date().toISOString(),id="FAPE-"+agora.replace(/\D/g,"").slice(0,14)+"-"+crypto.randomUUID().slice(0,6).toUpperCase(),nome=nomeStorageSeguro(`FAPE_${fornecedorId}_${agora.slice(0,10)}.pdf`),storagePath=`estoque/fornecedores/${fornecedorId}/fapes/${id}-${nome}`;
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:"application/pdf",upsert:false});if(up.error)throw up.error;
+        const fornecedor=fr.registro as Record<string,unknown>,registro:Record<string,unknown>={id,fornecedorId,cnpj:String(fornecedor.cnpj??""),nomeArquivo:nome,storageBucket:RH_DOC_BUCKET,storagePath,dataGeracao:agora,usuario,avaliacaoInicialId:String(inicial.id??""),qtdReavaliacoes:reavs.length,createdAt:agora};
+        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_fapes",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}await bump("estoque_fapes");return resp({ok:true,fape:registro});
+      }
+
       case "estoqueDocumentoUpload": {
         if (!podeEditarEstoque("fornecedores")) return resp({ erro:"Seu acesso lê, mas não edita fornecedores.", semPermissao:true },403);
         const fornecedorId=String(body.fornecedorId??""), tipoDocumentoId=String(body.tipoDocumentoId??""), nomeOriginal=String(body.nomeOriginal??"").trim(), base64=String(body.arquivoBase64??"");
