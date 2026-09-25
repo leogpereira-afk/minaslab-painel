@@ -568,6 +568,16 @@ Deno.serve(async (req) => {
         return resp(data??{ok:true});
       }
 
+      case "estoquePedidoStatus": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        const id=String(body.id??"").trim(), status=String(body.status??"").trim();
+        if(!id||!status) return resp({erro:"Item e status são obrigatórios."},400);
+        const {data,error}=await sb.rpc("ml_estoque_pedido_status",{p_id:id,p_status:status,p_data_chegada:body.dataChegada?String(body.dataChegada):null,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
       case "estoquePedidoExcluir": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
