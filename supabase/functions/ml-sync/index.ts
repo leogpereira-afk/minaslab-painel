@@ -488,6 +488,74 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoqueEntrada": {
+        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à entrada de estoque.", semPermissao: true }, 403);
+        }
+        const lote = body.lote as Record<string, unknown>;
+        if (!lote?.id || !lote?.produto || !lote?.lote) return resp({ erro: "Produto, lote e identificador são obrigatórios." }, 400);
+        const total = Number(lote.totalRecebido ?? lote.totalAtual ?? 0);
+        if (!Number.isFinite(total) || total <= 0) return resp({ erro: "A quantidade recebida deve ser maior que zero." }, 400);
+        const agora = new Date().toISOString();
+        lote.totalRecebido = total; lote.qtdRetirada = 0; lote.totalAtual = total;
+        lote.atualizadoPor = usuario; lote.atualizadoEm = agora;
+        const movimento = {
+          ...(body.movimento as Record<string, unknown> || {}),
+          id: String((body.movimento as Record<string, unknown>)?.id || crypto.randomUUID()),
+          loteId: String(lote.id), produto: lote.produto, lote: lote.lote,
+          tipo: "ENTRADA", acao: "CADASTRO NOVO", quantidade: total,
+          criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
+        };
+        const { error: e1 } = await sb.from(T_REG).upsert({ colecao: "estoque_lotes", id: String(lote.id), registro: lote, apagado: false, atualizado_em: agora });
+        if (e1) throw e1;
+        const { error: e2 } = await sb.from(T_REG).upsert({ colecao: "estoque_movimentos", id: String(movimento.id), registro: movimento, apagado: false, atualizado_em: agora });
+        if (e2) {
+          await sb.from(T_REG).upsert({ colecao: "estoque_lotes", id: String(lote.id), registro: { id: lote.id, _apagado: true, atualizadoPor: usuario, atualizadoEm: agora }, apagado: true, atualizado_em: agora });
+          throw e2;
+        }
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp({ ok: true, lote, movimento });
+      }
+
+      case "estoqueRetirada": {
+        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à saída de estoque.", semPermissao: true }, 403);
+        }
+        const loteId = String(body.loteId ?? "");
+        const quantidade = Number(body.quantidade ?? 0);
+        if (!loteId || !Number.isFinite(quantidade) || quantidade <= 0) return resp({ erro: "Lote e quantidade válida são obrigatórios." }, 400);
+        const { data: linha, error: buscaErro } = await sb.from(T_REG).select("registro, apagado").eq("colecao","estoque_lotes").eq("id",loteId).maybeSingle();
+        if (buscaErro) throw buscaErro;
+        if (!linha || linha.apagado) return resp({ erro: "Lote não encontrado." }, 404);
+        const lote = { ...(linha.registro as Record<string, unknown>) };
+        const saldo = Number(lote.totalAtual ?? lote.qtdAtual ?? 0);
+        if (saldo <= 0) return resp({ erro: "Este lote está sem saldo." }, 409);
+        if (quantidade > saldo) return resp({ erro: "Quantidade solicitada maior que o saldo disponível." }, 409);
+        const hoje = new Date().toISOString().slice(0,10);
+        if (lote.validade && String(lote.validade).slice(0,10) < hoje) return resp({ erro: "Lote vencido não pode ser utilizado." }, 409);
+        const agora = new Date().toISOString();
+        lote.qtdRetirada = Number(lote.qtdRetirada ?? 0) + quantidade;
+        lote.totalAtual = saldo - quantidade;
+        lote.ultimaRetirada = agora;
+        if (body.dataAbertura && !lote.dataAbertura) lote.dataAbertura = String(body.dataAbertura);
+        lote.atualizadoPor = usuario; lote.atualizadoEm = agora;
+        const movimento = {
+          id: crypto.randomUUID(), loteId, codigoID: lote.codigoID ?? lote.codigoAuto,
+          produto: lote.produto, lote: lote.lote, unidade: lote.unidade,
+          tipo: "SAIDA", acao: "RETIRADA (BAIXA)", quantidade,
+          observacao: String(body.observacao ?? ""), dataAbertura: body.dataAbertura || null,
+          criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
+        };
+        const { error: e1 } = await sb.from(T_REG).upsert({ colecao:"estoque_lotes", id:loteId, registro:lote, apagado:false, atualizado_em:agora });
+        if (e1) throw e1;
+        const { error: e2 } = await sb.from(T_REG).upsert({ colecao:"estoque_movimentos", id:String(movimento.id), registro:movimento, apagado:false, atualizado_em:agora });
+        if (e2) throw e2;
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp({ ok:true, lote, movimento });
+      }
+
       case "upsert": {
         if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const colecao = String(body.colecao ?? "");
