@@ -125,6 +125,20 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
+export const estoqueEntrada = (lote, movimento = {}) =>
+  chamar("estoqueEntrada", { lote, movimento }).then((r) => {
+    if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a entrada de estoque.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
+
+export const estoqueRetirada = (loteId, quantidade, dataAbertura = "", observacao = "") =>
+  chamar("estoqueRetirada", { loteId, quantidade, dataAbertura, observacao }).then((r) => {
+    if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a retirada de estoque.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
+
 // Quem trabalha aqui (id + nome), para os seletores de equipe (coletas,
 // responsavel do compromisso). E uma porta ESTREITA de proposito: devolve so
 // id, nome e apelido — a ficha completa do RH e assunto da direcao.
