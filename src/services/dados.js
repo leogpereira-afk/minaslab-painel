@@ -125,7 +125,9 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
-export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("estoqueFornecedorAvaliar", { fornecedorId, avaliacao }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a qualificação do fornecedor."); esquecerColecao("estoque_avaliacoes_fornecedor"); esquecerColecao("estoque_fornecedores"); return r; });\n\nexport const estoqueFapeUpload = (dados) => chamar("estoqueFapeUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a FAPE."); esquecerColecao("estoque_fapes"); return r.fape; });
+export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("estoqueFornecedorAvaliar", { fornecedorId, avaliacao }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a qualificação do fornecedor."); esquecerColecao("estoque_avaliacoes_fornecedor"); esquecerColecao("estoque_fornecedores"); return r; });
+
+export const estoqueFapeUpload = (dados) => chamar("estoqueFapeUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a FAPE."); esquecerColecao("estoque_fapes"); return r.fape; });
 
 export const estoqueDocumentoUpload = (dados) => chamar("estoqueDocumentoUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o documento."); esquecerColecao("estoque_documentos_fornecedor"); return r.documento; });
 export const estoqueDocumentoUrl = (id) => chamar("estoqueDocumentoUrl", { id }).then((r) => r?.url || null);
@@ -134,7 +136,9 @@ export const estoqueSalvar = (colecao, registro) => chamar("estoqueSalvar", { co
 
 export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedidoSalvar", { pedidoCodigo, itens }).then((r) => { if (!r?.ok || !r?.pedidoCodigo) throw new Error("O servidor não confirmou o pedido de compra."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 
-export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("estoquePedidoStatus", { id, status, dataChegada }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o status do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });\n\nexport const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
+export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("estoquePedidoStatus", { id, status, dataChegada }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o status do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
+
+export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
 
 export const estoqueEntrada = (lote, movimento = {}) =>
   chamar("estoqueEntrada", { lote, movimento }).then((r) => {
