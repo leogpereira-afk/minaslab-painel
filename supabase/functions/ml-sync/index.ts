@@ -234,6 +234,8 @@ const COLECOES_ESTOQUE: Record<string, string[]> = {
   estoque_tipos_documentos_fornecedor: ["fornecedores", "configuracoes"],
   estoque_regras_documentos_fornecedor: ["fornecedores", "configuracoes"],
   estoque_documentos_fornecedor: ["fornecedores"],
+  estoque_logs_compras: ["pedido-compra"],
+  estoque_historico_produto_base: ["cadastro-insumo"],
   estoque_config: ["configuracoes"],
 };
 const COLECOES_COMPRA: Record<string, string[]> = {
