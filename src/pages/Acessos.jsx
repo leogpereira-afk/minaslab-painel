@@ -46,7 +46,7 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
         return <div key={id}>
           <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
             <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`)))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
-            <span>{rotulo}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
+            <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
           </label>
           {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
             {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title={PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`) ? `Liberar somente ${nome}` : "Seleção individual ainda exige proteção dos dados desta aba no servidor"}>
