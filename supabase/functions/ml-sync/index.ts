@@ -221,7 +221,14 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const COLECOES_ESTOQUE: Record<string, string[]> = {
+  estoque_produtos_base: ["dashboard", "cadastro-insumo", "entrada-lote", "retirada-baixa", "pedido-compra"],
+  estoque_lotes: ["dashboard", "entrada-lote", "retirada-baixa", "etiquetas", "relatorios"],
+  estoque_movimentos: ["entrada-lote", "retirada-baixa", "relatorios"],
+  estoque_fornecedores: ["dashboard", "entrada-lote", "fornecedores", "pedido-compra"],
+  estoque_pedidos: ["dashboard", "pedido-compra"],
+};
 const COLECOES_COMPRA: Record<string, string[]> = {
   compras: ["pedidos", "ordens"],
   produtos: ["estoque", "pedidos", "ordens", "retiradas"],
@@ -232,6 +239,7 @@ const COLECAO_PAGINA: Record<string, string> = {
   compromissos: "compromissos", licitacoes: "licitacoes",
   manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
   compras: "compras", produtos: "compras", estoque_mov: "compras", ordens: "compras",
+  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque",
   mkt: "marketing", drive_atalhos: "google-drive",
 };
 
@@ -372,6 +380,7 @@ Deno.serve(async (req) => {
       return !!pagina && (
         permissoes.includes(pagina) ||
         (pagina === "compras" && (COLECOES_COMPRA[colecao] || []).some(tab => permissoes.includes("compras/" + tab))) ||
+        (pagina === "gestao-estoque" && (COLECOES_ESTOQUE[colecao] || []).some(tab => permissoes.includes("gestao-estoque/" + tab))) ||
         (permissoes.includes("calendario") && ["compromissos", "licitacoes", "manutencoes", "equipamentos", "carros"].includes(colecao)) ||
         (permissoes.includes("inicio") && ["compromissos", "licitacoes", "manutencoes", "compras"].includes(colecao))
       );
