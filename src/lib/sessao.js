@@ -135,7 +135,12 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
   return true;
 }
-export function podeEditarSecao(modulo, secao, sessao = getSessao()) {\n  if (!sessao || !podeVerSecao(modulo, secao, sessao)) return false;\n  if (ehDirecao(sessao)) return true;\n  return sessao.papel === "equipe";\n}\nexport function podeVerSecao(modulo, secao, sessao = getSessao()) {
+export function podeEditarSecao(modulo, secao, sessao = getSessao()) {
+  if (!sessao || !podeVerSecao(modulo, secao, sessao)) return false;
+  if (ehDirecao(sessao)) return true;
+  return sessao.papel === "equipe";
+}
+export function podeVerSecao(modulo, secao, sessao = getSessao()) {
   if (!podeAbrir(modulo, sessao)) return false;
   if (ehDirecao(sessao) || !sessao?.paginas_consulta?.includes("__matriz_v1")) return true;
   return sessao.paginas_consulta.includes(modulo) || sessao.paginas_consulta.includes(`${modulo}/${secao}`);
