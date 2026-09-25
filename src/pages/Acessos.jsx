@@ -24,9 +24,20 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.startsWith("financas/"));
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/"));
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
+  const alternarPagina = (id, marcado) => onChange(marcado
+    ? [...new Set([...paginas.filter(p => !p.startsWith(`${id}/`)), id])]
+    : paginas.filter(p => p !== id && !p.startsWith(`${id}/`)));
+  const alternarSecao = (id, secao, marcado) => {
+    const chave = `${id}/${secao}`;
+    const herdadas = paginas.includes(id)
+      ? (SUBPAGINAS_PERMISSOES[id] || []).map(([s]) => `${id}/${s}`)
+      : paginas.filter(p => p.startsWith(`${id}/`));
+    const restantes = paginas.filter(p => p !== id && !p.startsWith(`${id}/`));
+    onChange([...new Set([...restantes, ...herdadas.filter(p => p !== chave), ...(marcado ? [chave] : [])])]);
+  };
   return <div className="grid max-h-[55vh] gap-5 overflow-y-auto rounded-xl border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-3">
     {GRUPOS_PERMISSOES.map(grupo => <section key={grupo.titulo}>
       <h3 className="mb-2 font-semibold text-slate-900">{grupo.titulo}</h3>
@@ -34,15 +45,15 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
         const disponivel = PERMISSOES_DISPONIVEIS.has(id);
         return <div key={id}>
           <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
-            <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id)} disabled={direcao || !disponivel} onChange={e => onChange(e.target.checked ? [...new Set([...paginas, id])] : paginas.filter(p => p !== id))}/>
+            <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`)))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
             <span>{rotulo}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
           </label>
           {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
-            {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title="A seleção separada desta aba ainda depende da proteção dos dados no servidor">
-              <input type="checkbox" disabled checked={direcao || (disponivel && paginas.includes(id))} aria-label={`${rotulo} — ${nome}: incluído no acesso à página`}/>
+            {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title={PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`) ? `Liberar somente ${nome}` : "Seleção individual ainda exige proteção dos dados desta aba no servidor"}>
+              <input type="checkbox" disabled={direcao || !PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`)} checked={direcao || (disponivel && paginas.includes(id)) || paginas.includes(`${id}/${secao}`)} onChange={e => alternarSecao(id, secao, e.target.checked)} aria-label={`${rotulo} — ${nome}`}/>
               <span>{nome}</span>
             </label>)}
-            <small className="block text-[11px] text-slate-400">Abas liberadas juntas com a página; separação individual em preparação.</small>
+            <small className="block text-[11px] text-slate-400">{id === "compras" ? "Marque Compras para todas as abas ou escolha cada uma." : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
           </div>}
         </div>;
       })}</div>
