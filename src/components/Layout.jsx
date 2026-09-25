@@ -84,7 +84,7 @@ function Marca() {
 function ItensMenu({ sessao, aoNavegar }) {
   return (
     <nav aria-label="Módulos do MinasLab" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
-      {MODULOS.filter((mo) => mo.externo ? !sessao?.paginas_consulta?.includes("__matriz_v1") : podeAbrir(mo.id, sessao)).map((mo) => {
+      {MODULOS.filter((mo) => podeAbrir(mo.id, sessao)).map((mo) => {
         const Icone = mo.icone;
         if (mo.externo) return (
           <a
