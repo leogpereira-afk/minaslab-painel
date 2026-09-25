@@ -246,7 +246,7 @@ const COLECAO_PAGINA: Record<string, string> = {
   compromissos: "compromissos", licitacoes: "licitacoes",
   manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
   compras: "compras", produtos: "compras", estoque_mov: "compras", ordens: "compras",
-  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque", estoque_inspecoes: "gestao-estoque", estoque_avaliacoes_fornecedor: "gestao-estoque", estoque_fapes: "gestao-estoque", estoque_tipos_documentos_fornecedor: "gestao-estoque", estoque_regras_documentos_fornecedor: "gestao-estoque", estoque_documentos_fornecedor: "gestao-estoque", estoque_config: "gestao-estoque",
+  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque", estoque_inspecoes: "gestao-estoque", estoque_avaliacoes_fornecedor: "gestao-estoque", estoque_fapes: "gestao-estoque", estoque_tipos_documentos_fornecedor: "gestao-estoque", estoque_regras_documentos_fornecedor: "gestao-estoque", estoque_documentos_fornecedor: "gestao-estoque", estoque_logs_compras: "gestao-estoque", estoque_historico_produto_base: "gestao-estoque", estoque_config: "gestao-estoque",
   mkt: "marketing", drive_atalhos: "google-drive",
 };
 
