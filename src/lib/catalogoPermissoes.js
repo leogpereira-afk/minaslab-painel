@@ -7,6 +7,19 @@ export const GRUPOS_PERMISSOES = [
   { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
 
+// Abas de cada módulo, conferidas com as opções de navegação das respectivas
+// páginas. Ficam explicitamente separadas do acesso à página: atribuí-las sem
+// isolar também as consultas de dados da aba deixaria vazar outras seções.
+export const SUBPAGINAS_PERMISSOES = {
+  compras: [["estoque", "Estoque"], ["pedidos", "Pedidos"], ["ordens", "Ordens de compra"], ["retiradas", "Retiradas"]],
+  patrimonio: [["inventario", "Inventário"], ["setores", "Por setor"], ["pendencias", "Pendências"]],
+  rh: [["gestao", "Visão geral"], ["pessoas", "Pessoas"], ["ferias", "Férias"], ["feedback", "Feedback"], ["exames", "Exames"], ["vencimentos", "Vencimentos"], ["relatorios", "Relatórios"]],
+  ponto: [["relatorios", "Conferência"], ["ponto", "Ajustes e fechamento"], ["faltas", "Faltas e abonos"], ["analises", "Relatórios"], ["folha", "Folha mensal"]],
+  "curva-abc": [["clientes", "Clientes"], ["produtos", "Serviços"], ["vendedores", "Vendedores"]],
+  "financas/notas": [["emitir", "Emitir NFS-e"], ["cancelar", "Cancelar NFS-e"], ["importar-historico", "Importar histórico"]],
+  "financas/configuracoes": [["categorias", "Categorias"], ["contas", "Contas bancárias"], ["centros", "Centros de custo"], ["formas", "Formas de pagamento"], ["plano-contas", "Plano de contas"], ["omie", "Integração Omie"]],
+};
+
 // Liberações suportadas de ponta a ponta pelo servidor. Nunca marque uma página
 // como concedida se suas chamadas de dados ainda exigem papel de direção.
 export const PERMISSOES_DISPONIVEIS = new Set([
