@@ -221,6 +221,13 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "compras", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const COLECAO_PAGINA: Record<string, string> = {
+  compromissos: "compromissos", licitacoes: "licitacoes",
+  manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
+  compras: "compras", produtos: "compras", estoque_mov: "compras", ordens: "compras",
+  mkt: "marketing", drive_atalhos: "google-drive",
+};
 
 
 
@@ -340,7 +347,26 @@ Deno.serve(async (req) => {
     }
 
     const ehDirecao = papel === "direcao" || ehMaquina;
-    const podeEscrever = ehDirecao || papel === "equipe";
+    // Permissões retiradas passam a valer imediatamente, inclusive com token antigo.
+    let permissoes: string[] = [];
+    if (!ehDirecao) {
+      const { data: contaPermissoes, error: erroPermissoes } = await sb.from(T_CONTAS)
+        .select("paginas_consulta").eq("usuario", usuario).maybeSingle();
+      if (erroPermissoes || !contaPermissoes) return resp({ erro: "Não foi possível confirmar suas permissões.", semPermissao: true }, 403);
+      permissoes = Array.isArray(contaPermissoes.paginas_consulta) ? contaPermissoes.paginas_consulta : [];
+    }
+    const matrizAtiva = permissoes.includes("__matriz_v1");
+    const podeConsultarColecao = (colecao: string) => {
+      if (!matrizAtiva || ehDirecao) return true;
+      if (ehColecaoRH(colecao)) return false;
+      const pagina = COLECAO_PAGINA[colecao];
+      return !!pagina && (
+        permissoes.includes(pagina) ||
+        (permissoes.includes("calendario") && ["compromissos", "licitacoes", "manutencoes", "equipamentos", "carros"].includes(colecao)) ||
+        (permissoes.includes("inicio") && ["compromissos", "licitacoes", "manutencoes", "compras"].includes(colecao))
+      );
+    };
+    const podeEscrever = ehDirecao || (papel === "equipe" && !matrizAtiva);
 
     switch (action) {
       case "rev": {
@@ -351,7 +377,7 @@ Deno.serve(async (req) => {
       case "list": {
         const colecao = String(body.colecao ?? "");
         if (!colecao) return resp({ erro: "Informe a coleção." }, 400);
-        if (ehColecaoRH(colecao) && !ehDirecao) {
+        if ((ehColecaoRH(colecao) && !ehDirecao) || !podeConsultarColecao(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const desde = String(body.desde ?? "") || "1970-01-01";
@@ -391,7 +417,7 @@ Deno.serve(async (req) => {
         const colecoes: Record<string, unknown[]> = {};
         const recusadas: string[] = [];
         for (const nome of pedidas) {
-          if (ehColecaoRH(nome) && !ehDirecao) { recusadas.push(nome); continue; }
+          if ((ehColecaoRH(nome) && !ehDirecao) || !podeConsultarColecao(nome)) { recusadas.push(nome); continue; }
           const itens: unknown[] = [];
           let desde = "1970-01-01";
           let desdeId = "";
@@ -424,7 +450,7 @@ Deno.serve(async (req) => {
 
       case "get": {
         const colecao = String(body.colecao ?? "");
-        if (ehColecaoRH(colecao) && !ehDirecao) {
+        if ((ehColecaoRH(colecao) && !ehDirecao) || !podeConsultarColecao(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const { data } = await sb
@@ -1076,7 +1102,7 @@ Deno.serve(async (req) => {
         const papelNovo = String(body.papel ?? "");
         const senha = String(body.senha ?? "");
         const paginas = Array.isArray(body.paginas_consulta) ? body.paginas_consulta : [];
-        if (paginas.some((p: unknown) => p !== "financas/servicos-gerados")) return resp({ erro: "Página não reconhecida." }, 400);
+        if (paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Página não reconhecida." }, 400);
         if (!u || !nome) return resp({ erro: "Informe usuário e nome." }, 400);
         if (!PAPEIS.includes(papelNovo)) return resp({ erro: `Papel desconhecido: ${papelNovo}` }, 400);
         if (senha.length < 6) return resp({ erro: "A senha precisa de ao menos 6 caracteres." }, 400);
@@ -1096,7 +1122,7 @@ Deno.serve(async (req) => {
         if (!ehDirecao) return resp({ erro: "Só a direção administra acessos.", semPermissao: true }, 403);
         const u = normalizarUsuario(body.usuario);
         const paginas = body.paginas_consulta;
-        if (!Array.isArray(paginas) || paginas.some((p: unknown) => p !== "financas/servicos-gerados")) return resp({ erro: "Selecione páginas válidas." }, 400);
+        if (!Array.isArray(paginas) || paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Selecione páginas válidas." }, 400);
         const { data, error } = await sb.from(T_CONTAS).update({ paginas_consulta: [...new Set(paginas)] }).eq("usuario", u).select("*").maybeSingle();
         if (error) throw error;
         if (!data) return resp({ erro: "Conta não encontrada." }, 404);
@@ -1173,3 +1199,4 @@ Deno.serve(async (req) => {
     return resp({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
   }
 });
+

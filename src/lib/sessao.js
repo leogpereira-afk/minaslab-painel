@@ -111,7 +111,7 @@ export function motivoSaida() {
    mostra. */
 export const ehDirecao = (sessao = getSessao()) => sessao?.papel === "direcao";
 export const podeEditar = (sessao = getSessao()) =>
-  sessao?.papel === "direcao" || sessao?.papel === "equipe";
+  sessao?.papel === "direcao" || (sessao?.papel === "equipe" && !sessao?.paginas_consulta?.includes("__matriz_v1"));
 
 // Modulos que so a direcao abre. Mesma lista que o servidor usa para as
 // colecoes rh_* — mudar aqui exige mudar la (ml-sync).
@@ -125,6 +125,11 @@ export const podeEditar = (sessao = getSessao()) =>
 const SO_DIRECAO = ["patrimonio", "rh", "ponto", "financas", "acessos", "curva-abc"];
 export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
+  if (ehDirecao(sessao)) return true;
+  if (sessao.paginas_consulta?.includes("__matriz_v1")) {
+    if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
+    return modulo === "inicio" || sessao.paginas_consulta.includes(modulo);
+  }
   if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
   return true;
