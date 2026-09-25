@@ -76,7 +76,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { KeyRound, RefreshCw, Unplug } from "lucide-react";
 import { carregarColecoes } from "../services/dados.js";
-import { getSessao, podeEditar } from "../lib/sessao.js";
+import { getSessao, podeEditar, podeVerSecao } from "../lib/sessao.js";
 import { moeda, numero, ymdLocal } from "../lib/format.js";
 import { PageTitle, Card, Segmented, CarregandoModulo, ErroModulo, Aviso } from "../components/ui.jsx";
 import { Explicacao, Pilulas } from "../components/lista.jsx";
@@ -211,6 +211,7 @@ function SemFaturamento({ motivo }) {
 export default function CurvaAbc() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
+  const abasPermitidas = ABAS.filter(item => podeVerSecao("curva-abc", item.valor, sessao));
 
   const [dados, setDados] = useState(null); // { vendas, clientes, receber, recusadas }
   const [erro, setErro] = useState(null);
@@ -223,7 +224,7 @@ export default function CurvaAbc() {
 
   const [aba, setAba] = useState(() => {
     const g = lerGuardado(K_ABA, "clientes");
-    return ABAS.some((a) => a.valor === g) ? g : "clientes";
+    return abasPermitidas.some((a) => a.valor === g) ? g : abasPermitidas[0]?.valor || "clientes";
   });
 
   /* O ano: "" é a escolha "Todos" (uma escolha de verdade, que fica guardada),
@@ -241,6 +242,7 @@ export default function CurvaAbc() {
   });
 
   const escolherAba = (v) => {
+    if (!abasPermitidas.some(item => item.valor === v)) return;
     setAba(v);
     gravarGuardado(K_ABA, v);
   };
@@ -406,7 +408,7 @@ export default function CurvaAbc() {
 
         {/* As opções podem quebrar de linha no celular sem esconder uma aba. */}
         <div role="group" aria-label="Analisar faturamento por" className="max-w-full pb-1">
-          <Segmented className="flex flex-wrap" opcoes={ABAS} valor={aba} onChange={escolherAba} />
+          <Segmented className="flex flex-wrap" opcoes={abasPermitidas} valor={aba} onChange={escolherAba} />
         </div>
       </div>
 

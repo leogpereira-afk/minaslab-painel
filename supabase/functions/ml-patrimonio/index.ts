@@ -19,8 +19,16 @@ Deno.serve(async req=>{
   const sessao=await fetch(`${URL}/functions/v1/ml-sync`,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({action:'rev'})});
   if(!sessao.ok)return out({erro:'Sessão inválida ou indisponível.',semSessao:sessao.status===401},sessao.status===401?401:503);
   let p:any;try{const parte=auth.slice(7).split('.')[1];p=JSON.parse(atob(parte.replace(/-/g,'+').replace(/_/g,'/')));}catch{return out({erro:'Sessão inválida.',semSessao:true},401);}
-  if(p.sis!=='minaslab'||p.papel!=='direcao'||!p.sub||!Number.isFinite(p.exp)||p.exp<=Date.now()/1000)return out({erro:'Patrimônio disponível para a direção.',semPermissao:true},403);
+  if(p.sis!=='minaslab'||!p.sub||!Number.isFinite(p.exp)||p.exp<=Date.now()/1000)return out({erro:'Sessão inválida.',semSessao:true},401);
+  const direcao=p.papel==='direcao';
+  if(!direcao){
+   const {data:conta,error}=await sb.from('ml_contas').select('ativo,paginas_consulta').eq('usuario',p.sub).maybeSingle();
+   if(error||!conta||conta.ativo!==true)return out({erro:'Não foi possível confirmar sua permissão.',semPermissao:true},403);
+   const paginas=Array.isArray(conta.paginas_consulta)?conta.paginas_consulta:[];
+   if(!paginas.includes('__matriz_v1')||!paginas.some((k:string)=>k==='patrimonio'||k.startsWith('patrimonio/')))return out({erro:'Patrimônio não liberado para sua conta.',semPermissao:true},403);
+  }
   const b=await req.json();const action=String(b.action||'');
+  if(!direcao&&!['listar','foto:resumo','foto:listar'].includes(action))return out({erro:'Esta conta pode consultar patrimônio, mas não alterar.',semPermissao:true},403);
   if(action==='listar'){
    if(!['bem','setor'].includes(b.tipo))return out({erro:'Tipo inválido.'},400);
    return out({ok:true,valor:Object.fromEntries((await linhas(b.tipo)).map(r=>[r.id,r.dados]))});
@@ -62,3 +70,4 @@ Deno.serve(async req=>{
   return out({erro:'Operação desconhecida.'},400);
  }catch(e){console.error('ml-patrimonio',e);return out({erro:e instanceof Error?e.message:'Não foi possível concluir a operação.'},400);}
 });
+

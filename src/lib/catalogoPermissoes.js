@@ -25,6 +25,9 @@ export const SUBPAGINAS_PERMISSOES = {
 export const PERMISSOES_DISPONIVEIS = new Set([
   "inicio", "calendario", "compromissos", "licitacoes", "marketing",
   "google-drive", "compras", "compras/estoque", "compras/pedidos",
-  "compras/ordens", "compras/retiradas", "manutencoes", "laboratorio",
+  "compras/ordens", "compras/retiradas", "patrimonio",
+  "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias",
+  "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
+  "manutencoes", "laboratorio",
   "financas/servicos-gerados",
 ]);

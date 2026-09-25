@@ -221,7 +221,7 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
 const COLECOES_COMPRA: Record<string, string[]> = {
   compras: ["pedidos", "ordens"],
   produtos: ["estoque", "pedidos", "ordens", "retiradas"],
@@ -363,8 +363,11 @@ Deno.serve(async (req) => {
     }
     const matrizAtiva = permissoes.includes("__matriz_v1");
     const podeConsultarColecao = (colecao: string) => {
-      if (!matrizAtiva || ehDirecao) return true;
-      if (ehColecaoRH(colecao)) return false;
+      if (ehDirecao) return true;
+      if (ehColecaoRH(colecao)) return matrizAtiva &&
+        ["fin_receber", "fin_clientes", "fin_categorias"].includes(colecao) &&
+        permissoes.some(p => p === "curva-abc" || p.startsWith("curva-abc/"));
+      if (!matrizAtiva) return true;
       const pagina = COLECAO_PAGINA[colecao];
       return !!pagina && (
         permissoes.includes(pagina) ||
@@ -384,7 +387,7 @@ Deno.serve(async (req) => {
       case "list": {
         const colecao = String(body.colecao ?? "");
         if (!colecao) return resp({ erro: "Informe a coleção." }, 400);
-        if ((ehColecaoRH(colecao) && !ehDirecao) || !podeConsultarColecao(colecao)) {
+        if (!podeConsultarColecao(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const desde = String(body.desde ?? "") || "1970-01-01";
@@ -424,7 +427,7 @@ Deno.serve(async (req) => {
         const colecoes: Record<string, unknown[]> = {};
         const recusadas: string[] = [];
         for (const nome of pedidas) {
-          if ((ehColecaoRH(nome) && !ehDirecao) || !podeConsultarColecao(nome)) { recusadas.push(nome); continue; }
+          if (!podeConsultarColecao(nome)) { recusadas.push(nome); continue; }
           const itens: unknown[] = [];
           let desde = "1970-01-01";
           let desdeId = "";
@@ -457,7 +460,7 @@ Deno.serve(async (req) => {
 
       case "get": {
         const colecao = String(body.colecao ?? "");
-        if ((ehColecaoRH(colecao) && !ehDirecao) || !podeConsultarColecao(colecao)) {
+        if (!podeConsultarColecao(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const { data } = await sb
@@ -1206,4 +1209,3 @@ Deno.serve(async (req) => {
     return resp({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
   }
 });
-
