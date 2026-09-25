@@ -228,6 +228,13 @@ const COLECOES_ESTOQUE: Record<string, string[]> = {
   estoque_movimentos: ["entrada-lote", "retirada-baixa", "relatorios"],
   estoque_fornecedores: ["dashboard", "entrada-lote", "fornecedores", "pedido-compra"],
   estoque_pedidos: ["dashboard", "pedido-compra"],
+  estoque_inspecoes: ["pedido-compra", "relatorios"],
+  estoque_avaliacoes_fornecedor: ["fornecedores"],
+  estoque_fapes: ["fornecedores"],
+  estoque_tipos_documentos_fornecedor: ["fornecedores", "configuracoes"],
+  estoque_regras_documentos_fornecedor: ["fornecedores", "configuracoes"],
+  estoque_documentos_fornecedor: ["fornecedores"],
+  estoque_config: ["configuracoes"],
 };
 const COLECOES_COMPRA: Record<string, string[]> = {
   compras: ["pedidos", "ordens"],
@@ -239,7 +246,7 @@ const COLECAO_PAGINA: Record<string, string> = {
   compromissos: "compromissos", licitacoes: "licitacoes",
   manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
   compras: "compras", produtos: "compras", estoque_mov: "compras", ordens: "compras",
-  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque",
+  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque", estoque_inspecoes: "gestao-estoque", estoque_avaliacoes_fornecedor: "gestao-estoque", estoque_fapes: "gestao-estoque", estoque_tipos_documentos_fornecedor: "gestao-estoque", estoque_regras_documentos_fornecedor: "gestao-estoque", estoque_documentos_fornecedor: "gestao-estoque", estoque_config: "gestao-estoque",
   mkt: "marketing", drive_atalhos: "google-drive",
 };
 
