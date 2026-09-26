@@ -583,6 +583,33 @@ Deno.serve(async (req) => {
         return resp(data??{ok:true});
       }
 
+      case "estoquePedidoAnexoUpload": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(), nomeOriginal=String(body.nomeOriginal??"").trim(), mime=String(body.mimeType??"").toLowerCase(), base64=String(body.arquivoBase64??"");
+        if(!pedidoCodigo||!nomeOriginal||!base64) return resp({erro:"Pedido e arquivo são obrigatórios."},400);
+        const ext=(nomeOriginal.split(".").pop()||"").toLowerCase();
+        if(!["pdf","jpg","jpeg","png"].includes(ext)||!["application/pdf","image/jpeg","image/png"].includes(mime)) return resp({erro:"Formato não permitido. Envie PDF, JPG, JPEG ou PNG."},415);
+        const bytes=bytesDoBase64(base64); if(bytes.byteLength>RH_DOC_MAX_BYTES) return resp({erro:"O anexo excede o limite de 25 MB."},413);
+        const {data:linhas,error:be}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_pedidos").eq("apagado",false); if(be)throw be;
+        const itens=(linhas??[]).filter(x=>{const r=x.registro as Record<string,unknown>;return String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo});
+        if(!itens.length)return resp({erro:"Pedido não localizado para anexar o arquivo."},404);
+        const agora=new Date().toISOString(),nome=nomeStorageSeguro(nomeOriginal),storagePath=`estoque/pedidos/${pedidoCodigo}/${agora.replace(/\D/g,"").slice(0,14)}-${crypto.randomUUID().slice(0,6)}-${nome}`;
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:mime,upsert:false}); if(up.error)throw up.error;
+        const anexo={nomeArquivo:nomeOriginal,storageBucket:RH_DOC_BUCKET,storagePath,mimeType:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,usuario:usuario||"maquina"};
+        for(const x of itens){const registro={...(x.registro as Record<string,unknown>),anexo,nomeAnexo:nomeOriginal,atualizadoPor:usuario||"maquina",atualizadoEm:agora};const {error}=await sb.from(T_REG).update({registro,atualizado_em:agora}).eq("colecao","estoque_pedidos").eq("id",x.id).eq("apagado",false);if(error)throw error}
+        const logId="LOG-"+crypto.randomUUID(); await sb.from(T_REG).insert({colecao:"estoque_logs_compras",id:logId,registro:{id:logId,pedidoCodigo,data:agora,login:usuario||"maquina",logs:`ANEXO DO PEDIDO: ${nomeOriginal}`,status:"ANEXO",origem:"GESTAO_ESTOQUE"},apagado:false,atualizado_em:agora});
+        await bump("estoque_pedidos");await bump("estoque_logs_compras");return resp({ok:true,anexo});
+      }
+
+      case "estoquePedidoAnexoUrl": {
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({erro:"Você não tem acesso aos pedidos de compra.",semPermissao:true},403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(); if(!pedidoCodigo)return resp({erro:"Pedido obrigatório."},400);
+        const {data:linhas,error}=await sb.from(T_REG).select("registro").eq("colecao","estoque_pedidos").eq("apagado",false);if(error)throw error;
+        const reg=(linhas??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo&&r.anexo);
+        const anexo=reg?.anexo as Record<string,unknown>|undefined;if(!anexo?.storagePath)return resp({erro:"Este pedido não possui anexo armazenado."},404);
+        const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
+      }
+
       case "estoquePedidoStatus": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
         const id=String(body.id??"").trim(), status=String(body.status??"").trim();
