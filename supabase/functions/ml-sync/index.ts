@@ -221,7 +221,23 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const COLECOES_ESTOQUE: Record<string, string[]> = {
+  estoque_produtos_base: ["dashboard", "cadastro-insumo", "entrada-lote", "retirada-baixa", "pedido-compra"],
+  estoque_lotes: ["dashboard", "entrada-lote", "retirada-baixa", "etiquetas", "relatorios"],
+  estoque_movimentos: ["entrada-lote", "retirada-baixa", "relatorios"],
+  estoque_fornecedores: ["dashboard", "entrada-lote", "fornecedores", "pedido-compra"],
+  estoque_pedidos: ["dashboard", "pedido-compra"],
+  estoque_inspecoes: ["pedido-compra", "relatorios"],
+  estoque_avaliacoes_fornecedor: ["fornecedores"],
+  estoque_fapes: ["fornecedores"],
+  estoque_tipos_documentos_fornecedor: ["fornecedores", "configuracoes"],
+  estoque_regras_documentos_fornecedor: ["fornecedores", "configuracoes"],
+  estoque_documentos_fornecedor: ["fornecedores"],
+  estoque_logs_compras: ["pedido-compra"],
+  estoque_historico_produto_base: ["cadastro-insumo"],
+  estoque_config: ["configuracoes"],
+};
 const COLECOES_COMPRA: Record<string, string[]> = {
   compras: ["pedidos", "ordens"],
   produtos: ["estoque", "pedidos", "ordens", "retiradas"],
@@ -232,6 +248,7 @@ const COLECAO_PAGINA: Record<string, string> = {
   compromissos: "compromissos", licitacoes: "licitacoes",
   manutencoes: "manutencoes", equipamentos: "manutencoes", carros: "manutencoes",
   compras: "compras", produtos: "compras", estoque_mov: "compras", ordens: "compras",
+  estoque_produtos_base: "gestao-estoque", estoque_lotes: "gestao-estoque", estoque_movimentos: "gestao-estoque", estoque_fornecedores: "gestao-estoque", estoque_pedidos: "gestao-estoque", estoque_inspecoes: "gestao-estoque", estoque_avaliacoes_fornecedor: "gestao-estoque", estoque_fapes: "gestao-estoque", estoque_tipos_documentos_fornecedor: "gestao-estoque", estoque_regras_documentos_fornecedor: "gestao-estoque", estoque_documentos_fornecedor: "gestao-estoque", estoque_logs_compras: "gestao-estoque", estoque_historico_produto_base: "gestao-estoque", estoque_config: "gestao-estoque",
   mkt: "marketing", drive_atalhos: "google-drive",
 };
 
@@ -372,11 +389,15 @@ Deno.serve(async (req) => {
       return !!pagina && (
         permissoes.includes(pagina) ||
         (pagina === "compras" && (COLECOES_COMPRA[colecao] || []).some(tab => permissoes.includes("compras/" + tab))) ||
+        (pagina === "gestao-estoque" && (COLECOES_ESTOQUE[colecao] || []).some(tab => permissoes.includes("gestao-estoque/" + tab))) ||
         (permissoes.includes("calendario") && ["compromissos", "licitacoes", "manutencoes", "equipamentos", "carros"].includes(colecao)) ||
         (permissoes.includes("inicio") && ["compromissos", "licitacoes", "manutencoes", "compras"].includes(colecao))
       );
     };
     const podeEscrever = ehDirecao || (papel === "equipe" && !matrizAtiva);
+    const podeEditarEstoque = (secao: string) => ehDirecao || (papel === "equipe" && (
+      !matrizAtiva || permissoes.includes("gestao-estoque") || permissoes.includes("gestao-estoque/" + secao)
+    ));
 
     switch (action) {
       case "rev": {
@@ -470,6 +491,261 @@ Deno.serve(async (req) => {
           .eq("id", String(body.id))
           .maybeSingle();
         return resp({ registro: data && !data.apagado ? data.registro : null });
+      }
+
+      case "estoqueFornecedorAvaliar": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não qualifica fornecedores.",semPermissao:true},403);
+        const fornecedorId=String(body.fornecedorId??"").trim();
+        const avaliacao=(body.avaliacao??{}) as Record<string,unknown>;
+        if(!fornecedorId) return resp({erro:"Fornecedor obrigatório."},400);
+        const notas=[1,2,3,4].map(i=>Number(avaliacao[`c${i}`]??avaliacao[`criterio${i}Nota`]??avaliacao[`criterio_${i}_nota`]??0));
+        if(notas.some(x=>!Number.isInteger(x)||x<0||x>2)) return resp({erro:"As quatro notas devem ser inteiros entre 0 e 2."},400);
+        const total=notas.reduce((a,b)=>a+b,0);
+        avaliacao.notaFinal=total; avaliacao.classificacaoNota=total<=2?"RUIM":total<=5?"BOM":"ÓTIMO";
+        const {data,error}=await sb.rpc("ml_estoque_avaliar_fornecedor",{p_avaliacao:avaliacao,p_fornecedor_id:fornecedorId,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_avaliacoes_fornecedor"); await bump("estoque_fornecedores");
+        return resp(data??{ok:true});
+      }
+
+      case "estoqueFapeUpload": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não edita fornecedores.",semPermissao:true},403);
+        const fornecedorId=String(body.fornecedorId??""),base64=String(body.arquivoBase64??"");if(!fornecedorId||!base64)return resp({erro:"Fornecedor e PDF são obrigatórios."},400);
+        const {data:fr,error:fe}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fornecedores").eq("id",fornecedorId).maybeSingle();if(fe)throw fe;if(!fr||fr.apagado)return resp({erro:"Fornecedor não localizado."},404);
+        const {data:avs,error:ae}=await sb.from(T_REG).select("registro").eq("colecao","estoque_avaliacoes_fornecedor").eq("apagado",false);if(ae)throw ae;
+        const lista=(avs??[]).map(x=>x.registro as Record<string,unknown>).filter(a=>String(a.fornecedorId??"")===fornecedorId),inicial=lista.find(a=>String(a.tipoAvaliacao??"").toUpperCase()==="INICIAL");
+        if(!inicial)return resp({erro:"A FAPE exige uma avaliação inicial do fornecedor."},409);
+        const reavs=lista.filter(a=>String(a.tipoAvaliacao??"").toUpperCase()==="REAVALIACAO_SEMESTRAL"),bytes=bytesDoBase64(base64);if(bytes.byteLength>RH_DOC_MAX_BYTES)return resp({erro:"O PDF excede 25 MB."},413);
+        const agora=new Date().toISOString(),id="FAPE-"+agora.replace(/\D/g,"").slice(0,14)+"-"+crypto.randomUUID().slice(0,6).toUpperCase(),nome=nomeStorageSeguro(`FAPE_${fornecedorId}_${agora.slice(0,10)}.pdf`),storagePath=`estoque/fornecedores/${fornecedorId}/fapes/${id}-${nome}`;
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:"application/pdf",upsert:false});if(up.error)throw up.error;
+        const fornecedor=fr.registro as Record<string,unknown>,registro:Record<string,unknown>={id,fornecedorId,cnpj:String(fornecedor.cnpj??""),nomeArquivo:nome,storageBucket:RH_DOC_BUCKET,storagePath,dataGeracao:agora,usuario,avaliacaoInicialId:String(inicial.id??""),qtdReavaliacoes:reavs.length,createdAt:agora};
+        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_fapes",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}await bump("estoque_fapes");return resp({ok:true,fape:registro});
+      }
+
+      case "estoqueDocumentoUpload": {
+        if (!podeEditarEstoque("fornecedores")) return resp({ erro:"Seu acesso lê, mas não edita fornecedores.", semPermissao:true },403);
+        const fornecedorId=String(body.fornecedorId??""), tipoDocumentoId=String(body.tipoDocumentoId??""), nomeOriginal=String(body.nomeOriginal??"").trim(), base64=String(body.arquivoBase64??"");
+        if(!fornecedorId||!tipoDocumentoId||!nomeOriginal||!base64) return resp({erro:"Fornecedor, tipo documental e arquivo são obrigatórios."},400);
+        const lerReg=async(colecao:string,id:string)=>{const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao",colecao).eq("id",id).maybeSingle();if(error)throw error;return data&&!data.apagado?data.registro as Record<string,unknown>:null};
+        const fornecedor=await lerReg("estoque_fornecedores",fornecedorId); if(!fornecedor)return resp({erro:"Fornecedor não localizado."},404);
+        const tipo=await lerReg("estoque_tipos_documentos_fornecedor",tipoDocumentoId); if(!tipo)return resp({erro:"Tipo documental não localizado."},404);
+        const {data:rr,error:re}=await sb.from(T_REG).select("registro").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false);if(re)throw re;
+        const regra=(rr??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.tipoFornecedor??"").toUpperCase()===String(fornecedor.tipoFornecedor??"").toUpperCase()&&String(r.tipoDocumentoId??"")===tipoDocumentoId&&String(r.ativo??"SIM").toUpperCase()!=="NÃO");
+        if(!regra||String(regra.regra??"").toUpperCase()==="NÃO SE APLICA")return resp({erro:"Documento não aplicável ou sem regra para este tipo de fornecedor."},409);
+        if(String(tipo.possuiValidade??"NÃO").toUpperCase()==="SIM"&&!body.dataValidade)return resp({erro:"Data de validade é obrigatória para este tipo documental."},400);
+        const extOriginal=(nomeOriginal.split(".").pop()||"").toLowerCase(),mime=String(body.mimeType||"").toLowerCase();const extPermitida=["pdf","jpg","jpeg","png"].includes(extOriginal),mimePermitido=["application/pdf","image/jpeg","image/png"].includes(mime);if(!extPermitida||!mimePermitido)return resp({erro:"Formato não permitido. Envie PDF, JPG, JPEG ou PNG."},415);const bytes=bytesDoBase64(base64);if(bytes.byteLength>RH_DOC_MAX_BYTES)return resp({erro:"O documento excede o limite de 25 MB."},413);
+        const {data:docs,error:de}=await sb.from(T_REG).select("registro").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false);if(de)throw de;
+        const versoes=(docs??[]).map(x=>x.registro as Record<string,unknown>).filter(d=>String(d.fornecedorId??"")===fornecedorId&&String(d.tipoDocumentoId??"")===tipoDocumentoId).map(d=>Number(d.versao)||0);
+        const versao=(versoes.length?Math.max(...versoes):0)+1,id="DOC-"+crypto.randomUUID().slice(0,10).toUpperCase(),agora=new Date().toISOString();
+        const ext=nomeOriginal.includes(".")?"."+nomeOriginal.split(".").pop():"", nomeNovo=nomeStorageSeguro(`${fornecedorId}_${String(tipo.nomeDocumento??"DOCUMENTO")}_V${versao}_${agora.slice(0,10).replaceAll("-","")}${ext}`);
+        const storagePath=`estoque/fornecedores/${fornecedorId}/${id}-${nomeNovo}`;
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:mime,upsert:false});if(up.error)throw up.error;
+        const registro:Record<string,unknown>={id,fornecedorId,cnpj:String(body.cnpj??fornecedor.cnpj??""),tipoDocumentoId,tipoDocumento:String(tipo.nomeDocumento??""),dataEmissao:body.dataEmissao||"",dataValidade:body.dataValidade||"",possuiValidade:String(tipo.possuiValidade??"NÃO"),versao,observacao:String(body.observacao??""),ativo:"SIM",usuarioRegistro:usuario,dataRegistro:agora,createdAt:agora,referencia:String(body.referencia??""),storageBucket:RH_DOC_BUCKET,storagePath,nomeArquivo:nomeNovo,tipoMime:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,atualizadoPor:usuario,atualizadoEm:agora};
+        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}
+        await bump("estoque_documentos_fornecedor");return resp({ok:true,documento:registro});
+      }
+
+      case "estoqueDocumentoUrl": {
+        if (!podeConsultarColecao("estoque_documentos_fornecedor")) return resp({erro:"Sem acesso aos documentos.",semPermissao:true},403);
+        const id=String(body.id??"");const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_documentos_fornecedor").eq("id",id).maybeSingle();if(error)throw error;if(!data||data.apagado)return resp({erro:"Documento não encontrado."},404);
+        const d=data.registro as Record<string,unknown>;if(d.storageBucket&&d.storagePath){const {data:u,error:ue}=await sb.storage.from(String(d.storageBucket)).createSignedUrl(String(d.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600})}
+        if(d.driveUrl)return resp({url:String(d.driveUrl),legado:true});return resp({erro:"Documento sem arquivo vinculado."},404);
+      }
+
+      case "estoqueConfigDocumentoSalvar": {
+        if (!podeEditarEstoque("configuracoes")) return resp({erro:"Seu acesso lê, mas não edita configurações.",semPermissao:true},403);
+        const tipo=String(body.tipo??"").toUpperCase(), registro={...((body.registro||{}) as Record<string,unknown>)}, agora=new Date().toISOString();
+        if(tipo==="DOCUMENTO"){
+          const id=String(registro.id??registro.idTipoDocumento??crypto.randomUUID()),nome=String(registro.nomeDocumento??"").trim().toUpperCase(),validade=String(registro.possuiValidade??"NÃO").toUpperCase();
+          if(!nome)return resp({erro:"Nome do documento é obrigatório."},400);if(!["SIM","NÃO"].includes(validade))return resp({erro:"Possui validade deve ser SIM ou NÃO."},400);
+          const alerta=registro.prazoAlertaDias;if(validade==="SIM"&&alerta!==""&&alerta!=null&&(!Number.isInteger(Number(alerta))||Number(alerta)<0))return resp({erro:"Prazo de alerta deve ser inteiro maior ou igual a zero."},400);
+          const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_tipos_documentos_fornecedor").eq("apagado",false);if(e)throw e;
+          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).nomeDocumento??"").trim().toUpperCase()===nome))return resp({erro:"Já existe um tipo documental com este nome."},409);
+          Object.assign(registro,{id,nomeDocumento:nome,possuiValidade:validade,prazoAlertaDias:validade==="SIM"?(alerta===""||alerta==null?"":Number(alerta)):"",atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_tipos_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_tipos_documentos_fornecedor");return resp({ok:true,registro:data.registro});
+        }
+        if(tipo==="REGRA"){
+          const id=String(registro.id??registro.idRegra??crypto.randomUUID()),tipoFornecedor=String(registro.tipoFornecedor??"").trim().toUpperCase(),tipoDocumentoId=String(registro.tipoDocumentoId??"").trim(),regra=String(registro.regra??"").trim().toUpperCase();
+          if(!tipoFornecedor||!tipoDocumentoId)return resp({erro:"Tipo de fornecedor e documento são obrigatórios."},400);if(!["OBRIGATÓRIO","OPCIONAL","NÃO SE APLICA"].includes(regra))return resp({erro:"Regra documental inválida."},400);
+          const {data:tip}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_tipos_documentos_fornecedor").eq("id",tipoDocumentoId).maybeSingle();if(!tip||tip.apagado)return resp({erro:"Tipo documental não localizado."},404);
+          const tr=tip.registro as Record<string,unknown>;if(String(tr.ativo??"SIM").toUpperCase()==="NÃO")return resp({erro:"Não é possível vincular regra a documento inativo."},409);
+          const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false);if(e)throw e;
+          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).tipoFornecedor??"").toUpperCase()===tipoFornecedor&&String((x.registro as Record<string,unknown>).tipoDocumentoId??"")===tipoDocumentoId&&String((x.registro as Record<string,unknown>).ativo??"SIM").toUpperCase()!=="NÃO"))return resp({erro:"Já existe regra ativa para este tipo de fornecedor e documento."},409);
+          Object.assign(registro,{id,tipoFornecedor,tipoDocumentoId,tipoDocumento:String(tr.nomeDocumento??""),regra,atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_regras_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_regras_documentos_fornecedor");return resp({ok:true,registro:data.registro});
+        }
+        return resp({erro:"Tipo de configuração documental inválido."},400);
+      }
+
+      case "estoqueConfigDocumentoExcluir": {
+        if (!podeEditarEstoque("configuracoes")) return resp({erro:"Seu acesso lê, mas não edita configurações.",semPermissao:true},403);
+        const tipo=String(body.tipo??"").toUpperCase(),id=String(body.id??"");if(!id)return resp({erro:"Identificador obrigatório."},400);
+        if(tipo==="DOCUMENTO"){
+          const {data:docs}=await sb.from(T_REG).select("id").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",id).limit(1);
+          const {data:regs}=await sb.from(T_REG).select("id").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",id).limit(1);
+          if((docs?.length||0)||(regs?.length||0))return resp({erro:"Este tipo documental possui documentos ou regras vinculadas. Inative-o em vez de excluir."},409);
+          const {error}=await sb.from(T_REG).update({apagado:true,atualizado_em:new Date().toISOString()}).eq("colecao","estoque_tipos_documentos_fornecedor").eq("id",id).eq("apagado",false);if(error)throw error;await bump("estoque_tipos_documentos_fornecedor");return resp({ok:true});
+        }
+        if(tipo==="REGRA"){
+          const {data:docs}=await sb.from(T_REG).select("id").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",String(body.tipoDocumentoId??"")).limit(1);
+          if(docs?.length)return resp({erro:"Há histórico documental vinculado a esta regra. Inative-a em vez de excluir."},409);
+          const {error}=await sb.from(T_REG).update({apagado:true,atualizado_em:new Date().toISOString()}).eq("colecao","estoque_regras_documentos_fornecedor").eq("id",id).eq("apagado",false);if(error)throw error;await bump("estoque_regras_documentos_fornecedor");return resp({ok:true});
+        }
+        return resp({erro:"Tipo inválido."},400);
+      }
+
+      case "estoqueSalvar": {
+        const colecao = String(body.colecao ?? "");
+        const registro = body.registro as Record<string, unknown>;
+        const mapa: Record<string,string> = {
+          estoque_produtos_base:"cadastro-insumo", estoque_fornecedores:"fornecedores",
+          estoque_avaliacoes_fornecedor:"fornecedores", estoque_fapes:"fornecedores",
+          estoque_tipos_documentos_fornecedor:"configuracoes", estoque_regras_documentos_fornecedor:"configuracoes",
+          estoque_documentos_fornecedor:"fornecedores", estoque_pedidos:"pedido-compra",
+          estoque_inspecoes:"pedido-compra", estoque_config:"configuracoes",
+          estoque_historico_produto_base:"cadastro-insumo", estoque_logs_compras:"pedido-compra"
+        };
+        const secao = mapa[colecao];
+        if (!secao || !podeEditarEstoque(secao) || !podeConsultarColecao(colecao)) return resp({ erro:"Seu acesso lê, mas não edita esta parte da Gestão de Estoque.", semPermissao:true },403);
+        if (!registro?.id) registro.id = crypto.randomUUID();
+        registro.atualizadoPor = usuario || "maquina"; registro.atualizadoEm = new Date().toISOString();
+        const { data,error } = await sb.from(T_REG).upsert({colecao,id:String(registro.id),registro,apagado:false,atualizado_em:new Date().toISOString()}).select("registro").maybeSingle();
+        if(error) throw error; await bump(colecao); return resp({ok:true,registro:data?.registro??registro});
+      }
+
+      case "estoquePedidoSalvar": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        const codigo=String(body.pedidoCodigo??"").trim();
+        const itens=Array.isArray(body.itens)?body.itens:[];
+        if(!itens.length) return resp({erro:"Pedido deve possuir ao menos um item."},400);
+        const {data,error}=await sb.rpc("ml_estoque_pedido_salvar",{p_codigo:codigo||null,p_itens:itens,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
+      case "estoquePedidoAnexoUpload": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(), nomeOriginal=String(body.nomeOriginal??"").trim(), mime=String(body.mimeType??"").toLowerCase(), base64=String(body.arquivoBase64??"");
+        if(!pedidoCodigo||!nomeOriginal||!base64) return resp({erro:"Pedido e arquivo são obrigatórios."},400);
+        const ext=(nomeOriginal.split(".").pop()||"").toLowerCase();
+        if(!["pdf","jpg","jpeg","png"].includes(ext)||!["application/pdf","image/jpeg","image/png"].includes(mime)) return resp({erro:"Formato não permitido. Envie PDF, JPG, JPEG ou PNG."},415);
+        const bytes=bytesDoBase64(base64); if(bytes.byteLength>RH_DOC_MAX_BYTES) return resp({erro:"O anexo excede o limite de 25 MB."},413);
+        const {data:linhas,error:be}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_pedidos").eq("apagado",false); if(be)throw be;
+        const itens=(linhas??[]).filter(x=>{const r=x.registro as Record<string,unknown>;return String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo});
+        if(!itens.length)return resp({erro:"Pedido não localizado para anexar o arquivo."},404);
+        const agora=new Date().toISOString(),nome=nomeStorageSeguro(nomeOriginal),storagePath=`estoque/pedidos/${pedidoCodigo}/${agora.replace(/\D/g,"").slice(0,14)}-${crypto.randomUUID().slice(0,6)}-${nome}`;
+        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:mime,upsert:false}); if(up.error)throw up.error;
+        const anexo={nomeArquivo:nomeOriginal,storageBucket:RH_DOC_BUCKET,storagePath,mimeType:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,usuario:usuario||"maquina"};
+        for(const x of itens){const registro={...(x.registro as Record<string,unknown>),anexo,nomeAnexo:nomeOriginal,atualizadoPor:usuario||"maquina",atualizadoEm:agora};const {error}=await sb.from(T_REG).update({registro,atualizado_em:agora}).eq("colecao","estoque_pedidos").eq("id",x.id).eq("apagado",false);if(error)throw error}
+        const logId="LOG-"+crypto.randomUUID(); await sb.from(T_REG).insert({colecao:"estoque_logs_compras",id:logId,registro:{id:logId,pedidoCodigo,data:agora,login:usuario||"maquina",logs:`ANEXO DO PEDIDO: ${nomeOriginal}`,status:"ANEXO",origem:"GESTAO_ESTOQUE"},apagado:false,atualizado_em:agora});
+        await bump("estoque_pedidos");await bump("estoque_logs_compras");return resp({ok:true,anexo});
+      }
+
+      case "estoquePedidoAnexoUrl": {
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({erro:"Você não tem acesso aos pedidos de compra.",semPermissao:true},403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(); if(!pedidoCodigo)return resp({erro:"Pedido obrigatório."},400);
+        const {data:linhas,error}=await sb.from(T_REG).select("registro").eq("colecao","estoque_pedidos").eq("apagado",false);if(error)throw error;
+        const reg=(linhas??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo&&r.anexo);
+        const anexo=reg?.anexo as Record<string,unknown>|undefined;if(!anexo?.storagePath)return resp({erro:"Este pedido não possui anexo armazenado."},404);
+        const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
+      }
+
+      case "estoquePedidoStatus": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        const id=String(body.id??"").trim(), status=String(body.status??"").trim();
+        if(!id||!status) return resp({erro:"Item e status são obrigatórios."},400);
+        const {data,error}=await sb.rpc("ml_estoque_pedido_status",{p_id:id,p_status:status,p_data_chegada:body.dataChegada?String(body.dataChegada):null,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
+      case "estoquePedidoExcluir": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
+        const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String).filter(Boolean))] : [];
+        if (!ids.length || ids.length > 100) return resp({ erro: "Informe de 1 a 100 itens do pedido." }, 400);
+        const { data: linhas, error: buscaErro } = await sb.from(T_REG).select("id,registro,apagado").eq("colecao","estoque_pedidos").in("id",ids);
+        if (buscaErro) throw buscaErro;
+        const ativas = (linhas ?? []).filter(x => !x.apagado);
+        if (ativas.length !== ids.length) return resp({ erro: "O pedido mudou ou possui item não encontrado. Atualize a tela e tente novamente." }, 409);
+        if (ativas.some(x => String((x.registro as Record<string,unknown>)?.status ?? "PENDENTE").toUpperCase() !== "PENDENTE")) {
+          return resp({ erro: "Somente pedidos PENDENTES podem ser excluídos." }, 409);
+        }
+        const agora = new Date().toISOString();
+        for (const x of ativas) {
+          const registro = { ...(x.registro as Record<string,unknown>), atualizadoPor: usuario || "maquina", atualizadoEm: agora };
+          const { error } = await sb.from(T_REG).update({ registro, apagado:true, atualizado_em:agora }).eq("colecao","estoque_pedidos").eq("id",x.id).eq("apagado",false);
+          if (error) throw error;
+        }
+        await bump("estoque_pedidos");
+        return resp({ ok:true, excluidos:ativas.length });
+      }
+
+      case "estoqueEntrada": {
+        if (!podeEditarEstoque("entrada-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à entrada de estoque.", semPermissao: true }, 403);
+        }
+        const lote = body.lote as Record<string, unknown>;
+        if (!lote?.id || !lote?.produto || !lote?.lote) return resp({ erro: "Produto, lote e identificador são obrigatórios." }, 400);
+        const total = Number(lote.totalRecebido ?? lote.totalAtual ?? 0);
+        if (!Number.isFinite(total) || total <= 0) return resp({ erro: "A quantidade recebida deve ser maior que zero." }, 400);
+        const agora = new Date().toISOString();
+        lote.totalRecebido = total; lote.qtdRetirada = 0; lote.totalAtual = total;
+        lote.atualizadoPor = usuario; lote.atualizadoEm = agora;
+        const movimento = {
+          ...(body.movimento as Record<string, unknown> || {}),
+          id: String((body.movimento as Record<string, unknown>)?.id || crypto.randomUUID()),
+          loteId: String(lote.id), produto: lote.produto, lote: lote.lote,
+          tipo: "ENTRADA", acao: "CADASTRO NOVO", quantidade: total,
+          criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
+        };
+        const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "entrada", p_lote: lote, p_movimento: movimento });
+        if (error) throw error;
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp(gravado ?? { ok: true, lote, movimento });
+      }
+
+      case "estoqueRetirada": {
+        if (!podeEditarEstoque("retirada-baixa")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à saída de estoque.", semPermissao: true }, 403);
+        }
+        const loteId = String(body.loteId ?? "");
+        const quantidade = Number(body.quantidade ?? 0);
+        if (!loteId || !Number.isFinite(quantidade) || quantidade <= 0) return resp({ erro: "Lote e quantidade válida são obrigatórios." }, 400);
+        const { data: linha, error: buscaErro } = await sb.from(T_REG).select("registro, apagado").eq("colecao","estoque_lotes").eq("id",loteId).maybeSingle();
+        if (buscaErro) throw buscaErro;
+        if (!linha || linha.apagado) return resp({ erro: "Lote não encontrado." }, 404);
+        const lote = { ...(linha.registro as Record<string, unknown>) };
+        const saldo = Number(lote.totalAtual ?? lote.qtdAtual ?? 0);
+        if (saldo <= 0) return resp({ erro: "Este lote está sem saldo." }, 409);
+        if (quantidade > saldo) return resp({ erro: "Quantidade solicitada maior que o saldo disponível." }, 409);
+        const hoje = new Date().toISOString().slice(0,10);
+        if (lote.validade && String(lote.validade).slice(0,10) < hoje) return resp({ erro: "Lote vencido não pode ser utilizado." }, 409);
+        const agora = new Date().toISOString();
+        lote.qtdRetirada = Number(lote.qtdRetirada ?? 0) + quantidade;
+        lote.totalAtual = saldo - quantidade;
+        lote.ultimaRetirada = agora;
+        if (body.dataAbertura && !lote.dataAbertura) lote.dataAbertura = String(body.dataAbertura);
+        lote.atualizadoPor = usuario; lote.atualizadoEm = agora;
+        const movimento = {
+          id: crypto.randomUUID(), loteId, codigoID: lote.codigoID ?? lote.codigoAuto,
+          produto: lote.produto, lote: lote.lote, unidade: lote.unidade,
+          tipo: "SAIDA", acao: "RETIRADA (BAIXA)", quantidade,
+          observacao: String(body.observacao ?? ""), dataAbertura: body.dataAbertura || null,
+          criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
+        };
+        const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "retirada", p_lote: lote, p_movimento: movimento });
+        if (error) {
+          if (String(error.message || "").includes("saldo")) return resp({ erro: error.message }, 409);
+          throw error;
+        }
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp(gravado ?? { ok:true, lote, movimento });
       }
 
       case "upsert": {

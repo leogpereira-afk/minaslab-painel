@@ -53,7 +53,7 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
               <input type="checkbox" disabled={direcao || !PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`)} checked={direcao || (disponivel && paginas.includes(id)) || paginas.includes(`${id}/${secao}`)} onChange={e => alternarSecao(id, secao, e.target.checked)} aria-label={`${rotulo} — ${nome}`}/>
               <span>{nome}</span>
             </label>)}
-            <small className="block text-[11px] text-slate-400">{["compras", "patrimonio", "curva-abc"].includes(id) ? `Marque ${rotulo} para todas as abas ou escolha cada uma.` : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
+            <small className="block text-[11px] text-slate-400">{["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(id) ? `Marque ${rotulo} para todas as abas ou escolha cada uma.` : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
           </div>}
         </div>;
       })}</div>

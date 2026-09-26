@@ -125,6 +125,40 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
+export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("estoqueFornecedorAvaliar", { fornecedorId, avaliacao }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a qualificação do fornecedor."); esquecerColecao("estoque_avaliacoes_fornecedor"); esquecerColecao("estoque_fornecedores"); return r; });
+
+export const estoqueFapeUpload = (dados) => chamar("estoqueFapeUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a FAPE."); esquecerColecao("estoque_fapes"); return r.fape; });
+
+export const estoqueDocumentoUpload = (dados) => chamar("estoqueDocumentoUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o documento."); esquecerColecao("estoque_documentos_fornecedor"); return r.documento; });
+export const estoqueDocumentoUrl = (id) => chamar("estoqueDocumentoUrl", { id }).then((r) => r?.url || null);
+
+export const estoqueSalvar = (colecao, registro) => chamar("estoqueSalvar", { colecao, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a gravação."); esquecerColecao(colecao); return r.registro; });
+export const estoqueConfigDocumentoSalvar = (tipo, registro) => chamar("estoqueConfigDocumentoSalvar", { tipo, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a configuração documental."); esquecerColecao(tipo==="DOCUMENTO"?"estoque_tipos_documentos_fornecedor":"estoque_regras_documentos_fornecedor"); return r.registro; });
+export const estoqueConfigDocumentoExcluir = (tipo, id, tipoDocumentoId = "") => chamar("estoqueConfigDocumentoExcluir", { tipo, id, tipoDocumentoId }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão."); esquecerColecao(tipo==="DOCUMENTO"?"estoque_tipos_documentos_fornecedor":"estoque_regras_documentos_fornecedor"); return true; });
+
+export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedidoSalvar", { pedidoCodigo, itens }).then((r) => { if (!r?.ok || !r?.pedidoCodigo) throw new Error("O servidor não confirmou o pedido de compra."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
+
+export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("estoquePedidoStatus", { id, status, dataChegada }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o status do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
+
+export const estoquePedidoAnexoUpload = (pedidoCodigo, arquivo) => chamar("estoquePedidoAnexoUpload", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.anexo) throw new Error("O servidor não confirmou o anexo do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r.anexo; });
+export const estoquePedidoAnexoUrl = (pedidoCodigo) => chamar("estoquePedidoAnexoUrl", { pedidoCodigo }).then((r) => r?.url || null);
+
+export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
+
+export const estoqueEntrada = (lote, movimento = {}) =>
+  chamar("estoqueEntrada", { lote, movimento }).then((r) => {
+    if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a entrada de estoque.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
+
+export const estoqueRetirada = (loteId, quantidade, dataAbertura = "", observacao = "") =>
+  chamar("estoqueRetirada", { loteId, quantidade, dataAbertura, observacao }).then((r) => {
+    if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a retirada de estoque.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
+
 // Quem trabalha aqui (id + nome), para os seletores de equipe (coletas,
 // responsavel do compromisso). E uma porta ESTREITA de proposito: devolve so
 // id, nome e apelido — a ficha completa do RH e assunto da direcao.

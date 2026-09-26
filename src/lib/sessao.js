@@ -129,11 +129,16 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
     if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
     return modulo === "inicio" || sessao.paginas_consulta.includes(modulo) ||
-      (["compras", "patrimonio", "curva-abc"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
+      (["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }
   if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
   return true;
+}
+export function podeEditarSecao(modulo, secao, sessao = getSessao()) {
+  if (!sessao || !podeVerSecao(modulo, secao, sessao)) return false;
+  if (ehDirecao(sessao)) return true;
+  return sessao.papel === "equipe";
 }
 export function podeVerSecao(modulo, secao, sessao = getSessao()) {
   if (!podeAbrir(modulo, sessao)) return false;
