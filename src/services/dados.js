@@ -133,6 +133,8 @@ export const estoqueDocumentoUpload = (dados) => chamar("estoqueDocumentoUpload"
 export const estoqueDocumentoUrl = (id) => chamar("estoqueDocumentoUrl", { id }).then((r) => r?.url || null);
 
 export const estoqueSalvar = (colecao, registro) => chamar("estoqueSalvar", { colecao, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a gravação."); esquecerColecao(colecao); return r.registro; });
+export const estoqueConfigDocumentoSalvar = (tipo, registro) => chamar("estoqueConfigDocumentoSalvar", { tipo, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a configuração documental."); esquecerColecao(tipo==="DOCUMENTO"?"estoque_tipos_documentos_fornecedor":"estoque_regras_documentos_fornecedor"); return r.registro; });
+export const estoqueConfigDocumentoExcluir = (tipo, id, tipoDocumentoId = "") => chamar("estoqueConfigDocumentoExcluir", { tipo, id, tipoDocumentoId }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão."); esquecerColecao(tipo==="DOCUMENTO"?"estoque_tipos_documentos_fornecedor":"estoque_regras_documentos_fornecedor"); return true; });
 
 export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedidoSalvar", { pedidoCodigo, itens }).then((r) => { if (!r?.ok || !r?.pedidoCodigo) throw new Error("O servidor não confirmou o pedido de compra."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 
