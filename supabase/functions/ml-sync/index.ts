@@ -552,6 +552,48 @@ Deno.serve(async (req) => {
         if(d.driveUrl)return resp({url:String(d.driveUrl),legado:true});return resp({erro:"Documento sem arquivo vinculado."},404);
       }
 
+      case "estoqueConfigDocumentoSalvar": {
+        if (!podeEditarEstoque("configuracoes")) return resp({erro:"Seu acesso lê, mas não edita configurações.",semPermissao:true},403);
+        const tipo=String(body.tipo??"").toUpperCase(), registro={...((body.registro||{}) as Record<string,unknown>)}, agora=new Date().toISOString();
+        if(tipo==="DOCUMENTO"){
+          const id=String(registro.id??registro.idTipoDocumento??crypto.randomUUID()),nome=String(registro.nomeDocumento??"").trim().toUpperCase(),validade=String(registro.possuiValidade??"NÃO").toUpperCase();
+          if(!nome)return resp({erro:"Nome do documento é obrigatório."},400);if(!["SIM","NÃO"].includes(validade))return resp({erro:"Possui validade deve ser SIM ou NÃO."},400);
+          const alerta=registro.prazoAlertaDias;if(validade==="SIM"&&alerta!==""&&alerta!=null&&(!Number.isInteger(Number(alerta))||Number(alerta)<0))return resp({erro:"Prazo de alerta deve ser inteiro maior ou igual a zero."},400);
+          const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_tipos_documentos_fornecedor").eq("apagado",false);if(e)throw e;
+          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).nomeDocumento??"").trim().toUpperCase()===nome))return resp({erro:"Já existe um tipo documental com este nome."},409);
+          Object.assign(registro,{id,nomeDocumento:nome,possuiValidade:validade,prazoAlertaDias:validade==="SIM"?(alerta===""||alerta==null?"":Number(alerta)):"",atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_tipos_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_tipos_documentos_fornecedor");return resp({ok:true,registro:data.registro});
+        }
+        if(tipo==="REGRA"){
+          const id=String(registro.id??registro.idRegra??crypto.randomUUID()),tipoFornecedor=String(registro.tipoFornecedor??"").trim().toUpperCase(),tipoDocumentoId=String(registro.tipoDocumentoId??"").trim(),regra=String(registro.regra??"").trim().toUpperCase();
+          if(!tipoFornecedor||!tipoDocumentoId)return resp({erro:"Tipo de fornecedor e documento são obrigatórios."},400);if(!["OBRIGATÓRIO","OPCIONAL","NÃO SE APLICA"].includes(regra))return resp({erro:"Regra documental inválida."},400);
+          const {data:tip}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_tipos_documentos_fornecedor").eq("id",tipoDocumentoId).maybeSingle();if(!tip||tip.apagado)return resp({erro:"Tipo documental não localizado."},404);
+          const tr=tip.registro as Record<string,unknown>;if(String(tr.ativo??"SIM").toUpperCase()==="NÃO")return resp({erro:"Não é possível vincular regra a documento inativo."},409);
+          const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false);if(e)throw e;
+          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).tipoFornecedor??"").toUpperCase()===tipoFornecedor&&String((x.registro as Record<string,unknown>).tipoDocumentoId??"")===tipoDocumentoId&&String((x.registro as Record<string,unknown>).ativo??"SIM").toUpperCase()!=="NÃO"))return resp({erro:"Já existe regra ativa para este tipo de fornecedor e documento."},409);
+          Object.assign(registro,{id,tipoFornecedor,tipoDocumentoId,tipoDocumento:String(tr.nomeDocumento??""),regra,atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_regras_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_regras_documentos_fornecedor");return resp({ok:true,registro:data.registro});
+        }
+        return resp({erro:"Tipo de configuração documental inválido."},400);
+      }
+
+      case "estoqueConfigDocumentoExcluir": {
+        if (!podeEditarEstoque("configuracoes")) return resp({erro:"Seu acesso lê, mas não edita configurações.",semPermissao:true},403);
+        const tipo=String(body.tipo??"").toUpperCase(),id=String(body.id??"");if(!id)return resp({erro:"Identificador obrigatório."},400);
+        if(tipo==="DOCUMENTO"){
+          const {data:docs}=await sb.from(T_REG).select("id").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",id).limit(1);
+          const {data:regs}=await sb.from(T_REG).select("id").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",id).limit(1);
+          if((docs?.length||0)||(regs?.length||0))return resp({erro:"Este tipo documental possui documentos ou regras vinculadas. Inative-o em vez de excluir."},409);
+          const {error}=await sb.from(T_REG).update({apagado:true,atualizado_em:new Date().toISOString()}).eq("colecao","estoque_tipos_documentos_fornecedor").eq("id",id).eq("apagado",false);if(error)throw error;await bump("estoque_tipos_documentos_fornecedor");return resp({ok:true});
+        }
+        if(tipo==="REGRA"){
+          const {data:docs}=await sb.from(T_REG).select("id").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false).filter("registro->>tipoDocumentoId","eq",String(body.tipoDocumentoId??"")).limit(1);
+          if(docs?.length)return resp({erro:"Há histórico documental vinculado a esta regra. Inative-a em vez de excluir."},409);
+          const {error}=await sb.from(T_REG).update({apagado:true,atualizado_em:new Date().toISOString()}).eq("colecao","estoque_regras_documentos_fornecedor").eq("id",id).eq("apagado",false);if(error)throw error;await bump("estoque_regras_documentos_fornecedor");return resp({ok:true});
+        }
+        return resp({erro:"Tipo inválido."},400);
+      }
+
       case "estoqueSalvar": {
         const colecao = String(body.colecao ?? "");
         const registro = body.registro as Record<string, unknown>;
