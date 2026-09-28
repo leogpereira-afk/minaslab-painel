@@ -125,6 +125,8 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
+export const estoqueFornecedorExcluir = (id) => chamar("estoqueFornecedorExcluir", { id }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão."); esquecerColecao("estoque_fornecedores"); return true; });
+
 export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("estoqueFornecedorAvaliar", { fornecedorId, avaliacao }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a qualificação do fornecedor."); esquecerColecao("estoque_avaliacoes_fornecedor"); esquecerColecao("estoque_fornecedores"); return r; });
 
 export const estoqueFapeUpload = (dados) => chamar("estoqueFapeUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a FAPE."); esquecerColecao("estoque_fapes"); return r.fape; });
