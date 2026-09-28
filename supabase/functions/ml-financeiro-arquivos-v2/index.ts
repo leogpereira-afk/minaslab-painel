@@ -5,16 +5,28 @@ const RESEND=Deno.env.get("RESEND_API_KEY")??"";
 const FROM_SECRET=Deno.env.get("FIN_EMAIL_FROM")??"";
 const COPY_EMAIL="financeiro@minaslab.net";
 const OLD=`${URL}/functions/v1/ml-financeiro-arquivos`;
+const DANFSE=`${URL}/functions/v1/ml-financeiro-nfse-danfse`;
 const sb=createClient(URL,KEY,{auth:{persistSession:false,autoRefreshToken:false}});
 const CORS={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-const out=(x:any,s=200)=>new Response(JSON.stringify(x),{status:s,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+const out=(x:any,s=200)=>new Response(JSON.stringify(x),{status:s,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate"}});
 const t=(v:any)=>String(v??"").trim();
 const br=(v:any)=>{const s=t(v).slice(0,10),p=s.split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:"—"};
 const moeda=(v:any)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 function emailFrom(){const m=FROM_SECRET.match(/<([^>]+)>/);const email=(m?.[1]||FROM_SECRET).trim();return `Financeiro <${email}>`}
 function replyTo(){const m=FROM_SECRET.match(/<([^>]+)>/);return (m?.[1]||FROM_SECRET).trim()}
 async function authOk(auth:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"emailEstado"})});return r.ok}
-async function baixar(path:string){if(!path||!path.startsWith("financeiro/"))return null;const{data,error}=await sb.storage.from("ml-arquivos").download(path);if(error||!data)return null;return new Uint8Array(await data.arrayBuffer())}
+async function regenerarPorPath(path:string){
+ if(!path||!path.toLowerCase().endsWith(".pdf"))return path;
+ const {data:nota}=await sb.from("notas_fiscais").select("id,pdf_url,xml_url,origem,status_fiscal").eq("pdf_url",path).eq("apagado",false).maybeSingle();
+ if(!nota?.id||!nota?.xml_url||t(nota.origem)!=="NFSE_NACIONAL")return path;
+ const r=await fetch(DANFSE,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${KEY}`},body:JSON.stringify({id:nota.id})});
+ if(!r.ok)throw new Error(`Falha ao atualizar DANFSe antes de abrir (HTTP ${r.status}).`);
+ const j=await r.json().catch(()=>({}));
+ if(!j?.ok)throw new Error(t(j?.erro)||"Falha ao atualizar DANFSe.");
+ return t(j.pdfPath)||path;
+}
+async function regenerarNota(nota:any){if(nota?.id&&nota?.xml_url&&t(nota.origem)==="NFSE_NACIONAL"){const r=await fetch(DANFSE,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${KEY}`},body:JSON.stringify({id:nota.id})});if(!r.ok)throw new Error(`Falha ao atualizar DANFSe (HTTP ${r.status}).`);const j=await r.json().catch(()=>({}));if(!j?.ok)throw new Error(t(j?.erro)||"Falha ao atualizar DANFSe.");nota.pdf_url=t(j.pdfPath)||nota.pdf_url}return nota}
+async function baixar(path:string){if(!path||!path.startsWith("financeiro/"))return null;const {data:u,error:se}=await sb.storage.from("ml-arquivos").createSignedUrl(path,60);if(se||!u?.signedUrl)return null;const r=await fetch(u.signedUrl,{cache:"no-store",headers:{"Cache-Control":"no-cache"}});if(!r.ok)return null;return new Uint8Array(await r.arrayBuffer())}
 function b64(bytes:Uint8Array){let s="";for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s)}
 Deno.serve(async req=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:CORS});
@@ -22,20 +34,27 @@ Deno.serve(async req=>{
  let body:any;try{body=await req.json()}catch{return out({erro:"JSON inválido."},400)}
  const action=t(body.action),auth=t(req.headers.get("authorization"));
  if(!["emailEstado","emailEnviar"].includes(action)){
-  const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify(body)});
-  return new Response(await r.text(),{status:r.status,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}})
+  if(action==="urlAssinada"&&t(body.path).toLowerCase().endsWith(".pdf")){
+   /* CONFERE ANTES DE REGENERAR (auditoria de 28/09/2026). Antes a nota era
+      regenerada no servidor e só DEPOIS a função antiga conferia o crachá:
+      quem não tinha login não levava o link, mas disparava a gravação. */
+   if(!(await authOk(auth)))return out({erro:"Entre no sistema.",semSessao:true},401);
+   try{body={...body,path:await regenerarPorPath(t(body.path))}}catch(e){return out({erro:e instanceof Error?e.message:String(e)},500)}
+  }
+  const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json","Cache-Control":"no-cache"},body:JSON.stringify(body),cache:"no-store"});
+  return new Response(await r.text(),{status:r.status,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate"}})
  }
  if(!(await authOk(auth)))return out({erro:"Entre no sistema.",semSessao:true},401);
  if(action==="emailEstado")return out({configurado:!!RESEND&&!!FROM_SECRET});
  if(!RESEND||!FROM_SECRET)return out({erro:"Envio de e-mail ainda não configurado."},503);
  const notaId=t(body.notaId),destino=t(body.email);
  if(!notaId||!/^\S+@\S+\.\S+$/.test(destino))return out({erro:"Informe a nota e um e-mail válido."},400);
- const{data:nota,error}=await sb.from("notas_fiscais").select("*,empresa:empresas(id,nome,cnpj)").eq("id",notaId).eq("apagado",false).maybeSingle();
- if(error)throw error;if(!nota)return out({erro:"Nota não encontrada."},404);
+ const{data:nota0,error}=await sb.from("notas_fiscais").select("*,empresa:empresas(id,nome,cnpj)").eq("id",notaId).eq("apagado",false).maybeSingle();
+ if(error)throw error;if(!nota0)return out({erro:"Nota não encontrada."},404);
+ const nota=await regenerarNota(nota0);
  const anexos:any[]=[];for(const[path,ext]of[[nota.xml_url,"xml"],[nota.pdf_url,"pdf"]]){const bytes=await baixar(t(path));if(bytes)anexos.push({filename:`NFS-e-${nota.numero_nf||nota.id}.${ext}`,content:b64(bytes)})}
  if(!anexos.length)return out({erro:"A nota não possui XML/PDF armazenado para anexar."},409);
- const emitente=t(nota.nome_emitente)||t(nota.empresa?.nome)||"M LAB SERVICOS LTDA";
- const destinatario=t(nota.nome_destinatario)||"Cliente";
+ const emitente=t(nota.nome_emitente)||t(nota.empresa?.nome)||"M LAB SERVICOS LTDA",destinatario=t(nota.nome_destinatario)||"Cliente";
  const assunto=`NFS-e nº ${t(nota.numero_nf)||"—"} | ${emitente} → ${destinatario}`;
  const mensagem=`Olá,\n\nSegue a Nota Fiscal de Serviço Eletrônica.\n\nEmitente: ${emitente}\nCNPJ: ${t(nota.cnpj_emitente)||t(nota.empresa?.cnpj)||"—"}\nNº da NFS-e: ${t(nota.numero_nf)||"—"}\nData de Emissão: ${br(nota.data_emissao)}\nVencimento: ${br(nota.data_vencimento)}\nValor: ${moeda(nota.valor_total)}\n\nA Nota Fiscal segue anexa a este e-mail.\n\nAtenciosamente,\nMINASLAB LTDA`;
  const envio=await fetch("https://api.resend.com/emails",{method:"POST",headers:{"Authorization":`Bearer ${RESEND}`,"Content-Type":"application/json"},body:JSON.stringify({from:emailFrom(),to:[destino],reply_to:replyTo(),bcc:[COPY_EMAIL],subject:assunto,text:mensagem,attachments:anexos})});
