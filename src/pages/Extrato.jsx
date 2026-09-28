@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import { ArrowLeft, Upload, RefreshCw, Search, Link2, ChevronLeft, ChevronRight, X, Undo2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
@@ -177,7 +178,10 @@ export default function Extrato() {
   const [salvandoConciliacao, setSalvandoConciliacao] = useState(false);
   const [desfazendoConciliacao, setDesfazendoConciliacao] = useState("");
 
+  const consultas = useRef(criarControleConsulta());
   async function carregar(p = pagina) {
+    // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
@@ -185,15 +189,16 @@ export default function Extrato() {
         financeiroOpcoes(),
         finMovimentosPagina({ empresaId: empresa, contaId: conta, busca, status, tipoMovimento, ano: ano ? Number(ano) : null, mes: mes ? Number(mes) : null, pagina: p, limite }),
       ]);
+      if (!vigente()) return;
       setOp(o);
       setItens(m.itens || []);
       setMeta({ total: m.total || 0, paginas: m.paginas || 1 });
       setResumo(m.resumo || { entradas: 0, saidas: 0, conciliados: 0, pendentes: 0 });
       setPagina(m.pagina || p);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import {
   Pencil,
   Plus,
@@ -151,7 +152,10 @@ export default function ClientesFinanceiro() {
       /* indicadores não bloqueiam a tela */
     }
   }
+  const consultas = useRef(criarControleConsulta());
   async function carregar(p = pagina) {
+    // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     try {
       setErro("");
@@ -161,13 +165,14 @@ export default function ClientesFinanceiro() {
         pagina: p,
         limite,
       });
+      if (!vigente()) return;
       setItens(r.itens || []);
       setMeta({ total: r.total || 0, paginas: r.paginas || 1 });
       setPagina(r.pagina || p);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {

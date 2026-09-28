@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import {
   ArrowLeft,
   FileCode2,
@@ -225,7 +226,10 @@ export default function NotasFiscais() {
       [x.xml_url && "XML", x.pdf_url && "PDF"].filter(Boolean).join(" "),
     envio: (x) => x.status_envio,
   });
+  const consultas = useRef(criarControleConsulta());
   async function carregar(p = pagina) {
+    // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
@@ -242,6 +246,7 @@ export default function NotasFiscais() {
         }),
         finEmailEstado().catch(() => ({ configurado: false })),
       ]);
+      if (!vigente()) return;
       setOp(o);
       setItens(d.itens || []);
       setMeta({ total: d.total || 0, paginas: d.paginas || 1 });
@@ -259,9 +264,9 @@ export default function NotasFiscais() {
       setPagina(d.pagina || p);
       setEmailConfigurado(!!em.configurado);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {

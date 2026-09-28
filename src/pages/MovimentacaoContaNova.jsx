@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import {
   AlertCircle,
   ArrowDown,
@@ -221,7 +222,10 @@ export default function MovimentacaoContaNova() {
     saldo: (m) => (m.saldo_movimento == null ? "" : moeda(m.saldo_movimento)),
     situacao: (m) => situacaoAmigavel(m),
   });
+  const consultas = useRef(criarControleConsulta());
   async function carregar(p = 1) {
+    // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
@@ -239,6 +243,7 @@ export default function MovimentacaoContaNova() {
           limite,
         }),
       ]);
+      if (!vigente()) return;
       setOp(o || { empresas: [], contas: [] });
       setItens(m.itens || []);
       setMeta({ total: m.total || 0, paginas: m.paginas || 1 });
@@ -246,9 +251,9 @@ export default function MovimentacaoContaNova() {
       setSaldoAtual(m.saldoAtual ?? null);
       setPagina(m.pagina || p);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {

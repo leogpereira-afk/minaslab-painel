@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import {
   AlertTriangle,
   ArrowDownCircle,
@@ -139,7 +140,10 @@ export default function ConciliacaoTitulos() {
     status: (x) => x.status,
   });
 
+  const consultas = useRef(criarControleConsulta());
   async function carregar(p = pagina) {
+    // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
@@ -149,6 +153,7 @@ export default function ConciliacaoTitulos() {
           ? finRecebimentosListar(empresa)
           : finDespesasListar(empresa),
       ]);
+      if (!vigente()) return;
       setOp(opts || { empresas: [] });
       const termo = normaliza(busca);
       const filtrados = (lista || []).filter((x) => {
@@ -177,9 +182,9 @@ export default function ConciliacaoTitulos() {
       setMeta({ total: filtrados.length, paginas, pagina: paginaValida });
       setPagina(paginaValida);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {
