@@ -709,6 +709,33 @@ Deno.serve(async (req) => {
         return resp(gravado ?? { ok: true, lote, movimento });
       }
 
+      case "estoqueLoteEditar": {
+        if (!podeEditarEstoque("edicao-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à edição de lotes.", semPermissao: true }, 403);
+        }
+        const recebido = body.lote as Record<string, unknown>;
+        const loteId = String(recebido?.id ?? "");
+        if (!loteId) return resp({ erro: "Identificador do lote é obrigatório." }, 400);
+        const { data: linha, error: buscaErro } = await sb.from(T_REG).select("registro, apagado").eq("colecao","estoque_lotes").eq("id",loteId).maybeSingle();
+        if (buscaErro) throw buscaErro;
+        if (!linha || linha.apagado) return resp({ erro: "Lote não encontrado." }, 404);
+        const anterior = { ...(linha.registro as Record<string, unknown>) };
+        const retirado = Number(anterior.qtdRetirada ?? 0);
+        const totalAnterior = Number(anterior.totalRecebido ?? anterior.qtdTotal ?? 0);
+        const totalNovo = Number(recebido.totalRecebido ?? recebido.qtdTotal ?? totalAnterior);
+        if (!Number.isFinite(totalNovo) || totalNovo < retirado) return resp({ erro: "Quantidade total não pode ser menor que a quantidade já retirada." }, 409);
+        const agora = new Date().toISOString();
+        const lote = { ...anterior, ...recebido, id:loteId, qtdRetirada:retirado, totalRecebido:totalNovo, qtdTotal:totalNovo, totalAtual:totalNovo-retirado, qtdAtual:totalNovo-retirado, atualizadoPor:usuario, atualizadoEm:agora };
+        const { error } = await sb.from(T_REG).update({ registro:lote, atualizado_em:agora }).eq("colecao","estoque_lotes").eq("id",loteId).eq("apagado",false);
+        if (error) throw error;
+        const movimento = { id:crypto.randomUUID(), loteId, codigoID:lote.codigoID ?? lote.codigoAuto, produto:lote.produto, lote:lote.lote, unidade:lote.unidade, tipo:"AJUSTE", acao:"EDIÇÃO DE LOTE", quantidade:totalNovo-totalAnterior, saldoAnterior:Number(anterior.totalAtual ?? anterior.qtdAtual ?? 0), saldoAtual:totalNovo-retirado, criadoEm:agora, atualizadoPor:usuario, atualizadoEm:agora };
+        const { error: movErro } = await sb.from(T_REG).upsert({ colecao:"estoque_movimentos", id:String(movimento.id), registro:movimento, apagado:false, atualizado_em:agora });
+        if (movErro) throw movErro;
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp({ ok:true, lote, movimento });
+      }
+
       case "estoqueRetirada": {
         if (!podeEditarEstoque("retirada-baixa")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
