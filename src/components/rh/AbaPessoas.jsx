@@ -1056,6 +1056,9 @@ export default function AbaPessoas({
      desenho da Impresilk: quem abre uma pessoa está indo até ela, e o
      Anterior/Próximo anda na MESMA ordem que a tela mostra. */
   const [fichaId, setFichaId] = useState(null);
+  // A aba da ficha mora aqui: a ficha recomeça a cada pessoa (key), e Anterior/Próximo
+  // devem manter a aba em que o RH está (conferir os exames de um em um, por exemplo).
+  const [abaFicha, setAbaFicha] = useState("resumo");
   const listaRef = useRef(null);
   const ultimaFichaId = useRef(null);
   const [secoes, setSecoes] = useState(lerSecoes);
@@ -1193,8 +1196,8 @@ export default function AbaPessoas({
       {pessoaFicha ? (
         <FichaPessoa
           /* A ficha recomeça quando a pessoa muda (auditoria de 28/09/2026): sem esta chave o
-             React reaproveitava o componente, e um rascunho começado para uma pessoa — revisão
-             de documento, movimento do banco de horas — era gravado na pessoa que estava na
+             React reaproveitava o componente, e um rascunho começado para uma pessoa (revisão
+             de documento, movimento do banco de horas) era gravado na pessoa que estava na
              tela na hora do clique. */
           key={pessoaFicha?.id}
           pessoa={pessoaFicha}
@@ -1206,7 +1209,9 @@ export default function AbaPessoas({
           historico={daPessoa(historico)}
           hojeISO={hojeISO}
           editavel={editavel}
-          aoVoltar={() => setFichaId(null)}
+          abaInicial={abaFicha}
+          aoTrocarAba={setAbaFicha}
+          aoVoltar={() => { setFichaId(null); setAbaFicha("resumo"); }}
           aoAnterior={iFicha > 0 ? () => setFichaId(navegaveis[iFicha - 1].id) : null}
           aoProximo={iFicha >= 0 && iFicha < navegaveis.length - 1 ? () => setFichaId(navegaveis[iFicha + 1].id) : null}
           aoEditar={() => aoAbrir(pessoaFicha)}

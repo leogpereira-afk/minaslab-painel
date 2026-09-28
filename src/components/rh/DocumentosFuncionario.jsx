@@ -6,6 +6,7 @@ import {
 } from "../../services/dados.js";
 import { extrairDadosKit, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 import { Card, Empty } from "../ui.jsx";
+import { resultadoAso } from "../../lib/rh/resultadoAso.js";
 
 const TIPOS = [
   "Ficha de Registro", "Kit Admissional", "Contrato de Trabalho", "ASO",
@@ -41,14 +42,6 @@ function tipoAso(obs) {
   if (s.includes("retorno")) return "retorno";
   if (s.includes("mudança") || s.includes("mudanca")) return "mudanca_funcao";
   return "periodico";
-}
-
-function resultadoAso(obs) {
-  const s = String(obs || "").toLowerCase();
-  if (/\b(inapto|não\s+apto|nao\s+apto)\b/.test(s)) return "inapto";
-  if (/\bapto\s+com\s+restri/.test(s)) return "apto_com_restricao";
-  if (/\bapto\b/.test(s)) return "apto";
-  return "aguardando";
 }
 
 function tipoNr(obs) {

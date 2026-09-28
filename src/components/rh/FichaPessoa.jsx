@@ -31,6 +31,8 @@ import FotoPessoa from "./FotoPessoa.jsx";
 //   aoEditar, aoDesligar, aoEfetivar  reusam o que a aba já faz
 //   aoIrParaAba   troca a aba do RH ("ferias" | "exames" | "feedback")
 //   aoRegistrarAcontecimento   abre o lançamento no histórico
+//   abaInicial, aoTrocarAba   a aba da ficha guardada por quem a abre, para
+//                 Anterior/Próximo não voltarem sempre ao Resumo
 // ============================================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -122,8 +124,10 @@ export default function FichaPessoa({
   hojeISO, editavel,
   aoVoltar, aoAnterior, aoProximo,
   aoEditar, aoDesligar, aoEfetivar, aoConferirAdmissao, aoIrParaAba, aoRegistrarAcontecimento,
+  abaInicial = "resumo", aoTrocarAba,
 }) {
-  const [aba, setAba] = useState("resumo");
+  const [aba, setAbaLocal] = useState(abaInicial);
+  const setAba = (id) => { setAbaLocal(id); aoTrocarAba?.(id); };
   const tituloRef = useRef(null);
   useEffect(() => {
     tituloRef.current?.focus();
