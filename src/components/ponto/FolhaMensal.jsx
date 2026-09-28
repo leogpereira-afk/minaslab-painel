@@ -1,7 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Printer, Save } from "lucide-react";
 import { rhBancoListar, rhFolhaSalvar } from "../../services/dados.js";
-import { duracaoTexto, ausenciaDoDia, minutosTrabalhados } from "../../lib/rh/ponto.js";
+import { duracaoTexto, ausenciaDoDia } from "../../lib/rh/ponto.js";
+/* A regra do dia (horas, previsto, extra, saldo) mora em lib/rh/folhaMensal.js, com
+   teste. Ali está por que atestado não gera hora extra (auditoria de 28/09/2026). */
+import { minutosDaFolha as minutos, previstoDoDia as previsto, ehFeriado, extraDoDia, saldoDoDia } from "../../lib/rh/folhaMensal.js";
 import { Card, Empty } from "../ui.jsx";
 import BancoHorasFuncionario from "../rh/BancoHorasFuncionario.jsx";
 
@@ -16,16 +19,10 @@ const hora=(...vs)=>vs.find(v=>v!=null&&String(v).trim())||"—";
 // relógio. `trabalhadoMin` é o payrollHours final importado. Dia corrigido à
 // mão volta à conta pelas batidas, pois o total antigo do relógio não descreve
 // mais a correção feita pelo RH.
-const minutos=d=>{
- if(d?.emAberto===true)return 0;
- const folha=Number(d?.trabalhadoMin);
- if(d?.corrigido!==true&&d?.origem==="jibble"&&Number.isFinite(folha)&&folha>=0)return Math.round(folha);
- return minutosTrabalhados(d)??0;
-};
+
 const semana=iso=>Math.floor((Number(String(iso||"").slice(8,10))-1)/7)+1;
 const diaSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00");return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("pt-BR",{weekday:"long"})};
 const fimDeSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00").getDay();return d===0||d===6};
-const ehFeriado=d=>Boolean(d.feriado||d.isHoliday||String(d.tipoDia||"").toLowerCase().includes("feriado")||String(d.ocorrencia||"").toLowerCase().includes("feriado"));
 const classeDia=d=>ehFeriado(d)?"bg-orange-100":ausenciaDoDia(d)?.tipo==="ferias"?"bg-sky-100":fimDeSemana(d.data)?"bg-green-100":"";
 
 export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel}){
@@ -35,7 +32,6 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
  useEffect(()=>{let vivo=true;if(!pessoaId){setMovimentosBanco(null);return()=>{vivo=false}};rhBancoListar({pessoaId}).then(r=>{if(vivo)setMovimentosBanco(r.movimentos||[])}).catch(()=>{if(vivo)setMovimentosBanco(null)});return()=>{vivo=false}},[pessoaId]);
  // Régua confirmada pela MinasLab para esta folha: o almoço fica fora do
  // trabalho; são 8h líquidas de segunda a quinta e 7h líquidas na sexta.
- const previsto=d=>{const a=ausenciaDoDia(d);if(ehFeriado(d)||(a&&!a.desconta))return 0;const dia=new Date(String(d.data||"")+"T12:00:00").getDay();return dia>=1&&dia<=4?480:dia===5?420:0};
  const linhas=useMemo(()=>pontoDia.filter(d=>d.pessoaId===pessoaId&&String(d.data||"").startsWith(competencia)).sort((a,b)=>String(a.data).localeCompare(String(b.data))),[pontoDia,pessoaId,competencia]);
  const linhasFolha=useMemo(()=>{
   const [ano,mes]=String(competencia).split("-").map(Number);
@@ -46,14 +42,14 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
     return porData.get(data)||{id:`vazio_${data}`,data,pessoaId};
   });
  },[linhas,competencia,pessoaId]);
- const total=linhas.reduce((n,d)=>n+minutos(d),0), normais=linhas.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0), extras=linhas.reduce((n,d)=>n+Math.max(0,minutos(d)-previsto(d)),0), saldoMes=linhas.reduce((n,d)=>n+minutos(d)-previsto(d),0);
+ const total=linhas.reduce((n,d)=>n+minutos(d),0), normais=linhas.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0), extras=linhas.reduce((n,d)=>n+extraDoDia(d),0), saldoMes=linhas.reduce((n,d)=>n+saldoDoDia(d),0);
  const saldosBanco=useMemo(()=>{
   if(!pessoaId||movimentosBanco===null)return null;
   const inicio=`${competencia}-01`,limite=`${competencia}-31`;
   const valorMovimento=m=>Number(m.credito_minutos??m.creditoMinutos??0)-Number(m.debito_minutos??m.debitoMinutos??0);
   const manuais=movimentosBanco.filter(m=>m.origem!=="APURACAO_PONTO");
   const acumuladoAnterior=manuais.filter(m=>String(m.data_movimento||m.dataMovimento||"")<inicio).reduce((n,m)=>n+valorMovimento(m),0)
-   +pontoDia.filter(d=>d.pessoaId===pessoaId&&String(d.data||"")>="2026-09-01"&&String(d.data||"")<inicio).reduce((n,d)=>n+minutos(d)-previsto(d),0);
+   +pontoDia.filter(d=>d.pessoaId===pessoaId&&String(d.data||"")>="2026-09-01"&&String(d.data||"")<inicio).reduce((n,d)=>n+saldoDoDia(d),0);
   const ajustesMes=manuais.filter(m=>{const data=String(m.data_movimento||m.dataMovimento||"");return data>=inicio&&data<=limite}).reduce((n,m)=>n+valorMovimento(m),0);
   return {acumuladoAnterior,ajustesMes,totalAtualizado:acumuladoAnterior+saldoMes+ajustesMes};
  },[pessoaId,competencia,movimentosBanco,pontoDia,pessoa?.jornada]);
@@ -67,7 +63,7 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
    <div className="mb-3 grid grid-cols-[130px_1fr] gap-x-3 gap-y-1 text-sm"><strong>Mês</strong><span>{periodo(competencia)}</span><strong>Membro</strong><span>{pessoa.nome}</span><strong>Código</strong><span>{pessoa.matricula||"—"}</span><strong>Gerente(s)</strong><span>{pessoa.gestorNome||"—"}</span></div>
    <div className="mb-1 flex items-stretch text-xs font-medium"><span className="px-2 py-1">Legenda</span><span className="bg-orange-100 px-8 py-1">Feriado</span><span className="bg-green-100 px-8 py-1">Dia de descanso</span><span className="bg-sky-100 px-8 py-1">Férias</span></div>
    <table className="w-full border-collapse text-[10px]"><thead><tr className="border border-slate-400 text-center">{["DATA","DIA","PRIMEIRA ENTRADA","Almoço 1h Início","Almoço 1h Fim","ÚLTIMA SAÍDA","HRS FOLHA PAG.","HRS NORMAIS","HORAS EXTRAS DIÁRIAS","TOTAL DE HORAS"].map(h=><th key={h} className="border border-slate-400 px-1 py-2">{h}</th>)}</tr></thead><tbody>
-   {porSemana.map(([s,dias])=>{const st=dias.reduce((n,d)=>n+minutos(d),0),sn=dias.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0),se=dias.reduce((n,d)=>n+Math.max(0,minutos(d)-previsto(d)),0);return <Fragment key={s}><tr className="border border-slate-400 bg-white text-center font-semibold"><td className="border border-slate-400 py-1" colSpan={6}>Semana {s}</td><td className="border border-slate-400 px-1">{hms(st)}</td><td className="border border-slate-400 px-1">{hms(sn)}</td><td className="border border-slate-400 px-1">{hms(se)}</td><td className="border border-slate-400 px-1">{hms(st-sn)}</td></tr>{dias.map(d=>{const t=minutos(d),p=previsto(d),n=Math.min(t,p),e=Math.max(0,t-p),oc=d.emAberto?"Em aberto":ausenciaDoDia(d)?.rotulo||d.ocorrencia||"";return <tr key={d.id||d.data} className={`border border-slate-400 ${classeDia(d)}`}><td className="border border-slate-400 px-1 py-1">{dataBR(d.data)}</td><td className="border border-slate-400 px-1 capitalize">{diaSemana(d.data)}</td><td className="border border-slate-400 px-1 text-center">{oc||hora(d.entrada,d.primeiraEntrada)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.inicioAlmoco,d.inicioIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.fimAlmoco,d.fimIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.saida,d.ultimaSaida)}</td><td className="border border-slate-400 px-1 text-center">{hms(t)}</td><td className="border border-slate-400 px-1 text-center">{hms(n)}</td><td className="border border-slate-400 px-1 text-center">{hms(e)}</td><td className="border border-slate-400 px-1 text-center">{hms(t-p)}</td></tr>})}</Fragment>})}
+   {porSemana.map(([s,dias])=>{const st=dias.reduce((n,d)=>n+minutos(d),0),sn=dias.reduce((n,d)=>n+Math.min(minutos(d),previsto(d)),0),se=dias.reduce((n,d)=>n+extraDoDia(d),0),ss=dias.reduce((n,d)=>n+saldoDoDia(d),0);return <Fragment key={s}><tr className="border border-slate-400 bg-white text-center font-semibold"><td className="border border-slate-400 py-1" colSpan={6}>Semana {s}</td><td className="border border-slate-400 px-1">{hms(st)}</td><td className="border border-slate-400 px-1">{hms(sn)}</td><td className="border border-slate-400 px-1">{hms(se)}</td><td className="border border-slate-400 px-1">{hms(ss)}</td></tr>{dias.map(d=>{const t=minutos(d),p=previsto(d),n=Math.min(t,p),e=extraDoDia(d),oc=d.emAberto?"Em aberto":ausenciaDoDia(d)?.rotulo||d.ocorrencia||"";return <tr key={d.id||d.data} className={`border border-slate-400 ${classeDia(d)}`}><td className="border border-slate-400 px-1 py-1">{dataBR(d.data)}</td><td className="border border-slate-400 px-1 capitalize">{diaSemana(d.data)}</td><td className="border border-slate-400 px-1 text-center">{oc||hora(d.entrada,d.primeiraEntrada)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.inicioAlmoco,d.inicioIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.fimAlmoco,d.fimIntervalo)}</td><td className="border border-slate-400 px-1 text-center">{hora(d.saida,d.ultimaSaida)}</td><td className="border border-slate-400 px-1 text-center">{hms(t)}</td><td className="border border-slate-400 px-1 text-center">{hms(n)}</td><td className="border border-slate-400 px-1 text-center">{hms(e)}</td><td className="border border-slate-400 px-1 text-center">{hms(saldoDoDia(d))}</td></tr>})}</Fragment>})}
    <tr className="border border-slate-400 font-bold"><td className="border border-slate-400 p-1 text-right" colSpan={6}>Total de Horas</td><td className="border border-slate-400 p-1 text-center">{hms(total)}</td><td className="border border-slate-400 p-1 text-center">{hms(normais)}</td><td className="border border-slate-400 p-1 text-center">{hms(extras)}</td><td className="border border-slate-400 p-1 text-center">{hms(saldoMes)}</td></tr></tbody></table>
    <div className="folha-saldos mt-4 ml-auto w-full max-w-md overflow-hidden rounded-lg border border-slate-300 text-sm font-semibold"><div className="flex justify-between gap-4 border-b border-slate-300 px-3 py-2"><span>Total de horas em {rotulo(competencia)}</span><span className="tnum">{hms(saldoMes)}</span></div><div className="flex justify-between gap-4 border-b border-slate-300 px-3 py-2"><span>Saldo de Horas Acumuladas</span><span className="tnum">{saldosBanco==null?"—":hms(saldosBanco.acumuladoAnterior)}</span></div><div className="flex justify-between gap-4 bg-slate-50 px-3 py-2 font-bold"><span>Total de Horas Acumuladas</span><span className="tnum">{saldosBanco==null?"—":hms(saldosBanco.totalAtualizado)}</span></div></div>
    <div className="folha-informacoes mt-4 grid gap-2 text-sm md:grid-cols-2"><div><strong>Total trabalhado no mês:</strong> {duracaoTexto(total)}</div><div><strong>Jornada semanal:</strong> 39h00</div><div className="md:col-span-2"><strong>Horário previsto:</strong> segunda a quinta: 8h líquidas · sexta: 7h líquidas · almoço descontado</div>{saldosBanco&&saldosBanco.ajustesMes!==0&&<div className="md:col-span-2"><strong>Ajustes do banco no mês:</strong> {hms(saldosBanco.ajustesMes)}</div>}</div>
