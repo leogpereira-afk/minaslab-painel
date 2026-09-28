@@ -368,12 +368,22 @@ export default function NotasFiscais() {
   async function excluir(x) {
     /* NOTA AUTORIZADA NÃO VAI PARA A LIXEIRA (auditoria de 28/09/2026). Ela continua
        valendo na Receita; na lixeira, some do painel e o cancelamento deixa de
-       encontrá-la. O caminho certo é cancelar. A mesma trava ainda falta no servidor
-       (ação notaExcluir da ml-financeiro): lá ela só entra quando alguém confirmar
-       que a versão publicada da ml-financeiro é a do repositório. */
+       encontrá-la. O caminho certo é cancelar. Vale para a nota emitida aqui e para a
+       da Omie (salvo se a Omie já a cancelou); a importada por XML (de fornecedor) pode
+       sair. O servidor tem a mesma trava (ação notaExcluir da ml-financeiro). */
     const st = String(x.status_fiscal || "").toUpperCase();
-    if (st === "AUTORIZADA" || st === "PROCESSANDO") {
-      setErro(`A nota ${x.numero_nf || ""} está ${st} na Receita e não pode ir para a lixeira. Para desfazê-la, cancele a nota.`);
+    const emitida = ["NFSE_NACIONAL", "OMIE"].includes(String(x.origem || "").toUpperCase());
+    // Já cancelada na Omie ("C" ou "CANCELADA"): o status fiscal pode ter ficado para trás.
+    const canceladaNaOmie = String(x.origem || "").toUpperCase() === "OMIE" && ["C", "CANCELADA"].includes(String(x.status_omie || "").toUpperCase());
+    if (emitida && !canceladaNaOmie && (st === "AUTORIZADA" || st === "PROCESSANDO")) {
+      const numero = x.numero_nf ? `A nota ${x.numero_nf}` : "Esta nota";
+      setErro(
+        String(x.origem || "").toUpperCase() === "OMIE"
+          ? `${numero} veio da Omie e está valendo na Receita; não vai para a lixeira. Para desfazê-la, cancele na Omie: a sincronização atualiza aqui.`
+          : st === "PROCESSANDO"
+            ? `${numero} está em processamento na Receita e não vai para a lixeira. Abra em Emitir NFS-e para consultar o retorno.`
+            : `${numero} está autorizada na Receita e não vai para a lixeira. Para desfazê-la, cancele a nota.`,
+      );
       return;
     }
     if (!confirm(`Excluir a nota ${x.numero_nf || "sem número"}?`)) return;
