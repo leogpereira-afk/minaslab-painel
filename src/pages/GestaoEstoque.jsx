@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import {
   AlertTriangle, BarChart3, Boxes, ClipboardList, FileText, PackagePlus, PackageMinus,
   Plus, Search, Settings, Tags, Truck, Download, ClipboardCheck, FolderOpen, Pencil, Trash2, Check, ThumbsUp, Ban,
-  ShoppingCart,
+  ShoppingCart, Printer, Eye,
 } from "lucide-react";
 import { PageTitle, Card, Modal, Aviso, CarregandoModulo, ErroModulo } from "../components/ui.jsx";
 import { carregarColecoes, estoqueSalvar, estoqueFornecedorAvaliar, estoqueFapeUpload, estoqueDocumentoUpload, estoqueDocumentoUrl, estoquePedidoExcluir, estoquePedidoSalvar, estoquePedidoStatus, estoquePedidoAnexoUpload, estoquePedidoAnexoUrl, estoqueConfigDocumentoSalvar, estoqueConfigDocumentoExcluir, estoqueEntrada, estoqueRetirada } from "../services/dados.js";
