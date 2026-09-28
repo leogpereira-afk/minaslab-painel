@@ -290,7 +290,10 @@ export default function Compromissos() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
-    elenco().then(setEquipe).catch(() => {});
+    /* Falha da equipe NÃO some calada (pendência da auditoria de 19/09, fechada em 28/09):
+       a lista anterior fica, e a tela diz que pode estar velha. Sem isso, "ninguém para
+       escolher" e "o servidor não respondeu" tinham a mesma cara. */
+    elenco().then(setEquipe).catch(() => setAviso({ tipo: "erro", texto: "Não consegui atualizar a lista da equipe agora. Os responsáveis mostrados podem estar desatualizados; tente de novo em instantes." }));
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
     listar(COLECAO)
