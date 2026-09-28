@@ -1,0 +1,22 @@
+/* APLICAÇÕES E SÓCIOS (28/09/2026).
+   A raiz é .patrimonial e NÃO .space-y-5: as regras antigas de
+   financeiro-redesign.css pegam ".financeiro-shell > .space-y-5" e encolhem
+   campos e botões para 36px e fonte de 12px.
+   As grades decidem pelo espaço que SOBRA (auto-fit), não pela largura da
+   janela: com o menu lateral aberto, um breakpoint de tela espremia os cartões. */
+.patrimonial { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: #334155; font-variant-numeric: tabular-nums; }
+.patrimonial-grade { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); }
+.patrimonial-filtros { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.patrimonial-datas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); max-width: 420px; }
+.patrimonial-grafico { position: relative; min-width: 0; border-radius: 12px; }
+.patrimonial-grafico svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+.patrimonial-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.patrimonial-tabela th, .patrimonial-tabela td { padding: 8px; border-bottom: 1px solid #e7edf2; text-align: right; white-space: nowrap; }
+.patrimonial-tabela th:first-child, .patrimonial-tabela td:first-child { text-align: left; }
+.patrimonial-tabela thead th { color: #64748b; font-weight: 600; }
+.patrimonial-lanc > summary { list-style: none; }
+.patrimonial-lanc > summary::-webkit-details-marker { display: none; }
+.patrimonial :is(button, a, summary, select, input, [tabindex="0"]):focus-visible { outline: 3px solid #82a8d9; outline-offset: 2px; }
+@media print {
+  .patrimonial-grafico svg { width: 100% !important; }
+}
