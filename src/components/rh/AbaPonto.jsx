@@ -1729,6 +1729,15 @@ function FormBatida({ form, setForm, ativos, salvando, aoSalvar, aoFechar }) {
                 . A correção fica marcada e a próxima importação não a desfaz.
               </p>
             )}
+            {/* O atestado que o relógio pagou já entra na folha (folhaMensal.js soma
+                horasAtestadoMin às batidas do dia corrigido): estender a batida para
+                "pôr o atestado na conta" o contaria duas vezes. */}
+            {(numOuNulo(form.base?.horasAtestadoMin) ?? 0) > 0 && (
+              <p className="mt-0.5 text-xs text-amber-700">
+                Este dia tem {duracaoTexto(form.base.horasAtestadoMin)} de atestado pagas pelo relógio, que já
+                entram na folha. Não estenda a batida para cobri-las.
+              </p>
+            )}
             {/* A data identifica o dia no relógio (o id da ponte é
                 pd_<jibbleId>_<dia>): mudar a data aqui deixaria um dia órfão e a
                 importação seguinte recriaria o antigo. */}
