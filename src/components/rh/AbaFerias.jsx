@@ -88,7 +88,16 @@ function presencaDaPessoa(periodos, hoje) {
 /* A leitura da CLT para a linha: o período aquisitivo em aberto mais antigo,
    com as frases honestas — o sistema só afirma o que os dados sustentam.
    `gravidade` ordena o "resto" da lista (vencida sobe). */
+/* ADMISSÃO A CONFERIR (auditoria de 28/09/2026, A6): a admissão de quem entrou no relógio pode
+   ser a data da primeira batida, não a do contrato. Enquanto o RH não conferir, todo prazo que sai
+   dela (direito, concessão, vencimento) é estimativa, e a tela precisa dizer isso colado ao prazo. */
 function leituraCLT(p, periodos, hoje, desde) {
+  const r = leituraCLTDaAdmissao(p, periodos, hoje, desde);
+  if (!p.admissao || p.admissaoConferida === true) return r;
+  return { ...r, detalhes: [`Admissão a conferir: os prazos partem de ${dataLonga(p.admissao)}, que pode ser a data da primeira batida no relógio.`, ...r.detalhes] };
+}
+
+function leituraCLTDaAdmissao(p, periodos, hoje, desde) {
   if (!p.admissao) {
     // Sem admissão não há relógio. Dizer "em dia" seria afirmar sem dado.
     return { chip: "chip", texto: "admissão sem registro — sem como contar as férias", detalhes: [], gravidade: 3 };
