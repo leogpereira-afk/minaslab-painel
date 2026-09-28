@@ -289,3 +289,7 @@ export const rhDocumentoConfirmarPreenchimento = (documentoId, pessoaId, dadosCo
     if (!r?.pessoa?.id) throw new Error("O servidor não confirmou o preenchimento do cadastro.");
     return r;
   });
+
+
+// Usuários ativos — lista mínima (nome/login) para rastreabilidade operacional.
+export const usuariosAtivos = () => chamar("usuariosAtivos").then((r) => r.usuarios || []);
