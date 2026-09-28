@@ -166,6 +166,13 @@ export const estoqueLoteEditar = (lote) =>
     return r;
   });
 
+export const estoqueLoteExcluir = (loteId) =>
+  chamar("estoqueLoteExcluir", { loteId }).then((r) => {
+    if (!r?.ok) throw new Error("O servidor não confirmou a exclusão da entrada.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
+
 // Quem trabalha aqui (id + nome), para os seletores de equipe (coletas,
 // responsavel do compromisso). E uma porta ESTREITA de proposito: devolve so
 // id, nome e apelido — a ficha completa do RH e assunto da direcao.
