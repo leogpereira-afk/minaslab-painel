@@ -179,7 +179,8 @@ export default function Extrato() {
   const [desfazendoConciliacao, setDesfazendoConciliacao] = useState("");
 
   const consultas = useRef(criarControleConsulta());
-  async function carregar(p = pagina) {
+  // contaDetectada: a importação escolhe a conta com setConta, que só chega no próximo render.
+  async function carregar(p = pagina, contaDetectada) {
     // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
     const vigente = consultas.current.iniciar();
     setLoading(true);
@@ -187,7 +188,7 @@ export default function Extrato() {
     try {
       const [o, m] = await Promise.all([
         financeiroOpcoes(),
-        finMovimentosPagina({ empresaId: empresa, contaId: conta, busca, status, tipoMovimento, ano: ano ? Number(ano) : null, mes: mes ? Number(mes) : null, pagina: p, limite }),
+        finMovimentosPagina({ empresaId: empresa, contaId: contaDetectada ?? conta, busca, status, tipoMovimento, ano: ano ? Number(ano) : null, mes: mes ? Number(mes) : null, pagina: p, limite }),
       ]);
       if (!vigente()) return;
       setOp(o);
@@ -336,7 +337,7 @@ export default function Extrato() {
       setConta(detectada.id);
       const r = await finMovimentosImportar(empresa, detectada.id, dados, conferencia.meta);
       setAviso(`${isCsv ? "CSV C6" : "OFX"} importado na conta ${detectada.nome}: ${r?.inseridos || 0} novos, ${r?.ignorados || 0} já existentes.`);
-      await carregar(1);
+      await carregar(1, detectada.id);
     } catch (ex) {
       setErro(ex.message);
     } finally {

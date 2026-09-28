@@ -208,7 +208,7 @@ function conferirAgendamento(form, pessoa, registros, hoje, desde) {
   let limite = null;
   if (pessoa && pessoa.admissao) {
     const s = situacaoFerias(pessoa, outros, hoje, desde);
-    if (s && !s.jaGozou) limite = s.limiteConcessao;
+    if (s && !s.jaGozou && s.situacao !== "sem-registro") limite = s.limiteConcessao;
     const comDatas = outros.filter((r) => r.status !== "cancelada" && diasDoRegistro(r) > 0);
     const futuros = comDatas.filter((r) => {
       const i = parseData(r.inicio);

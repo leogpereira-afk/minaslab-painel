@@ -35,6 +35,8 @@ const gozo = (inicio, dias, status = "concluida") =>
 
 // ------------------------------ situacaoFerias ------------------------------
 
+const ymdDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 test("situacaoFerias: não calcula antes de 1 ano de casa (direito ainda não nasceu)", () => {
   const hoje = new Date(2026, 5, 1); // 01/06/2026
   assert.equal(situacaoFerias(pessoa("2025-10-01"), [], hoje), null);
@@ -446,7 +448,9 @@ test("inicioDoHistorico: registro sem data não atrapalha", () => {
 test("lei: o prazo de concessão termina na véspera do aniversário (art. 134)", () => {
   assert.equal(limiteConcessaoISO("2024-03-10", 1), "2026-03-09");
   assert.equal(limiteConcessaoISO("2024-03-10", 2), "2027-03-09");
-  assert.equal(limiteConcessaoISO("2024-02-29", 1), "2026-02-27"); // aniversário cai em 28/02
+  // aniversário de 29/02 em ano comum é 01/03 (Código Civil, art. 132 §3): prazo até 28/02, igual ao motor
+  assert.equal(limiteConcessaoISO("2024-02-29", 1), "2026-02-28");
+  assert.equal(ymdDe(situacaoFerias(pessoa("2024-02-29"), [], new Date(2026, 0, 10)).limiteConcessao), "2026-02-28");
   assert.equal(limiteConcessaoISO("lixo", 1), "");
   const naVespera = situacaoFerias(pessoa("2024-03-10"), [], new Date(2026, 2, 9));
   assert.equal(naVespera.diasParaLimite, 0); // vence HOJE, no último dia de verdade

@@ -66,9 +66,9 @@ const mesesCompletos = (de, ate) =>
 export function limiteConcessaoISO(admissaoISO, periodo = 1) {
   const m = String(admissaoISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return "";
-  const base = new Date(Number(m[1]), Number(m[2]) - 1 + (periodo + 1) * 12, 1);
-  const ultimoDoMes = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-  const aniversario = new Date(base.getFullYear(), base.getMonth(), Math.min(Number(m[3]), ultimoDoMes));
+  // Aniversário que não existe (29/02 em ano comum) é o dia seguinte, 01/03 (Código Civil,
+  // art. 132 §3); o Date faz isso sozinho, igual ao somaMeses do motor.
+  const aniversario = new Date(Number(m[1]) + (periodo + 1), Number(m[2]) - 1, Number(m[3]));
   return ymd(somaDias(aniversario, -1));
 }
 

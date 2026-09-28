@@ -138,14 +138,14 @@ function fraseExperiencia(s) {
   if (s.situacao === "decidir-prorrogacao") {
     return {
       chip: "chip-warn",
-      curta: `experiência: decidir prorrogação (dia ${s.diasDeCasa})`,
-      longa: `Dia ${s.diasDeCasa} da experiência — hora de decidir a prorrogação (o marco é o dia 45; os 90 completam em ${fim}).`,
+      curta: `experiência: decidir prorrogação (dia ${s.diasDeCasa + 1})`,
+      longa: `Dia ${s.diasDeCasa + 1} da experiência — hora de decidir a prorrogação (o marco é o dia 45; os 90 completam em ${fim}).`,
     };
   }
   return {
     chip: "chip",
-    curta: `experiência: dia ${s.diasDeCasa} de 90`,
-    longa: `Primeiro período da experiência: dia ${s.diasDeCasa} de 90 — completa em ${fim}. A decisão de prorrogar chega perto do dia 45.`,
+    curta: `experiência: dia ${s.diasDeCasa + 1} de 90`,
+    longa: `Primeiro período da experiência: dia ${s.diasDeCasa + 1} de 90 — completa em ${fim}. A decisão de prorrogar chega perto do dia 45.`,
   };
 }
 

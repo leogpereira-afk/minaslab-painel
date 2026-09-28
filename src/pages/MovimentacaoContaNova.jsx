@@ -223,7 +223,8 @@ export default function MovimentacaoContaNova() {
     situacao: (m) => situacaoAmigavel(m),
   });
   const consultas = useRef(criarControleConsulta());
-  async function carregar(p = 1) {
+  // contaDetectada: a importação escolhe a conta com setConta, que só chega no próximo render.
+  async function carregar(p = 1, contaDetectada) {
     // Só a consulta mais recente mexe na tela (resposta lenta de outro filtro chegava depois).
     const vigente = consultas.current.iniciar();
     setLoading(true);
@@ -233,7 +234,7 @@ export default function MovimentacaoContaNova() {
         financeiroOpcoes(),
         carregarExtrato({
           empresaId: empresa,
-          contaId: conta,
+          contaId: contaDetectada ?? conta,
           busca,
           status,
           tipoMovimento,
@@ -331,7 +332,7 @@ export default function MovimentacaoContaNova() {
       setAviso(
         `Extrato atualizado: ${r?.inseridos || 0} novos e ${r?.ignorados || 0} já existentes.`,
       );
-      await carregar(1);
+      await carregar(1, detectada.id);
     } catch (e2) {
       setErro(e2.message);
     } finally {
