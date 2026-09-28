@@ -13,10 +13,15 @@ import "./styles/movimentacao-conta-responsive.css";
    A trava de 1 minuto impede ciclo: se recarregou e o erro voltou, o problema é
    outro, e aí o erro aparece normalmente em vez de a página piscar sem parar. */
 window.addEventListener("vite:preloadError", (evento) => {
-  let ultima = 0;
-  try { ultima = Number(sessionStorage.getItem("ml_recarga_por_versao") || 0); } catch { /* sem sessionStorage: segue */ }
-  if (Date.now() - ultima < 60000) return;
-  try { sessionStorage.setItem("ml_recarga_por_versao", String(Date.now())); } catch { /* segue */ }
+  // Sem sessionStorage não há como lembrar que já recarregou: se o arquivo faltar de verdade,
+  // recarregaria sem parar. Nesse caso fica a tela de erro do módulo (LimiteModulo).
+  try {
+    const ultima = Number(sessionStorage.getItem("ml_recarga_por_versao") || 0);
+    if (Date.now() - ultima < 60000) return;
+    sessionStorage.setItem("ml_recarga_por_versao", String(Date.now()));
+  } catch {
+    return;
+  }
   evento.preventDefault();
   window.location.reload();
 });
