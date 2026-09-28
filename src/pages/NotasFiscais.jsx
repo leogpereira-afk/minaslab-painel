@@ -366,6 +366,16 @@ export default function NotasFiscais() {
     }
   }
   async function excluir(x) {
+    /* NOTA AUTORIZADA NÃO VAI PARA A LIXEIRA (auditoria de 28/09/2026). Ela continua
+       valendo na Receita; na lixeira, some do painel e o cancelamento deixa de
+       encontrá-la. O caminho certo é cancelar. A mesma trava ainda falta no servidor
+       (ação notaExcluir da ml-financeiro): lá ela só entra quando alguém confirmar
+       que a versão publicada da ml-financeiro é a do repositório. */
+    const st = String(x.status_fiscal || "").toUpperCase();
+    if (st === "AUTORIZADA" || st === "PROCESSANDO") {
+      setErro(`A nota ${x.numero_nf || ""} está ${st} na Receita e não pode ir para a lixeira. Para desfazê-la, cancele a nota.`);
+      return;
+    }
     if (!confirm(`Excluir a nota ${x.numero_nf || "sem número"}?`)) return;
     try {
       await finNotaExcluir(x.id);
