@@ -18,7 +18,12 @@ export function ativarCamada(elemento, fechar, origem = document.activeElement) 
   camadas.push(camada);
   const focaveis = () => [...elemento.querySelectorAll(seletor)].filter(el => el.getClientRects().length && !el.closest('[inert]'));
   const primeiro = () => elemento.querySelector('[autofocus]') || focaveis()[0] || elemento;
-  primeiro().focus({ preventScroll: true });
+  /* Campo com autoFocus já recebeu o foco no commit do React, antes deste efeito. O React
+     não escreve o atributo [autofocus] no HTML, então a busca acima não o acha e o foco ia
+     para o primeiro botão (o Fechar). Foco já dentro da janela fica onde está. */
+  const ativo = document.activeElement;
+  const focoDentro = !!ativo && ativo !== elemento && typeof elemento.contains === 'function' && elemento.contains(ativo);
+  if (!focoDentro) primeiro().focus({ preventScroll: true });
   const teclado = e => {
     if (camadas.at(-1) !== camada) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); fechar(); }

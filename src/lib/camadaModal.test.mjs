@@ -52,3 +52,16 @@ test('retorna ao acionador mesmo quando autoFocus mudou o foco antes do efeito',
  const fechar=ativarCamada(j,()=>{},a.origem);j.filhos.forEach(el=>{el.isConnected=false;});
  fechar();assert.equal(a.doc.activeElement,a.origem);a.restaurar();
 });
+
+test('campo com autoFocus já focado dentro da janela continua com o foco (não pula para o Fechar)',()=>{
+ const a=ambiente(),j=a.janela('saldo');j.contains=x=>j.filhos.includes(x);a.doc.activeElement=j.filhos[1];
+ const fechar=ativarCamada(j,()=>{},a.origem);
+ assert.equal(a.doc.activeElement,j.filhos[1],'o campo com autoFocus mantém o foco');
+ fechar();assert.equal(a.doc.activeElement,a.origem);a.restaurar();
+});
+test('foco fora da janela (o botão que abriu) vai para o primeiro controle dela',()=>{
+ const a=ambiente(),j=a.janela('saldo');j.contains=x=>j.filhos.includes(x);
+ const fechar=ativarCamada(j,()=>{},a.origem);
+ assert.equal(a.doc.activeElement,j.filhos[0]);
+ fechar();a.restaurar();
+});
