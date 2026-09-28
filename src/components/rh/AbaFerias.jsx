@@ -19,7 +19,7 @@ import { useMemo } from "react";
 import { clsx } from "clsx";
 import { Pencil, Ban, ChevronDown, ChevronRight } from "lucide-react";
 import { dataCurta, dataLonga, ymdLocal } from "../../lib/format.js";
-import { situacaoFerias, inicioDoHistorico } from "../../lib/rh/clt.js";
+import { situacaoFerias, inicioDoHistorico, limiteConcessaoISO } from "../../lib/rh/clt.js";
 import { feriasEmCurso } from "../../lib/rh/ferias.js";
 import { contagem, statusIncoerente } from "../../lib/rh/feriasContagem.js";
 import {
@@ -99,7 +99,7 @@ function leituraCLT(p, periodos, hoje, desde) {
     // o direito e até quando a empresa poderá concedê-lo. O motor CLT retorna
     // null antes de 12 meses; isso não significa ausência de prazo calculável.
     const direito = somarMesesISO(p.admissao, 12);
-    const limite = somarMesesISO(p.admissao, 24);
+    const limite = limiteConcessaoISO(p.admissao, 1);
     const detalhes = [
       direito ? `direito em ${dataLonga(direito)}` : "",
       limite ? `prazo máximo para conceder: ${dataLonga(limite)}` : "",
@@ -195,8 +195,11 @@ function conferirAgendamento(form, pessoa, registros, hoje, desde) {
   const abono = Math.max(0, Number(form.abonoDias) || 0);
   let jaLancados = 0;
   let fracoes = 0;
+  // Último dia para conceder o período em aberto (art. 134); só vale se ele ainda não foi quitado.
+  let limite = null;
   if (pessoa && pessoa.admissao) {
     const s = situacaoFerias(pessoa, outros, hoje, desde);
+    if (s && !s.jaGozou) limite = s.limiteConcessao;
     const comDatas = outros.filter((r) => r.status !== "cancelada" && diasDoRegistro(r) > 0);
     const futuros = comDatas.filter((r) => {
       const i = parseData(r.inicio);
@@ -230,6 +233,7 @@ function conferirAgendamento(form, pessoa, registros, hoje, desde) {
   achados.push(...validarAgendamento({
     inicio: ini, dias, diasJaLancados: jaLancados, fracoesExistentes: fracoes,
     outros, ignorarId: form.id || undefined, abono,
+    limite,
   }));
   return { achados, dias };
 }
@@ -244,13 +248,15 @@ function planejamentoFuturo(p, hoje) {
   for (let n = 0; n < 5; n += 1) {
     const inicio = somarMesesISO(p.admissao, n * 12);
     const fimAquisitivo = somarMesesISO(p.admissao, (n + 1) * 12);
-    const limiteConcessao = somarMesesISO(p.admissao, (n + 2) * 12);
+    const limiteConcessao = limiteConcessaoISO(p.admissao, n + 1);
     if (!inicio || !fimAquisitivo || !limiteConcessao) continue;
     const limite = parseData(limiteConcessao);
     // Períodos já totalmente ultrapassados ficam no histórico/relógio CLT;
     // aqui interessa o horizonte atual e futuro para programação.
     if (limite && limite.getTime() < hoje.getTime()) continue;
-    linhas.push({ n: n + 1, inicio, fimAquisitivo, limiteConcessao });
+    // O aquisitivo vai do dia da admissão até a véspera do aniversário; o direito nasce no aniversário.
+    const ultimoDiaAquisitivo = ymdLocal(new Date(Number(fimAquisitivo.slice(0, 4)), Number(fimAquisitivo.slice(5, 7)) - 1, Number(fimAquisitivo.slice(8, 10)) - 1));
+    linhas.push({ n: n + 1, inicio, fimAquisitivo, ultimoDiaAquisitivo, limiteConcessao });
   }
   return linhas;
 }
@@ -344,7 +350,7 @@ function LinhaFerias({ linha, hoje, aberta, aoAlternar, editavel, acoes }) {
             <div className="space-y-1.5">
               {planejamentoFuturo(p, hoje).map((x) => (
                 <div key={x.n} className="grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
-                  <span><strong>{x.n}º período:</strong> {dataLonga(x.inicio)} a {dataLonga(x.fimAquisitivo)}</span>
+                  <span><strong>{x.n}º período:</strong> {dataLonga(x.inicio)} a {dataLonga(x.ultimoDiaAquisitivo)}</span>
                   <span>Direito em <strong>{dataLonga(x.fimAquisitivo)}</strong></span>
                   <span>Dar férias até <strong>{dataLonga(x.limiteConcessao)}</strong></span>
                 </div>

@@ -54,6 +54,24 @@ const somaMeses = (d, m) => {
   r.setMonth(r.getMonth() + m);
   return r;
 };
+const somaDias = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+/* Meses COMPLETOS de casa pelo calendário: no aniversário de admissão fecha o mês. A conta
+   antiga (dias / 30,44) chegava a 11 no dia em que se completava 1 ano. */
+const mesesCompletos = (de, ate) =>
+  (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth()) - (ate.getDate() < de.getDate() ? 1 : 0);
+
+/* PRAZO DE CONCESSÃO (CLT art. 134): as férias do período aquisitivo N se concedem nos 12 meses
+   seguintes ao fim dele, ou seja, até a VÉSPERA do aniversário de admissão (N+1). Depois disso,
+   pagas em dobro (art. 137). Admissão 10/03/2024: 1º prazo termina em 09/03/2026. */
+export function limiteConcessaoISO(admissaoISO, periodo = 1) {
+  const m = String(admissaoISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const base = new Date(Number(m[1]), Number(m[2]) - 1 + (periodo + 1) * 12, 1);
+  const ultimoDoMes = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  const aniversario = new Date(base.getFullYear(), base.getMonth(), Math.min(Number(m[3]), ultimoDoMes));
+  return ymd(somaDias(aniversario, -1));
+}
+
 // "AAAA-MM-DD" do dia LOCAL — o mesmo formato do `inicio` dos registros, para
 // quem consome `gozosCreditados` casar gozo com registro sem conta de fuso.
 const ymd = (d) =>
@@ -141,7 +159,7 @@ export function situacaoFerias(p, feriasDaPessoa, hoje = new Date(), desde = nul
   // "vencidas há N dias" crescia sozinho todo dia — em 53 pessoas inativas.
   const saida = parseData(p.desligadoEm);
   const ate = saida && saida.getTime() < hoje.getTime() ? saida : hoje;
-  const mesesDeCasa = Math.floor(dias(adm, ate) / 30.44);
+  const mesesDeCasa = mesesCompletos(adm, ate);
   if (mesesDeCasa < 12) return null; // ainda no primeiro período aquisitivo
 
   // Cada gozo, com QUANTOS dias foram tirados. A conta antiga só perguntava se
@@ -175,7 +193,8 @@ export function situacaoFerias(p, feriasDaPessoa, hoje = new Date(), desde = nul
     return {
       aquisitivoInicio: somaMeses(adm, (i - 1) * 12),
       direitoDesde,
-      limiteConcessao: somaMeses(direitoDesde, 12),
+      // Véspera do aniversário: o prazo do art. 134 termina um dia antes (antes dizia "vence HOJE" no dia seguinte ao fim).
+      limiteConcessao: somaDias(somaMeses(direitoDesde, 12), -1),
       creditados: 0,
       gozoSemDias: false,
       gozosCreditados: [], // inícios ("AAAA-MM-DD") dos gozos que o FIFO creditar aqui
@@ -333,7 +352,8 @@ export function fimDaExperiencia(p, hoje = new Date()) {
   const adm = parseData(p.admissao);
   const decidida = !!p.experienciaDecididaEm || !!p.desligadoEm;
   if (!adm) return { fim: null, diasParaFim: NaN, encerrada: false, decidida };
-  const fim = new Date(adm.getTime() + LIMITE_EXPERIENCIA_DIAS * DIA);
+  // O dia da admissão é o 1º dos 90 (CLT art. 445): admissão 01/04 termina em 29/06.
+  const fim = somaDias(adm, LIMITE_EXPERIENCIA_DIAS - 1);
   const diasParaFim = dias(hoje, fim);
   return { fim, diasParaFim, encerrada: diasParaFim < 0, decidida };
 }
@@ -357,7 +377,8 @@ export function situacaoExperiencia(p, hoje = new Date()) {
   if (p.experienciaDecididaEm || p.desligadoEm || p.ativo === false) return null;
   const diasDeCasa = dias(adm, hoje);
   if (diasDeCasa < 0) return null;
-  const fim = new Date(adm.getTime() + LIMITE_EXPERIENCIA_DIAS * DIA);
+  // O dia da admissão é o 1º dos 90 (CLT art. 445): admissão 01/04 termina em 29/06.
+  const fim = somaDias(adm, LIMITE_EXPERIENCIA_DIAS - 1);
   const diasParaFim = dias(hoje, fim);
   // Passou mais de 15 dias do prazo: o contrato já virou indeterminado, não há
   // mais decisão a tomar — para de avisar para não virar ruído eterno.

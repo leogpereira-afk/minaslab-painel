@@ -230,6 +230,21 @@ export function validarAgendamento(d) {
     }
   }
 
+  /* PRAZO DE CONCESSÃO (art. 134 e 137): o dia de férias que cair depois do último dia para
+     conceder este período se paga em dobro. Aviso, não erro: a decisão é do RH, mas com a conta
+     na frente. `limite` é o limiteConcessao da situação de férias da pessoa. */
+  if (d.limite instanceof Date && !isNaN(d.limite.getTime())) {
+    const ultimoDia = new Date(d.inicio.getFullYear(), d.inicio.getMonth(), d.inicio.getDate() + dias - 1);
+    const limite = new Date(d.limite.getFullYear(), d.limite.getMonth(), d.limite.getDate());
+    const depois = Math.min(dias, Math.round((ultimoDia.getTime() - limite.getTime()) / 86400000));
+    if (depois > 0) {
+      achados.push({
+        nivel: "aviso",
+        texto: `${depois} ${depois === 1 ? "dia cai" : "dias caem"} depois de ${limite.toLocaleDateString("pt-BR")}, o último dia para conceder este período sem pagar em dobro (art. 137).`,
+      });
+    }
+  }
+
   return achados;
 }
 

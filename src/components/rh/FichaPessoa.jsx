@@ -42,7 +42,7 @@ import {
   CheckCircle2, CalendarDays, Stethoscope, History, IdCard, LayoutGrid, Plus,
 } from "lucide-react";
 import { dataLonga, moedaCheia, diasEntre } from "../../lib/format.js";
-import { situacaoFerias, situacaoExperiencia, inicioDoHistorico } from "../../lib/rh/clt.js";
+import { situacaoFerias, situacaoExperiencia, inicioDoHistorico, limiteConcessaoISO } from "../../lib/rh/clt.js";
 import { completudeDaFicha, tomDaCompletude } from "../../lib/rh/completudeCadastro.js";
 import { radarExames, tempoDeCasa, chipVenc } from "./uteis.js";
 import { Card, Empty } from "../ui.jsx";
@@ -364,7 +364,7 @@ export default function FichaPessoa({
                 ehData(pessoa.admissao) ? (
                   <div className="grid grid-cols-2 gap-3">
                     <Dado rotulo="1º período aquisitivo completa em" valor={dataLonga(somarMesesISO(pessoa.admissao, 12))} />
-                    <Dado rotulo="Prazo máximo para conceder" valor={dataLonga(somarMesesISO(pessoa.admissao, 24))} />
+                    <Dado rotulo="Prazo máximo para conceder" valor={dataLonga(limiteConcessaoISO(pessoa.admissao, 1))} />
                     <div className="col-span-2 text-xs text-slate-500">Ainda não completou 12 meses de casa. As datas acima são calculadas pela admissão cadastrada.</div>
                   </div>
                 ) : (

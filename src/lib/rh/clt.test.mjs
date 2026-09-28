@@ -17,7 +17,7 @@
 // - Teste extra (só da MinasLab): abonoDias soma aos dias do registro (CLT art. 143).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { situacaoFerias, situacaoExperiencia, inicioDoHistorico } from "./clt.js";
+import { situacaoFerias, situacaoExperiencia, inicioDoHistorico, limiteConcessaoISO, fimDaExperiencia } from "./clt.js";
 
 const pessoa = (admissao) => ({ id: "p1", nome: "Teste", admissao, ativo: true });
 // Registro sem retorno = o "gozo sem dias" da base antiga.
@@ -48,7 +48,10 @@ test("situacaoFerias: logo após o primeiro ano, o prazo de conceder é 1 ano à
   const hoje = new Date(2026, 0, 15); // 15/01/2026
   const s = situacaoFerias(pessoa("2025-01-01"), [], hoje);
   assert.equal(s.direitoDesde.getFullYear(), 2026);
-  assert.equal(s.limiteConcessao.getFullYear(), 2027);
+  // véspera do 2º aniversário (art. 134): 31/12/2026, não 01/01/2027
+  assert.equal(s.limiteConcessao.getFullYear(), 2026);
+  assert.equal(s.limiteConcessao.getMonth(), 11);
+  assert.equal(s.limiteConcessao.getDate(), 31);
   assert.equal(s.jaGozou, false);
   assert.equal(s.situacao, "em-dia"); // ainda falta muito para o limite
 });
@@ -99,7 +102,7 @@ test("situacaoExperiencia: perto dos 45 dias, avisa para decidir a prorrogação
 });
 
 test("situacaoExperiencia: faltando 15 dias ou menos, avisa para efetivar ou desligar", () => {
-  // admissão 01/04/2026 → 90 dias caem em 30/06; hoje 20/06 = 10 dias
+  // admissão 01/04/2026 → o 90º dia é 29/06 (o dia da admissão conta); hoje 20/06 = 9 dias
   const s = situacaoExperiencia(pessoa("2026-04-01"), new Date(2026, 5, 20));
   assert.equal(s.situacao, "decidir-efetivacao");
   assert.ok(s.diasParaFim <= 15);
@@ -124,7 +127,7 @@ test("situacaoExperiencia: O CASO QUE IMPORTA: quem foi admitido HOJE já está 
   assert.notEqual(s, null);
   assert.equal(s.diasDeCasa, 0);
   assert.equal(s.situacao, "primeiro-periodo");
-  assert.equal(s.diasParaFim, 90);
+  assert.equal(s.diasParaFim, 89); // o dia da admissão já é o 1º dos 90
 });
 
 test("situacaoExperiencia: quem entrou ontem ou anteontem também conta", () => {
@@ -436,4 +439,31 @@ test("inicioDoHistorico: base vazia não tem histórico", () => {
 test("inicioDoHistorico: registro sem data não atrapalha", () => {
   const f = { ...feriasEm("2026-02-13"), inicio: null };
   assert.equal(ymd(inicioDoHistorico([f, feriasEm("2025-12-06")])), "2025-12-06");
+});
+
+// ---- prazos pela lei (28/09/2026) -------------------------------------------
+
+test("lei: o prazo de concessão termina na véspera do aniversário (art. 134)", () => {
+  assert.equal(limiteConcessaoISO("2024-03-10", 1), "2026-03-09");
+  assert.equal(limiteConcessaoISO("2024-03-10", 2), "2027-03-09");
+  assert.equal(limiteConcessaoISO("2024-02-29", 1), "2026-02-27"); // aniversário cai em 28/02
+  assert.equal(limiteConcessaoISO("lixo", 1), "");
+  const naVespera = situacaoFerias(pessoa("2024-03-10"), [], new Date(2026, 2, 9));
+  assert.equal(naVespera.diasParaLimite, 0); // vence HOJE, no último dia de verdade
+  const noAniversario = situacaoFerias(pessoa("2024-03-10"), [], new Date(2026, 2, 10));
+  assert.equal(noAniversario.situacao, "vencida");
+});
+
+test("lei: no aniversário de 1 ano a pessoa já tem o direito (meses pelo calendário)", () => {
+  const s = situacaoFerias(pessoa("2025-09-28"), [], new Date(2026, 8, 28));
+  assert.notEqual(s, null, "a conta por 30,44 dias ainda dizia 1º ano");
+  assert.equal(situacaoFerias(pessoa("2025-09-28"), [], new Date(2026, 8, 27)), null);
+});
+
+test("lei: a experiência de 90 dias termina no 90º dia contando a admissão (art. 445)", () => {
+  const f = fimDaExperiencia(pessoa("2026-04-01"), new Date(2026, 5, 29));
+  assert.equal(f.fim.getMonth(), 5);
+  assert.equal(f.fim.getDate(), 29);
+  assert.equal(f.diasParaFim, 0);
+  assert.equal(situacaoExperiencia(pessoa("2026-04-01"), new Date(2026, 5, 30)).situacao, "expirou");
 });

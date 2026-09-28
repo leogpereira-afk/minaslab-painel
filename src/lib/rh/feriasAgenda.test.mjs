@@ -209,3 +209,14 @@ describe("validarPeriodo — o par de datas da edição", () => {
     assert.equal(erros(validarPeriodo(dia("2026-09-01"), null)).length, 1);
   });
 });
+
+it("lei: agendamento que passa do prazo de concessão avisa quantos dias caem em dobro (art. 137)", () => {
+  // admissão 10/03/2024: prazo até 09/03/2026; 30 dias a partir de 02/03/2026 terminam em 31/03
+  const achados = validarAgendamento({ inicio: new Date(2026, 2, 2), dias: 30, limite: new Date(2026, 2, 9) });
+  const aviso = achados.find((a) => /art\. 137/.test(a.texto));
+  assert.ok(aviso, "antes nenhum aviso");
+  assert.equal(aviso.nivel, "aviso");
+  assert.match(aviso.texto, /^22 dias caem depois de 09\/03\/2026/);
+  const dentro = validarAgendamento({ inicio: new Date(2026, 1, 2), dias: 30, limite: new Date(2026, 2, 9) });
+  assert.equal(dentro.some((a) => /art\. 137/.test(a.texto)), false);
+});
