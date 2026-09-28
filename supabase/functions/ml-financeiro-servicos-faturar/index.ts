@@ -1,0 +1,12 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+const URL=Deno.env.get("SUPABASE_URL")!;
+const KEY=Deno.env.get("SB_SECRET_KEY")??Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const JWT_SECRET=Deno.env.get("ML_JWT_SECRET")??"";
+const sb=createClient(URL,KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const enc=new TextEncoder(),dec=new TextDecoder();
+const CORS={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const resp=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
+const txt=(v:any)=>String(v??"").trim();
+function b64u(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
+async function jwt(t:string){if(!JWT_SECRET||!t)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",enc.encode(JWT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(typeof x.exp==="number"&&x.exp<Math.floor(Date.now()/1000)))return null;return x}catch{return null}}
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:CORS});if(req.method!=="POST")return resp({erro:"Use POST."},405);const m=txt(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i),cr=m?await jwt(m[1]):null;if(!cr)return resp({erro:"Entre no sistema.",semSessao:true},401);if(txt(cr?.papel)!=="direcao")return resp({erro:"O financeiro é somente da direção.",semPermissao:true},403);let b:any;try{b=await req.json()}catch{return resp({erro:"JSON inválido."},400)}const id=txt(b.id);if(!id)return resp({erro:"Serviço não informado."},400);const usuario=txt(cr?.sub)||"direcao";const {data,error}=await sb.rpc("finalizar_servico_gerado_faturamento",{p_servico_id:id,p_usuario:usuario});if(error)return resp({erro:error.message},400);return resp(data??{ok:true})});
