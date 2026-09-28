@@ -72,15 +72,15 @@ Conferido em 28/09 à tarde, lendo o fonte publicado das 41 funções (os dois f
 
 Quatro foram trazidas para cá como estão no ar, porque o ar era o GitHub com pequenas melhorias: `ml-financeiro-servicos-grupar` (mensagem ao retirar OS), `ml-financeiro-nfse-importacao` (só formatação), `ml-financeiro-movimentos-internos` (travas de "movimento já resolvido") e `ml-financeiro-servicos-nfse-vincular` (só espaços).
 
-**Quatro divergiram de verdade e não foram mexidas. Não publique nenhuma delas a partir do GitHub sem juntar as duas versões**, senão o que só existe no ar some:
+**Quatro divergiram de verdade.** Decisão do Léo (28/09): pôr as proteções, desde que nada quebre. Ficou assim no GitHub:
 
-| função | no ar (publicada depois) | só no GitHub |
-|---|---|---|
-| `ml-financeiro-nfse-producao` | v11 de 15/09: município do tomador pelo CEP (ViaCEP) e o e-mail fiscal escolhido na nota | guarda o erro de produção na nota; "autorizada sem XML" fica em PROCESSANDO para reconciliar; origem da parametrização IBS/CBS |
-| `ml-financeiro-nfse-danfse` | v46 de 18/09: DANFSe montado inteiro na função, com quadro IBS/CBS | busca o PDF no gateway |
-| `ml-financeiro-omie-extrato` | v6 de 08/09 | conciliação automática (`autoConciliar`) e busca de conta que recusa ambiguidade |
-| `ml-financeiro-omie-v2` | v11 de 11/09: `total_de_paginas`, nome de conta repetido, status fiscal das notas da Omie | `acharContaExistente` e consulta de cliente, entre outras |
+| função | o que está no GitHub agora |
+|---|---|
+| `ml-financeiro-nfse-producao` | a versão do ar (município pelo CEP, e-mail fiscal escolhido) **mais** as duas proteções que só o GitHub tinha: guarda a chave quando a nota é autorizada e o XML não volta (fica em PROCESSANDO para reconciliar), e registra o erro de produção na nota (relendo o que já foi gravado, para não apagar a tentativa) |
+| `ml-financeiro-nfse-danfse` | a versão do ar (DANFSe montado na função) **mais** porta: crachá da direção para qualquer nota; sem crachá, só o caso do gatilho do banco (autorizada, com XML e sem PDF). Antes atendia qualquer um |
+| `ml-financeiro-omie-extrato` | a versão do ar. A do GitHub tinha a conciliação automática (`autoConciliar`), que é funcionalidade nova, não proteção: fica no histórico do git se alguém quiser retomar |
+| `ml-financeiro-omie-v2` | a versão do ar (já segue o status da Omie em cada sincronização) |
 
-Atenção à primeira: a emissão de verdade roda **sem** as duas proteções que estão no GitHub desde 07/09.
+As duas primeiras **ainda precisam ser publicadas** (a publicação ficou barrada nesta sessão). Até lá, o GitHub está à frente do ar nelas.
 
 Antes de publicar qualquer função, baixe o que está no ar (`supabase functions download <nome>`) e compare com o seu arquivo. Publicação de função não se mescla: quem publica por último apaga o que o outro publicou.

@@ -1,41 +1,206 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import {createClient} from "https://esm.sh/@supabase/supabase-js@2.45.0";
-const U=Deno.env.get("SUPABASE_URL")!,K=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,J=Deno.env.get("ML_JWT_SECRET")||"",OK=Deno.env.get("ML_OMIE_APP_KEY")||"",OS=Deno.env.get("ML_OMIE_APP_SECRET")||"";
-const sb=createClient(U,K,{auth:{persistSession:false,autoRefreshToken:false}}),enc=new TextEncoder(),dec=new TextDecoder();
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,"Content-Type":"application/json","Cache-Control":"no-store"}});
-const txt=(v:any)=>String(v??"").trim(),dig=(v:any)=>txt(v).replace(/\D/g,"");const iso=()=>new Date().toISOString(),esperar=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-function numero(v:any){if(typeof v==="number")return Number.isFinite(v)?v:0;let s=txt(v);if(!s)return 0;s=s.replace(/R\$\s*/gi,"").replace(/\s/g,"");if(s.includes(","))s=s.replace(/\./g,"").replace(",",".");const n=Number(s);return Number.isFinite(n)?n:0}
-function valorMov(m:any){for(const k of["nValor","nValorDocumento","nValorMovimento","nValorLancamento","valor","vValor"]){if(m?.[k]!==undefined&&m?.[k]!==null&&txt(m[k])!=="")return numero(m[k])}return 0}
-function movimentosExtrato(r:any){return Array.isArray(r?.listaMovimentos)?r.listaMovimentos:Array.isArray(r?.movimentos)?r.movimentos:Array.isArray(r?.lista_movimentos)?r.lista_movimentos:[]}
-function b64u(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
-async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!J)return null;const p=t.split(".");if(p.length!==3)return null;try{const key=await crypto.subtle.importKey("raw",enc.encode(J),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",key,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000))||txt(x.papel)!=="direcao")return null;return x}catch{return null}}
-const br=(v:any)=>{const s=txt(v),m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?`${m[3]}-${m[2]}-${m[1]}`:(/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null)};
-const toBR=(v:any)=>{const s=txt(v).slice(0,10),m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:""};
-async function omie(mod:string,call:string,param:any){if(!OK||!OS)throw new Error("Integração Omie não configurada nos Secrets do Supabase.");for(let tentativa=0;tentativa<3;tentativa++){const r=await fetch(`https://app.omie.com.br/api/v1/${mod}/`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({call,app_key:OK,app_secret:OS,param:[param]})});const b=await r.json().catch(()=>({}));const falha=txt(b?.faultstring||b?.message||"");if(r.ok&&!falha)return b;if(/não existem registros|nao existem registros/i.test(falha))return{vazio:true};const redund=/REDUNDANT|Consumo redundante|rate limit|limite de consumo|Too many requests/i.test(falha);const seg=Math.min(30,Math.max(2,Number(falha.match(/Aguarde\s+(\d+)/i)?.[1]||2)));if(redund&&tentativa<2){await esperar((seg+1)*1000);continue}throw new Error(`Omie · ${call}: ${falha||r.status}`)}throw new Error(`Omie · ${call}: limite de tentativas excedido.`)}
-async function empresa(){const q=await sb.from("empresas").select("id,nome,cnpj").eq("usa_omie",true).eq("ativa",true).maybeSingle();if(q.error)throw new Error(q.error.message);if(!q.data)throw new Error("MinasLab com Omie ativa não encontrada.");return q.data}
-function listaContas(r:any){return r.ListarContasCorrentes||r.conta_corrente_lista||r.contaCorrenteLista||[]}
-const normNum=(v:any)=>{const d=dig(v).replace(/^0+/,"");return d||"0"};
-const normNome=(v:any)=>txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"");
-async function acharConta(empresaId:string,idOmie:string,nome:string,banco:string,agencia:string,conta:string){const todas=await sb.from("contas_bancarias").select("id,nome,banco,agencia,conta,id_omie,ativa").eq("empresa_id",empresaId);if(todas.error)throw new Error(todas.error.message);const xs=[...(todas.data||[])].sort((a:any,b:any)=>Number(!!b.ativa)-Number(!!a.ativa));let x=xs.find((r:any)=>txt(r.id_omie)===idOmie);if(x)return x;const nb=normNum(banco),na=normNum(agencia),nc=dig(conta);x=xs.find((r:any)=>{const xb=normNum(r.banco),xa=normNum(r.agencia),xc=dig(r.conta);return nc&&xc&&nc===xc&&nb===xb&&(!na||!xa||na===xa)});if(x)return x;const nn=normNome(nome);return xs.find((r:any)=>nn&&normNome(r.nome)===nn)||null}
-function idsTitulo(m:any){return [...new Set([m?.nCodLancamento,m?.nCodTitulo,m?.nCodContaPagar,m?.nCodContaReceber,m?.nCodCP,m?.nCodCR,m?.codigo_lancamento_omie,m?.codigo_lancamento].map(txt).filter(Boolean))]}
-function docMov(m:any){return txt(m?.cDocumentoFiscal||m?.cNumero||m?.cNumDocumento||m?.cDocumento||m?.numero_documento)}
-function cnpjMov(m:any){return dig(m?.cCPFCNPJCliente||m?.cCpfCnpj||m?.cnpj_cpf||m?.cCnpjCpf)}
-async function autoConciliar(movId:string,empresaId:string,tipo:string,valor:number,data:string|null,m:any){if(!movId||valor<=0)return{ok:false,motivo:"movimento_invalido"};const ja=await sb.from("conciliacoes").select("id").eq("movimento_id",movId).limit(1);if(ja.error)throw new Error(ja.error.message);if((ja.data||[]).length)return{ok:false,motivo:"ja_conciliado"};const tabela=tipo==="CREDITO"?"recebimentos":"despesas",campoValor=tipo==="CREDITO"?"valor_recebido":"valor_pago",campoId=tipo==="CREDITO"?"recebimento_id":"despesa_id";let candidatos:any[]=[];const ids=idsTitulo(m);if(ids.length){const q=await sb.from(tabela).select(`id,id_omie,cnpj_cpf,data_pagamento,${campoValor},valor_pendente,status,origem`).eq("empresa_id",empresaId).eq("apagado",false).in("id_omie",ids).limit(5);if(q.error)throw new Error(q.error.message);candidatos=q.data||[]}
- if(candidatos.length!==1){const cnpj=cnpjMov(m);if(cnpj&&data){const q=await sb.from(tabela).select(`id,id_omie,cnpj_cpf,data_pagamento,${campoValor},valor_pendente,status,origem`).eq("empresa_id",empresaId).eq("apagado",false).eq("data_pagamento",data).limit(100);if(q.error)throw new Error(q.error.message);candidatos=(q.data||[]).filter((x:any)=>dig(x.cnpj_cpf)===cnpj&&Math.abs(numero(x[campoValor])-valor)<0.01)}}
- if(candidatos.length!==1)return{ok:false,motivo:candidatos.length>1?"ambiguo":"sem_candidato"};const t=candidatos[0];if(Math.abs(numero(t[campoValor])-valor)>=0.01)return{ok:false,motivo:"valor_divergente"};const ins:any={movimento_id:movId,valor_conciliado:valor,conciliado_por:"omie-auto"};ins[campoId]=t.id;const r=await sb.from("conciliacoes").insert(ins);if(r.error)throw new Error(r.error.message);return{ok:true,tituloId:t.id,criterio:ids.includes(txt(t.id_omie))?"id_omie":"cnpj_data_valor"}}
-async function syncExtrato(de:string,ate:string){if(!de||!ate||de>ate)throw new Error("Período inválido para o extrato Omie.");const e=await empresa();let pag=1,contas:any[]=[];for(;;){const r=await omie("geral/contacorrente","ListarContasCorrentes",{pagina:pag,registros_por_pagina:100,apenas_importado_api:"N"});if(r.vazio)break;contas.push(...listaContas(r));const pgs=numero(r.total_de_paginas)||1;if(pag>=pgs)break;pag++}
- let movIns=0,movAtu=0,movRecebidos=0,ccAtu=0,ignoradas=0,vinculadas=0,criadas=0,autoConciliados=0,autoPendentes=0;const detalhes:any[]=[];
- for(const c of contas){const id=txt(c.nCodCC||c.codigo),fora=txt(c.inativo).toUpperCase()==="S"||txt(c.nao_fluxo).toUpperCase()==="S"||txt(c.nao_resumo).toUpperCase()==="S"||txt(c.tipo_conta_corrente||c.tipo).toUpperCase()==="CX";if(!id||fora){ignoradas++;continue}
-  const ext=await omie("financas/extrato","ListarExtrato",{nCodCC:Number(id),dPeriodoInicial:toBR(de),dPeriodoFinal:toBR(ate),cExibirApenasSaldo:"N"});
-  const nomeApi=txt(ext.cDescricao)||txt(c.descricao)||`Conta Omie ${id}`,banco=txt(ext.nCodBanco)||txt(c.codigo_banco)||null,agencia=txt(ext.nCodAgencia)||txt(c.codigo_agencia)||null,conta=txt(ext.nNumConta)||txt(c.numero_conta_corrente)||null;
-  const ex=await acharConta(e.id,id,nomeApi,banco||"",agencia||"",conta||"");const nomeFinal=ex?.nome||nomeApi;
-  const saldoRaw=[ext.nSaldoDisponivel,ext.nSaldoAtual,ext.nSaldoConciliado].find(v=>v!==undefined&&v!==null&&v!=="");
-  const cp:any={empresa_id:e.id,nome:nomeFinal,banco,agencia,conta,saldo_inicial:numero(c.saldo_inicial),ativa:true,id_omie:id,dados_omie:{...c,extrato_saldo:{nSaldoAnterior:ext.nSaldoAnterior??null,nSaldoAtual:ext.nSaldoAtual??null,nSaldoDisponivel:ext.nSaldoDisponivel??null,nSaldoConciliado:ext.nSaldoConciliado??null,nSaldoProvisorio:ext.nSaldoProvisorio??null}},updated_at:iso()};if(saldoRaw!==undefined){cp.saldo_atual=numero(saldoRaw);cp.saldo_atualizado_em=iso()}
-  let ccId:string;if(ex){const u=await sb.from("contas_bancarias").update(cp).eq("id",ex.id).select("id").single();if(u.error)throw new Error(u.error.message);ccId=u.data.id;vinculadas++}else{const conflito=await sb.from("contas_bancarias").select("id,nome").eq("empresa_id",e.id).eq("nome",nomeApi).maybeSingle();if(conflito.error)throw new Error(conflito.error.message);if(conflito.data){const u=await sb.from("contas_bancarias").update({...cp,nome:conflito.data.nome}).eq("id",conflito.data.id).select("id").single();if(u.error)throw new Error(u.error.message);ccId=u.data.id;vinculadas++}else{const i=await sb.from("contas_bancarias").insert({...cp,created_at:iso()}).select("id").single();if(i.error)throw new Error(i.error.message);ccId=i.data.id;criadas++}}ccAtu++;
-  const movs=movimentosExtrato(ext);movRecebidos+=movs.length;detalhes.push({conta:nomeFinal,idOmie:id,movimentos:movs.length,periodoDe:de,periodoAte:ate});
-  for(let idx=0;idx<movs.length;idx++){const m=movs[idx],val=valorMov(m),nat=txt(m.cNatureza||m.natureza).toUpperCase(),tipo=(nat==="S"||nat==="P"||nat==="D"||val<0)?"DEBITO":"CREDITO",data=br(m.dDataLancamento||m.dData),mid=txt(m.nCodLancamento||m.codigo_lancamento||m.nCodLanc)||`${id}|${data}|${Math.abs(val).toFixed(2)}|${docMov(m)}|${idx}`;if(!data||Math.abs(val)<=0)continue;const mp={empresa_id:e.id,conta_bancaria_id:ccId,data_movimento:data,descricao:txt(m.cRazCliente)||txt(m.cDesCliente)||txt(m.cObservacoes)||txt(m.cOrigem)||null,tipo,valor:Math.abs(val),documento:docMov(m)||null,origem:"OMIE",id_omie:mid,dados_omie:m,updated_at:iso()};const mx=await sb.from("movimentos_bancarios").select("id").eq("empresa_id",e.id).eq("origem","OMIE").eq("id_omie",mid).maybeSingle();if(mx.error)throw new Error(mx.error.message);let movId:string;if(mx.data){const u=await sb.from("movimentos_bancarios").update(mp).eq("id",mx.data.id).select("id").single();if(u.error)throw new Error(u.error.message);movId=u.data.id;movAtu++}else{const i=await sb.from("movimentos_bancarios").insert({...mp,conciliado:false,created_at:iso()}).select("id").single();if(i.error)throw new Error(i.error.message);movId=i.data.id;movIns++}const ac=await autoConciliar(movId,e.id,tipo,Math.abs(val),data,m);if(ac.ok)autoConciliados++;else if(ac.motivo!=="ja_conciliado")autoPendentes++}
- }
- return{ok:true,contas:ccAtu,contasVinculadas:vinculadas,contasCriadas:criadas,contasIgnoradas:ignoradas,movimentosRecebidos:movRecebidos,movimentosInseridos:movIns,movimentosAtualizados:movAtu,autoConciliados,autoPendentes,detalhes};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const URL = Deno.env.get("SUPABASE_URL")!;
+const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const JWT = Deno.env.get("ML_JWT_SECRET") || "";
+const OMIE_KEY = Deno.env.get("ML_OMIE_APP_KEY") || "";
+const OMIE_SECRET = Deno.env.get("ML_OMIE_APP_SECRET") || "";
+const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const resp = (body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json","Cache-Control":"no-store"}});
+const text = (v:any)=>String(v ?? "").trim();
+const digits = (v:any)=>text(v).replace(/\D/g,"");
+const now = ()=>new Date().toISOString();
+
+function num(v:any){
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  let s = text(v).replace(/R\$\s*/gi,"").replace(/\s/g,"");
+  if (!s) return 0;
+  if (s.includes(",")) s = s.replace(/\./g,"").replace(",",".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
 }
-Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(!await auth(req))return json({erro:"Sessão inválida ou sem permissão."},401);try{const b=await req.json(),a=txt(b.action),de=txt(b.de),ate=txt(b.ate);if(a!=="extrato")return json({erro:"Ação inválida."},400);return json(await syncExtrato(de,ate))}catch(e){console.error(e);return json({erro:e instanceof Error?e.message:String(e)},500)}});
+
+function valueOf(m:any){
+  for (const k of ["nValorDocumento","nValor","nValorMovimento","nValorLancamento","nValPago","nValLiquido","nValorTitulo","valor","vValor"]) {
+    if (m?.[k] !== undefined && m?.[k] !== null && text(m[k]) !== "") {
+      const n = num(m[k]);
+      if (n !== 0) return n;
+    }
+  }
+  for (const [k,v] of Object.entries(m || {})) {
+    if (/valor|^nval/i.test(k) && !/saldo|limite/i.test(k)) {
+      const n = num(v);
+      if (n !== 0) return n;
+    }
+  }
+  return 0;
+}
+
+function movements(obj:any, depth=0):any[]{
+  if (!obj || typeof obj !== "object" || depth > 4) return [];
+  for (const k of ["listaMovimentos","movimentos","lista_movimentos","movimentosLista","movimentos_lista","listaLancamentos","lancamentos","lista_lancamentos"]) {
+    if (Array.isArray(obj[k])) return obj[k];
+  }
+  for (const [k,v] of Object.entries(obj)) {
+    if (Array.isArray(v) && /mov|lanc|extrato|item/i.test(k) && v.some((x:any)=>x && typeof x === "object")) return v as any[];
+  }
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const found = movements(v, depth + 1);
+      if (found.length) return found;
+    }
+  }
+  return [];
+}
+
+function b64u(s:string){
+  s=s.replace(/-/g,"+").replace(/_/g,"/");
+  while(s.length%4)s+="=";
+  const b=atob(s),o=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);
+  return o;
+}
+
+async function auth(req:Request){
+  const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
+  if(!token || !JWT) return null;
+  const p=token.split(".");
+  if(p.length!==3) return null;
+  try{
+    const key=await crypto.subtle.importKey("raw",enc.encode(JWT),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
+    if(!await crypto.subtle.verify("HMAC",key,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`))) return null;
+    const x=JSON.parse(dec.decode(b64u(p[1])));
+    if(x.sis!=="minaslab" || text(x.papel)!=="direcao" || (x.exp && x.exp<Math.floor(Date.now()/1000))) return null;
+    return x;
+  }catch{return null;}
+}
+
+const toBR=(v:string)=>{const m=String(v||"").slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:"";};
+const toISO=(v:any)=>{const s=text(v);const m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?`${m[3]}-${m[2]}-${m[1]}`:(/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null);};
+const wait=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+
+async function omie(mod:string,call:string,param:any){
+  if(!OMIE_KEY || !OMIE_SECRET) throw new Error("Integração Omie não configurada.");
+  for(let i=0;i<3;i++){
+    const r=await fetch(`https://app.omie.com.br/api/v1/${mod}/`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({call,app_key:OMIE_KEY,app_secret:OMIE_SECRET,param:[param]})});
+    const body=await r.json().catch(()=>({}));
+    const fault=text(body?.faultstring || body?.message || "");
+    if(r.ok && !fault) return body;
+    if(/não existem registros|nao existem registros/i.test(fault)) return {vazio:true};
+    if(/REDUNDANT|Consumo redundante|rate limit|limite de consumo|Too many requests/i.test(fault) && i<2){await wait(3000);continue;}
+    throw new Error(`Omie · ${call}: ${fault || r.status}`);
+  }
+  throw new Error(`Omie · ${call}: limite de tentativas excedido.`);
+}
+
+function accountList(r:any){return r.ListarContasCorrentes || r.conta_corrente_lista || r.contaCorrenteLista || [];}
+const norm=(v:any)=>text(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+
+async function company(){
+  const q=await sb.from("empresas").select("id,nome").eq("usa_omie",true).eq("ativa",true).maybeSingle();
+  if(q.error) throw new Error(q.error.message);
+  if(!q.data) throw new Error("MinasLab com Omie ativa não encontrada.");
+  return q.data;
+}
+
+async function findAccount(empresaId:string,idOmie:string,nome:string,banco:string,agencia:string,conta:string){
+  const q=await sb.from("contas_bancarias").select("id,nome,banco,agencia,conta,id_omie,ativa").eq("empresa_id",empresaId);
+  if(q.error) throw new Error(q.error.message);
+  const rows=[...(q.data||[])].sort((a:any,b:any)=>Number(!!b.ativa)-Number(!!a.ativa));
+  return rows.find((x:any)=>text(x.id_omie)===idOmie)
+    || rows.find((x:any)=>digits(conta) && digits(x.conta)===digits(conta) && digits(x.banco)===digits(banco) && (!agencia || !x.agencia || digits(x.agencia)===digits(agencia)))
+    || rows.find((x:any)=>norm(x.nome)===norm(nome))
+    || null;
+}
+
+function doc(m:any){return text(m?.cDocumentoFiscal||m?.cNumero||m?.cNumDocumento||m?.cDocumento||m?.numero_documento);}
+function desc(m:any){return text(m?.cRazCliente||m?.cDesCliente||m?.cObservacoes||m?.cOrigem||m?.descricao);}
+
+async function syncExtrato(de:string,ate:string){
+  if(!de || !ate || de>ate) throw new Error("Período inválido para o extrato Omie.");
+  const emp=await company();
+  let page=1, contas:any[]=[];
+  for(;;){
+    const r=await omie("geral/contacorrente","ListarContasCorrentes",{pagina:page,registros_por_pagina:100,apenas_importado_api:"N"});
+    if(r.vazio) break;
+    contas.push(...accountList(r));
+    if(page >= (num(r.total_de_paginas)||1)) break;
+    page++;
+  }
+
+  let contasAtivas=0, recebidos=0, inseridos=0, atualizados=0, ignorados=0;
+  const detalhes:any[]=[];
+  for(const c of contas){
+    const id=text(c.nCodCC||c.codigo);
+    const fora=text(c.inativo).toUpperCase()==="S" || text(c.nao_fluxo).toUpperCase()==="S" || text(c.nao_resumo).toUpperCase()==="S" || text(c.tipo_conta_corrente||c.tipo).toUpperCase()==="CX";
+    if(!id || fora){ignorados++;continue;}
+
+    const ext=await omie("financas/extrato","ListarExtrato",{nCodCC:Number(id),dPeriodoInicial:toBR(de),dPeriodoFinal:toBR(ate),cExibirApenasSaldo:"N"});
+    if(ext.vazio){detalhes.push({conta:id,movimentos:0,vazio:true});continue;}
+
+    const nome=text(ext.cDescricao)||text(c.descricao)||`Conta Omie ${id}`;
+    const banco=text(ext.nCodBanco)||text(c.codigo_banco)||"";
+    const agencia=text(ext.nCodAgencia)||text(c.codigo_agencia)||"";
+    const numeroConta=text(ext.nNumConta)||text(c.numero_conta_corrente)||"";
+    let acc=await findAccount(emp.id,id,nome,banco,agencia,numeroConta);
+    const saldoRaw=[ext.nSaldoDisponivel,ext.nSaldoAtual,ext.nSaldoConciliado].find(v=>v!==undefined&&v!==null&&v!=="");
+    const patch:any={id_omie:id,ativa:true,updated_at:now(),dados_omie:{...c,extrato_saldo:{nSaldoAnterior:ext.nSaldoAnterior??null,nSaldoAtual:ext.nSaldoAtual??null,nSaldoDisponivel:ext.nSaldoDisponivel??null,nSaldoConciliado:ext.nSaldoConciliado??null,nSaldoProvisorio:ext.nSaldoProvisorio??null}}};
+    if(saldoRaw!==undefined){patch.saldo_atual=num(saldoRaw);patch.saldo_atualizado_em=now();}
+    let contaId:string;
+    if(acc){
+      const u=await sb.from("contas_bancarias").update(patch).eq("id",acc.id).select("id").single();
+      if(u.error) throw new Error(u.error.message);
+      contaId=u.data.id;
+    }else{
+      const i=await sb.from("contas_bancarias").insert({empresa_id:emp.id,nome,banco:banco||null,agencia:agencia||null,conta:numeroConta||null,saldo_inicial:0,...patch,created_at:now()}).select("id").single();
+      if(i.error) throw new Error(i.error.message);
+      contaId=i.data.id;
+    }
+    contasAtivas++;
+
+    const ms=movements(ext);
+    recebidos+=ms.length;
+    let validos=0;
+    for(const m of ms){
+      const val=valueOf(m);
+      const data=toISO(m?.dDataLancamento||m?.dData||m?.data);
+      if(!data || Math.abs(val)<=0) continue;
+      validos++;
+      const nat=text(m?.cNatureza||m?.natureza).toUpperCase();
+      const tipo=(nat==="S"||nat==="P"||nat==="D"||val<0)?"DEBITO":"CREDITO";
+      const naturalId=text(m?.nCodLancamento||m?.codigo_lancamento||m?.nCodLanc);
+      const idMov=naturalId || `${id}|${data}|${Math.abs(val).toFixed(2)}|${doc(m)}|${desc(m)}`;
+      const payload={empresa_id:emp.id,conta_bancaria_id:contaId,data_movimento:data,descricao:desc(m)||null,tipo,valor:Math.abs(val),documento:doc(m)||null,origem:"OMIE",id_omie:idMov,dados_omie:m,updated_at:now()};
+      const q=await sb.from("movimentos_bancarios").select("id").eq("empresa_id",emp.id).eq("origem","OMIE").eq("id_omie",idMov).maybeSingle();
+      if(q.error) throw new Error(q.error.message);
+      if(q.data){
+        const u=await sb.from("movimentos_bancarios").update(payload).eq("id",q.data.id);
+        if(u.error) throw new Error(u.error.message);
+        atualizados++;
+      }else{
+        const i=await sb.from("movimentos_bancarios").insert({...payload,conciliado:false,created_at:now()});
+        if(i.error) throw new Error(i.error.message);
+        inseridos++;
+      }
+    }
+    detalhes.push({conta:nome,idOmie:id,movimentosRecebidos:ms.length,movimentosValidos:validos,chavesResposta:Object.keys(ext).slice(0,25)});
+  }
+  return {ok:true,contas:contasAtivas,contasIgnoradas:ignorados,movimentosRecebidos:recebidos,movimentosInseridos:inseridos,movimentosAtualizados:atualizados,detalhes};
+}
+
+Deno.serve(async (req:Request)=>{
+  if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
+  if(!await auth(req)) return resp({erro:"Sessão inválida ou sem permissão."},401);
+  try{
+    const b=await req.json();
+    if(text(b.action)!=="extrato") return resp({erro:"Ação inválida."},400);
+    return resp(await syncExtrato(text(b.de),text(b.ate)));
+  }catch(e){
+    console.error(e);
+    return resp({erro:e instanceof Error?e.message:String(e)},500);
+  }
+});
