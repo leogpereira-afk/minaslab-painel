@@ -1192,6 +1192,11 @@ export default function AbaPessoas({
           acontecimento são as ações que a própria ficha oferece. */}
       {pessoaFicha ? (
         <FichaPessoa
+          /* A ficha recomeça quando a pessoa muda (auditoria de 28/09/2026): sem esta chave o
+             React reaproveitava o componente, e um rascunho começado para uma pessoa — revisão
+             de documento, movimento do banco de horas — era gravado na pessoa que estava na
+             tela na hora do clique. */
+          key={pessoaFicha?.id}
           pessoa={pessoaFicha}
           ferias={daPessoa(ferias)}
           todasFerias={ferias}

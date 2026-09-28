@@ -69,5 +69,5 @@ export default function FolhaMensal({pessoas=[],pontoDia=[],competencia,editavel
    <div className="folha-informacoes mt-4 grid gap-2 text-sm md:grid-cols-2"><div><strong>Total trabalhado no mês:</strong> {duracaoTexto(total)}</div><div><strong>Jornada semanal:</strong> 39h00</div><div className="md:col-span-2"><strong>Horário previsto:</strong> segunda a quinta: 8h líquidas · sexta: 7h líquidas · almoço descontado</div>{saldosBanco&&saldosBanco.ajustesMes!==0&&<div className="md:col-span-2"><strong>Ajustes do banco no mês:</strong> {hms(saldosBanco.ajustesMes)}</div>}</div>
    <div className="folha-assinatura mt-5 grid grid-cols-2 gap-8 text-xs"><div><div className="font-semibold text-orange-500">Horário de Trabalho</div><div className="mt-1">Jornada de trabalho</div><div className="mt-2 whitespace-pre-line">{pessoa.jornada||"Jornada não informada"}</div></div><div className="flex items-end justify-center pb-2"><div className="w-64 border-t border-black pt-1 text-center">Assinatura Colaborador</div></div></div>
   </div></div>}
- </Card>{pessoa&&<div className="sem-impressao"><BancoHorasFuncionario pessoa={pessoa} editavel={editavel}/></div>}</div>
+ </Card>{pessoa&&<div className="sem-impressao"><BancoHorasFuncionario key={pessoa.id} pessoa={pessoa} editavel={editavel}/></div>}</div>
 }
