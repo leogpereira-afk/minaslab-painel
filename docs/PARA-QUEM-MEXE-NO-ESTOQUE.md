@@ -2,6 +2,8 @@
 
 Auditoria de 28/09/2026. Estas três áreas estavam em desenvolvimento ativo (os commits de 25 a 27/09), então quase nada aqui foi alterado: fica anotado para você decidir e consertar no seu ritmo. O relatório completo está fora do repositório, com o dono do sistema.
 
+**O histórico foi reescrito em 28/09/2026 (LGPD).** Um teste de 18/09 trazia a ficha real de uma funcionária; ela saiu de todos os 121 branches. Quem tinha clone de antes precisa **clonar de novo**: `git pull` num clone antigo traz a ficha de volta (o alarme `Histórico limpo (LGPD)` do Actions fica vermelho se isso acontecer). Os pull requests #95, #96 e #97 ainda apontam para o histórico antigo; a remoção deles é com o suporte do GitHub.
+
 **Antes de continuar: `git pull`.** E antes de publicar qualquer função, puxe o main também. Publicação de função não se mescla; quem publica por último apaga o que o outro publicou.
 
 ## O que foi mexido nos seus arquivos (já no main)

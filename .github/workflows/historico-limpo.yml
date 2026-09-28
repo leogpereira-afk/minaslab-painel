@@ -1,0 +1,31 @@
+# Alarme LGPD (28/09/2026).
+#
+# O histórico foi reescrito para tirar do repositório público a ficha real de uma funcionária
+# (CPF, salário, endereço) que entrou num teste em 18/09. Quem ainda tiver um clone de antes e
+# fizer `git pull` + `git push` traz o histórico antigo de volta. Este alarme fica vermelho (e o
+# GitHub manda e-mail) se o commit antigo 1b7dce9 reaparecer em qualquer branch.
+# O que fazer se disparar: não publicar e refazer a limpeza (outputs/auditoria-minaslab-2026-09-28/lgpd).
+name: Histórico limpo (LGPD)
+
+on:
+  push: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  confere:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: O histórico antigo não pode voltar
+        run: |
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          if git cat-file -e 1b7dce98b8cd856b5e24fd4b320adfc7450fb6ca^{commit} 2>/dev/null; then
+            echo "::error::O histórico antigo, com dado pessoal (LGPD), voltou ao repositório. Não publique; clone de novo e refaça a limpeza."
+            exit 1
+          fi
+          echo "Histórico limpo: o commit antigo não está em nenhum branch."
