@@ -14,7 +14,9 @@ const br=(v:any)=>{const s=t(v).slice(0,10),p=s.split("-");return p.length===3?`
 const moeda=(v:any)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 function emailFrom(){const m=FROM_SECRET.match(/<([^>]+)>/);const email=(m?.[1]||FROM_SECRET).trim();return `Financeiro <${email}>`}
 function replyTo(){const m=FROM_SECRET.match(/<([^>]+)>/);return (m?.[1]||FROM_SECRET).trim()}
-async function authOk(auth:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"emailEstado"})});return r.ok}
+async function authOk(auth:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"emailEstado"})});return r.status}
+// Só crachá recusado desloga (401). Um tropeço do serviço (503, 546, 429) não é sessão vencida.
+async function porta(auth:string){const st=await authOk(auth);if(st===401)return out({erro:"Entre no sistema.",semSessao:true},401);if(st===403)return out({erro:"Sem permissão para os arquivos do financeiro."},403);if(st<200||st>=300)return out({erro:"O serviço de arquivos não respondeu. Tente de novo em instantes."},503);return null}
 async function regenerarPorPath(path:string){
  if(!path||!path.toLowerCase().endsWith(".pdf"))return path;
  const {data:nota}=await sb.from("notas_fiscais").select("id,pdf_url,xml_url,origem,status_fiscal").eq("pdf_url",path).eq("apagado",false).maybeSingle();
@@ -38,13 +40,13 @@ Deno.serve(async req=>{
    /* CONFERE ANTES DE REGENERAR (auditoria de 28/09/2026). Antes a nota era
       regenerada no servidor e só DEPOIS a função antiga conferia o crachá:
       quem não tinha login não levava o link, mas disparava a gravação. */
-   if(!(await authOk(auth)))return out({erro:"Entre no sistema.",semSessao:true},401);
+   {const barrado=await porta(auth);if(barrado)return barrado}
    try{body={...body,path:await regenerarPorPath(t(body.path))}}catch(e){return out({erro:e instanceof Error?e.message:String(e)},500)}
   }
   const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json","Cache-Control":"no-cache"},body:JSON.stringify(body),cache:"no-store"});
   return new Response(await r.text(),{status:r.status,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate"}})
  }
- if(!(await authOk(auth)))return out({erro:"Entre no sistema.",semSessao:true},401);
+ {const barrado=await porta(auth);if(barrado)return barrado}
  if(action==="emailEstado")return out({configurado:!!RESEND&&!!FROM_SECRET});
  if(!RESEND||!FROM_SECRET)return out({erro:"Envio de e-mail ainda não configurado."},503);
  const notaId=t(body.notaId),destino=t(body.email);
