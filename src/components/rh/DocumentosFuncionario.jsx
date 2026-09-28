@@ -45,14 +45,14 @@ function tipoAso(obs) {
 
 function resultadoAso(obs) {
   const s = String(obs || "").toLowerCase();
-  if (/\\b(inapto|não\\s+apto|nao\\s+apto)\\b/.test(s)) return "inapto";
-  if (/\\bapto\\s+com\\s+restri/.test(s)) return "apto_com_restricao";
-  if (/\\bapto\\b/.test(s)) return "apto";
+  if (/\b(inapto|não\s+apto|nao\s+apto)\b/.test(s)) return "inapto";
+  if (/\bapto\s+com\s+restri/.test(s)) return "apto_com_restricao";
+  if (/\bapto\b/.test(s)) return "apto";
   return "aguardando";
 }
 
 function tipoNr(obs) {
-  const m = String(obs || "").toUpperCase().match(/\\bNR[ -]?(\\d{1,2})\\b/);
+  const m = String(obs || "").toUpperCase().match(/\bNR[ -]?(\d{1,2})\b/);
   if (!m) return "Outro";
   const conhecido = `NR-${m[1].padStart(2, "0")}`;
   return ["NR-06", "NR-10", "NR-35"].includes(conhecido) ? conhecido : "Outro";
