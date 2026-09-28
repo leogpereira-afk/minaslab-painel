@@ -125,6 +125,9 @@ export function esquecerColecao(colecao) {
 export const lerCfg = () => chamar("getCfg").then((r) => r.config || {});
 export const salvarCfg = (config) => chamar("setCfg", { config });
 
+export const estoqueFornecedorDriveVincular = (fornecedorId, pastaId) => chamar("estoqueFornecedorDriveVincular", { fornecedorId, pastaId }).then((r) => { esquecerColecao("estoque_fornecedores"); return r; });
+export const estoqueFornecedorDriveCriar = (fornecedorId) => chamar("estoqueFornecedorDriveCriar", { fornecedorId }).then((r) => { esquecerColecao("estoque_fornecedores"); return r; });
+
 export const estoqueFornecedorExcluir = (id) => chamar("estoqueFornecedorExcluir", { id }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão."); esquecerColecao("estoque_fornecedores"); return true; });
 
 export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("estoqueFornecedorAvaliar", { fornecedorId, avaliacao }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a qualificação do fornecedor."); esquecerColecao("estoque_avaliacoes_fornecedor"); esquecerColecao("estoque_fornecedores"); return r; });
@@ -132,7 +135,7 @@ export const estoqueFornecedorAvaliar = (fornecedorId, avaliacao) => chamar("est
 export const estoqueFapeUpload = (dados) => chamar("estoqueFapeUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a FAPE."); esquecerColecao("estoque_fapes"); return r.fape; });
 export const estoqueFapeUrl = (id) => chamar("estoqueFapeUrl", { id }).then((r) => r?.url || null);
 
-export const estoqueDocumentoUpload = (dados) => chamar("estoqueDocumentoUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o documento."); esquecerColecao("estoque_documentos_fornecedor"); return r.documento; });
+export const estoqueDocumentoUpload = (dados) => chamar("estoqueDocumentoDriveUpload", dados).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o documento."); esquecerColecao("estoque_documentos_fornecedor"); return r.documento; });
 export const estoqueDocumentoUrl = (id) => chamar("estoqueDocumentoUrl", { id }).then((r) => r?.url || null);
 
 export const estoqueSalvar = (colecao, registro) => chamar("estoqueSalvar", { colecao, registro }).then((r) => { if (!r?.ok || !r?.registro) throw new Error("O servidor não confirmou a gravação."); esquecerColecao(colecao); return r.registro; });
