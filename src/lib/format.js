@@ -60,9 +60,19 @@ export function dataLonga(iso) {
    na regra do teto de 2 casas, virava milhar e gravava uma saida de 125 L. O
    aviso de saldo negativo ate aparecia, mas culpando a entrada, nao o numero.
 
-   PONTO e ambiguo ("1.500" = milhar; "1500.50" = decimal), e ai o teto de 2
-   casas decide — sem ele, todo ponto virava milhar e 1500.5 virava 15005, o
-   que corrompeu valores de licitacao na Impresilk. */
+   PONTO e ambiguo ("1.500" = milhar; "1500.50" = decimal). A regra antiga
+   dizia "mais de 2 casas depois do ponto = milhar", e estava ERRADA na origem:
+   separador de milhar agrupa EXATAMENTE 3 digitos. Com ela, o salario que a
+   leitura do Kit Admissional entrega como "1621.0000" virava R$ 16.210.000, e
+   "0.125" virava 125 (achado na auditoria de 28/09, antes de gravar estrago).
+
+   Agora o ponto so e milhar quando o numero INTEIRO tem cara de agrupamento:
+   primeiro grupo de 1 a 3 digitos que nao comeca em zero, e todos os grupos
+   seguintes com exatamente 3 ("1.500", "85.000", "1.250.000"). Qualquer outra
+   coisa com ponto e decimal ("1500.50", "1621.0000", "0.125", "12.5") — e
+   continua valendo o que motivou a regra: 1500.5 nao vira 15005. */
+const PARECE_MILHAR = /^-?[1-9]\d{0,2}(\.\d{3})+$/;
+
 export function paraNumero(v) {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   const s = String(v ?? "").trim().replace(/[^\d.,-]/g, "");
@@ -72,7 +82,7 @@ export function paraNumero(v) {
   const corte = Math.max(ultimaVirgula, ultimoPonto);
   const casas = corte > -1 ? s.length - corte - 1 : 0;
   const ehDecimal =
-    corte > -1 && casas > 0 && (corte === ultimaVirgula || casas <= 2);
+    corte > -1 && casas > 0 && (corte === ultimaVirgula || !PARECE_MILHAR.test(s));
   const limpo = ehDecimal
     ? s.slice(0, corte).replace(/[.,]/g, "") + "." + s.slice(corte + 1)
     : s.replace(/[.,]/g, "");
