@@ -36,6 +36,7 @@ import { finDesfazerConciliacaoMovimento } from "../services/conciliacaoDesfazer
 import { API } from "../lib/api.js";
 import { comCracha } from "../lib/sessao.js";
 import { nomeMovimento } from "../lib/movimentoNome.js";
+import { compararContaOfx, perguntaContaOfx } from "../lib/contaOfx.js";
 
 const FILTROS_STORAGE_KEY = "financeiro.movimentacao.filtros";
 const moeda = (v) =>
@@ -314,8 +315,14 @@ export default function MovimentacaoContaNova() {
         ? op.contas.find((c) => c.id === conta)
         : detectarContaOFX(metaConta, op.contas, empresa);
       if (!detectada) throw new Error("Não foi possível identificar a conta.");
+      const conferencia = compararContaOfx(metaConta, detectada);
+      if (
+        conferencia.estado === "diferente" &&
+        !window.confirm(perguntaContaOfx(detectada.nome, conferencia.diferencas))
+      )
+        throw new Error("Importação cancelada: nada foi gravado.");
       setConta(detectada.id);
-      const r = await finMovimentosImportar(empresa, detectada.id, dados);
+      const r = await finMovimentosImportar(empresa, detectada.id, dados, conferencia.meta);
       setAviso(
         `Extrato atualizado: ${r?.inseridos || 0} novos e ${r?.ignorados || 0} já existentes.`,
       );

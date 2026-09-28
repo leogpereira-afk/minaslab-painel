@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Upload, RefreshCw, Search, Link2, ChevronLeft, ChevronRight, X, Undo2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
+import { compararContaOfx, perguntaContaOfx } from "../lib/contaOfx.js";
 import {
   financeiroOpcoes,
   finMovimentosPagina,
@@ -325,8 +326,10 @@ export default function Extrato() {
       if (!dados.length) throw new Error("Nenhuma movimentação válida encontrada no arquivo.");
       const detectada = conta ? op.contas.find((c) => c.id === conta) : detectarContaOFX(metaConta, op.contas, empresa);
       if (!detectada) throw new Error(`Não foi possível identificar com segurança a conta do extrato${metaConta.conta ? ` (conta ${metaConta.conta})` : ""}. Selecione a conta bancária antes de importar.`);
+      const conferencia = compararContaOfx(metaConta, detectada);
+      if (conferencia.estado === "diferente" && !window.confirm(perguntaContaOfx(detectada.nome, conferencia.diferencas))) throw new Error("Importação cancelada: nada foi gravado.");
       setConta(detectada.id);
-      const r = await finMovimentosImportar(empresa, detectada.id, dados);
+      const r = await finMovimentosImportar(empresa, detectada.id, dados, conferencia.meta);
       setAviso(`${isCsv ? "CSV C6" : "OFX"} importado na conta ${detectada.nome}: ${r?.inseridos || 0} novos, ${r?.ignorados || 0} já existentes.`);
       await carregar(1);
     } catch (ex) {
