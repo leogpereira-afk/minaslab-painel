@@ -26,7 +26,9 @@ test("paraNumero: virgula e sempre decimal, mesmo com 3 casas", () => {
   assert.equal(paraNumero("1.500,125"), 1500.125);
   // E o ponto continua ambiguo, resolvido pelo teto de 2 casas:
   assert.equal(paraNumero("1.500"), 1500);
-  assert.equal(paraNumero("0.125"), 125); // sem virgula, 3 casas = milhar
+  /* Este teste FIXAVA o defeito como esperado ("0.125" = 125). Milhar nunca
+     comeca com um grupo "0" — "0.125" e decimal. Corrigido em 28/09. */
+  assert.equal(paraNumero("0.125"), 0.125);
 });
 
 test("diasEntre conta dias de calendario, nunca instantes", () => {
@@ -43,4 +45,18 @@ test("diaLocalISO: data pura passa intacta", () => {
 
 test("ymdLocal monta AAAA-MM-DD com zero a esquerda", () => {
   assert.equal(ymdLocal(new Date(2026, 0, 5)), "2026-01-05");
+});
+
+test("paraNumero: ponto so e milhar quando agrupa exatamente 3 digitos", () => {
+  // O caso real: a leitura do Kit Admissional entrega o salario assim.
+  assert.equal(paraNumero("1621.0000"), 1621, "salario nao pode virar 16.210.000");
+  assert.equal(paraNumero("1621.000"), 1621);
+  assert.equal(paraNumero("1.250.000"), 1250000);
+  assert.equal(paraNumero("85.000"), 85000);
+  assert.equal(paraNumero("1.500"), 1500);
+  assert.equal(paraNumero("-1.500"), -1500);
+  assert.equal(paraNumero("12.5"), 12.5);
+  assert.equal(paraNumero("1500.5"), 1500.5, "o motivo da regra original continua valendo");
+  assert.equal(paraNumero("0.5"), 0.5);
+  assert.equal(paraNumero("1,500.50"), 1500.5, "formato americano: o ultimo sinal decide");
 });
