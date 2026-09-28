@@ -18,8 +18,9 @@ import {
   Upload,
   Landmark,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
+import { hojeSaoPaulo, statusVisto } from "../lib/tituloVencido.js";
 import {
   financeiroOpcoes,
   finRecebimentosPagina,
@@ -76,7 +77,7 @@ function Status({ v }) {
       ? "bg-emerald-50 text-emerald-700"
       : s === "PARCIAL"
         ? "bg-amber-50 text-amber-700"
-        : s === "VENCIDO"
+        : s.endsWith("VENCIDO")
           ? "bg-red-50 text-red-700"
           : s === "CANCELADO"
             ? "bg-slate-100 text-slate-600"
@@ -100,6 +101,10 @@ function Campo({ rotulo, valor, destaque = "" }) {
   );
 }
 export default function RecebimentosFinanceiro() {
+  const hojeSP = hojeSaoPaulo();
+  // O cartão do painel abre a lista já filtrada: empresa, status, ano e mês chegam no state
+  // da navegação (FinanceiroLayout, abrirContexto).
+  const filtroInicial = useLocation().state?.filtroCartao || {};
   const [salvando, setSalvando] = useState(false);
   const envio = useRef(false);
   const navigate = useNavigate(),
@@ -111,11 +116,11 @@ export default function RecebimentosFinanceiro() {
       contas: [],
       formas: [],
     });
-  const [empresa, setEmpresa] = useState(""),
+  const [empresa, setEmpresa] = useState(filtroInicial.empresa || ""),
     [busca, setBusca] = useState(""),
-    [status, setStatus] = useState(""),
-    [ano, setAno] = useState(""),
-    [mes, setMes] = useState(""),
+    [status, setStatus] = useState(filtroInicial.status || ""),
+    [ano, setAno] = useState(filtroInicial.ano || ""),
+    [mes, setMes] = useState(filtroInicial.mes || ""),
     [pagina, setPagina] = useState(1),
     [limite, setLimite] = useState(25),
     [meta, setMeta] = useState({ total: 0, paginas: 1 }),
@@ -148,7 +153,7 @@ export default function RecebimentosFinanceiro() {
     previsto: (x) => moeda(x.valor_previsto),
     recebido: (x) => moeda(x.valor_recebido),
     pendente: (x) => moeda(x.valor_pendente),
-    status: (x) => x.status,
+    status: (x) => statusVisto(x, hojeSP),
     origem: (x) => (x.importacao_origem === "C6_BOLETOS" ? "C6" : x.origem),
   });
   const consultas=useRef(criarControleConsulta());
@@ -574,7 +579,7 @@ export default function RecebimentosFinanceiro() {
                       {moeda(x.valor_pendente)}
                     </td>
                     <td className="px-4 py-3">
-                      <Status v={x.status} />
+                      <Status v={statusVisto(x, hojeSP)} />
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold">
                       {x.importacao_origem === "C6_BOLETOS" ? "C6" : x.origem}

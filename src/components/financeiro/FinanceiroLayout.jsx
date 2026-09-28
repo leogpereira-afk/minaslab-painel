@@ -7,7 +7,6 @@ import "./financeiro-redesign.css";
 import { ehDirecao } from "../../lib/sessao.js";
 
 const PERIODO_KEY="financeiro.periodo.global.v1";
-const CONTEXTO_CARD_KEY="financeiro.card.contexto.v1";
 const principais=[
  {label:"Visão Geral",to:"/financas",end:true,icon:LayoutDashboard},
  {label:"Serviços Gerados",to:"/financas/servicos-gerados",icon:ClipboardList},
@@ -33,19 +32,20 @@ function rotaPeriodo(p){return p==="/financas/contas-a-receber"||p==="/financas/
 function rotaListaPeriodo(p){return p==="/financas/contas-a-receber"||p==="/financas/recebimentos"||p==="/financas/contas-a-pagar"||p==="/financas/despesas"||p==="/financas/notas-fiscais"}
 function selectPorRotulo(rotulo){return [...document.querySelectorAll(".financeiro-shell label")].find(el=>el.querySelector(".label")?.textContent?.trim()===rotulo)?.querySelector("select")||null}
 function valorSelect(rotulo){return selectPorRotulo(rotulo)?.value||""}
-function aplicarSelect(rotulo,valor){const el=selectPorRotulo(rotulo);if(!el)return false;const novo=String(valor??"");if(el.value===novo)return true;const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value")?.set;if(setter)setter.call(el,novo);else el.value=novo;el.dispatchEvent(new Event("change",{bubbles:true}));return true}
 export default function FinanceiroLayout(){
  const direcao=ehDirecao();
  const navigate=useNavigate(),location=useLocation();const [periodo,setPeriodo]=useState(periodoSalvo);const [baixandoModelo,setBaixandoModelo]=useState(false);const usaPeriodo=rotaPeriodo(location.pathname),listaPeriodo=rotaListaPeriodo(location.pathname),conciliacaoPeriodo=location.pathname.startsWith("/financas/conciliacao-titulos"),fluxo=location.pathname==="/financas/fluxo-caixa";
  useEffect(()=>{try{sessionStorage.setItem(PERIODO_KEY,JSON.stringify(periodo))}catch{void 0}},[periodo]);
- useEffect(()=>{if(!(location.pathname==="/financas/contas-a-receber"||location.pathname==="/financas/recebimentos"||location.pathname==="/financas/contas-a-pagar"||location.pathname==="/financas/despesas"))return;let contexto=null;try{contexto=JSON.parse(sessionStorage.getItem(CONTEXTO_CARD_KEY)||"null")}catch{contexto=null}if(!contexto)return;const timer=setTimeout(()=>{if(contexto.empresa!==undefined)aplicarSelect("Empresa",contexto.empresa);if(contexto.status)aplicarSelect("Status",contexto.status);if(contexto.ano){aplicarSelect("Ano",contexto.ano);setTimeout(()=>{if(contexto.mes)aplicarSelect("Mês",contexto.mes);try{sessionStorage.removeItem(CONTEXTO_CARD_KEY)}catch{void 0}},0)}else{try{sessionStorage.removeItem(CONTEXTO_CARD_KEY)}catch{void 0}}},0);return()=>clearTimeout(timer)},[location.pathname]);
+ /* Os filtros do cartão do painel vão no state da navegação e a lista os lê no primeiro render
+    (auditoria de 28/09/2026). Antes eram aplicados no DOM depois de navegar, e a empresa
+    voltava para "Todas" quando as opções da lista ainda não tinham chegado. */
  function guardarPeriodo(n){try{sessionStorage.setItem(PERIODO_KEY,JSON.stringify(n))}catch{void 0}setPeriodo(n)}
  function setData(campo,valor){const n={...periodo,[campo]:valor};if(n.de&&n.ate&&n.de>n.ate){if(campo==="de")n.ate=valor;else n.de=valor}guardarPeriodo(n)}
  function definirMesAtual(){guardarPeriodo(mesAtual())}
  function limparPeriodo(){guardarPeriodo({de:"",ate:""})}
  async function baixarModelo(){if(baixandoModelo)return;setBaixandoModelo(true);try{await servicosGeradosBaixarModelo()}catch(e){alert(e?.message||"Não foi possível baixar o modelo de importação.")}finally{setBaixandoModelo(false)}}
- function abrirContexto(destino,{status="",mes=false}={}){const empresa=valorSelect("Empresa");const atual=mesAtual();const contexto={empresa,status};if(mes){contexto.ano=atual.de.slice(0,4);contexto.mes=String(Number(atual.de.slice(5,7)));guardarPeriodo(atual)}else limparPeriodo();try{sessionStorage.setItem(CONTEXTO_CARD_KEY,JSON.stringify(contexto))}catch{void 0}navigate(destino)}
- function capturarCliqueContextual(e){if(location.pathname!=="/financas")return;const botao=e.target.closest("button");if(!botao)return;const texto=String(botao.textContent||"").replace(/\s+/g," ").trim();if(texto.includes("Contas a receber vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{status:"VENCIDO"});return}if(texto.includes("Contas a pagar vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{status:"VENCIDO"});return}if(texto.includes("A receber no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{mes:true});return}if(texto.includes("A pagar no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{mes:true});return}if(texto.includes("Vencidos")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{status:"VENCIDO"})}}
+ function abrirContexto(destino,{status="",mes=false}={}){const empresa=valorSelect("Empresa");const atual=mesAtual();const filtroCartao={empresa,status};if(mes){filtroCartao.ano=atual.de.slice(0,4);filtroCartao.mes=String(Number(atual.de.slice(5,7)));guardarPeriodo(atual)}else limparPeriodo();navigate(destino,{state:{filtroCartao}})}
+ function capturarCliqueContextual(e){if(location.pathname!=="/financas")return;const botao=e.target.closest("button");if(!botao)return;const texto=String(botao.textContent||"").replace(/\s+/g," ").trim();if(texto.includes("Contas a receber vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{status:"VENCIDO"});return}if(texto.includes("Contas a pagar vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{status:"VENCIDO"});return}if(texto.includes("A receber no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{mes:true});return}if(texto.includes("A pagar no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{mes:true});return}if(texto.includes("Vencidos")){e.preventDefault();e.stopPropagation();abrirContexto(botao.dataset.destino==="/financas/contas-a-pagar"?"/financas/contas-a-pagar":"/financas/contas-a-receber",{status:"VENCIDO"})}}
  const classes=["financeiro-shell","space-y-4",listaPeriodo?"financeiro-periodo-listas":"",conciliacaoPeriodo?"financeiro-periodo-conciliacao":"",fluxo?"financeiro-fluxo":""].filter(Boolean).join(" ");
  return <div className={classes} onClickCapture={capturarCliqueContextual}>
   <nav className="financeiro-navegacao" aria-label="Menu financeiro">

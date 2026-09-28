@@ -18,7 +18,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import TituloOmieAcoes from "../components/financeiro/TituloOmieAcoes.jsx";
 import {
@@ -33,6 +33,7 @@ import {
   finBoletoVincular,
 } from "../services/financeiro.js";
 import { finBoletoUpload } from "../services/boleto.js";
+import { hojeSaoPaulo, statusVisto } from "../lib/tituloVencido.js";
 const moeda = (v) =>
   Number(v || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -100,7 +101,7 @@ function Status({ v }) {
       ? "bg-emerald-50 text-emerald-700"
       : s === "PARCIAL"
         ? "bg-amber-50 text-amber-700"
-        : s === "VENCIDO"
+        : s.endsWith("VENCIDO")
           ? "bg-red-50 text-red-700"
           : s === "CANCELADO"
             ? "bg-slate-100 text-slate-600"
@@ -124,6 +125,10 @@ function Campo({ rotulo, valor, destaque = "" }) {
   );
 }
 export default function Despesas() {
+  const hojeSP = hojeSaoPaulo();
+  // O cartão do painel abre a lista já filtrada: empresa, status, ano e mês chegam no state
+  // da navegação (FinanceiroLayout, abrirContexto).
+  const filtroInicial = useLocation().state?.filtroCartao || {};
   const envio = useRef(false);
   const navigate = useNavigate(),
     comprovanteRef = useRef(null),
@@ -140,10 +145,10 @@ export default function Despesas() {
     [erro, setErro] = useState(""),
     [ok, setOk] = useState(""),
     [busca, setBusca] = useState(""),
-    [empresa, setEmpresa] = useState(""),
-    [status, setStatus] = useState(""),
-    [ano, setAno] = useState(""),
-    [mes, setMes] = useState(""),
+    [empresa, setEmpresa] = useState(filtroInicial.empresa || ""),
+    [status, setStatus] = useState(filtroInicial.status || ""),
+    [ano, setAno] = useState(filtroInicial.ano || ""),
+    [mes, setMes] = useState(filtroInicial.mes || ""),
     [pagina, setPagina] = useState(1),
     [limite, setLimite] = useState(25),
     [meta, setMeta] = useState({ total: 0, paginas: 1 }),
@@ -172,7 +177,7 @@ export default function Despesas() {
     valor: (x) => moeda(x.valor_original),
     pago: (x) => moeda(x.valor_pago),
     pendente: (x) => moeda(x.valor_pendente),
-    status: (x) => x.status,
+    status: (x) => statusVisto(x, hojeSP),
     arquivos: (x) =>
       [x.boleto_url && "Boleto", x.comprovante_url && "Comprovante"]
         .filter(Boolean)
@@ -619,7 +624,7 @@ export default function Despesas() {
                       {moeda(x.valor_pendente)}
                     </td>
                     <td className="px-4 py-3">
-                      <Status v={x.status} />
+                      <Status v={statusVisto(x, hojeSP)} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">

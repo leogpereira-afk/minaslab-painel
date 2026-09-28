@@ -10,9 +10,17 @@ export function resumoTitulos(itens, tipo) {
  for(const k of Object.keys(campos))out[k]/=100;
  return {...out,cancelados,valorCancelado:valorCancelado/100};
 }
+// Vencido pela data, não pela marca: a mesma regra de src/lib/tituloVencido.js (título em aberto,
+// com saldo, vencimento antes de hoje em São Paulo). O selo da lista e o filtro da coluna Status
+// precisam dar a mesma resposta; o parcial vencido continua parcial.
+const EM_ABERTO=['VENCIDO','A PAGAR','A RECEBER','PARCIAL'];
+export function hojeSaoPaulo(agora=new Date()){const p=Object.fromEntries(new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(agora).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`}
+export function statusVisto(x,hoje){const bruto=String(x?.status||''),s=bruto.toUpperCase();if(s==='VENCIDO'||!EM_ABERTO.includes(s)||!(Number(x?.valor_pendente)>0))return bruto;const dv=String(x?.data_vencimento||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(dv)||dv>=hoje)return bruto;return s==='PARCIAL'?'PARCIAL VENCIDO':'VENCIDO'}
+const casaStatus=(visto,filtro)=>filtro==='vencido'?visto.endsWith('vencido'):filtro==='parcial'?visto.startsWith('parcial'):visto===filtro;
 export function filtrarRecebimentos(itens, filtros={}) {
+ const hoje=hojeSaoPaulo();
  const normalizar=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  const moeda=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
- const campos={empresa:x=>x.empresa?.nome,cliente:x=>[x.cliente,x.numero_nf,x.cnpj_cpf,x.descricao].join(' '),vencimento:x=>String(x.data_vencimento||'').slice(0,10).split('-').reverse().join('/'),previsto:x=>moeda(x.valor_previsto),recebido:x=>moeda(x.valor_recebido),pendente:x=>moeda(x.valor_pendente),status:x=>x.status,origem:x=>x.importacao_origem==='C6_BOLETOS'?'C6':x.origem};
- return itens.filter(x=>Object.entries(filtros).every(([k,v])=>!v||!campos[k]||(k==='status'?normalizar(campos[k](x))===normalizar(v==='RECEBIDO'?'PAGO':v):normalizar(campos[k](x)).includes(normalizar(v)))));
+ const campos={empresa:x=>x.empresa?.nome,cliente:x=>[x.cliente,x.numero_nf,x.cnpj_cpf,x.descricao].join(' '),vencimento:x=>String(x.data_vencimento||'').slice(0,10).split('-').reverse().join('/'),previsto:x=>moeda(x.valor_previsto),recebido:x=>moeda(x.valor_recebido),pendente:x=>moeda(x.valor_pendente),status:x=>statusVisto(x,hoje),origem:x=>x.importacao_origem==='C6_BOLETOS'?'C6':x.origem};
+ return itens.filter(x=>Object.entries(filtros).every(([k,v])=>!v||!campos[k]||(k==='status'?casaStatus(normalizar(campos[k](x)),normalizar(v==='RECEBIDO'?'PAGO':v)):normalizar(campos[k](x)).includes(normalizar(v)))));
 }
