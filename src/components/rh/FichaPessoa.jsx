@@ -487,7 +487,7 @@ export default function FichaPessoa({
         </Card>
       )}
 
-      <DocumentosFuncionario pessoa={pessoa} editavel={editavel} />
+      <DocumentosFuncionario key={pessoa.id} pessoa={pessoa} editavel={editavel} />
 
       {aba === "historico" && (
         <Card>
