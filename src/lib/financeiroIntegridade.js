@@ -1,3 +1,4 @@
+import { hojeFinanceiro } from './financeiroCivil.js';
 export function caminhoFinanceiro(path = '') {
   const inicio = path.indexOf('/financas');
   return inicio < 0 ? path : path.slice(inicio);
@@ -12,7 +13,7 @@ export function baixasManuais(titulo, campo) {
   const valor = Number(titulo[campo] || 0);
   return valor > 0 ? [{ id: `historico-${titulo.id}`, valor, data_pagamento: titulo.data_pagamento || null, historico: true }] : [];
 }
-export function pendenciasFinanceiras(recebimentos = [], despesas = [], notas = [], hoje = new Date().toISOString().slice(0,10)) {
+export function pendenciasFinanceiras(recebimentos = [], despesas = [], notas = [], hoje = hojeFinanceiro()) {
   const itens = [];
   const adicionar = (r, tipo, motivo) => itens.push({ id: `${tipo}-${r.id}-${motivo}`, registro: r, tipo, motivo });
   for (const [registros, tipo, campo] of [[recebimentos,'recebimentos','valor_recebido'],[despesas,'despesas','valor_pago']]) {

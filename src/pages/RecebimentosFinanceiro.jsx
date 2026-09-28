@@ -40,7 +40,7 @@ const dataBR = (v) => {
   const p = String(v).slice(0, 10).split("-");
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v;
 };
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeSaoPaulo(); // dia de São Paulo: com toISOString, depois das 21h a data virava a de amanhã
 const vazio = {
   id: "",
   empresa_id: "",

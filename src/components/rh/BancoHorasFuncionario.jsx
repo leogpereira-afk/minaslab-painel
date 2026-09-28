@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Clock3, Plus } from "lucide-react";
 import { rhBancoListar, rhBancoRegistrar } from "../../services/dados.js";
 import { formatarBanco } from "../../lib/rh/bancoHoras.js";
+import { ymdLocal } from "../../lib/format.js";
 import { Card, Empty } from "../ui.jsx";
 
 const TIPOS = ["Horas pagas", "Horas compensadas", "Crédito manual", "Débito manual", "Correção/Ajuste", "Outro"];
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => ymdLocal(new Date()); // dia local: com toISOString, depois das 21h a data virava a de amanhã
 const competenciaAtual = () => hoje().slice(0, 7);
 
 export default function BancoHorasFuncionario({ pessoa, editavel }) {
@@ -41,7 +42,7 @@ export default function BancoHorasFuncionario({ pessoa, editavel }) {
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div><h2 className="font-display text-base font-semibold text-slate-900">Banco de horas</h2><p className="text-xs text-slate-500">Saldo auditável acumulado entre competências.</p></div>
-        <div className="flex items-center gap-2"><span className={`chip ${(dados.saldoMinutos || 0) < 0 ? "chip-bad" : "chip-ok"}`}><Clock3 size={14} /> {formatarBanco(dados.saldoMinutos || 0)}</span>{editavel && <button type="button" className="btn-outline py-1 text-xs" onClick={() => setAberto(!aberto)}><Plus size={14}/> Registrar movimentação</button>}</div>
+        <div className="flex items-center gap-2"><span className={`chip ${(dados.saldoMinutos || 0) < 0 ? "chip-bad" : "chip-ok"}`}><Clock3 size={14} /> {formatarBanco(dados.saldoMinutos || 0)}</span>{editavel && <button type="button" className="btn-outline py-1 text-xs" onClick={() => { if (!aberto) setForm((f) => ({ ...f, competencia: competenciaAtual(), dataMovimento: hoje() })); setAberto(!aberto); }}><Plus size={14}/> Registrar movimentação</button>}</div>
       </div>
       {erro && <p className="mb-3 rounded-lg bg-bad-50 p-2 text-xs text-bad-700">{erro}</p>}
       {aberto && editavel && <form className="mb-4 grid gap-3 rounded-xl border p-3 md:grid-cols-6" onSubmit={salvar}>

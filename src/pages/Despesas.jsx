@@ -33,6 +33,7 @@ import {
   finBoletoVincular,
 } from "../services/financeiro.js";
 import { finBoletoUpload } from "../services/boleto.js";
+import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 import { hojeSaoPaulo, statusVisto } from "../lib/tituloVencido.js";
 const moeda = (v) =>
   Number(v || 0).toLocaleString("pt-BR", {
@@ -44,7 +45,7 @@ const dataBR = (v) => {
   const p = String(v).slice(0, 10).split("-");
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v;
 };
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeSaoPaulo(); // dia de São Paulo: com toISOString, depois das 21h a data virava a de amanhã
 const vazio = {
   id: "",
   empresa_id: "",
@@ -130,6 +131,7 @@ export default function Despesas() {
   // da navegação (FinanceiroLayout, abrirContexto).
   const filtroInicial = useLocation().state?.filtroCartao || {};
   const envio = useRef(false);
+  const consultas = useRef(criarControleConsulta());
   const navigate = useNavigate(),
     comprovanteRef = useRef(null),
     boletoRef = useRef(null);
@@ -185,6 +187,9 @@ export default function Despesas() {
     origem: (x) => x.origem,
   });
   async function carregar(p = pagina) {
+    // Só a consulta mais recente mexe na tela: uma resposta lenta de outro filtro chegava
+    // depois e deixava a lista e os totais de "Todas" com o seletor em outra empresa.
+    const vigente = consultas.current.iniciar();
     setLoading(true);
     setErro("");
     try {
@@ -200,15 +205,16 @@ export default function Despesas() {
           limite,
         }),
       ]);
+      if (!vigente()) return;
       setOp(o);
       setItens(d.itens || []);
       setMeta({ total: d.total || 0, paginas: d.paginas || 1 });
       setResumo(d.resumo || { total: 0, pago: 0, pendente: 0 });
       setPagina(d.pagina || p);
     } catch (e) {
-      setErro(e.message);
+      if (vigente()) setErro(e.message);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   }
   useEffect(() => {
@@ -222,7 +228,7 @@ export default function Despesas() {
   }
   function novo() {
     limparArquivos();
-    setForm({ ...vazio, empresa_id: empresa || "" });
+    setForm({ ...vazio, empresa_id: empresa || "", data_lancamento: hoje() });
     setModal("form");
   }
   function editar(x) {

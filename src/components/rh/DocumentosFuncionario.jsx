@@ -7,6 +7,7 @@ import {
 import { extrairDadosKit, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 import { Card, Empty } from "../ui.jsx";
 import { resultadoAso } from "../../lib/rh/resultadoAso.js";
+import { ymdLocal } from "../../lib/format.js";
 
 const TIPOS = [
   "Ficha de Registro", "Kit Admissional", "Contrato de Trabalho", "ASO",
@@ -24,7 +25,7 @@ const ROTULOS = {
 };
 const TIPOS_CADASTRO = new Set(["Ficha de Registro", "Kit Admissional", "Contrato de Trabalho", "Documentos Pessoais"]);
 const TIPOS_EVENTO = new Set(["ASO", "NR / Certificado de Treinamento", "Ordem de Serviço SST"]);
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => ymdLocal(new Date()); // dia local: com toISOString, depois das 21h a data virava a de amanhã
 
 function somarMeses(iso, meses) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return "";
