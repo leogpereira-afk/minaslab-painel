@@ -10,7 +10,7 @@ test('dias em aberto e pausa inválida não entram nos totais',()=>{assert.equal
 test('pausa paga não é descontada da remuneração',()=>assert.equal(minutosTrabalhados({...dia,pausaPagaMin:15}),542));
 
 test('jornada líquida é 9h de segunda a quinta e 8h sexta = 44h',()=>{
- const dias=['2026-09-07','2026-09-08','2026-09-09','2026-09-10','2026-09-11'].map((data,i)=>({...dia,data,trackedMin:i===4?540:600,trabalhadoMin:i===4?420:480}));
+ const dias=['2026-09-14','2026-09-15','2026-09-16','2026-09-17','2026-09-18'].map((data,i)=>({...dia,data,trackedMin:i===4?540:600,trabalhadoMin:i===4?420:480}));
  const r=apurarCompetencia(dias);assert.equal(r.folhaMin,2640);assert.equal(r.normaisMin,2640);assert.equal(r.extrasMin,0);
 });
 test('sexta com 9h líquidas separa 8 normais e 1 extra mesmo se Jibble não marcou extra',()=>{

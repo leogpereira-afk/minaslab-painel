@@ -440,10 +440,40 @@ export function diaDaSemanaISO(iso) {
 }
 
 /** O dia da escala que vale para uma data, ou null quando a data não é dia. */
+/* FERIADOS NACIONAIS (lei federal): 1/1, 21/4, 1/5, 7/9, 2/11, 15/11 e 25/12 (Lei 662/1949, com
+   a Lei 10.607/2002), 12/10 (Lei 6.802/1980) e 20/11 (Lei 14.759/2023, desde 2024). Não são dia de
+   trabalho: o previsto é zero, e a hora trabalhada neles se paga em dobro (Lei 605/1949, art. 9º;
+   Súmula 146 do TST). Feriado municipal e religioso (Sexta-feira da Paixão, Corpus Christi,
+   aniversário da cidade) depende de lei municipal e entra pela marca `feriado` do relógio. */
+const FERIADOS_NACIONAIS = new Set(["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"]);
+export function feriadoNacional(iso) {
+  const s = String(iso || "");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return false;
+  const mesDia = s.slice(5, 10);
+  return FERIADOS_NACIONAIS.has(mesDia) || (mesDia === "11-20" && Number(s.slice(0, 4)) >= 2024);
+}
+/* Feriado do dia: o nacional pela data, e o municipal pela marca que o relógio grava. */
+export function diaDeFeriado(dia) {
+  return (
+    Boolean(dia?.feriado || dia?.isHoliday) ||
+    /feriado/i.test(String(dia?.tipoDia || "")) ||
+    /feriado/i.test(String(dia?.ocorrencia || "")) ||
+    feriadoNacional(dia?.data)
+  );
+}
+/* Descanso semanal remunerado: domingo. Trabalho nele, sem folga compensatória, também se paga
+   em dobro (Súmula 146 do TST). O sábado da escala de segunda a sexta é dia útil não
+   trabalhado: hora nele é extra comum (+50%). */
+export function diaDeDescansoSemanal(iso) {
+  return diaDaSemanaISO(iso) === 0;
+}
+
 export function jornadaDoDia(iso, jornada) {
   const s = diaDaSemanaISO(iso);
   if (s === null) return null;
-  return normalizarJornada(jornada).dias[s];
+  const dia = normalizarJornada(jornada).dias[s];
+  // Feriado nacional não é dia de trabalho, qualquer que seja a escala.
+  return dia && feriadoNacional(iso) ? { ...dia, turnos: [], previstoMin: 0, feriado: true } : dia;
 }
 
 /**
@@ -825,7 +855,8 @@ export function normaisDoDia(dia, jornada) {
   if (folhaMin === null) return null;
 
   const escala = normalizarJornada(jornada);
-  const previstoMin = minutosPrevistosDoDia(dia?.data, escala);
+  const previstoEscala = minutosPrevistosDoDia(dia?.data, escala);
+  const previstoMin = previstoEscala !== null && diaDeFeriado(dia) ? 0 : previstoEscala;
   const apurado = apuracaoDoRelogio(dia);
 
   if (apurado) {
@@ -926,8 +957,8 @@ export function minutosNormais(dia, jornada) {
  * Quem afirma falta é o RH, no lançamento — nunca este laço.
  *
  * O que sai null, e por quê nenhum deles é zero:
- *  - `extrasDobroMin` sem NENHUM dia apurado pelo relógio: a dobra fica SEM
- *    APURAÇÃO, porque a conta derivada soma tudo numa faixa só.
+ *  - `extrasDobroMin` sem NENHUM dia apurado (nem pelo relógio nem pela conta
+ *    derivada, que desde 28/09/2026 põe feriado e domingo em dobro pela lei).
  *  - `atrasosMin` sem nenhum dia derivável: o relógio não devolve atraso (a
  *    jornada dele já é a da escala), e afirmar 0 seria dizer "não houve atraso"
  *    sem ter medido.
@@ -951,6 +982,8 @@ export function apurarCompetencia(dias, jornada) {
   let extrasRelogioMin = 0;
   let extrasDobroRelogioMin = 0;
   let extrasDerivadosMin = 0;
+  let extrasDobroDerivadosMin = 0;
+  let diasEmDobroPelaLei = 0;
   let atrasosDerivadosMin = 0;
 
   const ausencias = contadorDeAusencias();
@@ -1016,22 +1049,33 @@ export function apurarCompetencia(dias, jornada) {
       continue;
     }
     previstoDerivadoMin += previsto;
-    if (previsto === 0) {
-      // Trabalho em dia que a escala não prevê (sábado, domingo): tudo é
-      // excedente (a normal do dia é zero) e entra na faixa de +50%, porque é
-      // onde a conta derivada sabe pôr — e sai CONTADO em `diasForaDaEscala`,
-      // para a tela lembrar que descanso e feriado se pagam em dobro e podem
-      // precisar ser movidos à mão.
-      diasForaDaEscala += 1;
+    // Trabalho em dia que a escala não prevê (sábado, domingo, feriado): tudo é
+    // excedente (a normal do dia é zero), e sai CONTADO em `diasForaDaEscala`.
+    if (previsto === 0) diasForaDaEscala += 1;
+    /* A FAIXA DA EXTRA SEGUE A LEI (28/09/2026). Feriado e domingo trabalhados sem folga
+       compensatória se pagam em dobro (Lei 605/1949, art. 9º; Súmula 146 do TST): a hora
+       inteira vai para +100%. Nos outros dias a extra é +50%, salvo a parte que o próprio
+       relógio apurou como dobra, que também vale (paga mais, nunca menos que a lei). Antes
+       o dobro do relógio era descartado em todo dia com batida. */
+    const emDobroPelaLei = diaDeFeriado(d) || diaDeDescansoSemanal(d.data);
+    const dobroDoRelogio = Math.max(0, Math.round(numeroOuNulo(d.extraDobroMin) ?? 0));
+    const dobroDoDia = emDobroPelaLei ? composicao.extraMin : Math.min(composicao.extraMin, dobroDoRelogio);
+    if (emDobroPelaLei && previsto === 0) diasEmDobroPelaLei += 1;
+    extrasDobroDerivadosMin += dobroDoDia;
+    extrasDerivadosMin += composicao.extraMin - dobroDoDia;
+    /* O ATRASO É O PREVISTO MENOS AS NORMAIS, nunca menos a folha (29/08/2026). A folha
+       traz a extra dentro, e descontar do previsto um número que já tem excedente faria a
+       hora extra apagar o atraso do mesmo dia.
+       E MENOS O ABONO (28/09/2026): atestado abona o período que cobre (Lei 605/1949,
+       art. 6º). Quando o relógio diz quantas horas pagou (horasAtestadoMin), só o que
+       ficou descoberto é atraso; sem essa medida, o abono cobre o dia e nada vira atraso.
+       Falta lançada já desconta o dia inteiro, então não gera atraso por cima. */
+    let abono = 0;
+    if (ausencia) {
+      const pago = d.origem === "jibble" ? Math.max(0, Math.round(numeroOuNulo(d.horasAtestadoMin) ?? 0)) : 0;
+      abono = ausencia.desconta || pago === 0 ? previsto : pago;
     }
-    extrasDerivadosMin += composicao.extraMin;
-    /* O ATRASO É O PREVISTO MENOS AS NORMAIS, nunca menos a folha (29/08/2026).
-       A folha traz a extra dentro, e descontar do previsto um número que já tem
-       excedente faria a hora extra apagar o atraso do mesmo dia. Aqui os dois
-       jeitos dão o mesmo número — porque a extra derivada É o que passou do
-       previsto —, e é justamente por isso que esta é a forma que se escreve: a
-       régua fica a mesma quando o dia vier apurado de outro lugar. */
-    atrasosDerivadosMin += previsto - composicao.normaisMin;
+    atrasosDerivadosMin += Math.max(0, previsto - composicao.normaisMin - abono);
   }
 
   const temRelogio = diasDoRelogio > 0;
@@ -1068,7 +1112,14 @@ export function apurarCompetencia(dias, jornada) {
         : null,
     extrasRelogioMin: temRelogio ? extrasRelogioMin : null,
     extrasDerivadosMin: temDerivado ? extrasDerivadosMin : null,
-    extrasDobroMin: temRelogio ? extrasDobroRelogioMin : null,
+    // A dobra agora também sai da conta derivada (feriado e domingo pela lei): zero aqui é
+    // medida — o mês foi percorrido e não houve hora em dobro.
+    extrasDobroDerivadosMin: temDerivado ? extrasDobroDerivadosMin : null,
+    diasEmDobroPelaLei,
+    extrasDobroMin:
+      temRelogio || temDerivado
+        ? (temRelogio ? extrasDobroRelogioMin : 0) + (temDerivado ? extrasDobroDerivadosMin : 0)
+        : null,
     atrasosMin: temDerivado ? atrasosDerivadosMin : null,
     // Ausências: contadas, separadas por efeito no dinheiro.
     ausencias,

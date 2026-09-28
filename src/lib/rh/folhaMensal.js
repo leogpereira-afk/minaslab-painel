@@ -24,7 +24,7 @@
 // as horas pagas. Um atestado lançado no painel, num dia sem batida, chega com 0, e
 // com previsto cheio viraria −8h de falta.
 
-import { ausenciaDoDia, minutosTrabalhados } from "./ponto.js";
+import { ausenciaDoDia, diaDeFeriado, minutosTrabalhados } from "./ponto.js";
 
 /* Horas do dia na folha: o payrollHours importado do relógio; dia corrigido à
    mão volta à conta pelas batidas (o total antigo do relógio não descreve mais
@@ -41,10 +41,10 @@ export function minutosDaFolha(d) {
   return pelasBatidas + (d?.origem === "jibble" ? Math.max(0, Number(d?.horasAtestadoMin) || 0) : 0);
 }
 
+/* Feriado: o nacional pela data (lei federal) e o municipal pela marca do relógio. A mesma
+   regra do Fechamento (ponto.js, diaDeFeriado). */
 export function ehFeriado(d) {
-  return Boolean(d?.feriado || d?.isHoliday
-    || String(d?.tipoDia || "").toLowerCase().includes("feriado")
-    || String(d?.ocorrencia || "").toLowerCase().includes("feriado"));
+  return diaDeFeriado(d);
 }
 
 /* Régua confirmada pela MinasLab para esta folha: almoço fora do trabalho;

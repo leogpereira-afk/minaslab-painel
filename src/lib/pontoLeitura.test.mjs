@@ -13,10 +13,10 @@ const dia = {data:'2026-09-08',trackedMin:602,pausaMin:60,pausaPagaMin:0,trabalh
 test('leitura distingue lacunas de zero e não cria faltas nem dados futuros',()=>{
   const r=ler([dia,{...dia,data:'2026-09-13'}]);
   assert.equal(r.registros.length,1);assert.equal(r.diasComDados,1);
-  assert.equal(r.diasUteisSemDados.length,4);assert.equal(r.porDia[0].folhaMin,null);
+  assert.equal(r.diasUteisSemDados.length,3); // 07/09 é feriado nacional: não é dia útil sem dadosassert.equal(r.porDia[0].folhaMin,null);
   assert.equal(r.porDia.at(-1).futuro,true);assert.equal(r.porDia.at(-1).folhaMin,null);
   assert.equal(r.equipe[1].folhaMin,null);assert.equal(r.resumo.folhaMin,542);
-  assert.equal(r.lacunas.length,9);assert.equal(r.porDia[1].parcial,true);
+  assert.equal(r.lacunas.length,7); // sem 07/09 (feriado) para as duas pessoasassert.equal(r.porDia[1].parcial,true);
 });
 test('diferença da origem não vira pendência de batida; total e escala usam a mesma base',()=>{
   const r=ler([dia],[dia]);

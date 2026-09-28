@@ -1117,14 +1117,14 @@ function LinhaFechamento({ l, editavel, acoes }) {
           previsto — o que é hora extra e o que é atraso ficaria no chute. Corrija a data em Batidas.
         </p>
       )}
-      {/* Trabalho em dia que a escala não prevê entra como +50% porque é onde a
-          conta derivada sabe pôr. Descanso e feriado se pagam em dobro, e quem
-          decide isso é o RH — a tela lembra em vez de escolher sozinha. */}
-      {!reg && apuracao.diasForaDaEscala > 0 && (
+      {/* Trabalho fora da escala segue a lei (28/09/2026): domingo e feriado nacional
+          entram em +100% sozinhos; sábado é dia útil não trabalhado e fica em +50%.
+          Feriado municipal que o relógio não marcou ainda é o RH quem move. */}
+      {!reg && apuracao.diasForaDaEscala - (apuracao.diasEmDobroPelaLei || 0) > 0 && (
         <p className="mt-2 text-xs text-warn-700">
-          {plural(apuracao.diasForaDaEscala, "dia lançado à mão caiu", "dias lançados à mão caíram")} em data que a
-          escala não prevê (fim de semana). A hora inteira entrou na faixa de +50%; se for descanso ou feriado, mova
-          para a faixa de +100% no lançamento.
+          {plural(apuracao.diasForaDaEscala - (apuracao.diasEmDobroPelaLei || 0), "dia trabalhado caiu", "dias trabalhados caíram")} em
+          data que a escala não prevê e entraram em +50%. Domingo e feriado nacional já vão para +100%; se algum
+          destes foi feriado municipal, mova para +100% no lançamento.
         </p>
       )}
       {repetidos > 0 && (

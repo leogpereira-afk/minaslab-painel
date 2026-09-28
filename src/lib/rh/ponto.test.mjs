@@ -50,6 +50,7 @@ import {
   TIPOS_AUSENCIA,
   TOLERANCIA_DIA_MIN,
   TOLERANCIA_MARCACAO_MIN,
+  feriadoNacional,
 } from "./ponto.js";
 
 // O salário que a Impresilk usou para descobrir o defeito dos três centavos.
@@ -621,11 +622,72 @@ test("apurarCompetencia: dia sem total não entra em soma nenhuma, nem na extra 
   assert.equal(r.diasDoRelogio, 1);
 });
 
-test("apurarCompetencia: sem dia do relógio, a dobra fica SEM APURAÇÃO — nunca zero", () => {
+test("apurarCompetencia: sem dia do relógio, a dobra sai da conta derivada (zero medido em dia útil)", () => {
   const r = apurarCompetencia([{ data: SEGUNDA, trabalhadoMin: 600 }], JORNADA_PADRAO);
   assert.equal(r.extrasMin, 60);
-  assert.equal(r.extrasDobroMin, null); // a conta derivada soma tudo numa faixa só
+  assert.equal(r.extrasDobroMin, 0); // dia útil: a lei põe a extra em +50%
   assert.equal(r.fonteExtras, "manual");
+  const vazio = apurarCompetencia([], JORNADA_PADRAO);
+  assert.equal(vazio.extrasDobroMin, null); // nada apurado continua sem apuração
+});
+
+// ---- a lei no Fechamento (28/09/2026) -----------------------------------------
+
+test("lei: feriado nacional trabalhado vai inteiro para +100% e não gera atraso", () => {
+  // 07/09/2026 é segunda; a escala prevê 9h, mas feriado não é dia de trabalho
+  assert.equal(feriadoNacional("2026-09-07"), true);
+  const r = apurarCompetencia([{ data: "2026-09-07", trackedMin: 240, pausaMin: 0, origem: "jibble" }], JORNADA_PADRAO);
+  assert.equal(r.atrasosMin, 0, "a revisão mediu 5h de atraso aqui");
+  assert.equal(r.extrasDobroMin, 240);
+  assert.equal(r.extrasMin, 0);
+  assert.equal(r.diasEmDobroPelaLei, 1);
+});
+
+test("lei: domingo trabalhado vai para +100%; sábado continua +50%", () => {
+  const dom = apurarCompetencia([{ data: DOMINGO, trackedMin: 180, pausaMin: 0 }], JORNADA_PADRAO);
+  assert.equal(dom.extrasDobroMin, 180);
+  assert.equal(dom.extrasMin, 0);
+  const sab = apurarCompetencia([{ data: SABADO, trackedMin: 180, pausaMin: 0 }], JORNADA_PADRAO);
+  assert.equal(sab.extrasMin, 180);
+  assert.equal(sab.extrasDobroMin, 0);
+});
+
+test("lei: feriado municipal marcado pelo relógio também zera o previsto", () => {
+  const r = apurarCompetencia([{ data: TERCA, trackedMin: 120, pausaMin: 0, feriado: true }], JORNADA_PADRAO);
+  assert.equal(r.atrasosMin, 0);
+  assert.equal(r.extrasDobroMin, 120);
+});
+
+test("lei: dobra apurada pelo relógio num dia com batida não é mais descartada", () => {
+  const r = apurarCompetencia([{ data: SEGUNDA, trackedMin: 720, pausaMin: 60, extraMin: 60, extraDobroMin: 60 }], JORNADA_PADRAO);
+  // 11h trabalhadas contra 9h da escala: 2h de extra, 1h delas em dobro pelo relógio
+  assert.equal(r.extrasMin + r.extrasDobroMin, 120);
+  assert.equal(r.extrasDobroMin, 60);
+  assert.equal(r.normaisMin + r.extrasMin + r.extrasDobroMin, r.folhaMin);
+});
+
+test("lei: atestado parcial pago pelo relógio só cobra o que ficou descoberto", () => {
+  // 1h14 de batida + 4h de atestado pagas, contra as 9h da segunda: descobertas 3h46
+  const r = apurarCompetencia(
+    [{ data: SEGUNDA, origem: "jibble", trackedMin: 74, pausaMin: 0, trabalhadoMin: 314, horasAtestadoMin: 240, ausencia: { tipo: "atestado" } }],
+    JORNADA_PADRAO,
+  );
+  assert.equal(r.atrasosMin, 540 - 74 - 240, "a revisão mediu 7h46 aqui, sem abater o atestado");
+});
+
+test("lei: ausência abonada sem medida, ou falta, num dia com batida não vira atraso", () => {
+  const abono = apurarCompetencia([{ data: SEGUNDA, trabalhadoMin: 240, ausencia: { tipo: "atestado" } }], JORNADA_PADRAO);
+  assert.equal(abono.atrasosMin, 0);
+  const falta = apurarCompetencia([{ data: SEGUNDA, trabalhadoMin: 240, ausencia: { tipo: "falta" } }], JORNADA_PADRAO);
+  assert.equal(falta.atrasosMin, 0, "a falta já desconta o dia inteiro");
+  assert.equal(falta.faltasQueDescontam, 1);
+});
+
+test("lei: 20 de novembro é feriado nacional desde 2024", () => {
+  assert.equal(feriadoNacional("2026-11-20"), true);
+  assert.equal(feriadoNacional("2023-11-20"), false);
+  assert.equal(feriadoNacional("2026-11-21"), false);
+  assert.equal(feriadoNacional("lixo"), false);
 });
 
 test("apurarCompetencia: dia à mão sem data legível sai contado, não somado", () => {
