@@ -2,14 +2,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
+const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json","Cache-Control":"no-store"}});
 const erroTexto=(e:any)=>e instanceof Error?e.message:(typeof e==="string"?e:(e?.message||e?.details||e?.hint||JSON.stringify(e)));
 
-async function auth(req:Request){
-  const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
-  if(!t)return null;const p=t.split(".");if(p.length!==3)return null;
-  try{const s=p[1].replace(/-/g,"+").replace(/_/g,"/");const x=JSON.parse(atob(s+"=".repeat((4-s.length%4)%4)));if(x.exp&&x.exp*1000<Date.now())return null;return x}catch{return null}
-}
+/* A PORTA CONFERE A ASSINATURA (auditoria de 28/09/2026).
+   A auth() anterior abria o crachá e olhava só a validade: qualquer token com
+   formato de JWT e data futura passava — até a chave pública do Supabase. Esta
+   é a MESMA verificação da ml-financeiro-nfse-producao, que a tela já chama com
+   o mesmo crachá: assinatura HMAC com ML_JWT_SECRET, sistema "minaslab",
+   validade e papel de direção (o financeiro inteiro é só da direção). */
+const __ML_JWT_SECRET=Deno.env.get("ML_JWT_SECRET")||"",__enc=new TextEncoder(),__dec=new TextDecoder();
+function __b64urlBytes(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
+async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!__ML_JWT_SECRET)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",__enc.encode(__ML_JWT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,__b64urlBytes(p[2]),__enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(__dec.decode(__b64urlBytes(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000))||String(x.papel||"")!=="direcao")return null;return x}catch{return null}}
 
 async function testarGateway(idDps:string){
   const base=String(Deno.env.get("NFSE_GATEWAY_URL")||"").replace(/\/+$/,'');
@@ -22,16 +26,16 @@ async function testarGateway(idDps:string){
     const raw=await resp.text();let body:any={};try{body=raw?JSON.parse(raw):{}}catch{body={erro:raw||`HTTP ${resp.status}`}}
     if(!resp.ok)throw new Error(body?.erro||`Gateway NFS-e respondeu HTTP ${resp.status}.`);
     return body;
-  }catch(e){if((e as any)?.name==="AbortError")throw new Error("Timeout ao chamar o gateway NFS-e.");throw e}
-  finally{clearTimeout(timer)}
+  }catch(e){if((e as any)?.name==="AbortError")throw new Error("Timeout ao chamar o gateway NFS-e.");throw e}finally{clearTimeout(timer)}
 }
 
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
-  if(!await auth(req))return json({erro:"Sessão inválida."},401);
-  if((Deno.env.get("MLAB_NFSE_AMBIENTE")||"HOMOLOGACAO").toUpperCase()!=="HOMOLOGACAO")return json({erro:"Teste SEFIN bloqueado fora de HOMOLOGAÇÃO."},409);
+  if(!await auth(req))return json({erro:"Sessão inválida ou sem permissão.",semSessao:true},401);
   let b:any={};try{b=await req.json()}catch{return json({erro:"JSON inválido."},400)}
   if(b.action!=="testarConexao")return json({erro:"Ação inválida."},400);
+  const ambiente=String(Deno.env.get("MLAB_NFSE_AMBIENTE")||"HOMOLOGACAO").toUpperCase();
+  if(ambiente!=="HOMOLOGACAO")return json({ok:true,ambiente,transmitiu:false,modo:"VALIDACAO_LOCAL",mensagem:"Em produção, a pré-validação não consulta nem transmite para a SEFIN. A transmissão só ocorre no botão Emitir NFS-e REAL."});
   const id=String(b.id||"");if(!id)return json({erro:"Rascunho não informado."},400);
   try{
     const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
