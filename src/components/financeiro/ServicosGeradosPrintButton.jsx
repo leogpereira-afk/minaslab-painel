@@ -19,7 +19,7 @@ function linhasDosItens(itens){
   valores:[
    texto(x.contrato_proposta),texto(x.os_numero),texto(x.empresa?.nome),texto(x.cliente),
    texto(x.numero_nf),texto(x.status_faturamento),texto(x.status_pagamento),dataRecepcao(x),
-   data(x.data_emissao),data(x.data_vencimento),Number(x.valor_faturar||x.valor_original)||0,
+   data(x.data_emissao),data(x.data_vencimento),Number(x.valor_faturar??x.valor_original)||0,
    texto(x.pagamento_origem)
   ],
   valorNumerico:true
@@ -135,8 +135,9 @@ export default function ServicosGeradosPrintButton({itens,empresa,visao,busca}){
    const fonte=Array.isArray(itens)&&itens.length?itens:Array.isArray(window.__minaslabServicosGeradosExport)?window.__minaslabServicosGeradosExport:[];
    const linhas=fonte.length?linhasDosItens(fonte):await linhasDeTodasAsPaginas();
    if(!linhas.length)throw new Error("Não há serviços para exportar com os filtros atuais.");
-   const xml=criarPlanilha({linhas,empresa,visao,busca});
-   const blob=new Blob(["\ufeff",xml],{type:"application/vnd.ms-excel;charset=utf-8"});
+   const info=window.__minaslabServicosGeradosExportInfo||{};
+   const xml=criarPlanilha({linhas,empresa:empresa??info.empresa,visao:visao??info.visao,busca:busca??info.busca});
+   const blob=new Blob([String.fromCharCode(0xFEFF),xml],{type:"application/vnd.ms-excel;charset=utf-8"});
    const dia=new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
    baixar(blob,`Servicos_Gerados_${dia}.xls`);
   }catch(e){
