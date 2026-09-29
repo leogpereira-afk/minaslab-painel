@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#063f46" />
+    <link rel="icon" type="image/svg+xml" href="/favicon-crm.svg" />
+    <title>CRM MinasLab 2.0</title>
+    <script>
+      // GitHub Pages não tem rewrite: um refresh em /crm/clientes/123 cai no
+      // 404.html do painel, que redireciona para /crm/?__rota=/clientes/123.
+      // Aqui a rota original é restaurada antes do React Router montar.
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var rota = params.get('__rota');
+        if (rota === null) return;
+        params.delete('__rota');
+        var base = window.location.pathname.replace(/\/+$/, '');
+        var query = params.toString();
+        var destino = base + (rota.charAt(0) === '/' ? rota : '/' + rota) + (query ? '?' + query : '') + window.location.hash;
+        window.history.replaceState(null, '', destino);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
