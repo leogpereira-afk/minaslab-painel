@@ -1,0 +1,226 @@
+/* Design System MinasLab — Fase 5: fluxo operacional */
+
+[data-page="Tarefas / Follow-up"],
+[data-page="Contratos"],
+[data-page="Ordens de Serviço"],
+[data-page="Coletas"] {
+  --phase5-card-radius: var(--radius-card);
+  --phase5-control-height: 36px;
+}
+
+[data-page="Tarefas / Follow-up"] > section.grid > article,
+[data-page="Contratos"] > section.grid > article,
+[data-page="Ordens de Serviço"] > section.grid > article,
+[data-page="Coletas"] > section.grid > article {
+  border-color: var(--border-ui) !important;
+  border-radius: var(--phase5-card-radius) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-xs) !important;
+  padding: 16px !important;
+}
+
+[data-page="Tarefas / Follow-up"] > section.grid > article strong,
+[data-page="Contratos"] > section.grid > article strong,
+[data-page="Ordens de Serviço"] > section.grid > article strong,
+[data-page="Coletas"] > section.grid > article strong {
+  color: var(--ink-800) !important;
+  font-size: 20px !important;
+  line-height: 28px !important;
+}
+
+[data-page="Tarefas / Follow-up"] > section.rounded-3xl,
+[data-page="Contratos"] > section.rounded-3xl,
+[data-page="Ordens de Serviço"] > section.rounded-3xl,
+[data-page="Coletas"] > section.rounded-3xl {
+  border-color: var(--border-ui) !important;
+  border-radius: var(--phase5-card-radius) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+[data-page="Tarefas / Follow-up"] input,
+[data-page="Tarefas / Follow-up"] select,
+[data-page="Tarefas / Follow-up"] textarea,
+[data-page="Contratos"] input,
+[data-page="Contratos"] select,
+[data-page="Contratos"] textarea,
+[data-page="Ordens de Serviço"] input,
+[data-page="Ordens de Serviço"] select,
+[data-page="Ordens de Serviço"] textarea,
+[data-page="Coletas"] input,
+[data-page="Coletas"] select,
+[data-page="Coletas"] textarea {
+  min-height: var(--phase5-control-height);
+  border-color: var(--border-ui) !important;
+  border-radius: var(--radius-input) !important;
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+  box-shadow: none !important;
+}
+
+[data-page="Tarefas / Follow-up"] input:focus,
+[data-page="Tarefas / Follow-up"] select:focus,
+[data-page="Tarefas / Follow-up"] textarea:focus,
+[data-page="Contratos"] input:focus,
+[data-page="Contratos"] select:focus,
+[data-page="Contratos"] textarea:focus,
+[data-page="Ordens de Serviço"] input:focus,
+[data-page="Ordens de Serviço"] select:focus,
+[data-page="Ordens de Serviço"] textarea:focus,
+[data-page="Coletas"] input:focus,
+[data-page="Coletas"] select:focus,
+[data-page="Coletas"] textarea:focus {
+  border-color: var(--brand-500) !important;
+  box-shadow: 0 0 0 3px rgba(0,178,154,.10) !important;
+  outline: none !important;
+}
+
+[data-page="Tarefas / Follow-up"] .rounded-3xl,
+[data-page="Contratos"] .rounded-3xl,
+[data-page="Ordens de Serviço"] .rounded-3xl,
+[data-page="Coletas"] .rounded-3xl { border-radius: var(--radius-card) !important; }
+
+[data-page="Tarefas / Follow-up"] .rounded-2xl,
+[data-page="Contratos"] .rounded-2xl,
+[data-page="Ordens de Serviço"] .rounded-2xl,
+[data-page="Coletas"] .rounded-2xl { border-radius: 10px !important; }
+
+[data-page="Tarefas / Follow-up"] .shadow-sm,
+[data-page="Contratos"] .shadow-sm,
+[data-page="Ordens de Serviço"] .shadow-sm,
+[data-page="Coletas"] .shadow-sm { box-shadow: var(--shadow-xs) !important; }
+
+[data-page="Tarefas / Follow-up"] table thead,
+[data-page="Contratos"] table thead,
+[data-page="Ordens de Serviço"] table thead,
+[data-page="Coletas"] table thead {
+  background: var(--surface-muted) !important;
+  color: var(--text-secondary) !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+  letter-spacing: .035em;
+}
+
+[data-page="Tarefas / Follow-up"] table td,
+[data-page="Contratos"] table td,
+[data-page="Ordens de Serviço"] table td,
+[data-page="Coletas"] table td { color: var(--ink-700); vertical-align: middle; }
+
+[data-page="Tarefas / Follow-up"] table tbody tr:hover,
+[data-page="Contratos"] table tbody tr:hover,
+[data-page="Ordens de Serviço"] table tbody tr:hover,
+[data-page="Coletas"] table tbody tr:hover { background: var(--brand-50) !important; }
+
+[data-page="Tarefas / Follow-up"] .bg-teal-700,
+[data-page="Contratos"] .bg-teal-700,
+[data-page="Ordens de Serviço"] .bg-teal-700,
+[data-page="Coletas"] .bg-teal-700 { background: var(--brand-700) !important; }
+
+[data-page="Tarefas / Follow-up"] .text-teal-700,
+[data-page="Contratos"] .text-teal-700,
+[data-page="Ordens de Serviço"] .text-teal-700,
+[data-page="Coletas"] .text-teal-700,
+[data-page="Ordens de Serviço"] .text-blue-700 { color: var(--brand-700) !important; }
+
+[data-page="Tarefas / Follow-up"] button.rounded-xl,
+[data-page="Contratos"] button.rounded-xl,
+[data-page="Ordens de Serviço"] button.rounded-xl,
+[data-page="Coletas"] button.rounded-xl,
+[data-page="Tarefas / Follow-up"] a.rounded-xl,
+[data-page="Contratos"] a.rounded-xl,
+[data-page="Ordens de Serviço"] a.rounded-xl,
+[data-page="Coletas"] a.rounded-xl {
+  border-radius: var(--radius-button) !important;
+  min-height: 36px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+[data-page="Tarefas / Follow-up"] button.border,
+[data-page="Contratos"] button.border,
+[data-page="Ordens de Serviço"] button.border,
+[data-page="Coletas"] button.border,
+[data-page="Tarefas / Follow-up"] a.border,
+[data-page="Contratos"] a.border,
+[data-page="Ordens de Serviço"] a.border,
+[data-page="Coletas"] a.border {
+  border-color: var(--border-ui) !important;
+  color: var(--ink-700);
+  background: var(--surface);
+}
+
+[data-page="Tarefas / Follow-up"] button.border:hover,
+[data-page="Contratos"] button.border:hover,
+[data-page="Ordens de Serviço"] button.border:hover,
+[data-page="Coletas"] button.border:hover,
+[data-page="Tarefas / Follow-up"] a.border:hover,
+[data-page="Contratos"] a.border:hover,
+[data-page="Ordens de Serviço"] a.border:hover,
+[data-page="Coletas"] a.border:hover {
+  border-color: var(--border-strong) !important;
+  background: var(--surface-muted) !important;
+}
+
+[data-page="Tarefas / Follow-up"] .bg-slate-50,
+[data-page="Contratos"] .bg-slate-50,
+[data-page="Ordens de Serviço"] .bg-slate-50,
+[data-page="Coletas"] .bg-slate-50 { background-color: var(--surface-muted) !important; }
+
+[data-page="Tarefas / Follow-up"] .text-slate-900,
+[data-page="Contratos"] .text-slate-900,
+[data-page="Ordens de Serviço"] .text-slate-900,
+[data-page="Coletas"] .text-slate-900,
+[data-page="Tarefas / Follow-up"] .text-slate-800,
+[data-page="Contratos"] .text-slate-800,
+[data-page="Ordens de Serviço"] .text-slate-800,
+[data-page="Coletas"] .text-slate-800 { color: var(--ink-800) !important; }
+
+[data-page="Tarefas / Follow-up"] .text-slate-500,
+[data-page="Tarefas / Follow-up"] .text-slate-400,
+[data-page="Contratos"] .text-slate-500,
+[data-page="Contratos"] .text-slate-400,
+[data-page="Ordens de Serviço"] .text-slate-500,
+[data-page="Ordens de Serviço"] .text-slate-400,
+[data-page="Coletas"] .text-slate-500,
+[data-page="Coletas"] .text-slate-400 { color: var(--text-secondary) !important; }
+
+[data-page="Tarefas / Follow-up"] .lg\:grid-cols-4 > div,
+[data-page="Contratos"] .md\:grid-cols-2 > article,
+[data-page="Ordens de Serviço"] .md\:grid-cols-2 > article,
+[data-page="Coletas"] .md\:grid-cols-2 > article {
+  border-color: var(--border-ui) !important;
+  border-radius: var(--radius-card) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+[data-page="Tarefas / Follow-up"] .fixed.inset-0 > div {
+  border-radius: var(--radius-modal) !important;
+  box-shadow: var(--shadow-modal) !important;
+}
+
+[data-page="Tarefas / Follow-up"] .bg-red-50,
+[data-page="Contratos"] .bg-red-50,
+[data-page="Ordens de Serviço"] .bg-red-50,
+[data-page="Coletas"] .bg-red-50 { background: var(--danger-soft) !important; }
+
+[data-page="Tarefas / Follow-up"] .text-red-700,
+[data-page="Contratos"] .text-red-700,
+[data-page="Ordens de Serviço"] .text-red-700,
+[data-page="Coletas"] .text-red-700 { color: var(--danger) !important; }
+
+@media (max-width: 1280px) {
+  [data-page="Tarefas / Follow-up"] > section.grid > article,
+  [data-page="Contratos"] > section.grid > article,
+  [data-page="Ordens de Serviço"] > section.grid > article,
+  [data-page="Coletas"] > section.grid > article { padding: 14px !important; }
+}
+
+@media (max-width: 768px) {
+  [data-page="Tarefas / Follow-up"] .min-w-\[260px\],
+  [data-page="Contratos"] .min-w-\[260px\],
+  [data-page="Ordens de Serviço"] .min-w-\[280px\] { min-width: 100% !important; }
+}

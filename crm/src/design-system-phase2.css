@@ -1,0 +1,273 @@
+/* MinasLab Design System — Fase 2
+   Camada de compatibilidade visual para telas legadas.
+   Não altera comportamento, dados ou regras de negócio. */
+
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--background);
+  font-size: 14px;
+  line-height: 1.5715;
+}
+
+#root, main, section, article, aside, header, nav, form, table {
+  min-width: 0;
+}
+
+/* Superfícies e bordas */
+.bg-white { background-color: var(--surface) !important; }
+.bg-slate-50 { background-color: var(--surface-muted) !important; }
+.border-slate-100, .border-slate-200 { border-color: var(--border) !important; }
+.divide-slate-100 > :not(:last-child) { border-color: var(--border) !important; }
+
+/* Tipografia neutra padronizada */
+.text-slate-900, .text-slate-800 { color: var(--text-primary) !important; }
+.text-slate-700 { color: var(--ink-700) !important; }
+.text-slate-600, .text-slate-500 { color: var(--text-secondary) !important; }
+.text-slate-400 { color: var(--text-muted) !important; }
+
+/* Radius: elimina mistura de cantos em telas antigas */
+.rounded-3xl { border-radius: var(--radius-modal) !important; }
+.rounded-2xl { border-radius: var(--radius-card) !important; }
+.rounded-xl { border-radius: 10px !important; }
+.rounded-lg { border-radius: var(--radius-button) !important; }
+
+/* Sombras padronizadas */
+.shadow-sm { box-shadow: var(--shadow-sm) !important; }
+.shadow-md, .shadow-lg { box-shadow: var(--shadow-md) !important; }
+.shadow-xl, .shadow-2xl { box-shadow: var(--shadow-modal) !important; }
+
+/* Controles de formulário legados */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+  background-color: var(--surface) !important;
+}
+
+input:not([type='checkbox']):not([type='radio']):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--brand-500) !important;
+  box-shadow: 0 0 0 3px rgba(0,178,154,.10) !important;
+  outline: none !important;
+}
+
+input::placeholder, textarea::placeholder { color: var(--text-muted) !important; }
+
+/* Ações estruturais antigas em azul passam a usar a marca MinasLab.
+   O azul semântico continua disponível para badges/avisos informativos. */
+button.bg-blue-600,
+a.bg-blue-600,
+button.bg-blue-700,
+a.bg-blue-700 {
+  background-color: var(--brand-700) !important;
+  color: #fff !important;
+}
+
+button.bg-blue-600:hover,
+a.bg-blue-600:hover,
+button.bg-blue-700:hover,
+a.bg-blue-700:hover,
+button.hover\:bg-blue-700:hover,
+a.hover\:bg-blue-700:hover,
+button.hover\:bg-blue-800:hover,
+a.hover\:bg-blue-800:hover {
+  background-color: var(--brand-800) !important;
+}
+
+button.text-blue-700,
+a.text-blue-700,
+button.text-blue-600,
+a.text-blue-600 {
+  color: var(--brand-700) !important;
+}
+
+button.bg-blue-50,
+a.bg-blue-50 {
+  background-color: var(--brand-50) !important;
+}
+
+button.border-blue-200,
+a.border-blue-200,
+button.border-blue-300,
+a.border-blue-300 {
+  border-color: var(--brand-200) !important;
+}
+
+button.ring-blue-100,
+a.ring-blue-100,
+button.ring-blue-300,
+a.ring-blue-300 {
+  --tw-ring-color: var(--brand-200) !important;
+}
+
+/* Teal legado é absorvido pela paleta oficial aprovada */
+.bg-teal-600, .bg-teal-700 { background-color: var(--brand-700) !important; }
+.hover\:bg-teal-700:hover, .hover\:bg-teal-800:hover { background-color: var(--brand-800) !important; }
+.text-teal-600, .text-teal-700, .text-teal-800 { color: var(--brand-700) !important; }
+.bg-teal-50 { background-color: var(--brand-50) !important; }
+.border-teal-200, .border-teal-300 { border-color: var(--brand-200) !important; }
+
+/* Tabelas: densidade consistente e melhor leitura */
+table { width: 100%; color: var(--text-primary); }
+table thead { background: var(--surface-muted) !important; color: var(--text-secondary) !important; }
+table th {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  border-color: var(--border) !important;
+}
+table td {
+  font-size: 13px;
+  line-height: 20px;
+  border-color: var(--border) !important;
+}
+table tbody tr:hover { background: var(--brand-50) !important; }
+
+/* Links e botões comuns: transição discreta e foco acessível */
+button, a {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: 140ms;
+  transition-timing-function: ease;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+/* Cards e painéis principais */
+section.border.bg-white,
+article.border.bg-white,
+div.border.bg-white {
+  border-color: var(--border) !important;
+}
+
+/* Cabeçalhos/separadores de áreas densas */
+.border-b { border-bottom-color: var(--border); }
+.border-t { border-top-color: var(--border); }
+.border-r { border-right-color: var(--border); }
+.border-l { border-left-color: var(--border); }
+
+/* Evita scroll horizontal provocado por wrappers legados; tabelas continuam roláveis
+   apenas dentro do seu próprio contêiner quando realmente necessário. */
+.overflow-x-auto {
+  max-width: 100%;
+}
+
+/* Navegação principal: identidade oficial MinasLab */
+header.sticky nav {
+  background-color: var(--ink-900) !important;
+}
+header.sticky nav a,
+header.sticky nav button {
+  font-size: 13px;
+}
+
+/* Dropdowns e menus */
+header.sticky .shadow-xl {
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Fase 3 — componentes estruturais reais */
+.ds-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+@media (min-width: 640px) {
+  .ds-toolbar { flex-direction: row; align-items: center; justify-content: space-between; }
+}
+
+.ds-table-shell {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+.ds-table-shell > .overflow-x-auto { overflow-x: auto; }
+
+.ds-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ds-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 16px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.ds-alert-danger { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 18%, transparent); }
+.ds-alert-warning { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 18%, transparent); }
+.ds-alert-info { color: var(--info); background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 18%, transparent); }
+.ds-alert-success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 18%, transparent); }
+
+.ds-table-state {
+  display: flex;
+  min-height: 140px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ds-empty-state,
+.ds-error-state,
+.ds-permission-state {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 32px;
+  text-align: center;
+  box-shadow: var(--shadow-xs);
+}
+.ds-empty-state { border-style: dashed; }
+.ds-state-icon {
+  margin: 0 auto 12px;
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+}
+.ds-error-state .ds-state-icon { color: var(--danger); }
+.ds-state-title { color: var(--text-primary); font-size: 14px; line-height: 22px; font-weight: 600; }
+.ds-state-description { margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 18px; }
+
+/* Responsividade: mantém densidade sem reduzir legibilidade abaixo de 11px */
+@media (max-width: 1280px) {
+  body { font-size: 13px; }
+  table td { font-size: 12px; }
+  table th { font-size: 11px; }
+}
+
+/* Estrutura pronta para dark mode, não ativada nesta fase */
+.dark body { background: var(--background); color: var(--text-primary); }
+.dark .bg-white { background-color: var(--surface) !important; }
+.dark .bg-slate-50 { background-color: var(--surface-muted) !important; }
