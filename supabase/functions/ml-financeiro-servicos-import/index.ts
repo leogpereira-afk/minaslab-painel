@@ -5,7 +5,7 @@ const U=Deno.env.get("SUPABASE_URL")!,K=Deno.env.get("SB_SECRET_KEY")??Deno.env.
 const sb=createClient(U,K,{auth:{persistSession:false,autoRefreshToken:false}}),enc=new TextEncoder(),dec=new TextDecoder();
 const C={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const out=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...C,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}}),txt=(v:any)=>String(v??"").trim(),now=()=>new Date().toISOString();
-const key=(v:any)=>txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,""),doc=(v:any)=>txt(v).replace(/\D/g,"");
+const key=(v:any)=>txt(v).normalize("NFD").replace(/\p{M}/gu,"").toUpperCase().replace(/[^A-Z0-9]/g,""),doc=(v:any)=>txt(v).replace(/\D/g,"");
 const EXC_DOC=new Set(["52657257000114","20044692000187"]),EXC_FAT=new Set(["FA00002/2025","FA00003/2025","FA00006/2025","FA00004/2025"]);
 const CABECALHOS=["Id","Status Fatura","Status de Faturamento","Fatura","Forma pagamento","Cliente","CNPJ/CPF","Solicitante","Contrato","Amostra Referência","Ordem de Serviço","Status Ordem serviço","Data do Agendamento","Data de Recepção","Data de Emissão da Nota","Data de Vencimento","Data de Pagamento","Total","Empresa","Obs"];
 
@@ -22,7 +22,7 @@ function modelo(){
 }
 function b64u(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
 async function jwt(t:string){if(!J||!t)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",enc.encode(J),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(typeof x.exp==="number"&&x.exp<Math.floor(Date.now()/1000)))return null;return x}catch{return null}}
-const cab=(v:any)=>txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const cab=(v:any)=>txt(v).normalize("NFD").replace(/\p{M}/gu,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
 const get=(r:any,...ks:string[])=>{for(const k of ks){const v=r[cab(k)];if(v!==undefined&&txt(v)!=="")return v}return""};
 function dt(v:any){if(v===null||v===undefined||v==="")return null;if(typeof v==="number"){const ms=Math.round((v-25569)*86400000),d=new Date(ms);return Number.isFinite(d.getTime())?`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`:null}const s=txt(v);if(!s||s==="-"||s.includes("30/11/-0001"))return null;let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?s.slice(0,10):null}
 function num(v:any){if(typeof v==="number")return Number.isFinite(v)?v:0;let s=txt(v).replace(/R\$/gi,"").replace(/\s/g,"");if(s.includes(","))s=s.replace(/\./g,"").replace(",",".");const n=Number(s);return Number.isFinite(n)?n:0}
@@ -30,7 +30,9 @@ function statusGL(v:any){const s=cab(v).toUpperCase();if(s.includes("CANCEL"))re
 function statusFaturamento(v:any){const s=key(v);if(!s)return null;if(s==="AGUARDANDO")return"AGUARDANDO";if(s==="PRONTOPARAFATURAR"||s==="PRONTOFATURAR")return"PRONTO PARA FATURAR";if(s==="FATURADO"||s==="FRATURADO")return"FATURADO";if(s==="NAOFATURAR")return"NAO FATURAR";if(s==="CANCELADO"||s==="CANCELADA")return"CANCELADO";throw new Error(`Status de Faturamento inválido: ${txt(v)}. Use Aguardando, Pronto para faturar, Faturado, Não faturar ou Cancelado.`)}
 function prefKey(cnpj:string,nome:string){return cnpj?`DOC:${cnpj}`:`NOME:${key(nome)}`}
 async function emLotes<T>(itens:T[],fn:(item:T)=>Promise<void>,tamanho=40){for(let i=0;i<itens.length;i+=tamanho)await Promise.all(itens.slice(i,i+tamanho).map(fn))}
-async function listarTodosServicos(){const todos:any[]=[];const tamanho=1000;for(let inicio=0;;inicio+=tamanho){const{data,error}=await sb.from("servicos_gerados").select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual,apagado,status_faturamento,status_pagamento,numero_nf,data_emissao").range(inicio,inicio+tamanho-1);if(error)throw error;const lote=data||[];todos.push(...lote);if(lote.length<tamanho)break}return todos}
+// Lê em páginas de 500 (abaixo do teto de 1000 linhas do PostgREST), sempre com ordem estável.
+async function lerTudo(consultar:(a:number,b:number)=>any,tamanho=500){const todos:any[]=[];for(let pagina=0;pagina<400;pagina++){const a=pagina*tamanho,{data,error}=await consultar(a,a+tamanho-1);if(error)throw error;const lote=data||[];todos.push(...lote);if(lote.length<tamanho)return todos}throw new Error("Consulta muito extensa; importação interrompida.")}
+async function listarTodosServicos(){return lerTudo((a,b)=>sb.from("servicos_gerados").select("id,os_numero,empresa_id,faturamento_manual,pagamento_manual,apagado,status_faturamento,status_pagamento,numero_nf,data_emissao").order("id").range(a,b))}
 function aplicarAutomaticos(base:any,ex:any,fat:string,pag:string,ref:any){if(!ex?.faturamento_manual){base.status_faturamento=fat;if(ref?.data_emissao)base.data_emissao=ref.data_emissao}if(!ex?.pagamento_manual){base.status_pagamento=pag;if(ref?.paga){base.pagamento_origem="HISTORICO PLANILHA";base.pagamento_referencia=ref.referencia||null;base.pagamento_identificado_em=ref.data_pagamento?`${ref.data_pagamento}T12:00:00-03:00`:null;base.referencia_pagamento=ref.referencia||null}}return base}
 const estaFaturado=(x:any)=>txt(x?.status_faturamento).toUpperCase()==="FATURADO";
 const temNotaFiscal=(x:any)=>txt(x?.numero_nf)!=="";
@@ -56,13 +58,13 @@ Deno.serve(async req=>{
   const rows=raw.map(r=>{const x:any={};for(const[k,v]of Object.entries(r))x[cab(k)]=v;return x});
   if(!Object.keys(rows[0]).some(x=>x.includes("ordem de servico"))||!("fatura" in rows[0])||!("cnpj cpf" in rows[0]))throw new Error("Arquivo não corresponde ao modelo GerenciaLab Dashboard aprovado.");
 
-  const [exist,{data:prefs,error:e2},{data:refs,error:e3},{data:empresas,error:e4}]=await Promise.all([
+  const [exist,prefs,refs,{data:empresas,error:e4}]=await Promise.all([
    listarTodosServicos(),
-   sb.from("servicos_gerados_empresa_preferencia").select("chave,empresa_id").limit(5000),
-   sb.from("servicos_gerados_referencia_historica").select("os_key,emitida,paga,data_emissao,data_pagamento,forma_pagamento,referencia").limit(5000),
+   lerTudo((a,b)=>sb.from("servicos_gerados_empresa_preferencia").select("chave,empresa_id").order("chave").range(a,b)),
+   lerTudo((a,b)=>sb.from("servicos_gerados_referencia_historica").select("os_key,emitida,paga,data_emissao,data_pagamento,forma_pagamento,referencia").order("os_key").range(a,b)),
    sb.from("empresas").select("id,nome").limit(100)
   ]);
-  if(e2||e3||e4)throw(e2||e3||e4);
+  if(e4)throw e4;
   const porOS=new Map((exist??[]).map((x:any)=>[key(x.os_numero),x])),pm=new Map((prefs??[]).map((x:any)=>[x.chave,x.empresa_id])),rm=new Map((refs??[]).map((x:any)=>[x.os_key,x])),em=new Map((empresas??[]).map((x:any)=>[key(x.nome),x.id]));
   const aliasEmpresa=new Map<string,string>();for(const e of empresas??[]){const k=key(e.nome);if(k.includes("MINASLAB"))aliasEmpresa.set("MINASLAB",e.id);else if(k.includes("MLAB"))aliasEmpresa.set("MLAB",e.id)}
   const unicos=new Map<string,any>();let excluidos=0,semOS=0;
