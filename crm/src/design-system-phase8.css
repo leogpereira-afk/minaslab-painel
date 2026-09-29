@@ -1,0 +1,100 @@
+/* Design System MinasLab — Fase 8: auditoria final de consistência.
+   Camada exclusivamente visual. Não altera regras, dados ou comportamento funcional. */
+
+/* Segurança de layout: nenhuma página pode expandir o viewport por causa de filhos flex/grid. */
+.ds-page,
+.ds-page > *,
+.ds-page section,
+.ds-page article,
+.ds-page div {
+  min-width: 0;
+}
+
+.ds-page {
+  width: 100%;
+  max-width: 100%;
+}
+
+.ds-page .overflow-x-auto {
+  max-width: 100%;
+}
+
+/* Cards principais seguem o raio oficial de 12px. Modais mantêm 16px pelo componente Modal. */
+.ds-page section.rounded-3xl,
+.ds-page article.rounded-3xl {
+  border-radius: var(--radius-card) !important;
+}
+
+/* Controles legados convergem para os raios oficiais sem mudar dimensões/ações. */
+.ds-page input.rounded-xl,
+.ds-page select.rounded-xl,
+.ds-page textarea.rounded-xl {
+  border-radius: var(--radius-input) !important;
+}
+
+.ds-page button.rounded-xl,
+.ds-page a.rounded-xl {
+  border-radius: var(--radius-button) !important;
+}
+
+/* Padrão mínimo de legibilidade aprovado: nenhum texto funcional abaixo de 11px. */
+.text-\[9px\],
+.text-\[10px\] {
+  font-size: 11px !important;
+  line-height: 16px !important;
+}
+
+/* Cabeçalhos e legendas de tabelas permanecem densos, mas legíveis. */
+.ds-page table thead,
+.ds-page table thead * {
+  font-size: max(11px, 0.6875rem);
+}
+
+/* Evita sombras antigas excessivas em cards normais; dropdowns e modais não são afetados. */
+.ds-page section.shadow-xl,
+.ds-page article.shadow-xl {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Atendimentos: preservar as sete etapas em uma linha sem sacrificar legibilidade. */
+[data-page="Atendimentos"] section:has(.min-w-\[150px\]) .min-w-\[150px\] > div:first-child,
+[data-page="Atendimentos"] section:has(.min-w-\[150px\]) .min-w-\[150px\] > div:last-child {
+  font-size: 11px !important;
+  line-height: 15px !important;
+}
+
+@media (max-width: 1280px) {
+  [data-page="Atendimentos"] section:has(.min-w-\[150px\]) .min-w-\[150px\] > div:first-child,
+  [data-page="Atendimentos"] section:has(.min-w-\[150px\]) .min-w-\[150px\] > div:last-child {
+    font-size: 11px !important;
+    line-height: 14px !important;
+  }
+}
+
+/* Melhor foco por teclado em controles que ainda não usam os componentes DS. */
+.ds-page button:focus-visible,
+.ds-page a:focus-visible,
+.ds-page input:focus-visible,
+.ds-page select:focus-visible,
+.ds-page textarea:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+/* Mantém tabelas densas sem compactação extrema. */
+.ds-page table th,
+.ds-page table td {
+  vertical-align: middle;
+}
+
+/* Redução de movimento respeita a preferência do usuário sem alterar o fluxo do CRM. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

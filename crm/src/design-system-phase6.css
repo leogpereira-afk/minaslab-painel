@@ -1,0 +1,212 @@
+/* Design System MinasLab — Fase 6: Pós-venda, Inteligência, Relatórios e Dashboard */
+
+[data-page="Agenda de Clientes Recorrentes"],
+[data-page*="Pós-venda"],
+[data-page*="Recorr"],
+[data-page="Inteligência Comercial"],
+[data-page="Relatórios"],
+[data-page="Dashboard Executivo"]{
+  color:var(--text-primary);
+}
+
+[data-page="Agenda de Clientes Recorrentes"] section.rounded-3xl,
+[data-page*="Pós-venda"] section.rounded-3xl,
+[data-page*="Recorr"] section.rounded-3xl,
+[data-page="Inteligência Comercial"] article.rounded-3xl,
+[data-page="Inteligência Comercial"] section.rounded-3xl,
+[data-page="Relatórios"] article.rounded-3xl,
+[data-page="Relatórios"] section.rounded-3xl,
+[data-page="Dashboard Executivo"] article.rounded-3xl,
+[data-page="Dashboard Executivo"] section.rounded-3xl{
+  border-color:var(--border-ui)!important;
+  border-radius:var(--radius-card)!important;
+  box-shadow:var(--shadow-xs)!important;
+  background:var(--surface)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] .rounded-2xl,
+[data-page*="Pós-venda"] .rounded-2xl,
+[data-page*="Recorr"] .rounded-2xl,
+[data-page="Inteligência Comercial"] .rounded-2xl,
+[data-page="Relatórios"] .rounded-2xl,
+[data-page="Dashboard Executivo"] .rounded-2xl{
+  border-radius:10px!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] input,
+[data-page="Agenda de Clientes Recorrentes"] select,
+[data-page="Agenda de Clientes Recorrentes"] textarea,
+[data-page*="Pós-venda"] input,
+[data-page*="Pós-venda"] select,
+[data-page*="Pós-venda"] textarea,
+[data-page*="Recorr"] input,
+[data-page*="Recorr"] select,
+[data-page*="Recorr"] textarea,
+[data-page="Inteligência Comercial"] select,
+[data-page="Relatórios"] select,
+[data-page="Dashboard Executivo"] select{
+  min-height:36px;
+  border-radius:var(--radius-input)!important;
+  border-color:var(--border-ui)!important;
+  background:var(--surface)!important;
+  color:var(--ink-700)!important;
+  font-size:13px!important;
+  line-height:20px!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] button.rounded-xl,
+[data-page*="Pós-venda"] button.rounded-xl,
+[data-page*="Recorr"] button.rounded-xl,
+[data-page="Inteligência Comercial"] button.rounded-xl,
+[data-page="Relatórios"] button.rounded-xl,
+[data-page="Dashboard Executivo"] button.rounded-xl,
+[data-page="Dashboard Executivo"] a.rounded-xl,
+[data-page="Relatórios"] a.rounded-xl{
+  border-radius:var(--radius-button)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] .bg-teal-600,
+[data-page="Agenda de Clientes Recorrentes"] .bg-teal-700,
+[data-page*="Pós-venda"] .bg-teal-600,
+[data-page*="Pós-venda"] .bg-teal-700,
+[data-page*="Recorr"] .bg-teal-600,
+[data-page*="Recorr"] .bg-teal-700,
+[data-page="Inteligência Comercial"] .bg-teal-600,
+[data-page="Inteligência Comercial"] .bg-teal-700,
+[data-page="Relatórios"] .bg-teal-600,
+[data-page="Relatórios"] .bg-teal-700,
+[data-page="Dashboard Executivo"] .bg-teal-600,
+[data-page="Dashboard Executivo"] .bg-teal-700{
+  background-color:var(--brand-700)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] .text-teal-700,
+[data-page*="Pós-venda"] .text-teal-700,
+[data-page*="Recorr"] .text-teal-700,
+[data-page="Inteligência Comercial"] .text-teal-700,
+[data-page="Relatórios"] .text-teal-700,
+[data-page="Dashboard Executivo"] .text-teal-700{
+  color:var(--brand-700)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] .bg-teal-50,
+[data-page*="Pós-venda"] .bg-teal-50,
+[data-page*="Recorr"] .bg-teal-50,
+[data-page="Inteligência Comercial"] .bg-teal-50,
+[data-page="Relatórios"] .bg-teal-50,
+[data-page="Dashboard Executivo"] .bg-teal-50{
+  background-color:var(--brand-50)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] table,
+[data-page*="Pós-venda"] table,
+[data-page*="Recorr"] table,
+[data-page="Relatórios"] table{
+  font-size:13px!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] table thead,
+[data-page*="Pós-venda"] table thead,
+[data-page*="Recorr"] table thead,
+[data-page="Relatórios"] table thead{
+  background:var(--surface-muted)!important;
+  color:var(--text-secondary)!important;
+}
+
+[data-page="Agenda de Clientes Recorrentes"] table th,
+[data-page*="Pós-venda"] table th,
+[data-page*="Recorr"] table th,
+[data-page="Relatórios"] table th{
+  font-size:11px!important;
+  line-height:16px!important;
+  font-weight:600!important;
+  letter-spacing:.035em;
+}
+
+[data-page="Inteligência Comercial"] h3,
+[data-page="Relatórios"] h3,
+[data-page="Dashboard Executivo"] h3,
+[data-page="Agenda de Clientes Recorrentes"] h3,
+[data-page*="Pós-venda"] h3,
+[data-page*="Recorr"] h3{
+  color:var(--ink-800)!important;
+  font-size:15px!important;
+  line-height:22px!important;
+  font-weight:700!important;
+}
+
+[data-page="Inteligência Comercial"] .text-slate-500,
+[data-page="Relatórios"] .text-slate-500,
+[data-page="Dashboard Executivo"] .text-slate-500,
+[data-page="Agenda de Clientes Recorrentes"] .text-slate-500,
+[data-page*="Pós-venda"] .text-slate-500,
+[data-page*="Recorr"] .text-slate-500{
+  color:var(--text-secondary)!important;
+}
+
+[data-page="Inteligência Comercial"] .text-slate-400,
+[data-page="Relatórios"] .text-slate-400,
+[data-page="Dashboard Executivo"] .text-slate-400,
+[data-page="Agenda de Clientes Recorrentes"] .text-slate-400,
+[data-page*="Pós-venda"] .text-slate-400,
+[data-page*="Recorr"] .text-slate-400{
+  color:var(--text-muted)!important;
+}
+
+[data-page="Inteligência Comercial"] .bg-slate-50,
+[data-page="Relatórios"] .bg-slate-50,
+[data-page="Dashboard Executivo"] .bg-slate-50,
+[data-page="Agenda de Clientes Recorrentes"] .bg-slate-50,
+[data-page*="Pós-venda"] .bg-slate-50,
+[data-page*="Recorr"] .bg-slate-50{
+  background-color:var(--surface-muted)!important;
+}
+
+/* Azul permanece como série comparativa nos gráficos, não como cor estrutural. */
+[data-page="Inteligência Comercial"] .bg-blue-500,
+[data-page="Dashboard Executivo"] .bg-blue-500{
+  background-color:#3f78b9!important;
+}
+[data-page="Dashboard Executivo"] .text-blue-600{color:#356da9!important;}
+
+/* KPIs e painéis gerenciais mais compactos e consistentes. */
+[data-page="Inteligência Comercial"] article.flex.items-center,
+[data-page="Dashboard Executivo"] section.grid>article,
+[data-page="Agenda de Clientes Recorrentes"] section.grid>article,
+[data-page*="Pós-venda"] section.grid>article,
+[data-page*="Recorr"] section.grid>article{
+  padding:16px!important;
+}
+
+[data-page="Inteligência Comercial"] article.flex.items-center strong,
+[data-page="Dashboard Executivo"] section.grid>article>b,
+[data-page="Agenda de Clientes Recorrentes"] section.grid>article strong,
+[data-page*="Pós-venda"] section.grid>article strong,
+[data-page*="Recorr"] section.grid>article strong{
+  color:var(--ink-800)!important;
+  font-size:20px!important;
+  line-height:28px!important;
+}
+
+/* Relatórios: preserva todo o conteúdo, mas melhora leitura e impressão. */
+[data-page="Relatórios"] table tbody tr:hover{background:var(--brand-50)!important;}
+[data-page="Relatórios"] .overflow-x-auto{scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;}
+[data-page="Relatórios"] .bg-amber-50{background:var(--warning-soft)!important;}
+[data-page="Relatórios"] .text-amber-800{color:var(--warning)!important;}
+[data-page="Relatórios"] .bg-red-50{background:var(--danger-soft)!important;}
+[data-page="Relatórios"] .text-red-700{color:var(--danger)!important;}
+
+@media(max-width:1280px){
+  [data-page="Inteligência Comercial"] article.rounded-3xl,
+  [data-page="Relatórios"] article.rounded-3xl,
+  [data-page="Dashboard Executivo"] article.rounded-3xl,
+  [data-page="Agenda de Clientes Recorrentes"] section.rounded-3xl,
+  [data-page*="Pós-venda"] section.rounded-3xl,
+  [data-page*="Recorr"] section.rounded-3xl{padding:14px!important;}
+}
+
+@media print{
+  [data-page="Relatórios"] .ds-page-header{margin-bottom:8px;}
+  [data-page="Relatórios"] button,[data-page="Relatórios"] select{display:none!important;}
+  [data-page="Relatórios"] article,[data-page="Relatórios"] section{box-shadow:none!important;break-inside:avoid;}
+}
