@@ -45,10 +45,36 @@ jobs:
         env:
           BASE_PATH: /minaslab-painel/
 
-      # SPA no Pages: não há rewrite de servidor. O 404.html = cópia do index
-      # faz refresh/bookmark de subpágina funcionar; o Router (com basename)
-      # assume dali.
-      - run: cp dist/index.html dist/404.html
+      # CRM MinasLab (pasta crm/): app próprio (React 19 + TS + supabase-js),
+      # publicado dentro do painel em /minaslab-painel/crm/. As chaves abaixo
+      # são PÚBLICAS por design (URL do projeto + publishable key); quem
+      # protege os dados é o RLS e as Edge Functions no Supabase.
+      # O CRM (Vite 8 + supabase-js 2.116) pede Node 22; o painel segue no 20.
+      - name: CRM · Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: CRM · instalar
+        working-directory: crm
+        run: npm ci --no-audit --no-fund
+      - name: CRM · typecheck
+        working-directory: crm
+        run: npm run typecheck
+      - name: CRM · build
+        working-directory: crm
+        run: npm run build
+        env:
+          CRM_BASE_PATH: /minaslab-painel/crm/
+          VITE_SUPABASE_URL: https://reoghclxripktzpdwhiy.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_YG38KEPCwoKfiQ7PZM2EBg_8cY1vIH7
+          VITE_APP_URL: https://leogpereira-afk.github.io/minaslab-painel/crm
+      - run: cp -r crm/dist dist/crm
+
+      # SPA no Pages: não há rewrite de servidor. O 404.html é o index do
+      # painel (refresh/bookmark de subpágina funciona; o Router com basename
+      # assume dali) com um desvio no topo: caminho /crm/... vai para o index
+      # do CRM, que restaura a rota. Ver scripts/crm-404.mjs.
+      - run: node scripts/crm-404.mjs dist /minaslab-painel/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
