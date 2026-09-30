@@ -1,0 +1,296 @@
+/* Fase 4 — harmonização dedicada de Clientes e Propostas */
+[data-page="Clientes"],
+[data-page="Propostas"] {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+[data-page="Clientes"] > section,
+[data-page="Propostas"] > section {
+  min-width: 0;
+}
+
+/* Superfícies e cartões */
+[data-page="Clientes"] .rounded-3xl,
+[data-page="Propostas"] .rounded-3xl {
+  border-radius: var(--radius-card) !important;
+}
+
+[data-page="Clientes"] section.rounded-3xl,
+[data-page="Clientes"] article.rounded-3xl,
+[data-page="Propostas"] section.rounded-3xl,
+[data-page="Propostas"] article.rounded-3xl {
+  border-color: var(--border-ui) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+[data-page="Clientes"] .rounded-2xl,
+[data-page="Propostas"] .rounded-2xl {
+  border-radius: 10px !important;
+}
+
+[data-page="Clientes"] .shadow-sm,
+[data-page="Propostas"] .shadow-sm {
+  box-shadow: var(--shadow-xs) !important;
+}
+
+/* Tipografia */
+[data-page="Clientes"] .text-slate-900,
+[data-page="Clientes"] .text-slate-800,
+[data-page="Propostas"] .text-slate-900,
+[data-page="Propostas"] .text-slate-800 {
+  color: var(--ink-800) !important;
+}
+
+[data-page="Clientes"] .text-slate-700,
+[data-page="Clientes"] .text-slate-600,
+[data-page="Propostas"] .text-slate-700,
+[data-page="Propostas"] .text-slate-600 {
+  color: var(--ink-700) !important;
+}
+
+[data-page="Clientes"] .text-slate-500,
+[data-page="Propostas"] .text-slate-500 {
+  color: var(--text-secondary) !important;
+}
+
+[data-page="Clientes"] .text-slate-400,
+[data-page="Propostas"] .text-slate-400 {
+  color: var(--text-muted) !important;
+}
+
+[data-page="Clientes"] .text-2xl,
+[data-page="Propostas"] .text-2xl {
+  font-size: 20px !important;
+  line-height: 28px !important;
+}
+
+[data-page="Clientes"] .text-xl,
+[data-page="Propostas"] .text-xl {
+  font-size: 18px !important;
+  line-height: 26px !important;
+}
+
+/* Identidade MinasLab */
+[data-page="Clientes"] .bg-teal-700,
+[data-page="Propostas"] .bg-teal-700 {
+  background: var(--brand-700) !important;
+}
+
+[data-page="Clientes"] .text-teal-700,
+[data-page="Propostas"] .text-teal-700 {
+  color: var(--brand-700) !important;
+}
+
+[data-page="Clientes"] .border-teal-600,
+[data-page="Propostas"] .border-teal-600 {
+  border-color: var(--brand-500) !important;
+}
+
+[data-page="Clientes"] .bg-teal-50,
+[data-page="Propostas"] .bg-teal-50 {
+  background: var(--brand-50) !important;
+}
+
+/* Barras de filtro */
+[data-page="Clientes"] > section.rounded-3xl:has(input[placeholder^="Buscar"]),
+[data-page="Propostas"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) {
+  padding: 12px !important;
+}
+
+[data-page="Clientes"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) input,
+[data-page="Clientes"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) select,
+[data-page="Propostas"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) input,
+[data-page="Propostas"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) select {
+  min-height: 36px !important;
+  border-radius: var(--radius-input) !important;
+  border-color: var(--border-ui) !important;
+  font-size: 13px !important;
+  line-height: 20px !important;
+}
+
+[data-page="Clientes"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) button,
+[data-page="Propostas"] > section.rounded-3xl:has(input[placeholder^="Buscar"]) button {
+  min-height: 36px !important;
+  border-radius: var(--radius-button) !important;
+  border-color: var(--border-ui) !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+/* KPIs mais compactos */
+[data-page="Clientes"] > section.grid:first-of-type article,
+[data-page="Propostas"] > section.grid:first-of-type article {
+  min-height: 82px;
+  padding: 14px 16px !important;
+  gap: 12px !important;
+}
+
+[data-page="Clientes"] > section.grid:first-of-type article > span,
+[data-page="Propostas"] > section.grid:first-of-type article > span {
+  width: 40px !important;
+  height: 40px !important;
+  background: var(--brand-50) !important;
+  color: var(--brand-700) !important;
+}
+
+[data-page="Clientes"] > section.grid:first-of-type article svg,
+[data-page="Propostas"] > section.grid:first-of-type article svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Tabelas */
+[data-page="Clientes"] table,
+[data-page="Propostas"] table {
+  font-size: 13px !important;
+  line-height: 20px !important;
+}
+
+[data-page="Clientes"] thead,
+[data-page="Propostas"] thead {
+  background: var(--surface-muted) !important;
+}
+
+[data-page="Clientes"] th,
+[data-page="Propostas"] th {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: .02em;
+  color: var(--text-secondary) !important;
+}
+
+[data-page="Clientes"] td,
+[data-page="Propostas"] td {
+  padding-top: 11px !important;
+  padding-bottom: 11px !important;
+}
+
+[data-page="Clientes"] tbody tr:hover,
+[data-page="Propostas"] tbody tr:hover {
+  background: var(--brand-50) !important;
+}
+
+[data-page="Clientes"] td button,
+[data-page="Clientes"] td a,
+[data-page="Propostas"] td button,
+[data-page="Propostas"] td a {
+  border-radius: var(--radius-button) !important;
+}
+
+/* Paginação */
+[data-page="Clientes"] > div.flex.flex-col.rounded-2xl,
+[data-page="Propostas"] > div.flex.flex-col.rounded-2xl {
+  border-color: var(--border-ui) !important;
+  background: var(--surface) !important;
+  border-radius: var(--radius-card) !important;
+  padding: 10px 14px !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-page="Clientes"] > div.flex.flex-col.rounded-2xl button,
+[data-page="Propostas"] > div.flex.flex-col.rounded-2xl button {
+  min-height: 32px;
+  border-radius: var(--radius-button) !important;
+  border-color: var(--border-ui) !important;
+  background: var(--surface) !important;
+  color: var(--ink-700) !important;
+}
+
+[data-page="Clientes"] > div.flex.flex-col.rounded-2xl button:not(:disabled):hover,
+[data-page="Propostas"] > div.flex.flex-col.rounded-2xl button:not(:disabled):hover {
+  border-color: var(--brand-300) !important;
+  background: var(--brand-50) !important;
+  color: var(--brand-800) !important;
+}
+
+/* Cards das visualizações alternativas */
+[data-page="Clientes"] section.grid > article,
+[data-page="Propostas"] section.grid > article {
+  border-color: var(--border-ui) !important;
+}
+
+[data-page="Clientes"] section.grid > article:hover,
+[data-page="Propostas"] section.grid > article:hover {
+  border-color: var(--brand-200) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Blocos de resumo inferiores */
+[data-page="Clientes"] > section.grid.rounded-3xl,
+[data-page="Propostas"] > section.grid.rounded-3xl {
+  padding: 14px 16px !important;
+  gap: 14px !important;
+}
+
+/* Alertas mantêm cor semântica, mas seguem geometria do Design System */
+[data-page="Clientes"] .bg-red-50,
+[data-page="Propostas"] .bg-red-50 {
+  background: var(--danger-soft) !important;
+}
+
+[data-page="Clientes"] .text-red-700,
+[data-page="Propostas"] .text-red-700 {
+  color: var(--danger) !important;
+}
+
+[data-page="Propostas"] .bg-amber-50 {
+  background: var(--warning-soft) !important;
+}
+
+[data-page="Propostas"] .text-amber-800,
+[data-page="Propostas"] .text-amber-700,
+[data-page="Propostas"] .text-amber-600 {
+  color: var(--warning) !important;
+}
+
+/* Controles de formulário e modal */
+[data-page="Clientes"] input,
+[data-page="Clientes"] select,
+[data-page="Clientes"] textarea,
+[data-page="Propostas"] input,
+[data-page="Propostas"] select,
+[data-page="Propostas"] textarea {
+  border-radius: var(--radius-input) !important;
+}
+
+[data-page="Clientes"] input:focus,
+[data-page="Clientes"] select:focus,
+[data-page="Clientes"] textarea:focus,
+[data-page="Propostas"] input:focus,
+[data-page="Propostas"] select:focus,
+[data-page="Propostas"] textarea:focus {
+  border-color: var(--brand-500) !important;
+  box-shadow: 0 0 0 3px rgba(0,178,154,.10) !important;
+  outline: none !important;
+}
+
+/* Evita rolagem horizontal causada pelo layout da página; tabelas continuam com scroll local quando necessário. */
+[data-page="Clientes"],
+[data-page="Propostas"] {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+[data-page="Clientes"] .overflow-x-auto,
+[data-page="Propostas"] .overflow-x-auto {
+  max-width: 100%;
+}
+
+@media (max-width: 1280px) {
+  [data-page="Clientes"],
+  [data-page="Propostas"] {
+    gap: 16px;
+  }
+
+  [data-page="Clientes"] > section.grid:first-of-type article,
+  [data-page="Propostas"] > section.grid:first-of-type article {
+    padding: 12px 14px !important;
+  }
+}

@@ -1,0 +1,121 @@
+/* Refinamento visual global — header, cards e bordas.
+   Camada visual apenas: não altera regras de negócio ou comportamento funcional. */
+
+:root{
+  --radius-card:8px;
+  --structural-border:#e2e8f0;
+  --focus-border:#cbd5e1;
+  --focus-ring:rgba(148,163,184,.28);
+}
+
+/* Card oficial reutilizável. */
+.ds-card{
+  border:1px solid var(--structural-border);
+  border-radius:var(--radius-card);
+  background:var(--surface);
+  box-shadow:var(--shadow-sm);
+}
+.ds-card:not(.p-0){padding:16px}
+.ds-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--structural-border)}
+.ds-card-body{padding-top:12px}
+
+/* Campos de autenticação, filtros e formulários partem sempre do mesmo cinza claro. */
+#root :where(input,select,textarea),
+[role="dialog"] :where(input,select,textarea){
+  border-color:var(--structural-border) !important;
+}
+
+/* Superfícies principais legadas convergem para o mesmo padrão visual. */
+.ds-page section.border.bg-white,
+.ds-page article.border.bg-white,
+.ds-page div.border.bg-white:not([role="alert"]):not([role="status"]){
+  border-color:var(--structural-border) !important;
+}
+
+.ds-page section.rounded-3xl.border.bg-white,
+.ds-page article.rounded-3xl.border.bg-white,
+.ds-page section.rounded-2xl.border.bg-white,
+.ds-page article.rounded-2xl.border.bg-white{
+  border-radius:var(--radius-card) !important;
+  box-shadow:var(--shadow-sm) !important;
+}
+
+/* Regra estrutural definitiva: cards, painéis, tabelas, divisores e agrupadores
+   não herdam contornos azuis/teal/índigo de estilos legados ou classes arbitrárias. */
+.ds-page :where(section,article,div,header,footer,aside,nav,table,thead,tbody,tr,th,td,fieldset):not([role="alert"]):not([role="status"])[class*="border"],
+.ds-page :where(section,article,div,header,footer,aside,nav,table,thead,tbody,tr,th,td,fieldset):not([role="alert"]):not([role="status"])[style*="border"]{
+  border-color:var(--structural-border) !important;
+}
+
+.ds-page table,
+.ds-page table th,
+.ds-page table td,
+.ds-page hr,
+.ds-page [role="tablist"],
+.ds-page .divide-y > :not([hidden]) ~ :not([hidden]),
+.ds-page .divide-x > :not([hidden]) ~ :not([hidden]),
+.ds-page [class*="divide-blue-"],
+.ds-page [class*="divide-sky-"],
+.ds-page [class*="divide-cyan-"],
+.ds-page [class*="divide-indigo-"]{
+  border-color:var(--structural-border) !important;
+}
+
+/* Azul, teal e variações frias nunca são usados como contorno. A regra é global
+   para também cobrir autenticação, modais e componentes fora de PageShell. */
+#root [class*="border-blue-"],#root [class*="border-sky-"],
+#root [class*="border-cyan-"],#root [class*="border-indigo-"],
+#root [class*="border-teal-"],#root [class*="border-[var(--brand-"],
+[role="dialog"] [class*="border-blue-"],[role="dialog"] [class*="border-sky-"],
+[role="dialog"] [class*="border-cyan-"],[role="dialog"] [class*="border-indigo-"],
+[role="dialog"] [class*="border-teal-"],[role="dialog"] [class*="border-[var(--brand-"]{
+  border-color:var(--structural-border) !important;
+}
+
+/* Fluxo comercial: todos os sete blocos preservam fundo/cor semânticos,
+   mas usam exatamente o mesmo contorno neutro. Isto também vence regras antigas com !important. */
+[data-page="Atendimentos"] section:has(.min-w-\[150px\]) .min-w-\[150px\],
+[data-page="Atendimentos"] section:has(.min-w-\[150px\]) > div:nth-child(2) > div > .min-w-\[150px\]{
+  border-color:var(--structural-border) !important;
+}
+
+/* Rings frios pareciam uma segunda borda azul. Estados selecionados continuam
+   perceptíveis pelo fundo e texto, mas recebem um contorno cinza consistente. */
+#root [class*="ring-blue-"],#root [class*="ring-sky-"],
+#root [class*="ring-cyan-"],#root [class*="ring-indigo-"],#root [class*="ring-teal-"],
+[role="dialog"] [class*="ring-blue-"],[role="dialog"] [class*="ring-sky-"],
+[role="dialog"] [class*="ring-cyan-"],[role="dialog"] [class*="ring-indigo-"],[role="dialog"] [class*="ring-teal-"]{
+  --tw-ring-color:var(--structural-border) !important;
+}
+
+/* Outlines coloridos só existem durante navegação por teclado/foco real. */
+.ds-page :where(button,a,input,select,textarea):not(:focus):not(:focus-visible){
+  outline-color:transparent;
+}
+
+/* Foco continua visível e acessível, agora em cinza neutro em todo o sistema. */
+#root :where(input,select,textarea):focus,
+#root :where(button,a):focus-visible,
+[role="dialog"] :where(input,select,textarea):focus,
+[role="dialog"] :where(button,a):focus-visible{
+  border-color:var(--focus-border) !important;
+  outline-color:#94a3b8 !important;
+  --tw-ring-color:var(--focus-ring) !important;
+}
+
+#root :where(input,select,textarea):focus,
+[role="dialog"] :where(input,select,textarea):focus{
+  box-shadow:0 0 0 3px var(--focus-ring) !important;
+}
+
+.ds-page button:not(:disabled):hover,
+.ds-page a:hover{
+  transition:border-color .15s ease, background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+/* Oportunidades: KPIs e filtros seguem exatamente o card oficial. */
+[data-page="Oportunidades"] .ds-card{
+  border-color:var(--structural-border) !important;
+  border-radius:var(--radius-card) !important;
+  box-shadow:var(--shadow-sm) !important;
+}

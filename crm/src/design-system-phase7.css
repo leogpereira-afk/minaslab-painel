@@ -1,0 +1,189 @@
+/* Design System MinasLab — Fase 7: acabamento e telas auxiliares */
+
+[data-page="Agenda"],
+[data-page="Catálogo técnico/comercial"],
+[data-page="Amostras e Parâmetros"],
+[data-page="Configurações"],
+[data-page="Contatos"],
+[data-page="Auditoria"],
+[data-page^="Cliente"],
+[data-page*="Importa"] {
+  color: var(--text-primary);
+}
+
+[data-page="Agenda"] section.rounded-3xl,
+[data-page="Catálogo técnico/comercial"] section.rounded-3xl,
+[data-page="Amostras e Parâmetros"] section.rounded-3xl,
+[data-page="Configurações"] section.rounded-3xl,
+[data-page="Contatos"] section.rounded-3xl,
+[data-page="Auditoria"] section.rounded-3xl,
+[data-page^="Cliente"] section.rounded-3xl,
+[data-page*="Importa"] section.rounded-3xl,
+[data-page="Configurações"] article.rounded-3xl,
+[data-page="Amostras e Parâmetros"] article.rounded-3xl {
+  border-color: var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+[data-page="Agenda"] input,
+[data-page="Agenda"] select,
+[data-page="Agenda"] textarea,
+[data-page="Catálogo técnico/comercial"] input,
+[data-page="Catálogo técnico/comercial"] select,
+[data-page="Catálogo técnico/comercial"] textarea,
+[data-page="Amostras e Parâmetros"] input,
+[data-page="Amostras e Parâmetros"] select,
+[data-page="Configurações"] input,
+[data-page="Configurações"] select,
+[data-page="Configurações"] textarea,
+[data-page="Contatos"] input,
+[data-page="Contatos"] select,
+[data-page="Auditoria"] input,
+[data-page="Auditoria"] select,
+[data-page^="Cliente"] input,
+[data-page^="Cliente"] select,
+[data-page^="Cliente"] textarea,
+[data-page*="Importa"] input,
+[data-page*="Importa"] select {
+  min-height: 36px;
+  border-color: var(--border);
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  background: var(--surface);
+}
+
+[data-page="Agenda"] input:focus,
+[data-page="Agenda"] select:focus,
+[data-page="Agenda"] textarea:focus,
+[data-page="Catálogo técnico/comercial"] input:focus,
+[data-page="Catálogo técnico/comercial"] select:focus,
+[data-page="Catálogo técnico/comercial"] textarea:focus,
+[data-page="Amostras e Parâmetros"] input:focus,
+[data-page="Amostras e Parâmetros"] select:focus,
+[data-page="Configurações"] input:focus,
+[data-page="Configurações"] select:focus,
+[data-page="Configurações"] textarea:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-100);
+  outline: none;
+}
+
+[data-page="Agenda"] table,
+[data-page="Amostras e Parâmetros"] table,
+[data-page="Configurações"] table,
+[data-page="Contatos"] table,
+[data-page="Auditoria"] table,
+[data-page^="Cliente"] table,
+[data-page*="Importa"] table {
+  color: var(--text-primary);
+}
+
+[data-page="Agenda"] thead,
+[data-page="Amostras e Parâmetros"] thead,
+[data-page="Configurações"] thead,
+[data-page="Contatos"] thead,
+[data-page="Auditoria"] thead,
+[data-page^="Cliente"] thead,
+[data-page*="Importa"] thead {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+[data-page="Agenda"] tbody tr:hover,
+[data-page="Amostras e Parâmetros"] tbody tr:hover,
+[data-page="Configurações"] tbody tr:hover,
+[data-page="Contatos"] tbody tr:hover,
+[data-page="Auditoria"] tbody tr:hover,
+[data-page^="Cliente"] tbody tr:hover,
+[data-page*="Importa"] tbody tr:hover {
+  background: var(--brand-50);
+}
+
+[data-page="Agenda"] .text-blue-700,
+[data-page="Catálogo técnico/comercial"] .text-blue-700,
+[data-page="Amostras e Parâmetros"] .text-blue-700,
+[data-page="Configurações"] .text-blue-700,
+[data-page="Contatos"] .text-blue-700,
+[data-page^="Cliente"] .text-blue-700,
+[data-page*="Importa"] .text-blue-700 {
+  color: var(--brand-700) !important;
+}
+
+[data-page="Agenda"] .bg-blue-500,
+[data-page="Catálogo técnico/comercial"] .bg-blue-500,
+[data-page="Amostras e Parâmetros"] .bg-blue-500,
+[data-page="Configurações"] .bg-blue-500 {
+  background-color: var(--brand-500) !important;
+}
+
+[data-page="Agenda"] button,
+[data-page="Catálogo técnico/comercial"] button,
+[data-page="Amostras e Parâmetros"] button,
+[data-page="Configurações"] button,
+[data-page="Contatos"] button,
+[data-page="Auditoria"] button,
+[data-page^="Cliente"] button,
+[data-page*="Importa"] button,
+[data-page="Agenda"] a.rounded-xl,
+[data-page="Catálogo técnico/comercial"] a.rounded-xl,
+[data-page="Configurações"] a.rounded-xl {
+  border-radius: var(--radius-button);
+}
+
+[data-page="Catálogo técnico/comercial"] > div.flex.flex-wrap.gap-2,
+[data-page="Configurações"] > div.flex.flex-wrap.gap-2 {
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+[data-page="Catálogo técnico/comercial"] > div.flex.flex-wrap.gap-2 > button,
+[data-page="Configurações"] > div.flex.flex-wrap.gap-2 > button {
+  min-height: 34px;
+  box-shadow: none;
+}
+
+[data-page="Agenda"] .rounded-full,
+[data-page="Catálogo técnico/comercial"] .rounded-full,
+[data-page="Configurações"] .rounded-full {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+[data-page="Amostras e Parâmetros"] .min-w-\[1500px\] {
+  min-width: 1180px;
+}
+
+[data-page="Amostras e Parâmetros"] th,
+[data-page="Amostras e Parâmetros"] td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+[data-page="Configurações"] .text-\[11px\] {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+@media (max-width: 1024px) {
+  [data-page="Agenda"] .sm\:flex-row,
+  [data-page="Configurações"] .sm\:flex-row {
+    align-items: stretch;
+  }
+
+  [data-page="Amostras e Parâmetros"] .min-w-\[1500px\] {
+    min-width: 1100px;
+  }
+}
+
+@media print {
+  [data-page="Agenda"] .ds-page-header,
+  [data-page="Configurações"] .ds-page-header {
+    box-shadow: none;
+  }
+}
