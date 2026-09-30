@@ -265,11 +265,20 @@ function nomeStorageSeguro(nome: string) {
   return String(nome || "documento").normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160);
 }
 function bytesDoBase64(valor: string) {
-  const texto = String(valor || "").replace(/^data:[^;]+;base64,/, "");
-  const bin = atob(texto);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+  let texto = String(valor || "").trim();
+  const virgula = texto.indexOf(",");
+  if (/^data:/i.test(texto) && virgula >= 0) texto = texto.slice(virgula + 1);
+  texto = texto.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const resto = texto.length % 4;
+  if (resto) texto += "=".repeat(4 - resto);
+  try {
+    const bin = atob(texto);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    throw new Error("Arquivo em base64 inválido.");
+  }
 }
 async function saldoBancoPessoa(pessoaId: string) {
   const { data, error } = await sb.from("rh_banco_horas_movimentos")
@@ -493,6 +502,29 @@ Deno.serve(async (req) => {
         return resp({ registro: data && !data.apagado ? data.registro : null });
       }
 
+      case "estoqueFornecedorDriveVincular":
+      case "estoqueFornecedorDriveCriar": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não edita fornecedores.",semPermissao:true},403);
+        const acao=action==="estoqueFornecedorDriveCriar"?"criar":"vincular";
+        const r=await fetch(SUPABASE_URL+"/functions/v1/ml-google-drive-fornecedor",{method:"POST",headers:{"content-type":"application/json","x-token":TOKEN},body:JSON.stringify({action:acao,fornecedorId:body.fornecedorId,pastaId:body.pastaId})});
+        const j=await r.json();if(!r.ok)return resp(j,r.status);await bump("estoque_fornecedores");return resp(j);
+      }
+      case "estoqueDocumentoDriveUpload": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não edita fornecedores.",semPermissao:true},403);
+        const r=await fetch(SUPABASE_URL+"/functions/v1/ml-google-drive-documento",{method:"POST",headers:{"content-type":"application/json","x-token":TOKEN},body:JSON.stringify(body)});
+        const j=await r.json();if(!r.ok)return resp(j,r.status);await bump("estoque_documentos_fornecedor");return resp(j);
+      }
+
+      case "estoqueFornecedorExcluir": {
+        if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não exclui fornecedores.",semPermissao:true},403);
+        const id=String(body.id??"").trim();if(!id)return resp({erro:"Fornecedor obrigatório."},400);
+        const colecoesVinculo=["estoque_avaliacoes_fornecedor","estoque_documentos_fornecedor","estoque_fapes","estoque_pedidos","estoque_inspecoes"];
+        for(const col of colecoesVinculo){const {data,error}=await sb.from(T_REG).select("id,registro").eq("colecao",col).eq("apagado",false);if(error)throw error;const vinc=(data??[]).some(x=>{const r=x.registro as Record<string,unknown>;return String(r.fornecedorId??r.fornecedor_id??r.idFornecedor??"")===id});if(vinc)return resp({erro:"Fornecedor possui histórico ou vínculos e não pode ser excluído. Altere o status para INATIVO para preservar a rastreabilidade."},409)}
+        const {data:fr,error:fe}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fornecedores").eq("id",id).maybeSingle();if(fe)throw fe;if(!fr||fr.apagado)return resp({erro:"Fornecedor não localizado."},404);
+        const agora=new Date().toISOString();const {error:ue}=await sb.from(T_REG).update({apagado:true,atualizado_em:agora}).eq("colecao","estoque_fornecedores").eq("id",id).eq("apagado",false);if(ue)throw ue;
+        await sb.from(T_REG).insert({colecao:"estoque_auditoria",id:"AUD-FORN-"+crypto.randomUUID(),registro:{evento:"EXCLUSAO_FORNECEDOR",fornecedorId:id,snapshot:fr.registro,usuario,data:agora},apagado:false,atualizado_em:agora});await bump("estoque_fornecedores");return resp({ok:true});
+      }
+
       case "estoqueFornecedorAvaliar": {
         if (!podeEditarEstoque("fornecedores")) return resp({erro:"Seu acesso lê, mas não qualifica fornecedores.",semPermissao:true},403);
         const fornecedorId=String(body.fornecedorId??"").trim();
@@ -517,9 +549,17 @@ Deno.serve(async (req) => {
         if(!inicial)return resp({erro:"A FAPE exige uma avaliação inicial do fornecedor."},409);
         const reavs=lista.filter(a=>String(a.tipoAvaliacao??"").toUpperCase()==="REAVALIACAO_SEMESTRAL"),bytes=bytesDoBase64(base64);if(bytes.byteLength>RH_DOC_MAX_BYTES)return resp({erro:"O PDF excede 25 MB."},413);
         const agora=new Date().toISOString(),id="FAPE-"+agora.replace(/\D/g,"").slice(0,14)+"-"+crypto.randomUUID().slice(0,6).toUpperCase(),nome=nomeStorageSeguro(`FAPE_${fornecedorId}_${agora.slice(0,10)}.pdf`),storagePath=`estoque/fornecedores/${fornecedorId}/fapes/${id}-${nome}`;
-        const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:"application/pdf",upsert:false});if(up.error)throw up.error;
-        const fornecedor=fr.registro as Record<string,unknown>,registro:Record<string,unknown>={id,fornecedorId,cnpj:String(fornecedor.cnpj??""),nomeArquivo:nome,storageBucket:RH_DOC_BUCKET,storagePath,dataGeracao:agora,usuario,avaliacaoInicialId:String(inicial.id??""),qtdReavaliacoes:reavs.length,createdAt:agora};
-        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_fapes",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}await bump("estoque_fapes");return resp({ok:true,fape:registro});
+        const dr=await fetch(SUPABASE_URL+"/functions/v1/ml-google-drive-documento",{method:"POST",headers:{"content-type":"application/json","x-token":TOKEN},body:JSON.stringify({action:"fape",fornecedorId,arquivoBase64:base64,nomeOriginal:nome})});const dj=await dr.json();if(!dr.ok)return resp(dj,dr.status);
+        if(!dj?.arquivo?.id||!dj?.arquivo?.url)return resp({erro:"O Google Drive não confirmou o arquivamento da FAPE."},502);const fornecedor=fr.registro as Record<string,unknown>,registro:Record<string,unknown>={id,fornecedorId,cnpj:String(fornecedor.cnpj??""),nomeArquivo:String(dj.arquivo.name||nome),driveFileId:String(dj.arquivo.id),driveUrl:String(dj.arquivo.url),dataGeracao:agora,usuario,avaliacaoInicialId:String(inicial.id??""),qtdReavaliacoes:reavs.length,createdAt:agora};
+        const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_fapes",id,registro,apagado:false,atualizado_em:agora});if(ie)throw ie;await bump("estoque_fapes");return resp({ok:true,fape:registro});
+      }
+
+      case "estoqueFapeUrl": {
+        if (!podeConsultarColecao("estoque_fapes")) return resp({erro:"Sem acesso às FAPEs.",semPermissao:true},403);
+        const id=String(body.id??"");if(!id)return resp({erro:"FAPE obrigatória."},400);
+        const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fapes").eq("id",id).maybeSingle();if(error)throw error;if(!data||data.apagado)return resp({erro:"FAPE não encontrada."},404);
+        const f=data.registro as Record<string,unknown>;if((!f.storageBucket||!f.storagePath)&&f.driveUrl)return resp({url:String(f.driveUrl),legado:true});if(!f.storageBucket||!f.storagePath)return resp({erro:"FAPE sem PDF arquivado."},404);
+        const {data:u,error:ue}=await sb.storage.from(String(f.storageBucket)).createSignedUrl(String(f.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600});
       }
 
       case "estoqueDocumentoUpload": {
@@ -643,6 +683,17 @@ Deno.serve(async (req) => {
         await bump("estoque_pedidos");await bump("estoque_logs_compras");return resp({ok:true,anexo});
       }
 
+      case "estoquePedidoPastaCriar": {
+        // Igual ao legado: pasta "PC-XX" no Drive (pasta-mãe dos pedidos) com o link em todos os itens do PC.
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(); if(!pedidoCodigo) return resp({erro:"Pedido obrigatório."},400);
+        const r=await fetch(SUPABASE_URL+"/functions/v1/ml-google-drive-pedido",{method:"POST",headers:{"content-type":"application/json","x-token":TOKEN},body:JSON.stringify({pedidoCodigo,nomeOriginal:body.nomeOriginal,mimeType:body.mimeType,arquivoBase64:body.arquivoBase64,usuario:usuario||"maquina"})});
+        const j=await r.json().catch(()=>({erro:"Resposta inválida do Drive."})); if(!r.ok) return resp(j,r.status);
+        if(j.criada){const agora=new Date().toISOString(),logId="LOG-"+crypto.randomUUID();await sb.from(T_REG).insert({colecao:"estoque_logs_compras",id:logId,registro:{id:logId,pedidoCodigo,data:agora,login:usuario||"maquina",logs:"PASTA DO DRIVE CRIADA: "+j.pastaUrl,status:"PASTA",origem:"GESTAO_ESTOQUE"},apagado:false,atualizado_em:agora});await bump("estoque_logs_compras");}
+        await bump("estoque_pedidos"); return resp(j);
+      }
+
       case "estoquePedidoAnexoUrl": {
         if (!podeConsultarColecao("estoque_pedidos")) return resp({erro:"Você não tem acesso aos pedidos de compra.",semPermissao:true},403);
         const pedidoCodigo=String(body.pedidoCodigo??"").trim(); if(!pedidoCodigo)return resp({erro:"Pedido obrigatório."},400);
@@ -684,13 +735,33 @@ Deno.serve(async (req) => {
         return resp({ ok:true, excluidos:ativas.length });
       }
 
+      case "estoqueLoteExcluir": {
+        if (!podeEditarEstoque("entrada-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à exclusão de entradas de estoque.", semPermissao: true }, 403);
+        }
+        const loteId = String(body.loteId ?? "").trim();
+        if (!loteId) return resp({ erro: "Identificador do lote é obrigatório." }, 400);
+        const { data, error } = await sb.rpc("ml_estoque_lote_excluir_seguro", {
+          p_id: loteId,
+          p_usuario: usuario || "maquina",
+        });
+        if (error) {
+          const msg = String(error.message || "Não foi possível excluir a entrada.");
+          const conflito = msg.includes("Exclusão bloqueada") || msg.includes("não encontrado");
+          return resp({ erro: msg }, conflito ? 409 : 400);
+        }
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp(data ?? { ok: true, id: loteId });
+      }
+
       case "estoqueEntrada": {
         if (!podeEditarEstoque("entrada-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
           return resp({ erro: "Você não tem acesso à entrada de estoque.", semPermissao: true }, 403);
         }
         const lote = body.lote as Record<string, unknown>;
-        if (!lote?.id || !lote?.produto || !lote?.lote) return resp({ erro: "Produto, lote e identificador são obrigatórios." }, 400);
+        if (!lote?.produto || !lote?.lote) return resp({ erro: "Produto e lote são obrigatórios." }, 400);
         const total = Number(lote.totalRecebido ?? lote.totalAtual ?? 0);
         if (!Number.isFinite(total) || total <= 0) return resp({ erro: "A quantidade recebida deve ser maior que zero." }, 400);
         const agora = new Date().toISOString();
@@ -703,7 +774,7 @@ Deno.serve(async (req) => {
           tipo: "ENTRADA", acao: "CADASTRO NOVO", quantidade: total,
           criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
         };
-        const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "entrada", p_lote: lote, p_movimento: movimento });
+        const { data: gravado, error } = await sb.rpc("ml_estoque_lote_novo", { p_lote: lote, p_movimento: movimento });
         if (error) throw error;
         await bump("estoque_lotes"); await bump("estoque_movimentos");
         return resp(gravado ?? { ok: true, lote, movimento });
@@ -1398,6 +1469,14 @@ Deno.serve(async (req) => {
           .map((p) => ({ id: p.id, nome: p.nome ?? "", apelido: p.apelido ?? "" }))
           .sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
         return resp({ pessoas });
+      }
+
+      // Lista mínima de usuários ativos para campos de rastreabilidade operacional.
+      // Não expõe senha, papel nem permissões.
+      case "usuariosAtivos": {
+        const { data, error } = await sb.from(T_CONTAS).select("usuario,nome").eq("ativo", true).order("nome");
+        if (error) throw error;
+        return resp({ usuarios: (data ?? []).map((x) => ({ usuario: x.usuario, nome: x.nome })) });
       }
 
       // ---------------- contas (só direção) ----------------
