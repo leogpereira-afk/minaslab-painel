@@ -144,6 +144,8 @@ export const estoqueConfigDocumentoExcluir = (tipo, id, tipoDocumentoId = "") =>
 
 export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedidoSalvar", { pedidoCodigo, itens }).then((r) => { if (!r?.ok || !r?.pedidoCodigo) throw new Error("O servidor não confirmou o pedido de compra."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 
+// Laudo de recebimento atômico no servidor: IRnn sequencial, nota/parecer recalculados, operador = usuário logado e item CONCLUÍDO juntos.
+export const estoqueInspecaoRegistrar = (itemId, inspecao, dataChegada = "") => chamar("estoqueInspecaoRegistrar", { itemId, inspecao, dataChegada }).then((r) => { if (!r?.ok || !r?.inspecao) throw new Error("O servidor não confirmou a inspeção."); esquecerColecao("estoque_inspecoes"); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("estoquePedidoStatus", { id, status, dataChegada }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o status do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 
 export const estoquePedidoAnexoUpload = (pedidoCodigo, arquivo) => chamar("estoquePedidoAnexoUpload", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.anexo) throw new Error("O servidor não confirmou o anexo do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r.anexo; });
@@ -160,8 +162,8 @@ export const estoqueEntrada = (lote, movimento = {}) =>
     return r;
   });
 
-export const estoqueRetirada = (loteId, quantidade, dataAbertura = "", observacao = "") =>
-  chamar("estoqueRetirada", { loteId, quantidade, dataAbertura, observacao }).then((r) => {
+export const estoqueRetirada = (loteId, quantidade, dataAbertura = "", observacao = "", responsavel = "") =>
+  chamar("estoqueRetirada", { loteId, quantidade, dataAbertura, observacao, responsavel }).then((r) => {
     if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a retirada de estoque.");
     esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
     return r;
