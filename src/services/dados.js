@@ -147,6 +147,8 @@ export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedid
 export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("estoquePedidoStatus", { id, status, dataChegada }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou o status do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 
 export const estoquePedidoAnexoUpload = (pedidoCodigo, arquivo) => chamar("estoquePedidoAnexoUpload", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.anexo) throw new Error("O servidor não confirmou o anexo do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r.anexo; });
+// Pasta do PC no Drive (como no legado): cria "PC-XX" na pasta-mãe, grava o link nos itens e, se vier arquivo, guarda dentro dela.
+export const estoquePedidoPastaCriar = (pedidoCodigo, arquivo = {}) => chamar("estoquePedidoPastaCriar", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.pastaUrl) throw new Error("O servidor não confirmou a pasta do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
 export const estoquePedidoAnexoUrl = (pedidoCodigo) => chamar("estoquePedidoAnexoUrl", { pedidoCodigo }).then((r) => r?.url || null);
 
 export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
