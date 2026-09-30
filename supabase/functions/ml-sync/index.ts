@@ -261,6 +261,18 @@ const COLECAO_PAGINA: Record<string, string> = {
 const RH_DOC_BUCKET = "ml-arquivos";
 const RH_DOC_MAX_BYTES = 25 * 1024 * 1024;
 
+// Hoje no fuso do Brasil (o servidor roda em UTC: depois das 21h "hoje" já seria amanhã).
+const hojeBR = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+// Mesmos textos do legado (coluna "Status validade" da planilha).
+function statusValidadeBR(validade: unknown): string {
+  const v = String(validade ?? "").trim();
+  if (!v) return "";
+  if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return "Erro verificar";
+  const dias = Math.round((Date.parse(v.slice(0, 10) + "T00:00:00Z") - Date.parse(hojeBR() + "T00:00:00Z")) / 86400000);
+  return dias < 0 ? "Vencido" : dias < 30 ? "Vencimento em 30 dias" : "Dentro do prazo";
+}
+const ehColecaoEstoque = (c: string) => Object.prototype.hasOwnProperty.call(COLECOES_ESTOQUE, c);
+
 function nomeStorageSeguro(nome: string) {
   return String(nome || "documento").normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160);
 }
@@ -641,12 +653,18 @@ Deno.serve(async (req) => {
           estoque_produtos_base:"cadastro-insumo", estoque_fornecedores:"fornecedores",
           estoque_avaliacoes_fornecedor:"fornecedores", estoque_fapes:"fornecedores",
           estoque_tipos_documentos_fornecedor:"configuracoes", estoque_regras_documentos_fornecedor:"configuracoes",
-          estoque_documentos_fornecedor:"fornecedores", estoque_pedidos:"pedido-compra",
+          estoque_documentos_fornecedor:"fornecedores",
           estoque_inspecoes:"pedido-compra", estoque_config:"configuracoes",
-          estoque_historico_produto_base:"cadastro-insumo", estoque_logs_compras:"pedido-compra"
+          estoque_historico_produto_base:"cadastro-insumo"
         };
         const secao = mapa[colecao];
         if (!secao || !podeEditarEstoque(secao) || !podeConsultarColecao(colecao)) return resp({ erro:"Seu acesso lê, mas não edita esta parte da Gestão de Estoque.", semPermissao:true },403);
+        if (colecao === "estoque_produtos_base" || colecao === "estoque_fornecedores") {
+          // ID sequencial (ML-nn / F-nn) gerado no banco, sob trava: nunca repete, nem reaproveita código excluído.
+          const { data: salvo, error: er } = await sb.rpc(colecao === "estoque_produtos_base" ? "ml_estoque_produto_base_salvar" : "ml_estoque_fornecedor_salvar", { p_registro: registro, p_usuario: usuario || "maquina" });
+          if (er) throw er;
+          await bump(colecao); return resp({ ok: true, registro: salvo });
+        }
         if (!registro?.id) registro.id = crypto.randomUUID();
         registro.atualizadoPor = usuario || "maquina"; registro.atualizadoEm = new Date().toISOString();
         const { data,error } = await sb.from(T_REG).upsert({colecao,id:String(registro.id),registro,apagado:false,atualizado_em:new Date().toISOString()}).select("registro").maybeSingle();
@@ -703,6 +721,17 @@ Deno.serve(async (req) => {
         const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
       }
 
+      case "estoqueInspecaoRegistrar": {
+        // Laudo de recebimento: IRnn sequencial, nota/parecer recalculados e item CONCLUÍDO na mesma transação.
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos") || !podeConsultarColecao("estoque_inspecoes")) return resp({ erro:"Você não tem acesso às inspeções de recebimento.", semPermissao:true },403);
+        const itemId=String(body.itemId??"").trim(); if(!itemId) return resp({erro:"Item do pedido obrigatório."},400);
+        const {data,error}=await sb.rpc("ml_estoque_inspecao_registrar",{p_ir:(body.inspecao??{}),p_item_id:itemId,p_data_chegada:body.dataChegada?String(body.dataChegada):null,p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_inspecoes"); await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
       case "estoquePedidoStatus": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
         const id=String(body.id??"").trim(), status=String(body.status??"").trim();
@@ -731,7 +760,11 @@ Deno.serve(async (req) => {
           const { error } = await sb.from(T_REG).update({ registro, apagado:true, atualizado_em:agora }).eq("colecao","estoque_pedidos").eq("id",x.id).eq("apagado",false);
           if (error) throw error;
         }
-        await bump("estoque_pedidos");
+        for (const x of ativas) {
+          const r = x.registro as Record<string,unknown>;
+          await sb.rpc("ml_estoque_log_compra", { p_codigo: String(r.pedidoCodigo ?? r.idPedido ?? x.id), p_item: x.id, p_usuario: usuario || "maquina", p_texto: `Item ${x.id} (${String(r.produto ?? "")}) excluído do pedido`, p_status: "EXCLUÍDO" });
+        }
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
         return resp({ ok:true, excluidos:ativas.length });
       }
 
@@ -777,11 +810,12 @@ Deno.serve(async (req) => {
         const { data: gravado, error } = await sb.rpc("ml_estoque_lote_novo", { p_lote: lote, p_movimento: movimento });
         if (error) throw error;
         await bump("estoque_lotes"); await bump("estoque_movimentos");
+        if ((gravado as Record<string, unknown> | null)?.itemIntegrado) { await bump("estoque_pedidos"); await bump("estoque_logs_compras"); }
         return resp(gravado ?? { ok: true, lote, movimento });
       }
 
       case "estoqueLoteEditar": {
-        if (!podeEditarEstoque("edicao-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeEditarEstoque("entrada-lote")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
           return resp({ erro: "Você não tem acesso à edição de lotes.", semPermissao: true }, 403);
         }
@@ -797,7 +831,7 @@ Deno.serve(async (req) => {
         const totalNovo = Number(recebido.totalRecebido ?? recebido.qtdTotal ?? totalAnterior);
         if (!Number.isFinite(totalNovo) || totalNovo < retirado) return resp({ erro: "Quantidade total não pode ser menor que a quantidade já retirada." }, 409);
         const agora = new Date().toISOString();
-        const lote = { ...anterior, ...recebido, id:loteId, qtdRetirada:retirado, totalRecebido:totalNovo, qtdTotal:totalNovo, totalAtual:totalNovo-retirado, qtdAtual:totalNovo-retirado, atualizadoPor:usuario, atualizadoEm:agora };
+        const lote = { ...anterior, ...recebido, id:loteId, qtdRetirada:retirado, totalRecebido:totalNovo, qtdTotal:totalNovo, totalAtual:totalNovo-retirado, qtdAtual:totalNovo-retirado, statusValidade:statusValidadeBR((recebido.validade ?? anterior.validade)), atualizadoPor:usuario, atualizadoEm:agora };
         const { error } = await sb.from(T_REG).update({ registro:lote, atualizado_em:agora }).eq("colecao","estoque_lotes").eq("id",loteId).eq("apagado",false);
         if (error) throw error;
         const movimento = { id:crypto.randomUUID(), loteId, codigoID:lote.codigoID ?? lote.codigoAuto, produto:lote.produto, lote:lote.lote, unidade:lote.unidade, tipo:"AJUSTE", acao:"EDIÇÃO DE LOTE", quantidade:totalNovo-totalAnterior, saldoAnterior:Number(anterior.totalAtual ?? anterior.qtdAtual ?? 0), saldoAtual:totalNovo-retirado, criadoEm:agora, atualizadoPor:usuario, atualizadoEm:agora };
@@ -822,7 +856,7 @@ Deno.serve(async (req) => {
         const saldo = Number(lote.totalAtual ?? lote.qtdAtual ?? 0);
         if (saldo <= 0) return resp({ erro: "Este lote está sem saldo." }, 409);
         if (quantidade > saldo) return resp({ erro: "Quantidade solicitada maior que o saldo disponível." }, 409);
-        const hoje = new Date().toISOString().slice(0,10);
+        const hoje = hojeBR();
         if (lote.validade && String(lote.validade).slice(0,10) < hoje) return resp({ erro: "Lote vencido não pode ser utilizado." }, 409);
         const agora = new Date().toISOString();
         lote.qtdRetirada = Number(lote.qtdRetirada ?? 0) + quantidade;
@@ -834,7 +868,7 @@ Deno.serve(async (req) => {
           id: crypto.randomUUID(), loteId, codigoID: lote.codigoID ?? lote.codigoAuto,
           produto: lote.produto, lote: lote.lote, unidade: lote.unidade,
           tipo: "SAIDA", acao: "RETIRADA (BAIXA)", quantidade,
-          observacao: String(body.observacao ?? ""), dataAbertura: body.dataAbertura || null,
+          observacao: String(body.observacao ?? ""), responsavel: String(body.responsavel ?? ""), dataAbertura: body.dataAbertura || null,
           criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
         };
         const { data: gravado, error } = await sb.rpc("ml_estoque_movimentar", { p_acao: "retirada", p_lote: lote, p_movimento: movimento });
@@ -851,6 +885,7 @@ Deno.serve(async (req) => {
         const colecao = String(body.colecao ?? "");
         const registro = body.registro as Record<string, unknown>;
         if (!colecao || !registro?.id) return resp({ erro: "colecao e registro.id obrigatórios." }, 400);
+        if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só grava pelas ações próprias (saldo, status e vínculos são conferidos no servidor).", semPermissao: true }, 403);
         if (ehColecaoRH(colecao) && !ehDirecao) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
@@ -873,6 +908,7 @@ Deno.serve(async (req) => {
         if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const colecao = String(body.colecao ?? "");
         const id = String(body.id ?? "");
+        if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só exclui pelas ações próprias (com conferência e auditoria).", semPermissao: true }, 403);
         if (ehColecaoRH(colecao) && !ehDirecao) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
@@ -1588,6 +1624,8 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     // supabase-js: o query builder NÃO tem .catch (é thenable) — sempre try/await.
-    return resp({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
+    const obj = (e && typeof e === "object") ? e as { message?: unknown; code?: unknown } : null;
+    const msg = e instanceof Error ? e.message : (obj && typeof obj.message === "string" && obj.message ? obj.message : "Falha interna.");
+    return resp({ erro: msg }, obj?.code === "P0001" ? 409 : 500);
   }
 });
