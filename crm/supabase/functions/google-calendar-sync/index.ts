@@ -10,8 +10,16 @@ const TZ = 'America/Sao_Paulo';
 const EXTERNAL_TIMEOUT_MS = 10_000;
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
+// Origens do CRM: GitHub Pages (painel), Vercel (legado) e dev local.
+const ALLOWED_ORIGINS = new Set([
+  'https://leogpereira-afk.github.io',
+  'https://crm-minaslab-2.vercel.app',
+  'http://localhost:5173',
+]);
+
 const cors = {
-  'Access-Control-Allow-Origin': 'https://crm-minaslab-2.vercel.app',
+  'Access-Control-Allow-Origin': 'https://leogpereira-afk.github.io',
+  'Vary': 'Origin',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Content-Type': 'application/json',
@@ -106,7 +114,7 @@ async function accessToken(refreshToken: string) {
   return json.access_token as string;
 }
 
-Deno.serve(async (req: Request) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY || !CLIENT_ID || !CLIENT_SECRET || !CALENDAR_ID) {
@@ -216,4 +224,11 @@ Deno.serve(async (req: Request) => {
     .eq('id', agendamentoId);
   if (updateError) return reply({ error: 'calendar_created_but_crm_update_failed', event_id: event.id }, 500);
   return reply({ ok: true, event_id: event.id, html_link: event.htmlLink ?? null });
+}
+
+Deno.serve(async (req: Request) => {
+  const response = await handle(req);
+  const origin = req.headers.get('Origin') ?? '';
+  if (ALLOWED_ORIGINS.has(origin)) response.headers.set('Access-Control-Allow-Origin', origin);
+  return response;
 });
