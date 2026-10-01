@@ -58,3 +58,25 @@ export function formularioDaVersao(det) {
 // Carga horária total sugerida (soma das durações informadas), só como ajuda.
 export const duracaoTotalMin = (modulos) =>
   modulos.reduce((t, m) => t + m.aulas.reduce((s, a) => s + (Number(a.duracaoMin) || 0), 0), 0);
+
+// Importa um modelo de curso (.json) para o formulário do rascunho. Só valida o
+// formato; o conteúdo continua passando pelas regras do servidor ao salvar.
+const TIPOS = TIPOS_AULA.map((t) => t.valor);
+export function formularioDeModelo(modelo, atual) {
+  if (!modelo || typeof modelo !== "object" || !Array.isArray(modelo.modulos)) throw new Error("Arquivo inválido: não é um modelo de treinamento da Academy.");
+  if (modelo.modulos.length > 50) throw new Error("Modelo com módulos demais.");
+  const txt = (v) => (v == null ? "" : String(v));
+  const modulos = modelo.modulos.map((m, i) => {
+    if (!Array.isArray(m?.aulas)) throw new Error(`Módulo ${i + 1} sem lista de aulas.`);
+    return { titulo: txt(m.titulo), descricao: txt(m.descricao), aulas: m.aulas.map((a, j) => {
+      if (!TIPOS.includes(a?.tipo)) throw new Error(`Aula ${i + 1}.${j + 1}: tipo "${txt(a?.tipo)}" não é aceito.`);
+      return { titulo: txt(a.titulo), tipo: a.tipo, conteudo: a.conteudo && typeof a.conteudo === "object" ? a.conteudo : {}, duracaoMin: a.duracaoMin ?? "" };
+    }) };
+  });
+  const materiais = (Array.isArray(modelo.materiais) ? modelo.materiais : []).map((m) => ({ titulo: txt(m?.titulo), url: txt(m?.url) }));
+  // Critérios de avaliação vindos do arquivo só valem se a modalidade existir e estiver disponível.
+  const modalidade = MODALIDADES.some((m) => m.valor === modelo.modalidade && m.disponivel) ? modelo.modalidade : "nenhuma";
+  return { ...atual, titulo: txt(modelo.titulo) || atual.titulo, descricao: txt(modelo.descricao), modalidade,
+    obrigatorio: modelo.obrigatorio === true, prazoDias: modelo.prazoDias ?? "", validadeMeses: modelo.validadeMeses ?? "",
+    cargaHorariaMin: modelo.cargaHorariaMin ?? "", exigeQualidade: modelo.exigeQualidade === true, notasVersao: txt(modelo.notasVersao), modulos, materiais };
+}

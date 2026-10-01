@@ -1,13 +1,13 @@
 // Editor de treinamento: dados e critérios, conteúdo (módulos/aulas), público e publicação.
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Save, Send, Archive, ShieldCheck, GitBranch, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Save, Send, Archive, ShieldCheck, GitBranch, CheckCircle2, AlertTriangle, Upload } from "lucide-react";
 import { Card, Empty, CarregandoModulo, ErroModulo, Aviso, Segmented } from "../../components/ui.jsx";
 import { Etiqueta } from "./GestaoAcademy.jsx";
 import {
   academyContexto, treinamentoObter, treinamentoMeta, versaoSalvar, versaoValidarQualidade, versaoPublicar, novaVersao, treinamentoArquivar, publicoSalvar,
 } from "../../services/academy.js";
-import { TIPOS_AULA, tipoAula, MODALIDADES, STATUS_TREINAMENTO, STATUS_VERSAO, EVENTOS, novaAula, novoModulo, mover, formularioDaVersao, duracaoTotalMin } from "../../lib/academy/regras.js";
+import { TIPOS_AULA, tipoAula, MODALIDADES, STATUS_TREINAMENTO, STATUS_VERSAO, EVENTOS, novaAula, novoModulo, mover, formularioDaVersao, formularioDeModelo, duracaoTotalMin } from "../../lib/academy/regras.js";
 import { capacidadesAcademy } from "../../lib/sessao.js";
 
 const Campo = ({ id, rotulo, dica, children }) => (<div><label className="label" htmlFor={id}>{rotulo}</label>{children}{dica && <p className="mt-1 text-xs text-slate-500">{dica}</p>}</div>);
@@ -157,7 +157,9 @@ export default function TreinamentoEditor() {
       {sujo && ed && <Aviso2 tom="warn">Há alterações não salvas.</Aviso2>}
       <Segmented opcoes={[{ valor: "dados", rotulo: "Dados e critérios" }, { valor: "conteudo", rotulo: "Conteúdo" }, { valor: "publico", rotulo: "Público" }, { valor: "publicacao", rotulo: "Publicação" }, { valor: "historico", rotulo: "Histórico" }]} valor={aba} onChange={setAba} />
       {aba === "dados" && <Card><Dados f={f} set={set} meta={meta} setMeta={setMeta} ctx={ctx} ed={ed} /></Card>}
-      {aba === "conteudo" && <Conteudo f={f} set={set} ed={ed} />}
+      {aba === "conteudo" && <>
+        {ed && <ImportarModelo f={f} setF={setF} aviso={aviso$} />}
+        <Conteudo f={f} set={set} ed={ed} /></>}
       {aba === "publico" && <Card><Publico itens={publico} setItens={setPublico} ctx={ctx} podeEditar={caps.gestao && t.status !== "arquivado"} salvar={salvarPublico} sujo={sujoPublico} /></Card>}
       {aba === "publicacao" && (
         <Card className="space-y-4">
@@ -177,6 +179,17 @@ export default function TreinamentoEditor() {
       {aba === "historico" && <Card>{d.eventos.length === 0 ? <Empty>Sem registros.</Empty> : <ul className="divide-y text-sm" style={{ borderColor: "var(--hairline)" }}>{d.eventos.map((e, i) => <li key={i} className="flex flex-wrap justify-between gap-2 py-2"><span>{EVENTOS[e.evento] || e.evento}</span><span className="text-xs text-slate-500">{e.usuario} · {dataHora(e.em)}</span></li>)}</ul>}</Card>}
     </div>
   );
+}
+
+function ImportarModelo({ f, setF, aviso }) {
+  const ler = async (e) => {
+    const arq = e.target.files?.[0]; e.target.value = "";
+    if (!arq) return;
+    if (!window.confirm("Importar o modelo substitui o conteúdo atual do rascunho (ainda não salvo). Continuar?")) return;
+    try { setF(formularioDeModelo(JSON.parse(await arq.text()), f)); aviso("ok", "Modelo importado. Revise e clique em Salvar rascunho."); }
+    catch (ex) { aviso("erro", ex instanceof SyntaxError ? "Arquivo inválido: não é um JSON." : ex.message); }
+  };
+  return <label className="btn-outline cursor-pointer self-start"><Upload size={15} />Importar modelo (.json)<input type="file" accept=".json,application/json" className="sr-only" onChange={ler} /></label>;
 }
 
 function Aviso2({ children, tom = "info" }) {

@@ -1,0 +1,137 @@
+{
+  "titulo": "Gestão do Tempo",
+  "descricao": "Como organizar o dia de trabalho, definir prioridades, proteger o foco e criar o hábito de planejar e revisar. Conteúdo geral, aplicável a qualquer setor da MinasLab.",
+  "modalidade": "nenhuma",
+  "obrigatorio": false,
+  "prazoDias": "",
+  "validadeMeses": "",
+  "cargaHorariaMin": "",
+  "exigeQualidade": false,
+  "notasVersao": "Rascunho inicial (versão 1). Conteúdo genérico para revisão do responsável. Falta incluir exemplos reais da rotina da MinasLab.",
+  "modulos": [
+    {
+      "titulo": "Por que gerir o tempo",
+      "descricao": "O que está em jogo e o que você vai praticar.",
+      "aulas": [
+        {
+          "titulo": "O tempo é limitado; as escolhas são nossas",
+          "tipo": "texto",
+          "duracaoMin": 5,
+          "conteudo": {
+            "texto": "Todo mundo tem as mesmas 24 horas. A diferença está em como decidimos usá-las.\n\nGerir o tempo não é fazer mais coisas em menos tempo. É escolher, com clareza, o que merece a sua atenção hoje e o que pode esperar, mudar de prazo ou ser dispensado.\n\nQuando o tempo é mal gerido, aparecem sinais conhecidos:\n- tarefas importantes sendo feitas em cima do prazo;\n- sensação de ocupação o dia inteiro sem avançar no que importa;\n- retrabalho por falta de atenção ou de planejamento;\n- cansaço, pressa e erros;\n- atrasos que afetam colegas e clientes.\n\nNeste curso você vai aprender quatro ideias práticas: definir prioridades, planejar o dia e a semana, proteger o foco e fazer uma revisão curta de tempos em tempos. Em cada módulo há uma atividade para aplicar na sua própria rotina."
+          }
+        },
+        {
+          "titulo": "Autodiagnóstico: onde o seu tempo vai",
+          "tipo": "pratica",
+          "duracaoMin": 10,
+          "conteudo": {
+            "enunciado": "Durante um dia de trabalho comum (pode ser o de ontem, de memória), liste as suas atividades em blocos de aproximadamente 1 hora. Ao lado de cada bloco, marque: (I) importante para o seu trabalho, (U) urgente, (D) distração ou interrupção.\n\nDepois responda por escrito, para você mesmo: quantas horas foram dedicadas ao que é importante? Quais foram as 3 maiores interrupções? O que você faria diferente amanhã?",
+            "orientacoes": "Este exercício é pessoal e serve de ponto de partida para os próximos módulos. Guarde o resultado: você vai reutilizá-lo no módulo 3."
+          }
+        }
+      ]
+    },
+    {
+      "titulo": "Prioridades: importante x urgente",
+      "descricao": "Como decidir o que fazer primeiro.",
+      "aulas": [
+        {
+          "titulo": "A matriz de prioridades",
+          "tipo": "texto",
+          "duracaoMin": 8,
+          "conteudo": {
+            "texto": "Nem tudo o que é urgente é importante, e nem tudo o que é importante é urgente.\n\n- Importante: contribui para os seus resultados, para a qualidade do trabalho e para os compromissos com clientes e equipe.\n- Urgente: tem prazo curto ou alguém cobrando agora.\n\nCom essas duas perguntas, as tarefas caem em quatro grupos:\n\n1) Importante e urgente: faça agora. Exemplo: um prazo que vence hoje.\n2) Importante e não urgente: PLANEJE. É onde está o trabalho de maior valor (preparação, melhoria, estudo, prevenção de problemas). Se for deixado de lado, vira o grupo 1.\n3) Urgente e não importante: muitas interrupções e pedidos de última hora. Delegue, negocie o prazo ou resolva de forma rápida.\n4) Não urgente e não importante: elimine ou deixe para os intervalos.\n\nRegra prática: antes de começar, pergunte 'se eu não fizer isso hoje, qual é a consequência real?'. A resposta mostra em qual grupo a tarefa está."
+          }
+        },
+        {
+          "titulo": "Estudo de caso: o dia que não rendeu",
+          "tipo": "caso",
+          "duracaoMin": 10,
+          "conteudo": {
+            "enunciado": "Marina chega às 8h com cinco tarefas na lista: (a) concluir um relatório com prazo para o fim do dia; (b) responder a 12 mensagens acumuladas; (c) preparar a reunião da próxima semana; (d) atender a um pedido de um colega, que 'precisa para agora' mas só será usado amanhã; (e) organizar os arquivos da pasta compartilhada.\n\nEla começa pelas mensagens, atende o colega, é interrompida duas vezes e, às 16h, ainda não iniciou o relatório.\n\nResponda: 1) Em qual grupo da matriz está cada tarefa? 2) Em que ordem Marina deveria trabalhar? 3) O que ela poderia ter dito ao colega? 4) Que horário ela poderia reservar para as mensagens?",
+            "orientacoes": "Não há uma única resposta certa, mas a justificativa precisa usar importante x urgente. Discuta com o seu gestor ou com a equipe, se desejar."
+          }
+        }
+      ]
+    },
+    {
+      "titulo": "Planejamento do dia e da semana",
+      "descricao": "Transformar prioridades em um plano realista.",
+      "aulas": [
+        {
+          "titulo": "Planejar o dia em 10 minutos",
+          "tipo": "texto",
+          "duracaoMin": 8,
+          "conteudo": {
+            "texto": "Um bom plano do dia cabe em poucos minutos e segue estes passos:\n\n1) Liste tudo o que precisa ser feito, sem filtrar.\n2) Escolha de 1 a 3 tarefas que realmente precisam ficar prontas hoje (as principais). Elas vêm antes das demais.\n3) Estime o tempo de cada tarefa. Na dúvida, acrescente uma margem: quase tudo demora mais do que o imaginado.\n4) Reserve blocos na agenda para as tarefas principais, de preferência no horário em que você rende mais.\n5) Deixe espaço livre (cerca de 20% do dia) para imprevistos. Agenda sem folga quebra no primeiro pedido urgente.\n6) Agrupe tarefas parecidas (por exemplo, responder mensagens duas ou três vezes ao dia, em vez de a toda hora).\n\nPlanejamento da semana: reserve uns 15 minutos no início da semana para olhar compromissos fixos, prazos e as tarefas importantes que precisam avançar. Distribua-as pelos dias."
+          }
+        },
+        {
+          "titulo": "Atividade: planeje a sua semana",
+          "tipo": "pratica",
+          "duracaoMin": 15,
+          "conteudo": {
+            "enunciado": "Usando o autodiagnóstico do módulo 1, monte o plano da sua próxima semana de trabalho: 1) liste os compromissos fixos e os prazos; 2) escolha de 1 a 3 tarefas principais para cada dia; 3) reserve os blocos de foco e uma folga diária; 4) defina em quais horários você vai tratar mensagens e pedidos.\n\nEntregue o plano ao seu gestor (ou apresente em uma conversa rápida) e combinem um ponto de acompanhamento ao fim da semana.",
+            "orientacoes": "Esta atividade não é uma prova. Ela serve para aplicar o conteúdo na prática e abrir uma conversa sobre prioridades com o gestor."
+          }
+        }
+      ]
+    },
+    {
+      "titulo": "Foco e interrupções",
+      "descricao": "Proteger o tempo de trabalho concentrado e negociar prazos.",
+      "aulas": [
+        {
+          "titulo": "O custo de trocar de tarefa",
+          "tipo": "texto",
+          "duracaoMin": 7,
+          "conteudo": {
+            "texto": "Fazer várias coisas ao mesmo tempo costuma ser, na verdade, alternar rapidamente entre elas. Cada troca exige um tempo para se reorganizar mentalmente e aumenta a chance de erro, o que pesa ainda mais em atividades que pedem atenção e conferência.\n\nO que ajuda a proteger o foco:\n- trabalhe em blocos de 25 a 50 minutos em uma única tarefa, com pausas curtas entre eles;\n- silencie notificações durante os blocos importantes;\n- trate mensagens e e-mails em horários definidos;\n- deixe o ambiente organizado antes de começar;\n- se uma ideia ou pendência surgir no meio, anote e volte à tarefa.\n\nInterrupções existem e muitas são legítimas. A questão é decidir quais exigem resposta imediata e quais podem esperar o fim do bloco."
+          }
+        },
+        {
+          "titulo": "Dizer 'sim, quando?' e negociar prazos",
+          "tipo": "texto",
+          "duracaoMin": 7,
+          "conteudo": {
+            "texto": "Dizer sim a tudo faz com que nada fique bem-feito. Dizer não de forma seca prejudica o relacionamento. Existe um caminho intermediário: negociar.\n\nDiante de um pedido novo, pergunte:\n- Para quando você precisa, de verdade?\n- Qual é a consequência de entregar mais tarde?\n- Posso entregar uma parte agora e o restante depois?\n\nExemplos de resposta:\n- 'Consigo fazer, mas só depois de terminar o relatório de hoje. Posso entregar amanhã às 10h?'\n- 'Hoje eu não consigo. Quem mais poderia ajudar, ou podemos falar com o gestor sobre a prioridade?'\n\nQuando duas demandas competirem entre si, leve a decisão de prioridade ao gestor em vez de resolver sozinho no improviso."
+          }
+        },
+        {
+          "titulo": "Estudo de caso: pedidos de última hora",
+          "tipo": "caso",
+          "duracaoMin": 8,
+          "conteudo": {
+            "enunciado": "Às 14h, você está em um bloco de trabalho que precisa terminar até as 17h. Um colega pede ajuda com uma tarefa 'rápida' que levará cerca de 40 minutos, e um segundo colega envia uma mensagem marcada como urgente que, ao ler, você percebe que só será usada na semana seguinte.\n\nDescreva por escrito: 1) como você responderia a cada um; 2) quais perguntas faria para entender o prazo real; 3) em que situação você levaria o assunto ao gestor.",
+            "orientacoes": "Use as perguntas da aula anterior. O objetivo é praticar a negociação com respeito, sem aceitar tudo nem recusar sem explicação."
+          }
+        }
+      ]
+    },
+    {
+      "titulo": "Hábitos e revisão",
+      "descricao": "Manter o que funciona e ajustar o que não funciona.",
+      "aulas": [
+        {
+          "titulo": "Revisão diária e semanal",
+          "tipo": "texto",
+          "duracaoMin": 6,
+          "conteudo": {
+            "texto": "Planejar sem revisar não gera aprendizado. Dois momentos curtos resolvem isso:\n\nRevisão diária (5 minutos, no fim do dia):\n- O que eu concluí? O que ficou pendente e por quê?\n- O que vai entrar no plano de amanhã?\n- Que interrupção custou mais tempo?\n\nRevisão semanal (15 minutos, no fim da semana):\n- Minhas tarefas principais avançaram?\n- Estimei bem o tempo das atividades? Onde errei?\n- Que ajuste simples melhoraria a próxima semana?\n\nHábitos que ajudam: começar pela tarefa mais importante, fazer logo o que leva menos de 2 minutos para não acumular, e registrar compromissos em um único lugar (agenda ou lista), em vez de confiar na memória."
+          }
+        },
+        {
+          "titulo": "Meu compromisso pessoal",
+          "tipo": "pratica",
+          "duracaoMin": 10,
+          "conteudo": {
+            "enunciado": "Escolha duas práticas deste curso que você vai adotar nas próximas quatro semanas (por exemplo: planejar o dia em 10 minutos e tratar mensagens em dois horários). Escreva: 1) quais são; 2) quando e como você vai fazê-las; 3) como saberá que estão funcionando.\n\nCompartilhe o compromisso com o seu gestor e marque uma conversa de acompanhamento daqui a quatro semanas.",
+            "orientacoes": "Não é uma avaliação de desempenho. Serve para transformar o aprendizado em hábito."
+          }
+        }
+      ]
+    }
+  ],
+  "materiais": []
+}

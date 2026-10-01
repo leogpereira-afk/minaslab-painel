@@ -32,3 +32,20 @@ test("formulário reflete a versão do servidor e soma durações", () => {
   assert.equal(duracaoTotalMin(f.modulos), 10);
   assert.equal(novoModulo().aulas.length, 1);
 });
+
+import { formularioDeModelo } from "./regras.js";
+import { readFileSync } from "node:fs";
+
+test("importar modelo: aceita o curso Gestão do Tempo e descarta modalidade indisponível", () => {
+  const m = JSON.parse(readFileSync(new URL("../../../docs/academy-cursos/gestao-do-tempo.json", import.meta.url), "utf8"));
+  const f = formularioDeModelo({ ...m, modalidade: "automatica" }, { titulo: "x" });
+  assert.equal(f.titulo, "Gestão do Tempo");
+  assert.equal(f.modalidade, "nenhuma");
+  assert.equal(f.modulos.length, 5);
+});
+
+test("importar modelo: rejeita formato e tipo de aula inválidos", () => {
+  assert.throws(() => formularioDeModelo({}, {}), /não é um modelo/);
+  assert.throws(() => formularioDeModelo({ modulos: [{ aulas: [{ tipo: "quiz" }] }] }, {}), /não é aceito/);
+  assert.throws(() => formularioDeModelo({ modulos: [{}] }, {}), /sem lista de aulas/);
+});
