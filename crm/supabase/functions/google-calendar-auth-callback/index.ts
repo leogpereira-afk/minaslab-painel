@@ -10,7 +10,6 @@ const CLIENT_SECRET = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET') ?? '';
 const CALENDAR_ID = Deno.env.get('GOOGLE_CALENDAR_ID') ?? '';
 const ALLOWED_RETURNS = new Set([
   'https://leogpereira-afk.github.io/minaslab-painel/crm',
-  'https://crm-minaslab-2.vercel.app',
   'http://localhost:5173',
 ]);
 const DEFAULT_RETURN = 'https://leogpereira-afk.github.io/minaslab-painel/crm';

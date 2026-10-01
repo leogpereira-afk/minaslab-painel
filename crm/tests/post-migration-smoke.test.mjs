@@ -60,7 +60,7 @@ test('auditoria visual mantém legibilidade mínima e proteção de layout', () 
 })
 
 test('recuperação de senha usa URL de produção e redirect explícito', () => {
-  assert.ok(auth.includes("https://crm-minaslab-2.vercel.app"), 'URL oficial de produção ausente da configuração de autenticação')
+  assert.ok(auth.includes("https://leogpereira-afk.github.io/minaslab-painel/crm"), 'URL oficial de produção ausente da configuração de autenticação')
   assert.ok(auth.includes('isLocalUrl(configuredAppUrl)'), 'Proteção contra VITE_APP_URL local ausente')
   assert.ok(auth.includes('/reset-password'), 'Destino de redefinição de senha ausente')
   assert.ok(forgotPassword.includes('redirectTo: getPasswordResetUrl()'), 'Fluxo de recuperação não usa redirect explícito')
