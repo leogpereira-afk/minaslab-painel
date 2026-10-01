@@ -17,8 +17,9 @@ import {
   CheckCircle2, HandCoins, Download,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
+import { lerBens } from "../services/patrimonio.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
-import { chaveAlvo, proximasPorAlvo } from "../lib/manutencaoRegra.js";
+import { chaveAlvo, proximasPorAlvo, somarMeses, PERIODO_CALIBRACAO_PADRAO, bensComoAlvos } from "../lib/manutencaoRegra.js";
 import { baixarPlanilha } from "../lib/planilha.js";
 import {
   dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, numero, paraNumero,
@@ -228,11 +229,11 @@ function LinhaHistorico({ salvando, m, editavel, acoes }) {
   );
 }
 
-function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalvar, aoFechar }) {
+function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, aoSalvar, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
 
-  const lista = form.alvoTipo === "carro" ? carros : equipamentos;
+  const lista = form.alvoTipo === "carro" ? carros : form.alvoTipo === "bem" ? bens : equipamentos;
   const opcoes = lista.filter((a) => a.ativo !== false);
   // Registro antigo pode apontar para alvo desativado (ou fora do cadastro):
   // o select precisa continuar mostrando, senão editar qualquer outro campo
@@ -265,6 +266,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
             opcoes={[
               { valor: "carro", rotulo: "Carro" },
               { valor: "equipamento", rotulo: "Equipamento" },
+              { valor: "bem", rotulo: "Patrimônio" },
             ]}
             valor={form.alvoTipo}
             onChange={(v) => setForm({ ...form, alvoTipo: v, alvoId: "" })}
@@ -272,7 +274,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
-            <label className="label" htmlFor="m-alvo">{form.alvoTipo === "carro" ? "Carro" : "Equipamento"}</label>
+            <label className="label" htmlFor="m-alvo">{form.alvoTipo === "carro" ? "Carro" : form.alvoTipo === "bem" ? "Bem do patrimônio" : "Equipamento"}</label>
             <select id="m-alvo" className="select" value={form.alvoId} onChange={setCampo("alvoId")} required>
               <option value="">— escolha —</option>
               {opcoes.map((a) => (
@@ -318,6 +320,9 @@ function FormManutencao({ form, setForm, carros, equipamentos, salvando, aoSalva
           <div>
             <label className="label" htmlFor="m-proxima">Próxima (opcional)</label>
             <input id="m-proxima" type="date" className="input" value={form.proxima} onChange={setCampo("proxima")} />
+            {form.alvoTipo === "bem" && form.tipo === "calibracao" && (
+              <p className="mt-1 text-xs text-slate-500">Em branco, a próxima calibração é calculada pela periodicidade do bem.</p>
+            )}
           </div>
         </div>
         <div>
@@ -611,6 +616,7 @@ export default function Manutencoes() {
   const [itens, setItens] = useState(null);
   const [equipamentos, setEquipamentos] = useState(null);
   const [carros, setCarros] = useState(null);
+  const [bens, setBens] = useState([]);
   const [erro, setErro] = useState(null);
   const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
@@ -628,8 +634,11 @@ export default function Manutencoes() {
   const recarregar = useCallback(() => {
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
-    Promise.all([listar(COLECAO), listar("equipamentos"), listar("carros")])
-      .then(([ms, eqs, cs]) => {
+    // O patrimônio é complemento: sem permissão ou fora do ar, a tela de
+    // manutenções continua com carros e equipamentos.
+    Promise.all([listar(COLECAO), listar("equipamentos"), listar("carros"), lerBens().catch(() => ({}))])
+      .then(([ms, eqs, cs, bs]) => {
+        setBens(bensComoAlvos(bs));
         setItens(ms);
         setEquipamentos(eqs);
         setCarros(cs);
@@ -686,6 +695,9 @@ export default function Manutencoes() {
     const alvosAtivos = [
       ...carros.filter((c) => c.ativo !== false).map((c) => ({ ...c, alvoTipo: "carro" })),
       ...equipamentos.filter((e) => e.ativo !== false).map((e) => ({ ...e, alvoTipo: "equipamento" })),
+      // Do patrimônio, só o que exige calibração vigia prazo; os demais bens
+      // entram em Manutenções quando quebram (registro corretivo), sem cobrança.
+      ...bens.filter((b) => b.ativo !== false && b.reqCalibracao === "sim").map((b) => ({ ...b, alvoTipo: "bem" })),
     ];
     const alvos = alvosAtivos
       .map((a) => {
@@ -751,7 +763,7 @@ export default function Manutencoes() {
       semCusto: feitasAno.length - comCusto.length,
       custoAno,
     };
-  }, [itens, equipamentos, carros, hojeISO]);
+  }, [itens, equipamentos, carros, bens, hojeISO]);
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);
@@ -760,8 +772,12 @@ export default function Manutencoes() {
       const { dias: _dias, pz: _pz, ...limpo } = dados;
       // CARIMBO: o nome do alvo é resolvido AGORA e gravado junto. Se o carro
       // ou o equipamento for renomeado depois, o histórico não quebra.
-      const alvo = (limpo.alvoTipo === "carro" ? carros : equipamentos)?.find((a) => a.id === limpo.alvoId);
+      const alvo = (limpo.alvoTipo === "carro" ? carros : limpo.alvoTipo === "bem" ? bens : equipamentos)?.find((a) => a.id === limpo.alvoId);
       if (alvo) limpo.alvoNome = alvo.nome;
+      // Calibração feita sem "próxima": vale a periodicidade cadastrada no bem.
+      if (alvo && limpo.alvoTipo === "bem" && limpo.tipo === "calibracao" && limpo.status === "feita" && !limpo.proxima && limpo.data) {
+        limpo.proxima = somarMeses(limpo.data, alvo.periodicidadeCalibracaoMeses || PERIODO_CALIBRACAO_PADRAO);
+      }
       await salvar(COLECAO, limpo);
       setForm(null);
       setAviso({ tipo: "ok", texto: fraseOk });
@@ -1073,7 +1089,7 @@ export default function Manutencoes() {
                   a={a}
                   editavel={editavel}
                   salvando={salvando}
-                  aoAgendar={() => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome })}
+                  aoAgendar={() => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) })}
                 />
               ))}
             </div>
@@ -1138,6 +1154,7 @@ export default function Manutencoes() {
         setForm={setForm}
         carros={carros}
         equipamentos={equipamentos}
+        bens={bens}
         salvando={salvando}
         aoSalvar={salvarForm}
         aoFechar={() => setForm(null)}
