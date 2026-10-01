@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  GraduationCap,
 } from "lucide-react";
 import { getSessao, sair, podeAbrir } from "../lib/sessao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
@@ -53,6 +54,7 @@ const MODULOS = [
      isso é <a> e não NavLink: o Router do painel não conhece essas rotas. */
   { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, icone: ContactRound, externo: true },
   { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3 },
+  { id: "academy", rotulo: "Academy", caminho: "/academy", icone: GraduationCap },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
 
@@ -64,7 +66,7 @@ const CORES_MODULO = {
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
   laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
   ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"],
-  "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
+  "curva-abc": ["#4f46e5", "#e9e7ff"], academy: ["#0f766e", "#d9f4ef"], acessos: ["#a16207", "#fef3cd"],
 };
 
 const PAPEL_ROTULO = { direcao: "Direção", equipe: "Equipe", leitura: "Leitura" };

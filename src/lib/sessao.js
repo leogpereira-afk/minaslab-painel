@@ -122,12 +122,21 @@ export const podeEditar = (sessao = getSessao()) =>
 // "fin_clientes" e "fin_receber" — quem comprou, quanto e de quem. E o
 // faturamento da casa inteiro, so que arrumado por ranking; deixa-lo aberto a
 // equipe abriria pela porta da analise o que a porta de Financas ja fecha.
-const SO_DIRECAO = ["patrimonio", "rh", "ponto", "financas", "acessos", "curva-abc"];
+const SO_DIRECAO = ["patrimonio", "rh", "ponto", "financas", "acessos", "curva-abc", "academy"];
+// Academy: chaves planas na matriz (ver catalogoPermissoes). Conta sem matriz só
+// abre a Academy se for direção (ela está em SO_DIRECAO enquanto o módulo não é liberado).
+export const CHAVES_ACADEMY = ["academy", "academy-gestor", "academy-gestao", "academy-qualidade", "academy-matriz"];
+export const capacidadesAcademy = (sessao = getSessao()) => {
+  const dir = ehDirecao(sessao), m = sessao?.paginas_consulta?.includes("__matriz_v1");
+  const tem = (k) => !!sessao && (dir || (m && sessao.paginas_consulta.includes(k)));
+  return { gestao: tem("academy-gestao"), qualidade: tem("academy-qualidade"), colaborador: tem("academy"), gestor: tem("academy-gestor"), matriz: tem("academy-matriz") };
+};
 export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
   if (ehDirecao(sessao)) return true;
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
     if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
+    if (modulo === "academy") return CHAVES_ACADEMY.some(k => sessao.paginas_consulta.includes(k));
     return modulo === "inicio" || sessao.paginas_consulta.includes(modulo) ||
       (["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }

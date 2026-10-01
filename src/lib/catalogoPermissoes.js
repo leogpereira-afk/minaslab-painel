@@ -4,6 +4,8 @@
 export const GRUPOS_PERMISSOES = [
   { titulo: "Painel", paginas: [["inicio", "Início"], ["calendario", "Calendário"], ["compromissos", "Compromissos"], ["licitacoes", "Licitações"], ["marketing", "Marketing"], ["google-drive", "Google Drive"], ["crm", "CRM"]] },
   { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["rh", "RH"], ["ponto", "Ponto"], ["curva-abc", "Curva ABC"]] },
+  // Chaves planas de propósito: "academy" NÃO herda as demais (quem tem só a base não administra).
+  { titulo: "Academy", paginas: [["academy", "Academy · Colaborador"], ["academy-gestor", "Academy · Gestor (avaliação prática)"], ["academy-gestao", "Academy · Gestão de treinamentos (RH)"], ["academy-qualidade", "Academy · Qualidade (validação)"], ["academy-matriz", "Academy · Matriz e indicadores"]] },
   { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
 
@@ -31,4 +33,6 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
   "manutencoes", "laboratorio",
   "financas/servicos-gerados",
+  // Só o que o servidor já suporta de ponta a ponta (Academy etapa 2).
+  "academy-gestao", "academy-qualidade",
 ]);

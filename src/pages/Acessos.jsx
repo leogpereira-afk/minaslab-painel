@@ -25,7 +25,7 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc"].includes(p));
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !p.startsWith("academy") && !["patrimonio", "curva-abc"].includes(p));
 const paginasDaConta = (conta) => {
   const anteriores = conta.paginas_consulta || [];
   return anteriores.includes("__matriz_v1") || conta.papel === "direcao"
