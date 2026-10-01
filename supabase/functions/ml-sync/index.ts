@@ -598,10 +598,10 @@ Deno.serve(async (req) => {
         const {data:docs,error:de}=await sb.from(T_REG).select("registro").eq("colecao","estoque_documentos_fornecedor").eq("apagado",false);if(de)throw de;
         const versoes=(docs??[]).map(x=>x.registro as Record<string,unknown>).filter(d=>String(d.fornecedorId??"")===fornecedorId&&String(d.tipoDocumentoId??"")===tipoDocumentoId).map(d=>Number(d.versao)||0);
         const versao=(versoes.length?Math.max(...versoes):0)+1,id="DOC-"+crypto.randomUUID().slice(0,10).toUpperCase(),agora=new Date().toISOString();
-        const ext=nomeOriginal.includes(".")?"."+nomeOriginal.split(".").pop():"", nomeNovo=nomeStorageSeguro(`${fornecedorId}_${String(tipo.nomeDocumento??"DOCUMENTO")}_V${versao}_${agora.slice(0,10).replaceAll("-","")}${ext}`);
+        const ext=nomeOriginal.includes(".")?"."+nomeOriginal.split(".").pop():"", nomeNovo=nomeStorageSeguro(`${fornecedorId}_${String(tipo.nomeDocumento??tipo.nome??"DOCUMENTO")}_V${versao}_${agora.slice(0,10).replaceAll("-","")}${ext}`);
         const storagePath=`estoque/fornecedores/${fornecedorId}/${id}-${nomeNovo}`;
         const up=await sb.storage.from(RH_DOC_BUCKET).upload(storagePath,bytes,{contentType:mime,upsert:false});if(up.error)throw up.error;
-        const registro:Record<string,unknown>={id,fornecedorId,cnpj:String(body.cnpj??fornecedor.cnpj??""),tipoDocumentoId,tipoDocumento:String(tipo.nomeDocumento??""),dataEmissao:body.dataEmissao||"",dataValidade:body.dataValidade||"",possuiValidade:String(tipo.possuiValidade??"NÃO"),versao,observacao:String(body.observacao??""),ativo:"SIM",usuarioRegistro:usuario,dataRegistro:agora,createdAt:agora,referencia:String(body.referencia??""),storageBucket:RH_DOC_BUCKET,storagePath,nomeArquivo:nomeNovo,tipoMime:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,atualizadoPor:usuario,atualizadoEm:agora};
+        const registro:Record<string,unknown>={id,fornecedorId,cnpj:String(body.cnpj??fornecedor.cnpj??""),tipoDocumentoId,tipoDocumento:String(tipo.nomeDocumento??tipo.nome??""),dataEmissao:body.dataEmissao||"",dataValidade:body.dataValidade||"",possuiValidade:String(tipo.possuiValidade??"NÃO"),versao,observacao:String(body.observacao??""),ativo:"SIM",usuarioRegistro:usuario,dataRegistro:agora,createdAt:agora,referencia:String(body.referencia??""),storageBucket:RH_DOC_BUCKET,storagePath,nomeArquivo:nomeNovo,tipoMime:mime,tamanhoArquivo:bytes.byteLength,dataUpload:agora,atualizadoPor:usuario,atualizadoEm:agora};
         const {error:ie}=await sb.from(T_REG).insert({colecao:"estoque_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora});if(ie){await sb.storage.from(RH_DOC_BUCKET).remove([storagePath]);throw ie}
         await bump("estoque_documentos_fornecedor");return resp({ok:true,documento:registro});
       }
@@ -621,8 +621,8 @@ Deno.serve(async (req) => {
           if(!nome)return resp({erro:"Nome do documento é obrigatório."},400);if(!["SIM","NÃO"].includes(validade))return resp({erro:"Possui validade deve ser SIM ou NÃO."},400);
           const alerta=registro.prazoAlertaDias;if(validade==="SIM"&&alerta!==""&&alerta!=null&&(!Number.isInteger(Number(alerta))||Number(alerta)<0))return resp({erro:"Prazo de alerta deve ser inteiro maior ou igual a zero."},400);
           const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_tipos_documentos_fornecedor").eq("apagado",false);if(e)throw e;
-          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).nomeDocumento??"").trim().toUpperCase()===nome))return resp({erro:"Já existe um tipo documental com este nome."},409);
-          Object.assign(registro,{id,nomeDocumento:nome,possuiValidade:validade,prazoAlertaDias:validade==="SIM"?(alerta===""||alerta==null?"":Number(alerta)):"",atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).nomeDocumento??(x.registro as Record<string,unknown>).nome??"").trim().toUpperCase()===nome))return resp({erro:"Já existe um tipo documental com este nome."},409);
+          Object.assign(registro,{id,nomeDocumento:nome,nome,possuiValidade:validade,prazoAlertaDias:validade==="SIM"?(alerta===""||alerta==null?"":Number(alerta)):"",atualizadoPor:usuario||"maquina",atualizadoEm:agora});
           const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_tipos_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_tipos_documentos_fornecedor");return resp({ok:true,registro:data.registro});
         }
         if(tipo==="REGRA"){
@@ -632,7 +632,7 @@ Deno.serve(async (req) => {
           const tr=tip.registro as Record<string,unknown>;if(String(tr.ativo??"SIM").toUpperCase()==="NÃO")return resp({erro:"Não é possível vincular regra a documento inativo."},409);
           const {data:rows,error:e}=await sb.from(T_REG).select("id,registro").eq("colecao","estoque_regras_documentos_fornecedor").eq("apagado",false);if(e)throw e;
           if((rows??[]).some(x=>x.id!==id&&String((x.registro as Record<string,unknown>).tipoFornecedor??"").toUpperCase()===tipoFornecedor&&String((x.registro as Record<string,unknown>).tipoDocumentoId??"")===tipoDocumentoId&&String((x.registro as Record<string,unknown>).ativo??"SIM").toUpperCase()!=="NÃO"))return resp({erro:"Já existe regra ativa para este tipo de fornecedor e documento."},409);
-          Object.assign(registro,{id,tipoFornecedor,tipoDocumentoId,tipoDocumento:String(tr.nomeDocumento??""),regra,atualizadoPor:usuario||"maquina",atualizadoEm:agora});
+          Object.assign(registro,{id,tipoFornecedor,tipoDocumentoId,tipoDocumento:String(tr.nomeDocumento??tr.nome??""),regra,atualizadoPor:usuario||"maquina",atualizadoEm:agora});
           const {data,error}=await sb.from(T_REG).upsert({colecao:"estoque_regras_documentos_fornecedor",id,registro,apagado:false,atualizado_em:agora}).select("registro").single();if(error)throw error;await bump("estoque_regras_documentos_fornecedor");return resp({ok:true,registro:data.registro});
         }
         return resp({erro:"Tipo de configuração documental inválido."},400);
