@@ -97,6 +97,8 @@ ok((await q('select count(*)::int n from ml_ac_aulas where versao_id=$1',[v1.id]
 await rpc('ml_ac_publico_salvar','ana',tid,J([{tipo:'setor',valor:'Comercial'},{tipo:'cargo',valor:'Analista'},{tipo:'setor',valor:'Comercial'}]));
 ok((await q('select count(*)::int n from ml_ac_publico where treinamento_id=$1',[tid])).rows[0].n===2,'público sem duplicata');
 await assert.rejects(rpc('ml_ac_publico_salvar','ana',tid,J([{tipo:'time',valor:'x'}])),/Público inválido/);checks++;
+await rpc('ml_ac_publico_salvar','ana',tid,J([{tipo:'todos',valor:'todos'}]));
+ok((await q("select count(*)::int n from ml_ac_publico where treinamento_id=$1 and tipo='todos'",[tid])).rows[0].n===1,'público "todos"');
 
 // grupos e vínculos
 const gid=await rpc('ml_ac_grupo_salvar','ana',null,'Novos','',true,J(['p1','p2']));

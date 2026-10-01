@@ -122,7 +122,7 @@ create table if not exists public.ml_ac_grupo_membros (
 create table if not exists public.ml_ac_publico (
   id             uuid primary key default gen_random_uuid(),
   treinamento_id uuid not null references public.ml_ac_treinamentos(id) on delete cascade,
-  tipo           text not null check (tipo in ('colaborador','cargo','setor','grupo')),
+  tipo           text not null check (tipo in ('todos','colaborador','cargo','setor','grupo')),
   valor          text not null check (char_length(trim(valor)) >= 1),
   unique (treinamento_id, tipo, valor)
 );
@@ -373,7 +373,7 @@ begin
   if not exists (select 1 from public.ml_ac_treinamentos where id = p_treinamento and status <> 'arquivado') then raise exception 'Treinamento não encontrado ou arquivado.'; end if;
   delete from public.ml_ac_publico where treinamento_id = p_treinamento;
   for it in select * from jsonb_array_elements(coalesce(p_itens,'[]'::jsonb)) loop
-    if it->>'tipo' not in ('colaborador','cargo','setor','grupo') or nullif(trim(coalesce(it->>'valor','')),'') is null then raise exception 'Público inválido.'; end if;
+    if it->>'tipo' not in ('todos','colaborador','cargo','setor','grupo') or nullif(trim(coalesce(it->>'valor','')),'') is null then raise exception 'Público inválido.'; end if;
     insert into public.ml_ac_publico (treinamento_id, tipo, valor) values (p_treinamento, it->>'tipo', trim(it->>'valor')) on conflict do nothing;
   end loop;
   perform public.ml_ac_evento(p_usuario, 'PUBLICO_ALTERADO', 'treinamento', p_treinamento::text, jsonb_build_object('itens', coalesce(p_itens,'[]'::jsonb)));

@@ -12,8 +12,8 @@ Cada `.json` desta pasta é um **rascunho importável**: no editor do treinament
 
 ### Para o responsável pelo conteúdo decidir
 1. Quem é o responsável pelo conteúdo (obrigatório para publicar).
-2. O curso é obrigatório? Para quem (cargo, setor ou todos) e com qual prazo?
-3. Tem reciclagem periódica? (Sugestão: sem validade.)
-4. Carga horária: informar só se for validada pela Qualidade; por padrão fica em branco.
+2. ~~Obrigatório?~~ **Decidido: obrigatório, para todos os colaboradores.** Falta definir o **prazo** (sugestão: 30 dias após a atribuição).
+3. ~~Reciclagem?~~ **Decidido: sem validade.**
+4. ~~Carga horária~~ **Decidido: em branco**, a menos que a Qualidade valide.
 5. Trocar os exemplos genéricos por situações reais da rotina (atendimento, coleta, laboratório, administrativo).
 6. Prova com nota mínima: será configurada na Etapa 3 (as questões e o gabarito serão cadastrados no sistema, não no repositório).

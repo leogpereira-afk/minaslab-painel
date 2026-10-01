@@ -85,16 +85,16 @@ function Conteudo({ f, set, ed }) {
 }
 
 function Publico({ itens, setItens, ctx, podeEditar, salvar, sujo }) {
-  const [tipo, setTipo] = useState("setor"), [valor, setValor] = useState("");
-  const opcoes = { colaborador: ctx.pessoas.map((p) => [p.id, p.nome]), cargo: ctx.cargos.map((c) => [c, c]), setor: ctx.setores.map((c) => [c, c]), grupo: ctx.grupos.filter((g) => g.ativo).map((g) => [g.id, g.nome]) };
+  const [tipo, setTipo] = useState("todos"), [valor, setValor] = useState("");
+  const opcoes = { todos: [["todos", "Todos os colaboradores"]], colaborador: ctx.pessoas.map((p) => [p.id, p.nome]), cargo: ctx.cargos.map((c) => [c, c]), setor: ctx.setores.map((c) => [c, c]), grupo: ctx.grupos.filter((g) => g.ativo).map((g) => [g.id, g.nome]) };
   const rotulo = (it) => (opcoes[it.tipo].find(([v]) => v === it.valor) || [it.valor, `${it.valor} (indisponível)`])[1];
   const add = () => { if (valor && !itens.some((x) => x.tipo === tipo && x.valor === valor)) setItens([...itens, { tipo, valor }]); setValor(""); };
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">Quem deve fazer este treinamento: por colaborador, cargo, setor ou grupo. A atribuição individual com prazo é gerada na etapa de aprendizagem.</p>
+      <p className="text-sm text-slate-600">Quem deve fazer este treinamento: todos os colaboradores, ou por colaborador, cargo, setor ou grupo. A atribuição individual com prazo é gerada na etapa de aprendizagem.</p>
       {itens.length === 0 ? <Empty>Público não definido.</Empty> : <ul className="flex flex-wrap gap-2">{itens.map((it, i) => (<li key={i} className="flex items-center gap-2 rounded-full bg-brand-50 py-1 pl-3 pr-1 text-sm text-brand-900"><span className="text-xs uppercase text-brand-700">{it.tipo}</span>{rotulo(it)}{podeEditar && <button type="button" className="grid h-6 w-6 place-items-center rounded-full hover:bg-brand-100" aria-label="Remover" onClick={() => setItens(itens.filter((_, k) => k !== i))}>×</button>}</li>))}</ul>}
       {podeEditar && <div className="flex flex-wrap items-end gap-2">
-        <label><span className="label">Tipo</span><select className="select" value={tipo} onChange={(e) => { setTipo(e.target.value); setValor(""); }}><option value="setor">Setor</option><option value="cargo">Cargo</option><option value="colaborador">Colaborador</option><option value="grupo">Grupo</option></select></label>
+        <label><span className="label">Tipo</span><select className="select" value={tipo} onChange={(e) => { setTipo(e.target.value); setValor(""); }}><option value="todos">Todos</option><option value="setor">Setor</option><option value="cargo">Cargo</option><option value="colaborador">Colaborador</option><option value="grupo">Grupo</option></select></label>
         <label className="min-w-0 flex-1 basis-48"><span className="label">Valor</span><select className="select" value={valor} onChange={(e) => setValor(e.target.value)}><option value="">— escolher —</option>{opcoes[tipo].map(([v, r]) => <option key={v} value={v}>{r}</option>)}</select></label>
         <button type="button" className="btn-outline" onClick={add} disabled={!valor}><Plus size={15} />Adicionar</button>
         <button type="button" className="btn-primary" onClick={salvar} disabled={!sujo}><Save size={15} />Salvar público</button></div>}
