@@ -145,6 +145,47 @@ export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
             </div>
           ))}
 
+          <div>
+            <label className="label" htmlFor="b-lista">Lista de origem</label>
+            <select id="b-lista" className="input" value={f.listaOrigem || ""} onChange={trocar("listaOrigem")}>
+              <option value="">não informado</option>
+              <option value="LCE">LCE</option>
+              <option value="LCI">LCI</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="b-setor-orig">Setor na planilha</label>
+            <input id="b-setor-orig" className="input" value={f.setorOriginal || ""} onChange={trocar("setorOriginal")} />
+          </div>
+          <div>
+            <label className="label" htmlFor="b-recebimento">Data do recebimento</label>
+            <input id="b-recebimento" type="date" className="input" value={f.dataRecebimento || ""} onChange={trocar("dataRecebimento")} />
+          </div>
+          <div>
+            <label className="label" htmlFor="b-condicao">Condição de recebimento</label>
+            <select id="b-condicao" className="input" value={f.condicaoRecebimento || ""} onChange={trocar("condicaoRecebimento")}>
+              <option value="">não informado</option>
+              <option value="conforme">Conforme</option>
+              <option value="nao_conforme">Não conforme</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="b-status">Status</label>
+            <select id="b-status" className="input" value={f.statusAprovacao || ""} onChange={trocar("statusAprovacao")}>
+              <option value="">não informado</option>
+              <option value="aprovado">Aprovado</option>
+              <option value="reprovado">Reprovado</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="b-uso">Em uso ou fora de uso</label>
+            <select id="b-uso" className="input" value={f.usoEquipamento || ""} onChange={trocar("usoEquipamento")}>
+              <option value="">não informado</option>
+              <option value="em_uso">Em uso</option>
+              <option value="fora_de_uso">Fora de uso</option>
+            </select>
+          </div>
+
           <div className="sm:col-span-2">
             <label className="label" htmlFor="b-obs">Observação</label>
             <input
