@@ -38,14 +38,15 @@ Se algo falhar, anote o **texto exato do aviso** e, se possível, tire um print.
 | 2.3 | Aba **Avaliação**: avaliação inicial com notas 0–2 | Nota final e classificação (RUIM/BOM/ÓTIMO) corretas |
 | 2.4 | Gerar **FAPE** (exige avaliação inicial) | PDF gerado e arquivado |
 | 2.5 | Aba **Documentos**: criar pasta no Drive e enviar `ESCOPO` (PDF) | Pasta criada; documento listado com versão 1; reenviar = versão 2 |
-| 2.6 | Criar 2º fornecedor sem CNPJ | Salva (sem bloqueio) |
+| 2.6 | Criar 2º fornecedor com o **mesmo CNPJ** (pode digitar com pontos e traço) | **Recusado**: "Já existe fornecedor cadastrado com este CNPJ: F-nn — NOME" |
+| 2.6b | Criar fornecedor sem CNPJ | Salva (CNPJ vazio é permitido) |
 | 2.7 | Excluir o 2º fornecedor (sem vínculo) | Excluído |
 
 ## 3. Produto Base (Cadastro de Insumo)
 | # | Ação | Esperado |
 |---|---|---|
 | 3.1 | Novo produto sem preencher nada → Gravar | **Recusa** listando os campos obrigatórios |
-| 3.2 | Preencher produto (minúsculas), fornecedor, grupo, unidade, setor, mínimo `10` | Salva em **MAIÚSCULAS**, ID `ML-nn` |
+| 3.2 | Escolher o **fornecedor numa lista** (só os cadastrados e ativos), preencher produto (minúsculas), grupo, unidade, setor, mínimo `10` | Salva em **MAIÚSCULAS**, ID `ML-nn`; fornecedor não é digitado livre |
 | 3.3 | Os seletores de grupo/unidade | Mostram os valores de Configurações |
 | 3.4 | Criar um 2º produto (ex.: mínimo `500`) | Salva |
 | 3.5 | Inativar o 2º produto | Some dos seletores de **Entrada** e **Pedido**; histórico registra |
@@ -70,7 +71,7 @@ Se algo falhar, anote o **texto exato do aviso** e, se possível, tire um print.
 | # | Ação | Esperado |
 |---|---|---|
 | 5.1 | Item 1 (AUTORIZADO): **Concluir recebimento** | Janela "Inspeção de Recebimento de Insumo" (cabeçalho escuro, critérios "3 - Excelente…") |
-| 5.2 | Deixar fabricante/lote/validade vazios e emitir | Campos obrigatórios impedem |
+| 5.2 | Deixar fabricante/lote/validade/**nota fiscal** vazios e emitir | Campos obrigatórios impedem |
 | 5.3 | Preencher e **Emitir Laudo & Concluir** | Aviso com **IRnn** (ex.: IR130), nota e parecer; item vira **CONCLUÍDO** |
 | 5.4 | Verificar PDF | Layout do legado (cabeçalho com logo, 3 seções, assinaturas); salvo na pasta `PC-28` |
 | 5.5 | Botão **Visualizar inspeção** | Título "INSPEÇÃO DE RECEBIMENTO", dados do pedido/itens, IR, status da qualidade, operador = seu usuário, **"Abrir PDF existente"** |
@@ -80,10 +81,10 @@ Se algo falhar, anote o **texto exato do aviso** e, se possível, tire um print.
 | # | Ação | Esperado |
 |---|---|---|
 | 6.1 | Item CONCLUÍDO | Mostra botão **Gerar Entrada** (não "Lote em Estoque") |
-| 6.2 | Clicar | Abre Entrada já preenchida (fornecedor, produto, kit, qtd, lote/validade do laudo, "REF PEDIDO: PC-28") |
+| 6.2 | Clicar | Abre Entrada preenchida: fornecedor, produto, kit, qtd, lote/validade e **nota fiscal do laudo**, **Valor do produto (R$)** do pedido e o campo **"Pedido de compra vinculado"** (bloqueado, com cadeado). Observações em branco. Sem botões "Novo cadastro/Resetar" e "Limpar campos" |
 | 6.3 | Informar valor da NF e responsável; anexar um PDF ou Excel → **Finalizar lote** | Aviso: entrada salva, **item INTEGRADO**, **anexo enviado ao Drive**; **etiqueta abre sozinha** |
 | 6.4 | Voltar ao pedido | Item mostra **"Lote em Estoque"**; sem botão Gerar Entrada |
-| 6.5 | Lista de entradas | Lote `ML-nn` com botão de **pasta/anexo** que abre o arquivo |
+| 6.5 | Lista de entradas | Lote `ML-nn` com botão de **pasta/anexo** que abre o arquivo e **cadeado no lugar de Excluir** (entrada vinculada a pedido não se exclui) |
 | 6.6 | Tentar gerar outra entrada do mesmo item | **Impossível/recusado** |
 
 ## 7. Entrada avulsa e edição de lote
@@ -127,7 +128,7 @@ Se algo falhar, anote o **texto exato do aviso** e, se possível, tire um print.
 ## 12. Dashboard e permissões
 | # | Ação | Esperado |
 |---|---|---|
-| 12.1 | Dashboard | Cartões batem com o que você lançou (lotes, vencidos, a vencer, críticos) |
+| 12.1 | Dashboard | Cartões batem com o que você lançou. **Financeiro Estoque** = soma do valor de **todos** os lotes registrados (com o nº de lotes e o valor vencido logo abaixo) |
 | 12.2 | Entrar com usuário **somente consulta** | Botões de gravar/excluir **desabilitados**; todas as telas abrem |
 | 12.3 | Abrir outros módulos (Financeiro, RH, Compras…) | Funcionam normalmente |
 

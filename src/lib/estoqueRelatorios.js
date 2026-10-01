@@ -49,7 +49,7 @@ export function lotesVencidos(lotes, hoje = hojeBR()) {
 }
 
 export const COLUNAS_LOTE = [
-  ["codigoID", "ID Sistema"], ["dataChegada", "Data de chegada"], ["notaFiscal", "Nota fiscal"], ["valorNF", "Valor NF"],
+  ["codigoID", "ID Sistema"], ["dataChegada", "Data de chegada"], ["notaFiscal", "Nota fiscal"], ["valorNF", "Valor do produto (R$)"],
   ["fornecedor", "Fornecedor"], ["cnpj", "CNPJ"], ["grupo", "Grupo"], ["produto", "Produto"], ["referencia", "Especificação"],
   ["lote", "Lote"], ["unidade", "Unidade"], ["validade", "Validade"], ["conteudoKit", "Conteúdo do kit"], ["qtdKit", "Qtd. kits"],
   ["totalRecebido", "Qtd. total"], ["responsavel", "Responsável"], ["qtdMinima", "Qtd. mínima"], ["qtdRetirada", "Qtd. retirada"],
