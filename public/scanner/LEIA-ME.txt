@@ -7,11 +7,11 @@ ESCANEADOR MINASLAB (NAPS2) - instalacao em cada PC, uma vez
    (Se preferir outro nome de perfil, edite  %LOCALAPPDATA%\MinasLab\Escaneador\config.ini  e troque Perfil=...)
 3) Baixe e execute  Instalar-Escaneador-MinasLab.bat  (nao precisa de administrador).
    O Windows pode avisar sobre arquivo baixado: Mais informacoes > Executar assim mesmo.
-4) No sistema: Gestao de Estoque > Pedido de Compra > botao de scanner (ScanLine) na linha do pedido.
+4) No sistema: Gestao de Estoque > Pedido de Compra > Novo pedido > Secao 3 > botao Escanear (ao lado de Anexar cotacao).
    O navegador pergunta se pode abrir o "MinasLab Escaneador": marque "Sempre permitir" e confirme.
-   Coloque o papel no scanner, clique OK, e o PDF vai sozinho para a pasta do pedido (PC-nn) no Drive.
+   Coloque o papel no scanner, clique OK, o PDF aparece no campo de anexo; ao gravar a requisicao ele vai para a pasta do pedido (PC-nn) no Drive.
 
-Sem scanner no PC / celular: use o botao do clipe (Anexar documento) e escolha o arquivo ou a foto.
+Sem scanner no PC / celular: use "Escolher arquivo" no mesmo campo e selecione o arquivo ou a foto.
 
-Seguranca: o botao gera um ticket valido por 15 minutos, so para aquele pedido. O programa so envia
+Seguranca: o botao gera um ticket valido por 15 minutos. O programa so envia
 PDF para a pasta do pedido e nao le nada do seu computador alem do arquivo escaneado.

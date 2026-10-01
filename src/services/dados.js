@@ -155,8 +155,9 @@ export const estoquePedidoStatus = (id, status, dataChegada = "") => chamar("est
 export const estoquePedidoAnexoUpload = (pedidoCodigo, arquivo) => chamar("estoquePedidoAnexoUpload", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.anexo) throw new Error("O servidor não confirmou o anexo do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r.anexo; });
 // Pasta do PC no Drive (como no legado): cria "PC-XX" na pasta-mãe, grava o link nos itens e, se vier arquivo, guarda dentro dela.
 export const estoquePedidoPastaCriar = (pedidoCodigo, arquivo = {}) => chamar("estoquePedidoPastaCriar", { pedidoCodigo, ...arquivo }).then((r) => { if (!r?.ok || !r?.pastaUrl) throw new Error("O servidor não confirmou a pasta do pedido."); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
-// Ticket de 15 min para o escaneador do PC (NAPS2) enviar PDF à pasta deste pedido.
-export const estoqueScanToken = (pedidoCodigo) => chamar("estoqueScanToken", { pedidoCodigo }).then((r) => { if (!r?.ok || !r?.token) throw new Error("O servidor não liberou o escaneamento."); return r; });
+// Escaneador do PC (NAPS2): ticket de 15 min; o PDF escaneado chega numa área temporária e a tela o busca por aqui.
+export const estoqueScanToken = () => chamar("estoqueScanToken", {}).then((r) => { if (!r?.ok || !r?.token || !r?.sid) throw new Error("O servidor não liberou o escaneamento."); return r; });
+export const estoqueScanBuscar = (sid) => chamar("estoqueScanBuscar", { sid });
 export const estoquePedidoAnexoUrl = (pedidoCodigo) => chamar("estoquePedidoAnexoUrl", { pedidoCodigo }).then((r) => r?.url || null);
 
 export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
