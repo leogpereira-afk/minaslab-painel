@@ -377,6 +377,27 @@ Deno.serve(async (req) => {
       return resp({ erro: "Usuário ou senha errados." }, 401);
     }
 
+    // ---------------- estoqueScanEnviar: o escaneador do PC (NAPS2) manda o PDF ----------------
+    // Não leva crachá de login: leva um ticket curto (15 min) emitido por estoqueScanToken para UM pedido.
+    // O ticket não serve de crachá (não tem sis) e só aceita PDF/imagem na pasta daquele pedido.
+    if (action === "estoqueScanEnviar") {
+      const t = JWT_SECRET ? await verificarJwt(String(body.token ?? ""), JWT_SECRET) : null;
+      if (!t || t.tipo !== "scan-pc" || t.sis) return resp({ erro: "Ticket de escaneamento inválido ou vencido. Clique em Escanear de novo no sistema." }, 401);
+      const quem = String(t.sub ?? ""), pedidoCodigo = String(t.pc ?? "");
+      if (!quem || !pedidoCodigo || !(await contaSegueAtiva(quem))) return resp({ erro: "Conta desativada ou ticket inválido." }, 401);
+      const nomeOriginal = String(body.nomeOriginal ?? "").trim(), ext = (nomeOriginal.split(".").pop() || "").toLowerCase();
+      if (!["pdf", "jpg", "jpeg", "png"].includes(ext)) return resp({ erro: "Formato não permitido. Envie PDF ou imagem." }, 415);
+      if (!body.arquivoBase64) return resp({ erro: "Arquivo vazio." }, 400);
+      const r = await fetch(SUPABASE_URL + "/functions/v1/ml-google-drive-pedido", { method: "POST", headers: { "content-type": "application/json", "x-token": TOKEN }, body: JSON.stringify({ pedidoCodigo, nomeOriginal, mimeType: ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : "image/jpeg", arquivoBase64: body.arquivoBase64, usuario: quem }) });
+      const j = await r.json().catch(() => ({ erro: "Resposta inválida do Drive." }));
+      if (!r.ok) return resp(j, r.status);
+      if (j.erroArquivo) return resp({ erro: "O Drive não aceitou o arquivo: " + j.erroArquivo }, 502);
+      const agora = new Date().toISOString(), logId = "LOG-" + crypto.randomUUID();
+      await sb.from(T_REG).insert({ colecao: "estoque_logs_compras", id: logId, registro: { id: logId, pedidoCodigo, data: agora, login: quem, logs: "DOCUMENTO ESCANEADO ENVIADO À PASTA DO PEDIDO: " + nomeOriginal, status: "ANEXO", origem: "GESTAO_ESTOQUE" }, apagado: false, atualizado_em: agora });
+      await bump("estoque_logs_compras"); await bump("estoque_pedidos");
+      return resp({ ok: true, pastaUrl: j.pastaUrl, arquivoUrl: j.arquivoUrl });
+    }
+
     // ---------------- daqui para baixo: crachá ou token de máquina ----------------
     const m = String(req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i);
     const cracha = m && JWT_SECRET ? await verificarJwt(m[1], JWT_SECRET) : null;
@@ -719,6 +740,17 @@ Deno.serve(async (req) => {
         const j=await r.json().catch(()=>({erro:"Resposta inválida do Drive."})); if(!r.ok) return resp(j,r.status);
         if(j.criada){const agora=new Date().toISOString(),logId="LOG-"+crypto.randomUUID();await sb.from(T_REG).insert({colecao:"estoque_logs_compras",id:logId,registro:{id:logId,pedidoCodigo,data:agora,login:usuario||"maquina",logs:"PASTA DO DRIVE CRIADA: "+j.pastaUrl,status:"PASTA",origem:"GESTAO_ESTOQUE"},apagado:false,atualizado_em:agora});await bump("estoque_logs_compras");}
         await bump("estoque_pedidos"); return resp(j);
+      }
+
+      case "estoqueScanToken": {
+        // Ticket de 15 min para o escaneador do PC enviar PDF à pasta de UM pedido (ver estoqueScanEnviar).
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        if (!usuario || !JWT_SECRET) return resp({ erro:"Entre no sistema com seu usuário para escanear." },403);
+        const pedidoCodigo=String(body.pedidoCodigo??"").trim(); if(!/^PC-\d+$/.test(pedidoCodigo)) return resp({erro:"Pedido inválido."},400);
+        const {data:linhas,error:te}=await sb.from(T_REG).select("registro").eq("colecao","estoque_pedidos").eq("apagado",false); if(te) throw te;
+        if(!(linhas??[]).some(x=>{const r=x.registro as Record<string,unknown>;return String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo})) return resp({erro:"Pedido não localizado."},404);
+        return resp({ ok:true, pedidoCodigo, token: await assinarJwt({ tipo:"scan-pc", sub:usuario, pc:pedidoCodigo }, JWT_SECRET, 900), validadeMin:15 });
       }
 
       case "estoquePedidoAnexoUrl": {
