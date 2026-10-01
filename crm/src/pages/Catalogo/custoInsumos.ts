@@ -34,6 +34,26 @@ export type CustoParametro = {
   margem_pct: number | null
   analises_internas: number
   analises_fora: number
+  // Custo TOTAL (insumos + mão de obra + equipamento + outros + despesas fixas). Nulo = nada informado ainda.
+  minutos_mao_obra: number
+  custo_equipamento: number
+  outros_custos: number
+  custo_mao_obra: number
+  custo_despesas_fixas: number | null
+  custo_total: number | null
+  margem_total: number | null
+  margem_total_pct: number | null
+}
+
+// Valores gerais da casa (linha única em crm_custo_config).
+export type ConfigCusto = { custo_hora: number; pct_despesas_fixas: number }
+
+// Mesma conta do banco (crm_custo_parametros): despesas fixas = percentual sobre o subtotal.
+export function montarCustoTotal(insumos: number, minutos: number, equipamento: number, outros: number, cfg: ConfigCusto) {
+  const maoObra = (minutos / 60) * cfg.custo_hora
+  const subtotal = insumos + maoObra + equipamento + outros
+  const despesas = (subtotal * cfg.pct_despesas_fixas) / 100
+  return { insumos, maoObra, equipamento, outros, despesas, total: subtotal + despesas }
 }
 
 export type ItemFicha = {
