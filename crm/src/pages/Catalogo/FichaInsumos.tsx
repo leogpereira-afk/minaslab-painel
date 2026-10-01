@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, FlaskConical, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, FlaskConical, Pencil, Plus, Trash2, Wrench } from 'lucide-react'
 import { Modal } from '../../components/ui/Modal'
 import { supabase } from '../../services/supabase'
-import { chaveNome, custoLinha, dataBr, dinheiro, tomMargem, unidadesCompativeis, type CustoParametro, type InsumoEstoque, type ItemFicha } from './custoInsumos'
+import { chaveNome, custoLinha, dataBr, dinheiro, montarCustoTotal, tomMargem, unidadesCompativeis, type ConfigCusto, type CustoParametro, type InsumoEstoque, type ItemFicha } from './custoInsumos'
 
 type Props = {
   parametro: CustoParametro
   insumos: InsumoEstoque[]
   irmaos: CustoParametro[]
+  config: ConfigCusto
   canWrite: boolean
   limiteMargem: number
   onClose: () => void
@@ -17,7 +18,7 @@ type Props = {
 const CAMPOS = 'id,parametro_id,produto_base_id,produto,quantidade,unidade,observacao,ativo'
 const vazio = { produtoBaseId: '', quantidade: '', unidade: '', observacao: '' }
 
-export function FichaInsumos({ parametro, insumos, irmaos, canWrite, limiteMargem, onClose, onChanged }: Props) {
+export function FichaInsumos({ parametro, insumos, irmaos, config, canWrite, limiteMargem, onClose, onChanged }: Props) {
   const [itens, setItens] = useState<ItemFicha[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -25,6 +26,10 @@ export function FichaInsumos({ parametro, insumos, irmaos, canWrite, limiteMarge
   const [form, setForm] = useState(vazio)
   const [busca, setBusca] = useState('')
   const [salvando, setSalvando] = useState(false)
+  // Custos além dos insumos: minutos de mão de obra, equipamento (R$) e outros (R$) por análise.
+  const [extras, setExtras] = useState({ minutos: '', equipamento: '', outros: '' })
+  const [extrasSalvos, setExtrasSalvos] = useState({ minutos: 0, equipamento: 0, outros: 0 })
+  const [salvandoExtras, setSalvandoExtras] = useState(false)
 
   const porId = useMemo(() => new Map(insumos.map(i => [i.produto_base_id, i])), [insumos])
   const escolhido = form.produtoBaseId ? porId.get(form.produtoBaseId) ?? null : null
@@ -39,12 +44,39 @@ export function FichaInsumos({ parametro, insumos, irmaos, canWrite, limiteMarge
     setCarregando(false)
   }
   useEffect(() => { void carregar() }, [parametro.parametro_id])
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.from('parametro_custos_extras').select('minutos_mao_obra,custo_equipamento,outros_custos').eq('parametro_id', parametro.parametro_id).maybeSingle()
+      const v = { minutos: Number(data?.minutos_mao_obra ?? 0), equipamento: Number(data?.custo_equipamento ?? 0), outros: Number(data?.outros_custos ?? 0) }
+      setExtrasSalvos(v)
+      const txt = (n: number) => (n ? String(n).replace('.', ',') : '')
+      setExtras({ minutos: txt(v.minutos), equipamento: txt(v.equipamento), outros: txt(v.outros) })
+    })()
+  }, [parametro.parametro_id])
 
   const linhas = itens.map(it => ({ it, insumo: porId.get(it.produto_base_id) ?? null, custo: custoLinha(it, porId.get(it.produto_base_id)) }))
   const total = linhas.reduce((s, l) => s + (l.custo ?? 0), 0)
   const semCusto = linhas.filter(l => l.custo == null).length
   const preco = parametro.preco == null ? null : Number(parametro.preco)
-  const margemPct = itens.length && preco && preco > 0 ? ((preco - total) / preco) * 100 : null
+  const temExtras = extrasSalvos.minutos + extrasSalvos.equipamento + extrasSalvos.outros > 0
+  const partes = montarCustoTotal(total, extrasSalvos.minutos, extrasSalvos.equipamento, extrasSalvos.outros, config)
+  const temCusto = itens.length > 0 || temExtras
+  const margemPct = temCusto && preco && preco > 0 ? ((preco - partes.total) / preco) * 100 : null
+  const num = (v: string) => Number(String(v).replace(',', '.')) || 0
+  const alterouExtras = num(extras.minutos) !== extrasSalvos.minutos || num(extras.equipamento) !== extrasSalvos.equipamento || num(extras.outros) !== extrasSalvos.outros
+
+  async function salvarExtras(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canWrite) return
+    setErro(''); setAviso('')
+    const v = { minutos: num(extras.minutos), equipamento: num(extras.equipamento), outros: num(extras.outros) }
+    if (v.minutos < 0 || v.equipamento < 0 || v.outros < 0) return setErro('Os valores não podem ser negativos.')
+    setSalvandoExtras(true)
+    const { error } = await supabase.from('parametro_custos_extras').upsert({ parametro_id: parametro.parametro_id, minutos_mao_obra: v.minutos, custo_equipamento: v.equipamento, outros_custos: v.outros }, { onConflict: 'parametro_id' })
+    setSalvandoExtras(false)
+    if (error) return setErro(error.message)
+    setExtrasSalvos(v); setAviso('Custos da análise salvos.'); onChanged()
+  }
 
   function escolher(i: InsumoEstoque) {
     setForm(f => ({ ...f, produtoBaseId: i.produto_base_id, unidade: i.unidade || 'UN' }))
@@ -116,10 +148,11 @@ export function FichaInsumos({ parametro, insumos, irmaos, canWrite, limiteMarge
         {aviso && <div className="rounded-xl bg-amber-50 p-3 text-amber-800">{aviso}</div>}
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border p-4"><div className="text-xs font-semibold uppercase text-slate-500">Custo em insumos</div><div className="mt-1 text-xl font-bold">{itens.length ? dinheiro(total) : '—'}</div>{semCusto > 0 && <div className="mt-1 text-xs text-amber-700">{semCusto} insumo(s) sem preço de compra</div>}</div>
+          <div className="rounded-2xl border p-4"><div className="text-xs font-semibold uppercase text-slate-500">Custo total da análise</div><div className="mt-1 text-xl font-bold">{temCusto ? dinheiro(partes.total) : '—'}</div>{semCusto > 0 && <div className="mt-1 text-xs text-amber-700">{semCusto} insumo(s) sem preço de compra</div>}</div>
           <div className="rounded-2xl border p-4"><div className="text-xs font-semibold uppercase text-slate-500">Preço de tabela</div><div className="mt-1 text-xl font-bold">{dinheiro(preco)}</div>{parametro.preco_minimo ? <div className="mt-1 text-xs text-slate-500">mínimo {dinheiro(parametro.preco_minimo)}</div> : null}</div>
-          <div className="rounded-2xl border p-4"><div className="text-xs font-semibold uppercase text-slate-500">Margem sobre insumos</div><div className="mt-1 flex items-center gap-2 text-xl font-bold">{preco != null && itens.length ? dinheiro(preco - total) : '—'}{margemPct != null && <span className={`rounded-full px-2 py-0.5 text-xs ${tomMargem(margemPct, limiteMargem)}`}>{margemPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>}</div></div>
+          <div className="rounded-2xl border p-4"><div className="text-xs font-semibold uppercase text-slate-500">Margem sobre o custo total</div><div className="mt-1 flex items-center gap-2 text-xl font-bold">{preco != null && temCusto ? dinheiro(preco - partes.total) : '—'}{margemPct != null && <span className={`rounded-full px-2 py-0.5 text-xs ${tomMargem(margemPct, limiteMargem)}`}>{margemPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>}</div></div>
         </div>
+        {temCusto && <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">Composição: insumos <strong>{dinheiro(partes.insumos)}</strong> · mão de obra <strong>{dinheiro(partes.maoObra)}</strong> · equipamento <strong>{dinheiro(partes.equipamento)}</strong> · outros <strong>{dinheiro(partes.outros)}</strong> · despesas fixas ({config.pct_despesas_fixas.toLocaleString('pt-BR')}%) <strong>{dinheiro(partes.despesas)}</strong>{config.custo_hora === 0 && extrasSalvos.minutos > 0 ? <span className="ml-1 text-amber-700"> — o custo da hora ainda não foi informado em “Custos gerais da casa”</span> : null}</p>}
 
         {canWrite && irmaos.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed p-3 text-xs text-slate-600">
@@ -148,6 +181,17 @@ export function FichaInsumos({ parametro, insumos, irmaos, canWrite, limiteMarge
             </tbody>
           </table>
         </section>
+
+        <form onSubmit={salvarExtras} className="space-y-3 rounded-2xl border p-4">
+          <div className="flex items-center gap-2 font-semibold text-slate-700"><Wrench className="h-4 w-4 text-teal-700" />Outros custos por análise <span className="text-xs font-normal text-slate-400">(além dos insumos)</span></div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label><span className="mb-1 block text-xs font-medium">Mão de obra (minutos)</span><input inputMode="decimal" disabled={!canWrite} value={extras.minutos} onChange={e => setExtras({ ...extras, minutos: e.target.value })} className="w-full rounded-xl border px-3 py-2.5 disabled:bg-slate-50" placeholder="ex.: 20" /></label>
+            <label><span className="mb-1 block text-xs font-medium">Equipamento (R$ por análise)</span><input inputMode="decimal" disabled={!canWrite} value={extras.equipamento} onChange={e => setExtras({ ...extras, equipamento: e.target.value })} className="w-full rounded-xl border px-3 py-2.5 disabled:bg-slate-50" placeholder="ex.: 1,50" /></label>
+            <label><span className="mb-1 block text-xs font-medium">Outros: energia, água, calibração (R$)</span><input inputMode="decimal" disabled={!canWrite} value={extras.outros} onChange={e => setExtras({ ...extras, outros: e.target.value })} className="w-full rounded-xl border px-3 py-2.5 disabled:bg-slate-50" placeholder="ex.: 0,80" /></label>
+          </div>
+          <p className="text-xs text-slate-500">Mão de obra usa o custo da hora e as despesas fixas usam o percentual de “Custos gerais da casa”, na tela anterior. Deixe em branco o que não quiser contar.</p>
+          {canWrite && <div className="flex justify-end"><button disabled={salvandoExtras || !alterouExtras} className="rounded-xl bg-teal-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{salvandoExtras ? 'Salvando…' : 'Salvar custos'}</button></div>}
+        </form>
 
         {canWrite && (
           <form onSubmit={salvar} className="space-y-3 rounded-2xl border bg-slate-50 p-4">
