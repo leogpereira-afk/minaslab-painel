@@ -533,6 +533,15 @@ Deno.serve(async (req) => {
         const colecoesVinculo=["estoque_avaliacoes_fornecedor","estoque_documentos_fornecedor","estoque_fapes","estoque_pedidos","estoque_inspecoes"];
         for(const col of colecoesVinculo){const {data,error}=await sb.from(T_REG).select("id,registro").eq("colecao",col).eq("apagado",false);if(error)throw error;const vinc=(data??[]).some(x=>{const r=x.registro as Record<string,unknown>;return String(r.fornecedorId??r.fornecedor_id??r.idFornecedor??"")===id});if(vinc)return resp({erro:"Fornecedor possui histórico ou vínculos e não pode ser excluído. Altere o status para INATIVO para preservar a rastreabilidade."},409)}
         const {data:fr,error:fe}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fornecedores").eq("id",id).maybeSingle();if(fe)throw fe;if(!fr||fr.apagado)return resp({erro:"Fornecedor não localizado."},404);
+        {
+          // Como no legado: bloqueia por vínculo em estoque (lotes), produtos base, pedidos e inspeções, casando por CNPJ ou nome.
+          const alvo=fr.registro as Record<string,unknown>,nomeAlvo=String(alvo.nome??"").trim().toUpperCase(),cnpjAlvo=String(alvo.cnpj??"").replace(/\D/g,"");
+          const porNomeOuCnpj=(r:Record<string,unknown>)=>{const rn=String(r.fornecedor??r.fornecedorAtual??r.nome??"").trim().toUpperCase(),rc=String(r.cnpj??"").replace(/\D/g,"");return (!!nomeAlvo&&rn===nomeAlvo)||(!!cnpjAlvo&&rc===cnpjAlvo)};
+          for(const [col,rotulo] of [["estoque_lotes","lotes em estoque"],["estoque_produtos_base","produtos base"],["estoque_pedidos","pedidos de compra"],["estoque_inspecoes","inspeções de recebimento"]] as const){
+            const {data:rs,error:re}=await sb.from(T_REG).select("registro").eq("colecao",col).eq("apagado",false);if(re)throw re;
+            if((rs??[]).some(x=>porNomeOuCnpj(x.registro as Record<string,unknown>)))return resp({erro:`Fornecedor vinculado a ${rotulo} e não pode ser excluído. Altere o status para INATIVO para preservar a rastreabilidade.`},409);
+          }
+        }
         const agora=new Date().toISOString();const {error:ue}=await sb.from(T_REG).update({apagado:true,atualizado_em:agora}).eq("colecao","estoque_fornecedores").eq("id",id).eq("apagado",false);if(ue)throw ue;
         await sb.from(T_REG).insert({colecao:"estoque_auditoria",id:"AUD-FORN-"+crypto.randomUUID(),registro:{evento:"EXCLUSAO_FORNECEDOR",fornecedorId:id,snapshot:fr.registro,usuario,data:agora},apagado:false,atualizado_em:agora});await bump("estoque_fornecedores");return resp({ok:true});
       }
@@ -654,7 +663,7 @@ Deno.serve(async (req) => {
           estoque_avaliacoes_fornecedor:"fornecedores", estoque_fapes:"fornecedores",
           estoque_tipos_documentos_fornecedor:"configuracoes", estoque_regras_documentos_fornecedor:"configuracoes",
           estoque_documentos_fornecedor:"fornecedores",
-          estoque_inspecoes:"pedido-compra", estoque_config:"configuracoes",
+          estoque_config:"configuracoes",
           estoque_historico_produto_base:"cadastro-insumo"
         };
         const secao = mapa[colecao];
@@ -719,6 +728,32 @@ Deno.serve(async (req) => {
         const reg=(linhas??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo&&r.anexo);
         const anexo=reg?.anexo as Record<string,unknown>|undefined;if(!anexo?.storagePath)return resp({erro:"Este pedido não possui anexo armazenado."},404);
         const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
+      }
+
+      case "estoqueLoteAnexo": {
+        // Anexo (NF/certificado) da entrada de lote: vai para a pasta-mãe no Drive e o link fica no lote (como no legado).
+        if (!podeEditarEstoque("entrada-lote")) return resp({ erro:"Seu acesso lê, mas não edita entradas de estoque.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_lotes")) return resp({ erro:"Você não tem acesso às entradas de estoque.", semPermissao:true },403);
+        const loteId=String(body.loteId??"").trim(); if(!loteId) return resp({erro:"Lote obrigatório."},400);
+        const {data:lr,error:le}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_lotes").eq("id",loteId).maybeSingle(); if(le) throw le;
+        if(!lr||lr.apagado) return resp({erro:"Lote não encontrado."},404);
+        const r=await fetch(SUPABASE_URL+"/functions/v1/ml-google-drive-pedido",{method:"POST",headers:{"content-type":"application/json","x-token":TOKEN},body:JSON.stringify({action:"lote",loteId,nomeOriginal:body.nomeOriginal,mimeType:body.mimeType,arquivoBase64:body.arquivoBase64})});
+        const j=await r.json().catch(()=>({erro:"Resposta inválida do Drive."})); if(!r.ok) return resp(j,r.status);
+        const agora=new Date().toISOString();
+        const {error:ue}=await sb.from(T_REG).update({registro:{...(lr.registro as Record<string,unknown>),anexo:j.arquivoUrl,nomeAnexo:j.nomeArquivo,atualizadoPor:usuario||"maquina",atualizadoEm:agora},atualizado_em:agora}).eq("colecao","estoque_lotes").eq("id",loteId).eq("apagado",false); if(ue) throw ue;
+        await bump("estoque_lotes"); return resp({ok:true,url:j.arquivoUrl,nomeArquivo:j.nomeArquivo});
+      }
+
+      case "estoqueInspecaoPdf": {
+        // Guarda o link do PDF do laudo (já salvo na pasta do PC) na inspeção. Só o campo urlPdf muda.
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        const inspecaoId=String(body.inspecaoId??"").trim(), urlPdf=String(body.urlPdf??"").trim();
+        if(!inspecaoId||!/^https:\/\/(drive|docs)\.google\.com\//.test(urlPdf)) return resp({erro:"Inspeção e link do Drive são obrigatórios."},400);
+        const {data:ir,error:ie}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_inspecoes").eq("id",inspecaoId).maybeSingle(); if(ie) throw ie;
+        if(!ir||ir.apagado) return resp({erro:"Inspeção não encontrada."},404);
+        const agora=new Date().toISOString();
+        const {error:ue}=await sb.from(T_REG).update({registro:{...(ir.registro as Record<string,unknown>),urlPdf,atualizadoPor:usuario||"maquina",atualizadoEm:agora},atualizado_em:agora}).eq("colecao","estoque_inspecoes").eq("id",inspecaoId).eq("apagado",false); if(ue) throw ue;
+        await bump("estoque_inspecoes"); return resp({ok:true});
       }
 
       case "estoqueInspecaoRegistrar": {

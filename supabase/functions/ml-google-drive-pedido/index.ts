@@ -32,12 +32,14 @@ async function pastaMeta(id: string, t: string) {
 }
 const b64 = (s: string) => { const limpo = s.includes(",") ? s.split(",")[1] : s; const bin = atob(limpo); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 
-async function enviar(t: string, pasta: string, nome: string, tipo: string, bytes: Uint8Array) {
+async function enviar(t: string, pasta: string, nome: string, tipo: string, bytes: Uint8Array): Promise<{ id: string; url: string }> {
   const bd = "ml_" + crypto.randomUUID(), enc = new TextEncoder();
   const cab = enc.encode(`--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [pasta] })}\r\n--${bd}\r\nContent-Type: ${tipo}\r\n\r\n`), fim = enc.encode(`\r\n--${bd}--`);
   const corpo = new Uint8Array(cab.length + bytes.length + fim.length); corpo.set(cab); corpo.set(bytes, cab.length); corpo.set(fim, cab.length + bytes.length);
-  const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id", { method: "POST", headers: { authorization: "Bearer " + t, "content-type": `multipart/related; boundary=${bd}` }, body: corpo });
-  if (!r.ok) throw new Error("O Drive não aceitou o arquivo (" + r.status + ").");
+  const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink", { method: "POST", headers: { authorization: "Bearer " + t, "content-type": `multipart/related; boundary=${bd}` }, body: corpo });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) throw new Error("O Drive não aceitou o arquivo (" + r.status + ").");
+  return { id: String(j.id), url: String(j.webViewLink || "https://drive.google.com/file/d/" + j.id + "/view") };
 }
 
 Deno.serve(async (req) => {
@@ -46,6 +48,16 @@ Deno.serve(async (req) => {
   try {
     if (!TOKEN || req.headers.get("x-token") !== TOKEN) return out({ erro: "Não autorizado." }, 401);
     const b = await req.json(), codigo = String(b.pedidoCodigo || "").trim(), usuario = String(b.usuario || "").trim();
+    // Anexo da ENTRADA de lote (legado: arquivo na pasta-mãe, link na linha do lote).
+    if (String(b.action || "") === "lote") {
+      const loteId = String(b.loteId || "").trim(), nome = String(b.nomeOriginal || "").trim().replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 200), ext = (nome.split(".").pop() || "").toLowerCase();
+      if (!loteId || !nome || !b.arquivoBase64) throw new Recusa("Lote e arquivo são obrigatórios.");
+      if (!EXT_OK.includes(ext)) throw new Recusa("Formato não permitido. Envie PDF, Excel ou imagem.", 415);
+      const bytes = b64(String(b.arquivoBase64)); if (bytes.length > TETO) throw new Recusa("O anexo excede o limite de 25 MB.", 413);
+      const t = await tokenGoogle(); await pastaMeta(PASTA_MAE, t);
+      const f = await enviar(t, PASTA_MAE, loteId + "_" + nome, String(b.mimeType || "application/octet-stream").slice(0, 150), bytes);
+      return out({ ok: true, arquivoId: f.id, arquivoUrl: f.url, nomeArquivo: nome });
+    }
     if (!codigo) throw new Recusa("Pedido obrigatório.");
     const { data: linhas, error } = await sb.from("ml_registros").select("id,registro").eq("colecao", "estoque_pedidos").eq("apagado", false);
     if (error) throw error;
@@ -80,9 +92,9 @@ Deno.serve(async (req) => {
       const { error: e } = await sb.from("ml_registros").update({ registro, atualizado_em: agora }).eq("colecao", "estoque_pedidos").eq("id", x.id).eq("apagado", false);
       if (e) throw e;
     }
-    let erroArquivo = "";
-    if (arquivo && pastaId) { try { await enviar(t, pastaId, arquivo.nome, arquivo.tipo, arquivo.bytes); } catch (e) { erroArquivo = e instanceof Error ? e.message : "Falha ao enviar o arquivo."; } }
-    return out({ ok: true, pastaId, pastaUrl, criada, arquivoEnviado: !!arquivo && !erroArquivo, erroArquivo });
+    let erroArquivo = "", arquivoUrl = "";
+    if (arquivo && pastaId) { try { arquivoUrl = (await enviar(t, pastaId, arquivo.nome, arquivo.tipo, arquivo.bytes)).url; } catch (e) { erroArquivo = e instanceof Error ? e.message : "Falha ao enviar o arquivo."; } }
+    return out({ ok: true, pastaId, pastaUrl, criada, arquivoEnviado: !!arquivo && !erroArquivo, arquivoUrl, erroArquivo });
   } catch (e) {
     if (e instanceof Recusa) return out({ erro: e.message }, e.status);
     console.error("[drive-pedido]", e);
