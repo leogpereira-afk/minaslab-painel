@@ -7,9 +7,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Plus, KeyRound, Copy, Check, Shield, Power, Dices, UserRound,
+  Plus, KeyRound, Copy, Check, Shield, Power, Dices, UserRound, Pencil, CaseUpper,
 } from "lucide-react";
 import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
+import { contaEditar, contasPadraoLer, contasPadraoNome } from "../services/contas.js";
 import { getSessao } from "../lib/sessao.js";
 import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
@@ -25,6 +26,15 @@ const PAPEIS = [
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
 const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc"].includes(p));
+const paginasDaConta = (conta) => {
+  const anteriores = conta.paginas_consulta || [];
+  return anteriores.includes("__matriz_v1") || conta.papel === "direcao"
+    ? anteriores.filter(p => p !== "__matriz_v1")
+    : [...new Set([...PAGINAS_LEGADAS, ...anteriores])];
+};
+// Padrão de cadastro: com a chave ligada, o nome já aparece em MAIÚSCULAS
+// enquanto se digita (na edição, o servidor ml-contas também aplica).
+const ajustarNome = (v, maiusculas) => (maiusculas ? String(v || "").toLocaleUpperCase("pt-BR") : v);
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
   const alternarPagina = (id, marcado) => onChange(marcado
@@ -83,7 +93,7 @@ function normalizarUsuario(v) {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
-function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
+function LinhaConta({ conta, minha, aoEditar, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
   const ativa = conta.ativo !== false;
   const papel = papelDe(conta.papel);
   return (
@@ -109,6 +119,13 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
       <span className={ativa ? "chip-ok" : "chip-bad"}>{ativa ? "Ativa" : "Desativada"}</span>
 
       <span className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => aoEditar(conta)}
+          title="Editar cadastro"
+          aria-label={`Editar cadastro de ${conta.usuario}`}
+          className="btn-outline text-xs"
+        ><Pencil size={13} /> Editar</button>
         <button
           type="button"
           onClick={() => aoPaginas(conta)}
@@ -145,7 +162,7 @@ function LinhaConta({ conta, minha, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
   );
 }
 
-function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
+function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar, maiusculas }) {
   if (!form) return null;
   return (
     <Modal titulo="Criar conta" aberto={!!form} aoFechar={aoFechar}>
@@ -182,9 +199,10 @@ function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
             type="text"
             className="input"
             value={form.nome}
-            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            onChange={(e) => setForm({ ...form, nome: ajustarNome(e.target.value, maiusculas) })}
             required
           />
+          {maiusculas && <p className="mt-1 text-xs text-slate-600">Padrão ligado: o nome é salvo em MAIÚSCULAS.</p>}
         </div>
         <div>
           <label className="label" htmlFor="ac-papel">Papel</label>
@@ -231,6 +249,67 @@ function FormNovaConta({ form, setForm, salvando, erro, aoSalvar, aoFechar }) {
             disabled={salvando || !form.usuario || !form.nome.trim() || !form.senha}
           >
             {salvando ? "Criando..." : "Criar conta"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function FormEditarConta({ alvo, setAlvo, salvando, erro, aoSalvar, aoFechar, minha, maiusculas }) {
+  if (!alvo) return null;
+  return (
+    <Modal titulo={`Editar cadastro de ${alvo.usuario}`} aberto={!!alvo} aoFechar={aoFechar}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          aoSalvar();
+        }}
+        className="space-y-4"
+        aria-busy={salvando}
+      >
+        {erro && <p role="alert" className="rounded-xl bg-bad-50 p-3 text-sm text-bad-800 break-words">{erro}</p>}
+        <div>
+          <label className="label" htmlFor="ac-ed-usuario">Usuário (login)</label>
+          <input id="ac-ed-usuario" type="text" className="input bg-slate-50 text-slate-500" value={alvo.usuario} readOnly aria-describedby="ac-ed-usuario-ajuda" />
+          <p id="ac-ed-usuario-ajuda" className="mt-1 text-xs text-slate-600">O usuário é a chave de entrada e não muda. Para outro login, crie uma conta nova.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="ac-ed-nome">Nome</label>
+          <input
+            id="ac-ed-nome"
+            type="text"
+            className="input"
+            value={alvo.nome}
+            onChange={(e) => setAlvo({ ...alvo, nome: ajustarNome(e.target.value, maiusculas) })}
+            autoFocus
+            required
+          />
+          {maiusculas && <p className="mt-1 text-xs text-slate-600">Padrão ligado: o nome é salvo em MAIÚSCULAS.</p>}
+        </div>
+        <div>
+          <label className="label" htmlFor="ac-ed-papel">Papel</label>
+          <select
+            id="ac-ed-papel"
+            className="select"
+            aria-describedby="ac-ed-papel-ajuda"
+            value={alvo.papel}
+            disabled={minha}
+            onChange={(e) => setAlvo({ ...alvo, papel: e.target.value })}
+          >
+            {PAPEIS.map((p) => (
+              <option key={p.valor} value={p.valor}>{p.rotulo}</option>
+            ))}
+          </select>
+          <p id="ac-ed-papel-ajuda" className="mt-1 text-xs text-slate-600">
+            {minha ? "Você não pode mudar o papel da própria conta." : `${papelDe(alvo.papel).desc}${alvo.papel !== alvo.papelOriginal ? " — ao salvar, a pessoa precisará entrar de novo." : ""}`}
+          </p>
+        </div>
+        <MatrizPaginas paginas={alvo.paginas_consulta} direcao={alvo.papel === "direcao"} onChange={paginas_consulta => setAlvo({ ...alvo, paginas_consulta })}/>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={salvando || !alvo.nome.trim()}>
+            {salvando ? "Salvando..." : "Salvar alterações"}
           </button>
         </div>
       </form>
@@ -327,11 +406,15 @@ export default function Acessos() {
   const [formNova, setFormNova] = useState(null); // { usuario, nome, papel, senha }
   const [alvoSenha, setAlvoSenha] = useState(null); // { usuario, senha }
   const [alvoPaginas, setAlvoPaginas] = useState(null);
+  const [alvoEditar, setAlvoEditar] = useState(null); // { usuario, nome, papel, papelOriginal, paginas_consulta }
+  const [nomeMaiusculas, setNomeMaiusculas] = useState(false);
+  const [salvandoPadrao, setSalvandoPadrao] = useState(false);
   const [senhaEntregue, setSenhaEntregue] = useState(null); // { usuario, senha }
   const [salvando, setSalvando] = useState(false);
   const [erroFormulario, setErroFormulario] = useState(null);
 
   const recarregar = useCallback(() => {
+    contasPadraoLer().then(setNomeMaiusculas).catch(() => {});
     contasListar()
       .then((lista) => {
         setContas(lista);
@@ -374,7 +457,7 @@ export default function Acessos() {
       // Só os 4 campos crus — nada da tela vai junto.
       const dados = {
         usuario: formNova.usuario,
-        nome: formNova.nome.trim(),
+        nome: ajustarNome(formNova.nome.trim().replace(/\s+/g, " "), nomeMaiusculas),
         papel: formNova.papel,
         senha: formNova.senha,
         paginas_consulta: formNova.papel === "direcao" ? [] : ["__matriz_v1", ...formNova.paginas_consulta],
@@ -422,6 +505,64 @@ export default function Acessos() {
       setAviso({ tipo: "erro", texto: e.message });
     }
   };
+  const abrirEditar = (conta) => {
+    setErroFormulario(null);
+    setAlvoEditar({
+      usuario: conta.usuario,
+      nome: conta.nome || "",
+      papel: conta.papel,
+      papelOriginal: conta.papel,
+      paginas_consulta: paginasDaConta(conta),
+    });
+  };
+
+  const salvarEdicao = async () => {
+    setErroFormulario(null);
+    setSalvando(true);
+    try {
+      await contaEditar({
+        usuario: alvoEditar.usuario,
+        nome: ajustarNome(alvoEditar.nome.trim().replace(/\s+/g, " "), nomeMaiusculas),
+        papel: alvoEditar.papel,
+        paginas_consulta: alvoEditar.papel === "direcao" ? [] : ["__matriz_v1", ...alvoEditar.paginas_consulta],
+      });
+      const mudouPapel = alvoEditar.papel !== alvoEditar.papelOriginal;
+      setAviso({
+        tipo: "ok",
+        texto: `Cadastro de "${alvoEditar.usuario}" atualizado.${mudouPapel ? " Como o papel mudou, a pessoa precisará entrar novamente." : " Peça ao usuário que entre novamente para atualizar o menu."}`,
+      });
+      setAlvoEditar(null);
+      recarregar();
+    } catch (e) {
+      setErroFormulario(e.message || "Não foi possível salvar o cadastro. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const alternarPadraoNome = async (ligar) => {
+    let converter = false;
+    if (ligar && (contas || []).some((c) => c.nome && c.nome !== c.nome.toLocaleUpperCase("pt-BR"))) {
+      converter = window.confirm("Converter também os nomes já cadastrados para MAIÚSCULAS?\n\nOK = converter todos · Cancelar = só os próximos cadastros");
+    }
+    setSalvandoPadrao(true);
+    try {
+      const r = await contasPadraoNome(ligar, converter);
+      setNomeMaiusculas(ligar);
+      setAviso({
+        tipo: "ok",
+        texto: ligar
+          ? `Padrão MAIÚSCULAS ligado.${r?.convertidas ? ` ${r.convertidas} ${r.convertidas === 1 ? "nome convertido" : "nomes convertidos"}.` : ""}`
+          : "Padrão MAIÚSCULAS desligado — os nomes são salvos como digitados.",
+      });
+      recarregar();
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message || "Não foi possível alterar o padrão." });
+    } finally {
+      setSalvandoPadrao(false);
+    }
+  };
+
   const salvarPaginas = async () => {
     setSalvando(true);
     setErroFormulario(null);
@@ -493,8 +634,9 @@ export default function Acessos() {
                 conta={c}
                 minha={c.usuario === sessao?.usuario}
                 aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
+                aoEditar={abrirEditar}
                 aoAlternarAtiva={alternarAtiva}
-                aoPaginas={conta => { setErroFormulario(null); const anteriores = conta.paginas_consulta || []; setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: anteriores.includes("__matriz_v1") || conta.papel === "direcao" ? anteriores.filter(p => p !== "__matriz_v1") : [...new Set([...PAGINAS_LEGADAS, ...anteriores])] }); }}
+                aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: paginasDaConta(conta) }); }}
               />
             ))}
           </div>
@@ -504,6 +646,34 @@ export default function Acessos() {
       {vm.lista.length === 0 && (
         <Empty className="mb-6">Nenhuma conta criada ainda — comece pela sua, no cartão acima.</Empty>
       )}
+
+      <Card className="mb-6">
+        <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Padrão de cadastro
+        </h2>
+        <label className="flex cursor-pointer flex-wrap items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">
+            <CaseUpper size={18} strokeWidth={2.2} />
+          </span>
+          <span className="min-w-0 flex-1 basis-56">
+            <span className="block text-sm font-semibold text-slate-900">Nomes em MAIÚSCULAS</span>
+            <span className="block text-xs text-slate-500">
+              {nomeMaiusculas
+                ? "Ligado: todo nome criado ou editado é salvo em MAIÚSCULAS."
+                : "Desligado: os nomes são salvos exatamente como digitados."}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="h-5 w-5 accent-blue-600"
+            checked={nomeMaiusculas}
+            disabled={salvandoPadrao}
+            onChange={(e) => alternarPadraoNome(e.target.checked)}
+            aria-label="Padronizar nomes das contas em maiúsculas"
+          />
+        </label>
+      </Card>
 
       <Card>
         <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -530,6 +700,17 @@ export default function Acessos() {
         erro={erroFormulario}
         aoSalvar={criar}
         aoFechar={() => setFormNova(null)}
+        maiusculas={nomeMaiusculas}
+      />
+      <FormEditarConta
+        alvo={alvoEditar}
+        setAlvo={setAlvoEditar}
+        salvando={salvando}
+        erro={erroFormulario}
+        aoSalvar={salvarEdicao}
+        aoFechar={() => setAlvoEditar(null)}
+        minha={alvoEditar?.usuario === sessao?.usuario}
+        maiusculas={nomeMaiusculas}
       />
       {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
         <div className="space-y-4">
