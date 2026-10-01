@@ -47,6 +47,12 @@ export const NOMES_GENERICOS = [
   "Ferramenta", "Extintor", "Televisao",
 ];
 
+// Sugestões de área dentro do laboratório (campo livre; só agrupa e filtra).
+export const AREAS_LAB = [
+  "Físico-Químico", "FQ Efluente", "Microbiologia", "Amostragem",
+  "Recepção", "Comercial", "Armazenamento de amostras", "Sala de lavagem",
+];
+
 const soNumero = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
 export function calcPatrimonio(mapaBens, mapaSetores, hojeISO) {

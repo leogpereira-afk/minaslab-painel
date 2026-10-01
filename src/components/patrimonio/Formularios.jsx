@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {SectionTitle} from "../ui.jsx";
-import {SITUACOES,NOMES_GENERICOS} from "../../lib/calc/patrimonio.js";
+import {SITUACOES,NOMES_GENERICOS,AREAS_LAB} from "../../lib/calc/patrimonio.js";
 import {paraNumero,paraCampo,ymdLocal} from "../../lib/format.js";
 export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
   const [f, setF] = useState(inicial);
@@ -106,6 +106,34 @@ export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
               onBlur={(e) => setF((v) => ({ ...v, valor: paraCampo(paraNumero(e.target.value)) }))}
             />
           </div>
+
+          <div>
+            <label className="label" htmlFor="b-area">Área do laboratório</label>
+            <input id="b-area" className="input" list="areas-lab" placeholder="ex: Microbiologia" value={f.areaLab || ""} onChange={trocar("areaLab")} />
+            <datalist id="areas-lab">
+              {AREAS_LAB.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="label" htmlFor="b-volume">Volume / capacidade</label>
+            <input id="b-volume" className="input" placeholder="ex: 25 mL" value={f.volume || ""} onChange={trocar("volume")} />
+          </div>
+          <div>
+            <label className="label" htmlFor="b-funcionamento">Entrou em funcionamento</label>
+            <input id="b-funcionamento" type="date" className="input" value={f.dataFuncionamento || ""} onChange={trocar("dataFuncionamento")} />
+          </div>
+          {[["reqCalibracao", "Requer calibração"], ["reqQualificacao", "Requer qualificação"], ["reqManutencao", "Requer manutenção"], ["reqSoftware", "Requer controle de software"]].map(([campo, rotulo]) => (
+            <div key={campo}>
+              <label className="label" htmlFor={`b-${campo}`}>{rotulo}</label>
+              <select id={`b-${campo}`} className="input" value={f[campo] || ""} onChange={trocar(campo)}>
+                <option value="">não informado</option>
+                <option value="sim">Sim</option>
+                <option value="nao">Não</option>
+              </select>
+            </div>
+          ))}
 
           <div className="sm:col-span-2">
             <label className="label" htmlFor="b-obs">Observação</label>

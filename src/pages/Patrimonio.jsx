@@ -12,7 +12,7 @@ import {FormBem, FormSetor} from '../components/patrimonio/Formularios.jsx';
 import './patrimonio.css';
 import {getSessao,podeEditar,podeVerSecao} from '../lib/sessao.js';
 
-const VAZIO = {id:'', codigo:'', setorSigla:'', nomeGenerico:'', descricaoTecnica:'', nf:'', dataAquisicao:'', valor:'', situacao:'uso', observacao:'', responsavel:'', motivoSemNota:''};
+const VAZIO = {id:'', codigo:'', setorSigla:'', nomeGenerico:'', descricaoTecnica:'', nf:'', dataAquisicao:'', valor:'', situacao:'uso', observacao:'', responsavel:'', motivoSemNota:'', areaLab:'', volume:'', dataFuncionamento:'', reqCalibracao:'', reqQualificacao:'', reqManutencao:'', reqSoftware:''};
 const SETOR_VAZIO = {id:'', sigla:'', nome:'', area:''};
 const POR_PAGINA = 12;
 const rotuloSituacao = b => (SITUACOES[b.situacao] || SITUACOES.uso).rotulo;
@@ -101,7 +101,7 @@ export default function Patrimonio() {
     setSalvando(true);setMsg(null);
     try {
       const id=f.id||idNovo.current;
-      const dados={...(f.codigo?{codigo:f.codigo}:{}),setorSigla:f.setorSigla,nomeGenerico:f.nomeGenerico.trim(),descricaoTecnica:f.descricaoTecnica.trim(),nf:f.nf.trim(),motivoSemNota:String(f.motivoSemNota||'').trim(),responsavel:String(f.responsavel||'').trim(),dataAquisicao:f.dataAquisicao,valor:paraNumero(f.valor),situacao:f.situacao,observacao:f.observacao.trim()};
+      const dados={...(f.codigo?{codigo:f.codigo}:{}),setorSigla:f.setorSigla,nomeGenerico:f.nomeGenerico.trim(),descricaoTecnica:f.descricaoTecnica.trim(),nf:f.nf.trim(),motivoSemNota:String(f.motivoSemNota||'').trim(),areaLab:String(f.areaLab||'').trim(),volume:String(f.volume||'').trim(),dataFuncionamento:f.dataFuncionamento||'',reqCalibracao:f.reqCalibracao||'',reqQualificacao:f.reqQualificacao||'',reqManutencao:f.reqManutencao||'',reqSoftware:f.reqSoftware||'',responsavel:String(f.responsavel||'').trim(),dataAquisicao:f.dataAquisicao,valor:paraNumero(f.valor),situacao:f.situacao,observacao:f.observacao.trim()};
       const novo=await salvarBem(id,dados);setBens(novo);setJanela({tipo:'detalhe',bem:{...novo[id],id}});
       setMsg({texto:f.id?'Alterações salvas.':`Bem cadastrado. A etiqueta é ${novo[id]?.codigo||'gerada pelo servidor'}. Você já pode adicionar as fotos.`});
     }catch(e){setMsg({erro:true,texto:e.message});}finally{setSalvando(false);}
