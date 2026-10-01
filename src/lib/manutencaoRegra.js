@@ -28,3 +28,33 @@ export function proximasPorAlvo(manutencoes) {
   }
   return porAlvo;
 }
+
+// Calibração sem periodicidade cadastrada no bem vale 12 meses.
+export const PERIODO_CALIBRACAO_PADRAO = 12;
+
+// 'YYYY-MM-DD' + n meses => 'YYYY-MM-DD'. Dia que não existe no mês de
+// destino (31/01 + 1) cai no último dia dele (28 ou 29/02), não em março.
+export function somarMeses(ymd, meses) {
+  const [a, m, d] = String(ymd).split("-").map(Number);
+  if (!a || !m || !d || !Number.isFinite(Number(meses))) return "";
+  const alvo = m - 1 + Number(meses);
+  const ano = a + Math.floor(alvo / 12);
+  const mes = ((alvo % 12) + 12) % 12;
+  const ultimo = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${ano}-${p2(mes + 1)}-${p2(Math.min(d, ultimo))}`;
+}
+
+// Bens do patrimônio (mapa id => dados) como alvos de manutenção. Bem baixado
+// sai da lista de escolha; o nome leva o código da etiqueta, que é o que está
+// colado no equipamento.
+export function bensComoAlvos(mapa) {
+  return Object.entries(mapa || {})
+    .map(([id, b]) => ({
+      ...b,
+      id,
+      nome: [b.codigo, b.nomeGenerico, b.volume].filter(Boolean).join(" · ") || id,
+      ativo: b.situacao !== "baixado",
+    }))
+    .sort((x, y) => String(x.codigo || "").localeCompare(String(y.codigo || ""), "pt-BR", { numeric: true }));
+}

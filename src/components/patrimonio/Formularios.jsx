@@ -145,6 +145,14 @@ export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
             </div>
           ))}
 
+          {f.reqCalibracao === "sim" && (
+            <div>
+              <label className="label" htmlFor="b-periodo">Calibrar a cada (meses)</label>
+              <input id="b-periodo" type="number" min="1" max="120" className="input" placeholder="12" value={f.periodicidadeCalibracaoMeses || ""} onChange={trocar("periodicidadeCalibracaoMeses")} />
+              <p className="mt-1 text-xs text-slate-500">Em branco vale 12 meses. A próxima calibração é calculada a partir da última feita em Manutenções.</p>
+            </div>
+          )}
+
           <div>
             <label className="label" htmlFor="b-lista">Lista de origem</label>
             <select id="b-lista" className="input" value={f.listaOrigem || ""} onChange={trocar("listaOrigem")}>
