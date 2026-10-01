@@ -39,7 +39,7 @@ Para repetir o teste do banco: `PGLITE_ENTRY=<caminho do @electric-sql/pglite/di
 2. Aplicar `20261005120000_academy_fundacao.sql` (só cria tabelas/funções `ml_ac_*`; não altera tabelas existentes).
 3. Publicar as funções: `ml-academy-gestao` e a `ml-sync` atualizada (única mudança: 5 chaves novas na lista de páginas válidas). Fazer o deploy da `ml-sync` fora do horário de uso.
 4. Publicar o painel (merge na `main` → GitHub Pages). A Academy só aparece para a direção; ninguém mais a vê até receber permissão em Acessos.
-5. Em Acessos, conceder `academy-gestao` (RH) à conta da **Ana** e `academy-qualidade` (Qualidade) à conta da **Lidyane** (definido em 01/10/2026; conferir o login de cada uma); em Gestão Academy → "Contas e colaboradores", vincular cada conta ao colaborador.
+5. As contas da Ana (RH) e da Lidyane (Qualidade) **já existem com papel Direção**, que já tem todas as permissões da Academy; não é preciso criar logins nem conceder chaves. Em Gestão Academy → "Contas e colaboradores", vincular cada conta ao seu cadastro do RH. (Se no futuro quiserem restringir cada uma ao seu perfil, passar a conta para Equipe com a matriz e marcar só `academy-gestao` ou `academy-qualidade`.)
 6. Teste de fumaça: criar um treinamento de rascunho, salvar, abrir em outra conta sem permissão (deve ser negado), arquivar o treinamento de teste.
 
 ## Recuperação em caso de falha

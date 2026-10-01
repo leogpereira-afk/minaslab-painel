@@ -11,8 +11,8 @@ Cada `.json` desta pasta é um **rascunho importável**: no editor do treinament
 - Inclui 3 atividades práticas (autodiagnóstico, plano da semana, compromisso pessoal) e 2 estudos de caso. Elas não comprovam competência sozinhas; servem de conversa com o gestor.
 
 ### Para o responsável pelo conteúdo decidir
-1. ~~Responsável pelo conteúdo~~ **Decidido: um gestor** (falta escolher o nome na lista do RH; é obrigatório para publicar). Perfis: Ana = RH (cria/publica), Lidyane = Qualidade (valida).
-2. ~~Obrigatório?~~ **Decidido: obrigatório, para todos os colaboradores.** Falta definir o **prazo** (sugestão: 30 dias após a atribuição).
+1. ~~Responsável pelo conteúdo~~ **Decidido: Lidyane** (escolher na lista do RH ao importar o curso). Perfis: Ana = RH (cria/publica), Lidyane = Qualidade (valida).
+2. ~~Obrigatório?~~ **Decidido: obrigatório, para todos os colaboradores.** **Prazo decidido: 30 dias** após a atribuição.
 3. ~~Reciclagem?~~ **Decidido: sem validade.**
 4. ~~Carga horária~~ **Decidido: em branco**, a menos que a Qualidade valide.
 5. Trocar os exemplos genéricos por situações reais da rotina (atendimento, coleta, laboratório, administrativo).

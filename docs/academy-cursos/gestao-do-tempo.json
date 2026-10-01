@@ -3,7 +3,7 @@
   "descricao": "Como organizar o dia de trabalho, definir prioridades, proteger o foco e criar o hábito de planejar e revisar. Conteúdo geral, aplicável a qualquer setor da MinasLab.",
   "modalidade": "nenhuma",
   "obrigatorio": true,
-  "prazoDias": "",
+  "prazoDias": 30,
   "validadeMeses": "",
   "cargaHorariaMin": "",
   "exigeQualidade": false,
