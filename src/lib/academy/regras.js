@@ -16,10 +16,70 @@ export const tipoAula = (v) => TIPOS_AULA.find((t) => t.valor === v) || TIPOS_AU
 
 export const MODALIDADES = [
   { valor: "nenhuma", rotulo: "Somente conclusão das aulas", disponivel: true },
-  { valor: "automatica", rotulo: "Prova automática (próxima etapa)", disponivel: false },
+  { valor: "automatica", rotulo: "Prova automática (nota mínima e tentativas)", disponivel: true },
   { valor: "gestor", rotulo: "Avaliação do gestor (próxima etapa)", disponivel: false },
   { valor: "hibrida", rotulo: "Híbrida: prova + prática (próxima etapa)", disponivel: false },
 ];
+
+export const TIPOS_QUESTAO = [
+  { valor: "multipla", rotulo: "Múltipla escolha (1 correta)" },
+  { valor: "vf", rotulo: "Verdadeiro ou falso" },
+  { valor: "multiplas", rotulo: "Múltiplas respostas (1 ou mais corretas)" },
+];
+export const novaQuestao = (tipo = "multipla") => ({
+  tipo, enunciado: "", feedback: "",
+  opcoes: tipo === "vf" ? [{ texto: "Verdadeiro", correta: true }, { texto: "Falso", correta: false }] : [{ texto: "", correta: true }, { texto: "", correta: false }],
+});
+// Trocar o tipo ajusta as opções: V/F volta a ter as duas opções; "1 correta" mantém só a primeira marcada.
+export function trocarTipoQuestao(q, tipo) {
+  if (tipo === "vf") return { ...q, tipo, opcoes: novaQuestao("vf").opcoes };
+  if (tipo === "multipla" || q.tipo === "vf") {
+    const opcoes = q.tipo === "vf" ? [{ texto: "", correta: true }, { texto: "", correta: false }] : q.opcoes;
+    const primeira = opcoes.findIndex((o) => o.correta);
+    return { ...q, tipo, opcoes: opcoes.map((o, i) => ({ ...o, correta: i === Math.max(primeira, 0) })) };
+  }
+  return { ...q, tipo };
+}
+
+export const SITUACAO = {
+  pendente: { rotulo: "Não iniciado", tom: "bg-slate-100 text-slate-700" },
+  em_andamento: { rotulo: "Em andamento", tom: "bg-brand-50 text-brand-800" },
+  concluida: { rotulo: "Concluído", tom: "bg-ok-50 text-ok-800" },
+  atrasada: { rotulo: "Prazo vencido", tom: "bg-bad-50 text-bad-800" },
+  validade_vencida: { rotulo: "Reciclagem necessária", tom: "bg-bad-50 text-bad-800" },
+  tentativas_esgotadas: { rotulo: "Tentativas esgotadas", tom: "bg-bad-50 text-bad-800" },
+};
+
+// Dias entre hoje e uma data (AAAA-MM-DD); negativo = vencido.
+export function diasAte(data, hoje) {
+  if (!data || !hoje) return null;
+  const d = (x) => Date.UTC(+String(x).slice(0, 4), +String(x).slice(5, 7) - 1, +String(x).slice(8, 10));
+  return Math.round((d(data) - d(hoje)) / 86400000);
+}
+export const dataBR = (iso) => (iso ? `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}` : "—");
+
+export function textoPrazo(data, hoje) {
+  const n = diasAte(data, hoje);
+  if (n === null) return "Sem prazo";
+  if (n < 0) return `Venceu há ${-n} dia${n === -1 ? "" : "s"} (${dataBR(data)})`;
+  if (n === 0) return `Vence hoje (${dataBR(data)})`;
+  return `Vence em ${n} dia${n === 1 ? "" : "s"} (${dataBR(data)})`;
+}
+
+// Linhas do certificado (a tela e o PDF usam a mesma fonte). Carga horária só
+// aparece quando o servidor a entregou (cadastrada E validada pela Qualidade).
+export function linhasCertificado(c) {
+  const data = new Date(c.emitido_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const l = [
+    ["Colaborador", c.pessoa_nome], ["Treinamento", c.treinamento_titulo], ["Versão do conteúdo", String(c.versao_numero)],
+    ["Data de emissão", data], ["Responsável pelo conteúdo", c.responsavel_nome || "—"],
+  ];
+  if (c.carga_horaria_min) l.push(["Carga horária", `${(c.carga_horaria_min / 60).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h (${c.carga_horaria_min} min)`]);
+  if (c.nota != null) l.push(["Nota na avaliação", Number(c.nota).toLocaleString("pt-BR")]);
+  l.push(["Código de verificação", c.codigo]);
+  return l;
+}
+export const AVISO_CERTIFICADO = "Este documento registra a conclusão do treinamento conforme os critérios da versão indicada. Não substitui a validação de competência prática, quando exigida.";
 
 export const STATUS_TREINAMENTO = { rascunho: "Rascunho", publicado: "Publicado", arquivado: "Arquivado" };
 export const STATUS_VERSAO = { rascunho: "Rascunho", publicada: "Publicada", substituida: "Substituída", arquivada: "Arquivada" };
@@ -52,6 +112,7 @@ export function formularioDaVersao(det) {
     exigeQualidade: !!v.exige_qualidade, notasVersao: v.notas_versao || "",
     modulos: det.modulos.map((m) => ({ titulo: m.titulo, descricao: m.descricao || "", aulas: m.aulas.map((a) => ({ titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo || {}, duracaoMin: a.duracaoMin ?? "" })) })),
     materiais: det.materiais.map((m) => ({ titulo: m.titulo, url: m.url })),
+    questoes: (det.questoes || []).map((q) => ({ tipo: q.tipo, enunciado: q.enunciado, feedback: q.feedback || "", opcoes: q.opcoes.map((o) => ({ texto: o.texto, correta: !!o.correta })) })),
   };
 }
 
@@ -73,10 +134,15 @@ export function formularioDeModelo(modelo, atual) {
       return { titulo: txt(a.titulo), tipo: a.tipo, conteudo: a.conteudo && typeof a.conteudo === "object" ? a.conteudo : {}, duracaoMin: a.duracaoMin ?? "" };
     }) };
   });
+  const questoes = (Array.isArray(modelo.questoes) ? modelo.questoes : []).map((q, i) => {
+    if (!TIPOS_QUESTAO.some((t) => t.valor === q?.tipo) || !Array.isArray(q.opcoes)) throw new Error(`Questão ${i + 1}: formato inválido.`);
+    return { tipo: q.tipo, enunciado: txt(q.enunciado), feedback: txt(q.feedback), opcoes: q.opcoes.map((o) => ({ texto: txt(o?.texto), correta: o?.correta === true })) };
+  });
   const materiais = (Array.isArray(modelo.materiais) ? modelo.materiais : []).map((m) => ({ titulo: txt(m?.titulo), url: txt(m?.url) }));
   // Critérios de avaliação vindos do arquivo só valem se a modalidade existir e estiver disponível.
   const modalidade = MODALIDADES.some((m) => m.valor === modelo.modalidade && m.disponivel) ? modelo.modalidade : "nenhuma";
   return { ...atual, titulo: txt(modelo.titulo) || atual.titulo, descricao: txt(modelo.descricao), modalidade,
     obrigatorio: modelo.obrigatorio === true, prazoDias: modelo.prazoDias ?? "", validadeMeses: modelo.validadeMeses ?? "",
-    cargaHorariaMin: modelo.cargaHorariaMin ?? "", exigeQualidade: modelo.exigeQualidade === true, notasVersao: txt(modelo.notasVersao), modulos, materiais };
+    cargaHorariaMin: modelo.cargaHorariaMin ?? "", exigeQualidade: modelo.exigeQualidade === true, notasVersao: txt(modelo.notasVersao),
+    notaMinima: modelo.notaMinima ?? "", maxTentativas: modelo.maxTentativas ?? "", modulos, materiais, questoes };
 }

@@ -51,3 +51,52 @@ Para repetir o teste do banco: `PGLITE_ENTRY=<caminho do @electric-sql/pglite/di
 ## Pontos de atenção
 - O vínculo conta ↔ colaborador precisa ser feito antes do uso pelos colaboradores (etapa 3).
 - A tabela preexistente `clientes_financeiro` está com RLS desligado (não alterada aqui); recomenda-se tratar à parte.
+
+---
+
+# Etapa 3 (aprendizagem) — implementada em código, NÃO aplicada
+
+Status: na branch `claude/serene-mayer-8e1ffz`; nada aplicado no banco nem publicado. Custo zero.
+
+## O que foi implementado
+- **Colaborador:** Minha Academy (obrigatórios, em andamento, prazo vencido, concluídos, reciclagem necessária), Catálogo (treinamentos publicados do meu perfil; opcionais podem ser iniciados), Avaliações, Meus Certificados e sino de notificações (nova atribuição, resultado, conclusão).
+- **Player de aulas:** aulas em sequência (texto, imagem/vídeo/PDF/apresentação/link por link https, estudo de caso e atividade prática com resposta salva), progresso salvo no servidor, retoma da última aula mesmo em outro computador.
+- **Prova automática:** múltipla escolha, verdadeiro/falso e múltiplas respostas; nota mínima e limite de tentativas configuráveis; **nota, acerto e aprovação calculados no banco**; só libera após concluir todas as aulas; a resposta ao colaborador traz acerto/erro e feedback por questão, nunca o gabarito; tentativas, respostas e datas ficam no histórico imutável.
+- **Atribuições:** ao publicar (e ao abrir Minha Academy) o sistema aplica o público (todos/setor/cargo/colaborador/grupo) aos colaboradores ativos do RH, com prazo = data + dias configurados. Sem duplicar, e **publicar nova versão não reatribui sozinho** (convocar reciclagem é decisão explícita, Etapa 4).
+- **Certificado:** só existe para treinamento concluído (todas as aulas + aprovação, quando há prova); registro imutável com colaborador, treinamento, versão, data, responsável e código; carga horária só se cadastrada **e** validada pela Qualidade; PDF gerado no navegador a partir do registro do servidor, com a ressalva de que não substitui validação de competência prática.
+- **Gestão:** nova aba "Avaliação" no editor (questões, gabarito, nota mínima, tentativas); publicação exige questões válidas; ao publicar/salvar o público informa quantos colaboradores receberam o treinamento.
+
+## Arquivos
+- Migração: `supabase/migrations/20261006120000_academy_aprendizagem.sql` (aditiva; depois da `20261005120000`).
+- Servidor: `supabase/functions/ml-academy/index.ts` (novo), `ml-academy-gestao/index.ts` (questões, atribuição), `_shared/academy-auth.ts`.
+- Painel: `src/pages/academy/{MinhaAcademy,Catalogo,Avaliacoes,TreinamentoPlayer,Certificados}.jsx`, `TreinamentoEditor.jsx` (aba Avaliação), `AcademyLayout.jsx` (sino), `src/lib/academy/{regras,certificadoPdf}.js`, `src/services/academy.js`, `App.jsx`, `lib/api.js`, `lib/catalogoPermissoes.js`.
+- Testes: `scripts/testar-academy-aprendizagem.mjs`, `src/lib/academy/*.test.mjs`.
+
+## Testes realizados
+| Teste | Resultado |
+|---|---|
+| Banco (PGlite) fundação | 47 verificações passaram |
+| Banco (PGlite) aprendizagem: regras de publicação da prova, público e atribuições (todos/setor/cargo/colaborador/grupo, idempotência, prazo 30 dias), progresso e retomada, isolamento entre colaboradores, correção dos 3 tipos de questão (inclui resposta parcial = errada), limite de tentativas, tentativa/resposta/certificado imutáveis, conclusão só com aulas + aprovação, certificado só com requisitos, idempotência, histórico e tentativas da v1 preservados após publicar v2, matrícula pelo catálogo restrita ao público, `anon`/`authenticated` negados | 83 verificações passaram |
+| Curso Gestão do Tempo carregado no banco | aceito; única pendência: responsável |
+| `npm test` | 622 passaram, 0 falhas |
+| `npm run lint` / `npm run build` | 0 erros / ok |
+| Sintaxe TypeScript das 3 funções | ok |
+| Fluxo completo no navegador (API simulada): Minha Academy → aula → estudo de caso → prova (única + múltiplas) → resultado → certificado e PDF, em 1366 px e 390 px | sem erros de console e sem rolagem horizontal; PDF gerado e conferido (sem carga horária quando não validada). Capturas em `docs/academy-capturas/*-colab-*.png` (dados simulados) |
+
+**Não testado ainda** (exige a implantação): as Edge Functions contra um banco real e o fluxo com contas reais de RH, Qualidade e colaborador; a avaliação de mais de uma pessoa simultânea.
+
+## Implantação (acrescenta aos passos da Etapa 2, na mesma janela)
+1. Backup do projeto (Supabase → Database → Backups).
+2. Aplicar `20261005120000_academy_fundacao.sql` e depois `20261006120000_academy_aprendizagem.sql`.
+3. Publicar as funções `ml-academy-gestao` (atualizada), `ml-academy` (nova) e `ml-sync` (5 chaves novas).
+4. Publicar o painel (merge na `main`). Continua visível só para a direção.
+5. Importar o curso Gestão do Tempo (Gestão Academy → novo treinamento → Conteúdo → Importar modelo), escolher Lidyane como responsável, definir público "Todos", salvar, publicar. **Antes de publicar**, vincular as contas aos colaboradores (Gestão Academy → Contas e colaboradores): só quem tem vínculo recebe e vê treinamentos.
+6. Para liberar a colaboradores: em Acessos conceder a chave **Academy · Colaborador** (`academy`) às contas com matriz; para contas sem matriz (legadas), retirar `"academy"` de `SO_DIRECAO` em `src/lib/sessao.js` no dia da liberação.
+7. Teste de fumaça com duas contas: concluir o curso numa, conferir que a outra não vê nada da primeira, baixar o certificado.
+
+## Recuperação
+- **Front:** reverter o merge na `main`. **`ml-academy`:** desativar a função. **`ml-academy-gestao`/`ml-sync`:** reimplantar a versão anterior.
+- **Banco:** se ainda **não houver dados reais de aprendizagem**, usar o script de reversão no fim de cada migração (primeiro a 2, depois a 1) e reaplicar as funções da migração 1. **Havendo tentativas, certificados ou progresso reais, não apagar:** restaurar do backup do passo 1 ou corrigir à frente (histórico imutável por desenho).
+
+## Ainda não existe (Etapa 4)
+Avaliação prática do gestor e modelo híbrido, matriz de competências (teoria × prática × validade), convocação de reciclagem, indicadores, exportações, trilhas e envio de arquivos. Por isso a Academy ainda **não** deve ser usada para declarar um colaborador "apto" a uma atividade crítica.

@@ -2,7 +2,7 @@
 // A regra de negócio e a escrita ficam em funções SQL (ml_ac_*); aqui só se
 // autentica, autoriza por capacidade e traduz a resposta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { autenticar, CORS, out, type Sessao } from "../_shared/academy-auth.ts";
+import { autenticar, CORS, out, pessoasRH as pessoasDoRH, type Sessao } from "../_shared/academy-auth.ts";
 
 const URL_ = Deno.env.get("SUPABASE_URL")!;
 const sb = createClient(URL_, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -13,26 +13,35 @@ class Erro extends Error { constructor(m: string, public status = 400) { super(m
 const exigir = (ok: boolean, msg = "Você não tem permissão para esta ação.") => { if (!ok) throw new Erro(msg, 403); };
 
 // Pessoas do RH: só o mínimo para escolher responsável/público (sem CPF, salário etc.).
-async function pessoasRH() {
-  const { data, error } = await sb.from("ml_registros").select("registro,apagado").eq("colecao", "rh_pessoas");
-  if (error) throw error;
-  return (data ?? []).filter((r) => !r.apagado).map((r) => r.registro as Record<string, unknown>).filter((p) => p.ativo !== false)
-    .map((p) => ({ id: String(p.id), nome: String(p.nome ?? ""), cargo: String(p.cargo ?? ""), setor: String(p.setor ?? "") }))
-    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-}
+const pessoasRH = () => pessoasDoRH(sb).then((l) => l.map(({ id, nome, cargo, setor }) => ({ id, nome, cargo, setor })));
 
 async function detalheVersao(versaoId: string) {
-  const [v, mod, aul, mat, prob] = await Promise.all([
+  const [v, mod, aul, mat, prob, que, opc, gab] = await Promise.all([
     sb.from("ml_ac_versoes").select("*").eq("id", versaoId).single(),
     sb.from("ml_ac_modulos").select("*").eq("versao_id", versaoId).order("ordem"),
     sb.from("ml_ac_aulas").select("*").eq("versao_id", versaoId).order("ordem"),
     sb.from("ml_ac_materiais").select("*").eq("versao_id", versaoId).order("ordem"),
     sb.rpc("ml_ac_problemas_versao", { p_versao: versaoId }),
+    sb.from("ml_ac_questoes").select("id,ordem,tipo,enunciado,feedback").eq("versao_id", versaoId).order("ordem"),
+    sb.from("ml_ac_opcoes").select("id,questao_id,ordem,texto").eq("versao_id", versaoId).order("ordem"),
+    sb.from("ml_ac_gabaritos").select("opcao_id").eq("versao_id", versaoId),
   ]);
-  for (const x of [v, mod, aul, mat, prob]) if (x.error) throw x.error;
+  for (const x of [v, mod, aul, mat, prob, que, opc, gab]) if (x.error) throw x.error;
+  const certas = new Set((gab.data ?? []).map((g) => g.opcao_id));
+  // O gabarito só sai por aqui, para quem GERENCIA o curso; o colaborador nunca o recebe (ml-academy).
+  const questoes = (que.data ?? []).map((x) => ({ tipo: x.tipo, enunciado: x.enunciado, feedback: x.feedback,
+    opcoes: (opc.data ?? []).filter((o) => o.questao_id === x.id).map((o) => ({ texto: o.texto, correta: certas.has(o.id) })) }));
   const modulos = (mod.data ?? []).map((m) => ({ id: m.id, titulo: m.titulo, descricao: m.descricao,
     aulas: (aul.data ?? []).filter((a) => a.modulo_id === m.id).map((a) => ({ id: a.id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, duracaoMin: a.duracao_min })) }));
-  return { versao: v.data, modulos, materiais: mat.data ?? [], problemas: prob.data ?? [] };
+  return { versao: v.data, modulos, materiais: mat.data ?? [], questoes, problemas: prob.data ?? [] };
+}
+
+// Aplica o público às pessoas ATIVAS do RH (idempotente; não duplica nem reatribui versão nova).
+async function atribuir(treinamentoId: string) {
+  const pessoas = await pessoasDoRH(sb);
+  const { data, error } = await sb.rpc("ml_ac_atribuir", { p_pessoas: pessoas.map(({ id, cargo, setor }) => ({ id, cargo, setor })), p_treinamento: treinamentoId });
+  if (error) throw error;
+  return Number(data ?? 0);
 }
 
 async function acao(action: string, b: Record<string, unknown>, s: Sessao) {
@@ -109,7 +118,9 @@ async function acao(action: string, b: Record<string, unknown>, s: Sessao) {
       if (!uuid(b.versaoId)) throw new Erro("Versão inválida.");
       const { error } = await sb.rpc("ml_ac_versao_publicar", { p_usuario: s.usuario, p_versao: b.versaoId });
       if (error) throw error;
-      return { ok: true };
+      const { data: vv } = await sb.from("ml_ac_versoes").select("treinamento_id").eq("id", b.versaoId).single();
+      const atribuidas = vv ? await atribuir(vv.treinamento_id) : 0;
+      return { ok: true, atribuidas };
     }
     case "novaVersao": {
       exigir(s.caps.gestao);
@@ -131,6 +142,11 @@ async function acao(action: string, b: Record<string, unknown>, s: Sessao) {
       const { error } = await sb.rpc("ml_ac_publico_salvar", { p_usuario: s.usuario, p_treinamento: b.treinamentoId, p_itens: b.itens });
       if (error) throw error;
       return { ok: true };
+    }
+    case "publicoAplicar": {
+      exigir(s.caps.gestao);
+      if (!uuid(b.treinamentoId)) throw new Erro("Treinamento inválido.");
+      return { ok: true, atribuidas: await atribuir(String(b.treinamentoId)) };
     }
     case "grupoSalvar": {
       exigir(s.caps.gestao);

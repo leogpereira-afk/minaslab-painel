@@ -34,5 +34,5 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "manutencoes", "laboratorio",
   "financas/servicos-gerados",
   // Só o que o servidor já suporta de ponta a ponta (Academy etapa 2).
-  "academy-gestao", "academy-qualidade",
+  "academy", "academy-gestao", "academy-qualidade",
 ]);

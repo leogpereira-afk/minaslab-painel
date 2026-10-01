@@ -5,9 +5,9 @@ import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Save, Send, Archive, Shiel
 import { Card, Empty, CarregandoModulo, ErroModulo, Aviso, Segmented } from "../../components/ui.jsx";
 import { Etiqueta } from "./GestaoAcademy.jsx";
 import {
-  academyContexto, treinamentoObter, treinamentoMeta, versaoSalvar, versaoValidarQualidade, versaoPublicar, novaVersao, treinamentoArquivar, publicoSalvar,
+  academyContexto, treinamentoObter, treinamentoMeta, versaoSalvar, versaoValidarQualidade, versaoPublicar, novaVersao, treinamentoArquivar, publicoSalvar, publicoAplicar,
 } from "../../services/academy.js";
-import { TIPOS_AULA, tipoAula, MODALIDADES, STATUS_TREINAMENTO, STATUS_VERSAO, EVENTOS, novaAula, novoModulo, mover, formularioDaVersao, formularioDeModelo, duracaoTotalMin } from "../../lib/academy/regras.js";
+import { TIPOS_AULA, tipoAula, MODALIDADES, STATUS_TREINAMENTO, STATUS_VERSAO, EVENTOS, novaAula, novoModulo, mover, formularioDaVersao, formularioDeModelo, duracaoTotalMin, TIPOS_QUESTAO, novaQuestao, trocarTipoQuestao } from "../../lib/academy/regras.js";
 import { capacidadesAcademy } from "../../lib/sessao.js";
 
 const Campo = ({ id, rotulo, dica, children }) => (<div><label className="label" htmlFor={id}>{rotulo}</label>{children}{dica && <p className="mt-1 text-xs text-slate-500">{dica}</p>}</div>);
@@ -84,6 +84,42 @@ function Conteudo({ f, set, ed }) {
   );
 }
 
+function Avaliacao({ f, set, ed }) {
+  const setQ = (i, patch) => set({ questoes: f.questoes.map((q, k) => (k === i ? { ...q, ...patch } : q)) });
+  const setOp = (i, j, patch) => setQ(i, { opcoes: f.questoes[i].opcoes.map((o, k) => (k === j ? { ...o, ...patch } : o)) });
+  const marcar = (i, j, marcada) => {
+    const q = f.questoes[i];
+    setQ(i, { opcoes: q.opcoes.map((o, k) => (q.tipo === "multiplas" ? (k === j ? { ...o, correta: marcada } : o) : { ...o, correta: k === j })) });
+  };
+  if (f.modalidade !== "automatica") return <Card><p className="text-sm text-slate-700">Este treinamento está com o critério “{f.modalidade === "nenhuma" ? "Somente conclusão das aulas" : f.modalidade}”. Para ter prova com nota, escolha <b>Prova automática</b> em “Dados e critérios”.{f.questoes.length > 0 && ` Há ${f.questoes.length} questão(ões) cadastrada(s) que só valem com a prova automática.`}</p></Card>;
+  return (
+    <div className="space-y-4">
+      <Card><div className="grid gap-4 sm:grid-cols-2">
+        <Campo id="av-nota" rotulo="Nota mínima para aprovação (0 a 100)" dica="A nota é calculada no servidor: acertos ÷ total de questões."><input id="av-nota" type="number" min="0" max="100" className="input" disabled={!ed} value={f.notaMinima} onChange={(e) => set({ notaMinima: e.target.value })} /></Campo>
+        <Campo id="av-tent" rotulo="Limite de tentativas" dica="Depois do limite, só o RH pode liberar nova chance."><input id="av-tent" type="number" min="1" className="input" disabled={!ed} value={f.maxTentativas} onChange={(e) => set({ maxTentativas: e.target.value })} /></Campo>
+      </div></Card>
+      {f.questoes.length === 0 && <Empty>Nenhuma questão ainda.</Empty>}
+      {f.questoes.map((q, i) => (
+        <Card key={i} className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 font-display text-sm font-bold text-brand-800">{i + 1}</span>
+            <select className="select min-w-0 flex-1 basis-52" disabled={!ed} aria-label={`Tipo da questão ${i + 1}`} value={q.tipo} onChange={(e) => setQ(i, trocarTipoQuestao(q, e.target.value))}>{TIPOS_QUESTAO.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}</select>
+            <Botoes ed={ed} n={f.questoes.length} i={i} mv={(a, b) => set({ questoes: mover(f.questoes, a, b) })} rm={() => set({ questoes: f.questoes.filter((_, k) => k !== i) })} /></div>
+          <textarea className="input min-h-16" disabled={!ed} aria-label={`Enunciado da questão ${i + 1}`} placeholder="Enunciado" maxLength={3000} value={q.enunciado} onChange={(e) => setQ(i, { enunciado: e.target.value })} />
+          <div className="space-y-2">{q.opcoes.map((o, j) => (
+            <div key={j} className="flex items-center gap-2">
+              <input type={q.tipo === "multiplas" ? "checkbox" : "radio"} name={`q${i}`} className="h-4 w-4 shrink-0 accent-teal-700" disabled={!ed} aria-label={`Opção ${j + 1} é correta`} checked={o.correta} onChange={(e) => marcar(i, j, e.target.checked)} />
+              <input className="input min-w-0 flex-1" disabled={!ed || q.tipo === "vf"} aria-label={`Texto da opção ${j + 1}`} placeholder={`Opção ${j + 1}`} maxLength={500} value={o.texto} onChange={(e) => setOp(i, j, { texto: e.target.value })} />
+              {ed && q.tipo !== "vf" && q.opcoes.length > 2 && <button type="button" className="btn-ghost h-9 w-9 p-0 text-bad-700" aria-label="Remover opção" onClick={() => setQ(i, { opcoes: q.opcoes.filter((_, k) => k !== j) })}><Trash2 size={15} /></button>}
+            </div>))}
+            {ed && q.tipo !== "vf" && q.opcoes.length < 10 && <button type="button" className="btn-outline" onClick={() => setQ(i, { opcoes: [...q.opcoes, { texto: "", correta: false }] })}><Plus size={15} />Opção</button>}
+            <p className="text-xs text-slate-500">Marque a resposta correta{q.tipo === "multiplas" ? " (uma ou mais; acerta quem marcar exatamente as corretas)" : ""}. O colaborador nunca vê esta marcação.</p></div>
+          <textarea className="input min-h-14" disabled={!ed} aria-label={`Feedback da questão ${i + 1}`} placeholder="Feedback mostrado após o envio (opcional)" maxLength={3000} value={q.feedback} onChange={(e) => setQ(i, { feedback: e.target.value })} />
+        </Card>))}
+      {ed && <button type="button" className="btn-outline" onClick={() => set({ questoes: [...f.questoes, novaQuestao()] })}><Plus size={15} />Questão</button>}
+    </div>
+  );
+}
+
 function Publico({ itens, setItens, ctx, podeEditar, salvar, sujo }) {
   const [tipo, setTipo] = useState("todos"), [valor, setValor] = useState("");
   const opcoes = { todos: [["todos", "Todos os colaboradores"]], colaborador: ctx.pessoas.map((p) => [p.id, p.nome]), cargo: ctx.cargos.map((c) => [c, c]), setor: ctx.setores.map((c) => [c, c]), grupo: ctx.grupos.filter((g) => g.ativo).map((g) => [g.id, g.nome]) };
@@ -128,8 +164,13 @@ export default function TreinamentoEditor() {
     if (sujoConteudo) await versaoSalvar(vsel.id, f);
     aplicar(await treinamentoObter(id, vsel.id));
   }, "Rascunho salvo.");
-  const salvarPublico = () => rodar(async () => { await publicoSalvar(id, publico); aplicar(await treinamentoObter(id, vsel.id)); }, "Público salvo.");
-  const publicar = () => window.confirm("Publicar esta versão? Depois de publicada ela não pode ser editada — mudanças exigem uma nova versão.") && rodar(async () => { await versaoPublicar(vsel.id); aplicar(await treinamentoObter(id, vsel.id)); }, "Versão publicada.");
+  const salvarPublico = () => rodar(async () => {
+    await publicoSalvar(id, publico);
+    const r = d.treinamento.status === "publicado" ? await publicoAplicar(id) : null;
+    aplicar(await treinamentoObter(id, vsel.id));
+    if (r) aviso$("ok", r.atribuidas > 0 ? `Público salvo. ${r.atribuidas} colaborador(es) receberam o treinamento.` : "Público salvo. Ninguém novo para atribuir.");
+  }, d.treinamento.status === "publicado" ? "" : "Público salvo.");
+  const publicar = () => window.confirm("Publicar esta versão? Depois de publicada ela não pode ser editada — mudanças exigem uma nova versão.") && rodar(async () => { const r = await versaoPublicar(vsel.id); aplicar(await treinamentoObter(id, vsel.id)); aviso$("ok", `Versão publicada. ${r.atribuidas || 0} colaborador(es) receberam o treinamento.`); });
   const validar = (cargaValidada) => rodar(async () => { await versaoValidarQualidade(vsel.id, cargaValidada); aplicar(await treinamentoObter(id, vsel.id)); }, "Validação da Qualidade registrada.");
   const nova = () => rodar(async () => { const vid = await novaVersao(id); aplicar(await treinamentoObter(id, vid)); setAba("dados"); }, "Nova versão criada a partir da publicada.");
   const arquivar = () => window.confirm("Arquivar este treinamento? O histórico e as evidências são preservados.") && rodar(async () => { await treinamentoArquivar(id); aplicar(await treinamentoObter(id)); }, "Treinamento arquivado.");
@@ -155,11 +196,12 @@ export default function TreinamentoEditor() {
         </div></div>
       {!ed && vsel.status !== "rascunho" && <Aviso2>Esta versão está {STATUS_VERSAO[vsel.status].toLowerCase()} e não pode ser alterada: o histórico de quem a realizou fica preservado. {podeNova ? "Use “Nova versão” para fazer mudanças." : ""}</Aviso2>}
       {sujo && ed && <Aviso2 tom="warn">Há alterações não salvas.</Aviso2>}
-      <Segmented opcoes={[{ valor: "dados", rotulo: "Dados e critérios" }, { valor: "conteudo", rotulo: "Conteúdo" }, { valor: "publico", rotulo: "Público" }, { valor: "publicacao", rotulo: "Publicação" }, { valor: "historico", rotulo: "Histórico" }]} valor={aba} onChange={setAba} />
+      <Segmented opcoes={[{ valor: "dados", rotulo: "Dados e critérios" }, { valor: "conteudo", rotulo: "Conteúdo" }, { valor: "avaliacao", rotulo: "Avaliação" }, { valor: "publico", rotulo: "Público" }, { valor: "publicacao", rotulo: "Publicação" }, { valor: "historico", rotulo: "Histórico" }]} valor={aba} onChange={setAba} />
       {aba === "dados" && <Card><Dados f={f} set={set} meta={meta} setMeta={setMeta} ctx={ctx} ed={ed} /></Card>}
       {aba === "conteudo" && <>
         {ed && <ImportarModelo f={f} setF={setF} aviso={aviso$} />}
         <Conteudo f={f} set={set} ed={ed} /></>}
+      {aba === "avaliacao" && <Avaliacao f={f} set={set} ed={ed} />}
       {aba === "publico" && <Card><Publico itens={publico} setItens={setPublico} ctx={ctx} podeEditar={caps.gestao && t.status !== "arquivado"} salvar={salvarPublico} sujo={sujoPublico} /></Card>}
       {aba === "publicacao" && (
         <Card className="space-y-4">

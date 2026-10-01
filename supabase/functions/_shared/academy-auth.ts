@@ -47,3 +47,15 @@ export async function autenticar(req: Request, sb: SupabaseClient, supabaseUrl: 
     gestao: tem("academy-gestao"), qualidade: tem("academy-qualidade"), colaborador: tem("academy"), gestor: tem("academy-gestor"), matriz: tem("academy-matriz"),
   } } };
 }
+
+export type PessoaRH = { id: string; nome: string; cargo: string; setor: string; ativo: boolean };
+
+// Colaboradores do RH: só o mínimo (sem CPF, salário etc.).
+export async function pessoasRH(sb: SupabaseClient, { inativos = false } = {}): Promise<PessoaRH[]> {
+  const { data, error } = await sb.from("ml_registros").select("registro,apagado").eq("colecao", "rh_pessoas");
+  if (error) throw error;
+  return (data ?? []).filter((r) => !r.apagado).map((r) => r.registro as Record<string, unknown>)
+    .map((p) => ({ id: String(p.id), nome: String(p.nome ?? ""), cargo: String(p.cargo ?? ""), setor: String(p.setor ?? ""), ativo: p.ativo !== false }))
+    .filter((p) => inativos || p.ativo)
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
