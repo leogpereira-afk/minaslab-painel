@@ -1,10 +1,16 @@
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {SectionTitle} from "../ui.jsx";
 import {SITUACOES,NOMES_GENERICOS} from "../../lib/calc/patrimonio.js";
 import {paraNumero,paraCampo,ymdLocal} from "../../lib/format.js";
+import {usuariosAtivos} from "../../services/dados.js";
 export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
   const [f, setF] = useState(inicial);
   const trocar = (campo) => (e) => setF((v) => ({ ...v, [campo]: e.target.value }));
+  // Responsável: escolhido entre os usuários ativos do sistema, gravando o NOME.
+  const [usuarios, setUsuarios] = useState([]);
+  useEffect(() => { usuariosAtivos().then(setUsuarios).catch(() => setUsuarios([])); }, []);
+  const nomesUsuarios = usuarios.map((u) => u.nome || u.usuario);
+  const responsavelAtual = String(f.responsavel || "").trim();
   return (
     <div className="pat-form">
       <SectionTitle
@@ -85,7 +91,11 @@ export function FormBem({ inicial, setores, salvando, aoSalvar, aoFechar }) {
             <label className="label" htmlFor="b-nf">Nota fiscal</label>
             <input id="b-nf" className="input" placeholder="número da NF" value={f.nf} onChange={trocar("nf")} />
             {!f.nf && <label className="label mt-3">Motivo da ausência da nota<input className="input mt-1" value={f.motivoSemNota || ''} onChange={trocar('motivoSemNota')} placeholder="Ex.: documento ainda não localizado"/></label>}
-          </div><div><label className="label" htmlFor="b-responsavel">Responsável pelo cadastro</label><input id="b-responsavel" className="input" value={f.responsavel || ''} onChange={trocar('responsavel')}/>
+          </div><div><label className="label" htmlFor="b-responsavel">Responsável pelo cadastro</label><select id="b-responsavel" className="input" value={responsavelAtual} onChange={trocar('responsavel')}>
+            <option value="">selecione...</option>
+            {responsavelAtual && !nomesUsuarios.includes(responsavelAtual) && <option value={responsavelAtual}>{responsavelAtual} (registro antigo)</option>}
+            {usuarios.map((u) => <option key={u.usuario} value={u.nome || u.usuario}>{u.nome || u.usuario}</option>)}
+          </select>
           </div>
 
           <div>
@@ -185,4 +195,3 @@ export function FormSetor({ inicial, salvando, aoSalvar, aoFechar }) {
     </div>
   );
 }
-
