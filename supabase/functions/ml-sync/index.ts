@@ -259,6 +259,9 @@ const COLECAO_PAGINA: Record<string, string> = {
    documentais, banco de horas e snapshots ficam em tabelas próprias para
    preservar auditoria e impedir que o JSON genérico vire uma segunda verdade. */
 const RH_DOC_BUCKET = "ml-arquivos";
+// Links de arquivo da Gestão de Estoque: só do bucket da casa e da pasta estoque/.
+const arquivoEstoqueOk = (bucket: unknown, caminho: unknown) =>
+  String(bucket ?? "") === RH_DOC_BUCKET && String(caminho ?? "").startsWith("estoque/") && !String(caminho ?? "").includes("..");
 const RH_DOC_MAX_BYTES = 25 * 1024 * 1024;
 
 // Hoje no fuso do Brasil (o servidor roda em UTC: depois das 21h "hoje" já seria amanhã).
@@ -433,7 +436,20 @@ Deno.serve(async (req) => {
         (permissoes.includes("inicio") && ["compromissos", "licitacoes", "manutencoes", "compras"].includes(colecao))
       );
     };
-    const podeEscrever = ehDirecao || (papel === "equipe" && !matrizAtiva);
+    // Escrita: direção sempre; equipe sem matriz como antes; equipe COM matriz
+    // edita só as coleções das páginas marcadas para ela em Acessos (a página
+    // em si — "calendario"/"inicio" dão só leitura). Leitura nunca escreve.
+    const podeEscreverColecao = (colecao: string) => {
+      if (ehDirecao) return true;
+      if (papel !== "equipe") return false;
+      if (!matrizAtiva) return true;
+      if (ehColecaoRH(colecao)) return false;
+      const pagina = COLECAO_PAGINA[colecao];
+      return !!pagina && (
+        permissoes.includes(pagina) ||
+        (pagina === "compras" && (COLECOES_COMPRA[colecao] || []).some(tab => permissoes.includes("compras/" + tab)))
+      );
+    };
     const podeEditarEstoque = (secao: string) => ehDirecao || (papel === "equipe" && (
       !matrizAtiva || permissoes.includes("gestao-estoque") || permissoes.includes("gestao-estoque/" + secao)
     ));
@@ -597,7 +613,7 @@ Deno.serve(async (req) => {
         if (!podeConsultarColecao("estoque_fapes")) return resp({erro:"Sem acesso às FAPEs.",semPermissao:true},403);
         const id=String(body.id??"");if(!id)return resp({erro:"FAPE obrigatória."},400);
         const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_fapes").eq("id",id).maybeSingle();if(error)throw error;if(!data||data.apagado)return resp({erro:"FAPE não encontrada."},404);
-        const f=data.registro as Record<string,unknown>;if((!f.storageBucket||!f.storagePath)&&f.driveUrl)return resp({url:String(f.driveUrl),legado:true});if(!f.storageBucket||!f.storagePath)return resp({erro:"FAPE sem PDF arquivado."},404);
+        const f=data.registro as Record<string,unknown>;if((!f.storageBucket||!f.storagePath)&&f.driveUrl)return resp({url:String(f.driveUrl),legado:true});if(!f.storageBucket||!f.storagePath)return resp({erro:"FAPE sem PDF arquivado."},404);if(!arquivoEstoqueOk(f.storageBucket,f.storagePath))return resp({erro:"Arquivo fora da área da Gestão de Estoque."},403);
         const {data:u,error:ue}=await sb.storage.from(String(f.storageBucket)).createSignedUrl(String(f.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600});
       }
 
@@ -627,7 +643,7 @@ Deno.serve(async (req) => {
       case "estoqueDocumentoUrl": {
         if (!podeConsultarColecao("estoque_documentos_fornecedor")) return resp({erro:"Sem acesso aos documentos.",semPermissao:true},403);
         const id=String(body.id??"");const {data,error}=await sb.from(T_REG).select("registro,apagado").eq("colecao","estoque_documentos_fornecedor").eq("id",id).maybeSingle();if(error)throw error;if(!data||data.apagado)return resp({erro:"Documento não encontrado."},404);
-        const d=data.registro as Record<string,unknown>;if(d.storageBucket&&d.storagePath){const {data:u,error:ue}=await sb.storage.from(String(d.storageBucket)).createSignedUrl(String(d.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600})}
+        const d=data.registro as Record<string,unknown>;if(d.storageBucket&&d.storagePath){if(!arquivoEstoqueOk(d.storageBucket,d.storagePath))return resp({erro:"Arquivo fora da área da Gestão de Estoque."},403);const {data:u,error:ue}=await sb.storage.from(String(d.storageBucket)).createSignedUrl(String(d.storagePath),3600);if(ue)throw ue;return resp({url:u?.signedUrl??null,expiraEmSegundos:3600})}
         if(d.driveUrl)return resp({url:String(d.driveUrl),legado:true});return resp({erro:"Documento sem arquivo vinculado."},404);
       }
 
@@ -678,9 +694,9 @@ Deno.serve(async (req) => {
         const registro = body.registro as Record<string, unknown>;
         const mapa: Record<string,string> = {
           estoque_produtos_base:"cadastro-insumo", estoque_fornecedores:"fornecedores",
-          estoque_avaliacoes_fornecedor:"fornecedores", estoque_fapes:"fornecedores",
+          // Avaliações, FAPEs e documentos NÃO entram aqui: gravam só pelas ações
+          // próprias, que validam o arquivo e o caminho no Storage.
           estoque_tipos_documentos_fornecedor:"configuracoes", estoque_regras_documentos_fornecedor:"configuracoes",
-          estoque_documentos_fornecedor:"fornecedores",
           estoque_config:"configuracoes",
           estoque_historico_produto_base:"cadastro-insumo"
         };
@@ -768,7 +784,7 @@ Deno.serve(async (req) => {
         const {data:linhas,error}=await sb.from(T_REG).select("registro").eq("colecao","estoque_pedidos").eq("apagado",false);if(error)throw error;
         const reg=(linhas??[]).map(x=>x.registro as Record<string,unknown>).find(r=>String(r.pedidoCodigo??r.idPedido??r.codigoPedido??"")===pedidoCodigo&&r.anexo);
         const anexo=reg?.anexo as Record<string,unknown>|undefined;if(!anexo?.storagePath)return resp({erro:"Este pedido não possui anexo armazenado."},404);
-        const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
+        const bucket=String(anexo.storageBucket??RH_DOC_BUCKET),path=String(anexo.storagePath);if(!arquivoEstoqueOk(bucket,path))return resp({erro:"Arquivo fora da área da Gestão de Estoque."},403);const {data:signed,error:se}=await sb.storage.from(bucket).createSignedUrl(path,600);if(se)throw se;return resp({ok:true,url:signed?.signedUrl||null});
       }
 
       case "estoqueLoteAnexo": {
@@ -957,9 +973,9 @@ Deno.serve(async (req) => {
       }
 
       case "upsert": {
-        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const colecao = String(body.colecao ?? "");
         const registro = body.registro as Record<string, unknown>;
+        if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!colecao || !registro?.id) return resp({ erro: "colecao e registro.id obrigatórios." }, 400);
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só grava pelas ações próprias (saldo, status e vínculos são conferidos no servidor).", semPermissao: true }, 403);
         if (ehColecaoRH(colecao) && !ehDirecao) {
@@ -981,8 +997,8 @@ Deno.serve(async (req) => {
       }
 
       case "delete": {
-        if (!podeEscrever) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const colecao = String(body.colecao ?? "");
+        if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const id = String(body.id ?? "");
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só exclui pelas ações próprias (com conferência e auditoria).", semPermissao: true }, 403);
         if (ehColecaoRH(colecao) && !ehDirecao) {

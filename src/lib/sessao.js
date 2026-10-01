@@ -110,8 +110,28 @@ export function motivoSaida() {
    A regra de verdade mora no servidor; esta copia so decide o que o menu
    mostra. */
 export const ehDirecao = (sessao = getSessao()) => sessao?.papel === "direcao";
-export const podeEditar = (sessao = getSessao()) =>
-  sessao?.papel === "direcao" || (sessao?.papel === "equipe" && !sessao?.paginas_consulta?.includes("__matriz_v1"));
+// Com a matriz de páginas (Acessos), a equipe edita só os módulos marcados
+// para ela. O módulo vem da rota aberta (/compromissos, /licitacoes...);
+// Calendário e Início seguem só leitura. Mesma régua do servidor (ml-sync).
+const MODULOS_EDITAVEIS_MATRIZ = ["compromissos", "licitacoes", "marketing", "manutencoes", "google-drive", "compras"];
+function moduloDaRota() {
+  try {
+    const base = String(import.meta.env.BASE_URL || "/");
+    let caminho = String(window.location.pathname || "/");
+    if (base !== "/" && caminho.startsWith(base)) caminho = "/" + caminho.slice(base.length);
+    return caminho.split("/").filter(Boolean)[0] || "";
+  } catch {
+    return "";
+  }
+}
+export const podeEditar = (sessao = getSessao(), modulo = moduloDaRota()) => {
+  if (sessao?.papel === "direcao") return true;
+  if (sessao?.papel !== "equipe") return false;
+  const paginas = sessao?.paginas_consulta || [];
+  if (!paginas.includes("__matriz_v1")) return true;
+  if (!MODULOS_EDITAVEIS_MATRIZ.includes(modulo)) return false;
+  return paginas.includes(modulo) || (modulo === "compras" && paginas.some((p) => p.startsWith("compras/")));
+};
 
 // Modulos que so a direcao abre. Mesma lista que o servidor usa para as
 // colecoes rh_* — mudar aqui exige mudar la (ml-sync).
