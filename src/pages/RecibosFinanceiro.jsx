@@ -6,7 +6,7 @@ import { filtrarPessoasPorNome } from "../lib/rhApresentacao.js";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import {
   EMPRESAS_RECIBO, valorPorExtenso, moeda, numeroBR, lerValor, dataExtenso, dataCurta,
-  horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe,
+  horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal,
 } from "../lib/recibos.js";
 
 const CHAVE_RASCUNHO = "financeiro.recibos.rascunho.v1";
@@ -16,6 +16,7 @@ const MODELOS = [
   { chave: "pagamento", titulo: "Recibo de pagamento", descricao: "PJ, limpeza, coletas, remuneração com descontos e comissões." },
   { chave: "horasExtras", titulo: "Horas extras (retroativo)", descricao: "Calcula valor da hora, da hora extra e o total pago." },
   { chave: "estagio", titulo: "Recibo de estágio", descricao: "Bolsa de estágio, integral ou proporcional ao período." },
+  { chave: "cliente", titulo: "Recibo de cliente", descricao: "Cartão de crédito (com taxa), PIX com quitação ou pagamento parcial por amostra." },
   { chave: "danos", titulo: "Desconto por danos materiais", descricao: "Termo de autorização de desconto em horas extras (art. 462 CLT)." },
 ];
 
@@ -23,6 +24,7 @@ const padrao = () => ({
   pagamento: { empresa: "minaslab", nome: "", cpf: "", valor: "", tipoServico: "colaborador(a) PJ", periodoInicio: "", periodoFim: "", competencia: "", referenteLivre: "", itens: [], dataPagamento: hoje(), dataRecibo: hoje(), cidade: "Montes Claros" },
   horasExtras: { empresa: "minaslab", nome: "", cpf: "", salario: "", jornada: "220", adicional: "50", periodo: "", totalRealizadas: "", horasPagas: "", horasBanco: "", percentualPago: "50", valorManual: "", dataRecibo: hoje(), cidade: "Montes Claros" },
   estagio: { empresa: "minaslab", nome: "", cpf: "", tipoBolsa: "proporcional", valor: "", inicio: "", fim: "", forma: "PIX ou transferência bancária.", dataRecibo: hoje(), cidade: "Montes Claros" },
+  cliente: { empresa: "minaslab", tipo: "cartao", pagador: "", pagadorDoc: "", valorPago: "", nf: "", os: "", valorOriginal: "", forma: "PIX", servico: "", totalServicos: "", amostras: "", amostraPaga: "", outrasAmostras: "", dataPagamento: hoje(), complemento: "", dataRecibo: hoje(), cidade: "Montes Claros" },
   danos: { empresa: "mlab", nome: "", cpf: "", cargo: "", descricao: "", valorItem: "", frete: "", salario: "", jornada: "220", adicional: "50", forma: "Compensação total via horas extras", dataRecibo: hoje(), cidade: "Montes Claros – MG" },
 });
 
@@ -51,7 +53,7 @@ function Cabecalho({ titulo }) {
 }
 
 function Assinaturas({ rotulos }) {
-  return <div className="recibo-assinaturas">{rotulos.map((r) => <div key={r}><span className="linha" /><p>{r}</p></div>)}</div>;
+  return <div className={`recibo-assinaturas${rotulos.length === 1 ? " unica" : ""}`}>{rotulos.map((r) => <div key={r}><span className="linha" /><p>{r}</p></div>)}</div>;
 }
 
 function DocPagamento({ d }) {
@@ -105,6 +107,45 @@ function DocEstagio({ d }) {
   </>;
 }
 
+function DocCliente({ d }) {
+  const emp = empresaDe(d.empresa), pago = lerValor(d.valorPago), original = lerValor(d.valorOriginal);
+  const acrescimo = original > 0 ? Math.max(0, Math.round((pago - original) * 100) / 100) : 0;
+  const fiscal = identificacaoFiscal(d.pagadorDoc), pagador = d.pagador.trim() || "________________";
+  const quem = <><b>{pagador.toLocaleUpperCase("pt-BR")}</b>{fiscal ? `, ${fiscal}` : ""}</>;
+  const os = listaPorExtenso(d.os) || "________", amostras = listaPorExtenso(d.amostras) || "________";
+  const taxaTexto = acrescimo > 0 && <>, sendo que o montante final pago inclui acréscimos de <b>{moeda(acrescimo)}</b> ({valorPorExtenso(acrescimo)}), relativos às taxas de processamento da maquininha de cartão</>;
+  const local = <p className="recibo-local centro">{d.cidade}, {dataExtenso(d.dataRecibo)}{d.tipo === "pix" || d.tipo === "parcial" ? "." : ""}</p>;
+  if (d.tipo === "pix") return <>
+    <Cabecalho titulo="RECIBO DE PAGAMENTO" />
+    <p className="just"><b>A empresa {emp.nome.toLocaleUpperCase("pt-BR")} declara, para os devidos fins, que recebeu de {quem}, a importância de {moeda(pago)} ({valorPorExtenso(pago)}), paga via {d.forma.trim() || "________"}.</b></p>
+    <p>Referente ao pagamento de:<br />Serviço: {d.servico.trim() || "________"}.<br />Identificação: {d.nf.trim() ? `Nota Fiscal ${d.nf.trim()}, ` : ""}Ordem de Serviço {os}.</p>
+    <p className="just">Pelo presente, damos plena e geral quitação pelo valor recebido, não restando quaisquer pendências financeiras relativas a este serviço.</p>
+    {local}
+    <Assinaturas rotulos={["Assinatura do Responsável"]} />
+  </>;
+  if (d.tipo === "parcial") {
+    const total = lerValor(d.totalServicos), saldo = Math.round((total - original) * 100) / 100;
+    return <>
+      <Cabecalho titulo="RECIBO DE PAGAMENTO" />
+      <p className="just">Declaro, para os devidos fins, que o valor total dos serviços prestados pela Minaslab a {quem}, é de <b>{moeda(total)}</b> ({valorPorExtenso(total)}), referentes às análises das amostras {amostras}, todas vinculadas à Ordem de Serviço {os}.</p>
+      <p className="just">Declaro, para os devidos fins, que recebemos de {pagador.toLocaleUpperCase("pt-BR")}, em {dataCurta(d.dataPagamento) || "__/__/____"}, o valor de <b>{moeda(pago)}</b> ({valorPorExtenso(pago)}), referente ao pagamento da amostra {d.amostraPaga.trim() || "________"}{d.complemento.trim() ? `, ${d.complemento.trim()},` : ""} vinculada à Ordem de Serviço {os}.</p>
+      <p className="just">O valor {acrescimo > 0 ? "original " : ""}devido pela amostra é de <b>{moeda(original)}</b> ({valorPorExtenso(original)}){acrescimo > 0 ? <>, sendo que o montante final pago, de {moeda(pago)}, inclui acréscimos de <b>{moeda(acrescimo)}</b> ({valorPorExtenso(acrescimo)}), relativos às taxas de processamento da maquininha de cartão</> : null}.</p>
+      {saldo > 0 && <p className="just">As demais amostras, {listaPorExtenso(d.outrasAmostras) || "________"}, totalizam o valor de <b>{moeda(saldo)}</b> ({valorPorExtenso(saldo)}), que permanece como saldo a pagar referente à mesma Ordem de Serviço {os}.</p>}
+      <p className="just">Declaro, para os devidos fins, que o valor acima discriminado, referente à amostra {d.amostraPaga.trim() || "________"}, foi recebido integralmente, não havendo pendências financeiras relacionadas a esta amostra.</p>
+      {local}
+      <Assinaturas rotulos={["Assinatura do Responsável"]} />
+    </>;
+  }
+  return <>
+    <Cabecalho titulo="RECIBO DE PAGAMENTO" />
+    <p className="just">Declaro, para os devidos fins, que recebemos de {quem}, o valor de <b>{moeda(pago)}</b> ({valorPorExtenso(pago)}), referente ao pagamento da Nota Fiscal: {d.nf.trim() || "________"} dos serviços prestados pela Minaslab, identificados pelas ordens de serviço {os}.</p>
+    {acrescimo > 0 && <p className="just">O valor original da nota fiscal é de <b>{moeda(original)}</b> ({valorPorExtenso(original)}){taxaTexto}.</p>}
+    <p className="just">Declaro, para os devidos fins, que o valor acima foi recebido integralmente e que não há pendências financeiras relacionadas a este serviço.</p>
+    {local}
+    <Assinaturas rotulos={["Assinatura do Responsável"]} />
+  </>;
+}
+
 function DocDanos({ d }) {
   const emp = empresaDe(d.empresa), c = calcularDescontoDano(d), salario = lerValor(d.salario);
   return <>
@@ -135,8 +176,8 @@ function DocDanos({ d }) {
   </>;
 }
 
-export { DocPagamento, DocHorasExtras, DocEstagio, DocDanos, ESTILO_IMPRESSAO };
-const DOCUMENTOS = { pagamento: DocPagamento, horasExtras: DocHorasExtras, estagio: DocEstagio, danos: DocDanos };
+export { DocPagamento, DocHorasExtras, DocEstagio, DocCliente, DocDanos, ESTILO_IMPRESSAO };
+const DOCUMENTOS = { pagamento: DocPagamento, horasExtras: DocHorasExtras, estagio: DocEstagio, cliente: DocCliente, danos: DocDanos };
 
 const ESTILO_IMPRESSAO = `
 .recibo-folha{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:11.5pt;line-height:1.5;padding:18mm 22mm;box-sizing:border-box}
@@ -146,6 +187,7 @@ const ESTILO_IMPRESSAO = `
 .recibo-itens{margin:0 0 10pt;padding-left:18pt}.recibo-itens li{margin-bottom:2pt}
 .recibo-local{margin-top:22pt!important}
 .recibo-assinaturas{display:flex;gap:18mm;margin-top:42pt}.recibo-assinaturas>div{flex:1;text-align:center}
+.recibo-assinaturas.unica{justify-content:center}.recibo-assinaturas.unica>div{flex:0 1 95mm}.recibo-local.centro{text-align:center}
 .recibo-assinaturas .linha{display:block;border-top:1px solid #111;margin-bottom:4pt}.recibo-assinaturas p{margin:0;font-weight:700;font-size:10.5pt}
 .recibos-impressao{display:none}
 @media print{
@@ -256,6 +298,42 @@ function FormEstagio({ d, set, pessoas, escolher }) {
   </div>;
 }
 
+function FormCliente({ d, set }) {
+  const cartao = d.tipo === "cartao", pix = d.tipo === "pix", parcial = d.tipo === "parcial";
+  const pago = lerValor(d.valorPago), original = lerValor(d.valorOriginal);
+  return <div className="grid gap-3 sm:grid-cols-2">
+    <Campo rotulo="Tipo de recibo" largo><select className="input w-full" value={d.tipo} onChange={(e) => set({ tipo: e.target.value })}>
+      <option value="cartao">Cartão de crédito — pagamento da nota com taxa da maquininha</option>
+      <option value="pix">PIX / pagamento com quitação (serviço e OS)</option>
+      <option value="parcial">Pagamento parcial por amostra (com saldo a pagar)</option>
+    </select></Campo>
+    <SelectEmpresa valor={d.empresa} onChange={(empresa) => set({ empresa })} rotulo="Empresa que recebeu" />
+    <Campo rotulo="Quem pagou (cliente)"><Entrada d={d} set={set} campo="pagador" placeholder="Nome ou razão social" /></Campo>
+    <Campo rotulo="CNPJ ou CPF de quem pagou"><Entrada d={d} set={set} campo="pagadorDoc" placeholder="00.000.000/0000-00" /></Campo>
+    <Campo rotulo={parcial ? "Valor recebido (R$)" : "Valor pago (R$)"}><Entrada d={d} set={set} campo="valorPago" inputMode="decimal" placeholder="0,00" /></Campo>
+    {(cartao || parcial) && <Campo rotulo={parcial ? "Valor original da amostra (R$)" : "Valor original da nota (R$)"}><Entrada d={d} set={set} campo="valorOriginal" inputMode="decimal" placeholder="0,00" /></Campo>}
+    {(cartao || pix) && <Campo rotulo="Nota Fiscal nº"><Entrada d={d} set={set} campo="nf" placeholder="514" /></Campo>}
+    <Campo rotulo="Ordem(ns) de serviço" largo={!(cartao || pix)}><Entrada d={d} set={set} campo="os" placeholder="OS00067/2026, OS00065/2026" /></Campo>
+    {pix && <>
+      <Campo rotulo="Forma de pagamento"><Entrada d={d} set={set} campo="forma" placeholder="PIX" /></Campo>
+      <Campo rotulo="Serviço"><Entrada d={d} set={set} campo="servico" placeholder="Análise de água" /></Campo>
+    </>}
+    {parcial && <>
+      <Campo rotulo="Valor total dos serviços (R$)"><Entrada d={d} set={set} campo="totalServicos" inputMode="decimal" placeholder="0,00" /></Campo>
+      <Campo rotulo="Data do pagamento"><Entrada d={d} set={set} campo="dataPagamento" type="date" /></Campo>
+      <Campo rotulo="Todas as amostras" largo><Entrada d={d} set={set} campo="amostras" placeholder="AM00002238/2026, AM00002239/2026, AM00002240/2026" /></Campo>
+      <Campo rotulo="Amostra paga"><Entrada d={d} set={set} campo="amostraPaga" placeholder="AM00002238/2026" /></Campo>
+      <Campo rotulo="Complemento (opcional)"><Entrada d={d} set={set} campo="complemento" placeholder="junto à coleta" /></Campo>
+      <Campo rotulo="Demais amostras (saldo a pagar)" largo><Entrada d={d} set={set} campo="outrasAmostras" placeholder="AM00002239/2026, AM00002240/2026" /></Campo>
+    </>}
+    <Campo rotulo="Cidade"><Entrada d={d} set={set} campo="cidade" /></Campo>
+    <Campo rotulo="Data do recibo"><Entrada d={d} set={set} campo="dataRecibo" type="date" /></Campo>
+    {(cartao || parcial) && original > 0 && <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm sm:col-span-2">
+      Acréscimo da maquininha: <b>{moeda(Math.max(0, pago - original))}</b>{parcial && <> · saldo a pagar: <b>{moeda(Math.max(0, lerValor(d.totalServicos) - original))}</b></>}
+    </div>}
+  </div>;
+}
+
 function FormDanos({ d, set, pessoas, escolher }) {
   const c = calcularDescontoDano(d);
   return <div className="grid gap-3 sm:grid-cols-2">
@@ -278,7 +356,7 @@ function FormDanos({ d, set, pessoas, escolher }) {
   </div>;
 }
 
-const FORMULARIOS = { pagamento: FormPagamento, horasExtras: FormHorasExtras, estagio: FormEstagio, danos: FormDanos };
+const FORMULARIOS = { pagamento: FormPagamento, horasExtras: FormHorasExtras, estagio: FormEstagio, cliente: FormCliente, danos: FormDanos };
 
 /* A prévia mostra a folha A4 inteira (210 mm) reduzida para caber na coluna, em vez de espremer o texto numa largura menor. */
 const LARGURA_A4_PX = (210 / 25.4) * 96;
@@ -371,7 +449,7 @@ export default function RecibosFinanceiro() {
     <style>{ESTILO_IMPRESSAO}</style>
     <PageTitle titulo="Recibos" descricao="Escolha o modelo, preencha os dados e imprima. O valor por extenso e os cálculos são automáticos." />
 
-    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
       {MODELOS.map((m) => <button key={m.chave} type="button" onClick={() => setModelo(m.chave)} aria-pressed={modelo === m.chave}
         className={`rounded-xl border p-3 text-left transition ${modelo === m.chave ? "border-teal-600 bg-teal-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}>
         <p className="font-bold text-slate-900">{m.titulo}</p><p className="mt-0.5 text-xs text-slate-500">{m.descricao}</p>
@@ -389,7 +467,7 @@ export default function RecibosFinanceiro() {
         </div>
         {fila.length > 0 && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex items-center justify-between"><p className="text-sm font-bold text-slate-800">Fila de impressão ({fila.length})</p><button type="button" className="btn-primary text-sm" onClick={() => imprimir("fila")}><Printer size={15} /> Imprimir fila</button></div>
-          <ul className="space-y-1 text-sm">{fila.map((f) => <li key={f.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5"><span>{titulo(f.modelo)} — <b>{f.dados.nome || "sem nome"}</b></span><button type="button" aria-label="Remover da fila" className="text-slate-400 hover:text-red-600" onClick={() => setFila((l) => l.filter((x) => x.id !== f.id))}><Trash2 size={15} /></button></li>)}</ul>
+          <ul className="space-y-1 text-sm">{fila.map((f) => <li key={f.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5"><span>{titulo(f.modelo)} — <b>{f.dados.nome || f.dados.pagador || "sem nome"}</b></span><button type="button" aria-label="Remover da fila" className="text-slate-400 hover:text-red-600" onClick={() => setFila((l) => l.filter((x) => x.id !== f.id))}><Trash2 size={15} /></button></li>)}</ul>
           <p className="mt-2 text-xs text-slate-500">Cada recibo sai em uma página.</p>
         </div>}
       </section>

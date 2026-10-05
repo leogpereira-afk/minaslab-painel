@@ -122,3 +122,19 @@ export function competenciaDe(iso) {
   const m = String(iso || "").match(/^(\d{4})-(\d{2})/);
   return m ? `${MESES[Number(m[2]) - 1]} de ${m[1]}` : "";
 }
+
+// "OS00067/2026, OS00065/2026 e OS00054/2026" a partir de uma lista digitada com vírgula, ponto e vírgula, "e" ou quebra de linha.
+export function listaPorExtenso(txt) {
+  const itens = String(txt ?? "").split(/[,;\n]+|\s+e\s+/i).map((i) => i.trim()).filter(Boolean);
+  if (itens.length <= 1) return itens[0] || "";
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
+// Quem pagou: CNPJ (14 dígitos) -> "inscrita no CNPJ nº ..."; CPF (11) -> "inscrito(a) no CPF nº ..."; vazio -> "".
+export function identificacaoFiscal(doc) {
+  const texto = String(doc ?? "").trim(), digitos = texto.replace(/\D/g, "");
+  if (!texto) return "";
+  if (digitos.length === 14) return `inscrita no CNPJ nº ${texto}`;
+  if (digitos.length === 11) return `inscrito(a) no CPF nº ${texto}`;
+  return `inscrito(a) no CPF/CNPJ nº ${texto}`;
+}

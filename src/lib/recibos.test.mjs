@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { valorPorExtenso, lerValor, dataExtenso, dataCurta, horasDecimais, horasHMS, horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe } from "./recibos.js";
+import { valorPorExtenso, lerValor, dataExtenso, dataCurta, horasDecimais, horasHMS, horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal } from "./recibos.js";
 
 test("valor por extenso confere com os recibos de modelo", () => {
   assert.equal(valorPorExtenso(3000), "três mil reais");
@@ -77,4 +77,25 @@ test("período e competência por extenso", () => {
   assert.equal(periodoExtenso("2025-12-01", "2026-01-31"), "01 de dezembro de 2025 a 31 de janeiro de 2026");
   assert.equal(periodoExtenso("", "2026-08-31"), "");
   assert.equal(competenciaDe("2026-08-31"), "agosto de 2026");
+});
+
+test("valores do recibo de cartão de crédito", () => {
+  assert.equal(valorPorExtenso(460), "quatrocentos e sessenta reais");
+  assert.equal(valorPorExtenso(437.09), "quatrocentos e trinta e sete reais e nove centavos");
+  assert.equal(valorPorExtenso(22.91), "vinte e dois reais e noventa e um centavos");
+  assert.equal(valorPorExtenso(10000), "dez mil reais");
+  assert.equal(valorPorExtenso(9502), "nove mil quinhentos e dois reais");
+  assert.equal(valorPorExtenso(498), "quatrocentos e noventa e oito reais");
+  assert.equal(valorPorExtenso(774.18), "setecentos e setenta e quatro reais e dezoito centavos");
+  assert.equal(valorPorExtenso(1211.27), "mil duzentos e onze reais e vinte e sete centavos");
+});
+
+test("lista de OS e identificação fiscal", () => {
+  assert.equal(listaPorExtenso("OS00067/2026, OS00065/2026, OS00054/2026 e OS00069/2026"), "OS00067/2026, OS00065/2026, OS00054/2026 e OS00069/2026");
+  assert.equal(listaPorExtenso("OS00762/2026"), "OS00762/2026");
+  assert.equal(listaPorExtenso("A\nB\nC"), "A, B e C");
+  assert.equal(listaPorExtenso(""), "");
+  assert.equal(identificacaoFiscal("20.707.884/0017-93"), "inscrita no CNPJ nº 20.707.884/0017-93");
+  assert.equal(identificacaoFiscal("083.864.166-02"), "inscrito(a) no CPF nº 083.864.166-02");
+  assert.equal(identificacaoFiscal(""), "");
 });
