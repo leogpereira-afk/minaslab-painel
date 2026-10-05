@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Printer, Plus, Trash2, FilePlus2, Eraser, Calculator } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Printer, Plus, Trash2, FilePlus2, Eraser, Calculator, Save, History, FileText, Copy, Search } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
-import { carregarColecoes } from "../services/dados.js";
+import { carregarColecoes, salvar, apagar } from "../services/dados.js";
 import { filtrarPessoasPorNome } from "../lib/rhApresentacao.js";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import {
   EMPRESAS_RECIBO, valorPorExtenso, moeda, numeroBR, lerValor, dataExtenso, dataCurta,
-  horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal,
+  horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal, valorDoRecibo, nomeDoRecibo,
 } from "../lib/recibos.js";
 
 const CHAVE_RASCUNHO = "financeiro.recibos.rascunho.v1";
+const COLECAO_HISTORICO = "fin_recibos"; // prefixo fin_: só a direção lê e grava (regra do ml-sync)
 const hoje = () => new Date().toISOString().slice(0, 10);
 
 const MODELOS = [
@@ -384,7 +385,11 @@ function PreviaA4({ children }) {
 
 /* ---------- Página ---------- */
 
+const hashDe = (modelo, d) => JSON.stringify([modelo, d]);
+const quandoBR = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "—");
+
 export default function RecibosFinanceiro() {
+  const [aba, setAba] = useState("novo");
   const [modelo, setModelo] = useState("pagamento");
   const [dados, setDados] = useState(lerRascunho);
   const [fila, setFila] = useState([]);
@@ -392,6 +397,30 @@ export default function RecibosFinanceiro() {
   const pendente = useRef(false);
   const [pessoas, setPessoas] = useState([]);
   const [avisoCadastro, setAvisoCadastro] = useState("");
+  // Histórico: idAtual só existe quando o recibo foi ABERTO do histórico (editar o mesmo registro);
+  // recibo novo sempre cria um registro novo, e a mesma impressão repetida não duplica (ultimo.hash).
+  const [historico, setHistorico] = useState([]);
+  const [carregandoHist, setCarregandoHist] = useState(true);
+  const [avisoHist, setAvisoHist] = useState(null);
+  const [idAtual, setIdAtual] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [buscaHist, setBuscaHist] = useState("");
+  const [modeloHist, setModeloHist] = useState("");
+  const ultimo = useRef({ hash: "", id: "" });
+
+  const carregarHistorico = useCallback(async () => {
+    setCarregandoHist(true);
+    try {
+      const r = await carregarColecoes([COLECAO_HISTORICO]);
+      if (r._recusadas?.length) throw new Error("Sem permissão para consultar o histórico de recibos.");
+      setHistorico([...(r[COLECAO_HISTORICO] || [])].sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm))));
+      setAvisoHist((v) => (v?.tipo === "carga" ? null : v));
+    } catch (e) {
+      setAvisoHist({ tipo: "carga", texto: e.message || "Não consegui consultar o histórico de recibos." });
+    } finally { setCarregandoHist(false); }
+  }, []);
+
+  useEffect(() => { carregarHistorico(); }, [carregarHistorico]);
 
   useEffect(() => {
     let vivo = true;
@@ -423,7 +452,35 @@ export default function RecibosFinanceiro() {
     setDados((v) => ({ ...v, [modelo]: { ...v[modelo], ...base, ...porModelo[modelo] } }));
   };
   const set = (patch) => setDados((v) => ({ ...v, [modelo]: { ...v[modelo], ...patch } }));
-  const titulo = (m) => MODELOS.find((x) => x.chave === m)?.titulo;
+  const titulo = (m) => MODELOS.find((x) => x.chave === m)?.titulo || m;
+
+  // Grava no histórico e CONFERE o efeito (salvar() só devolve se o servidor confirmou).
+  async function gravar(m, d, { id = "", novo = false } = {}) {
+    const hash = hashDe(m, d);
+    if (!novo && !id && ultimo.current.hash === hash) return ultimo.current.id;
+    const anterior = id ? historico.find((h) => h.id === id) : null;
+    const salvo = await salvar(COLECAO_HISTORICO, {
+      ...(id ? { id, criadoEm: anterior?.criadoEm } : {}),
+      modelo: m, titulo: titulo(m), nome: nomeDoRecibo(d), valor: valorDoRecibo(m, d), dados: d,
+    });
+    ultimo.current = { hash, id: salvo.id };
+    return salvo.id;
+  }
+
+  async function salvarNoHistorico({ comoNovo = false } = {}) {
+    if (salvando) return null;
+    setSalvando(true);
+    try {
+      const id = await gravar(modelo, atual, { id: comoNovo ? "" : idAtual, novo: comoNovo });
+      if (comoNovo) setIdAtual("");
+      setAvisoHist({ tipo: "ok", texto: "Recibo salvo no histórico." });
+      carregarHistorico();
+      return id;
+    } catch (e) {
+      setAvisoHist({ tipo: "erro", texto: `Não consegui salvar no histórico: ${e.message}` });
+      return null;
+    } finally { setSalvando(false); }
+  }
 
   const impressao = useMemo(() => (imprimindo === "fila" ? fila : [{ id: "atual", modelo, dados: atual }]), [imprimindo, fila, modelo, atual]);
 
@@ -435,22 +492,95 @@ export default function RecibosFinanceiro() {
     return () => clearTimeout(t);
   }, [imprimindo, fila]);
 
-  function imprimir(qual) {
+  async function imprimir(qual) {
     if (qual === "fila" && !fila.length) return;
+    // Imprimir registra no histórico; se o registro falhar, imprime assim mesmo e avisa.
+    try {
+      if (qual === "fila") {
+        const feitos = [];
+        for (const f of fila) feitos.push(f.registroId || await gravar(f.modelo, f.dados, { novo: true }));
+        setFila((l) => l.map((f, n) => ({ ...f, registroId: feitos[n] })));
+      } else {
+        await gravar(modelo, atual, { id: idAtual });
+      }
+      carregarHistorico();
+    } catch (e) {
+      setAvisoHist({ tipo: "erro", texto: `Imprimindo, mas não consegui registrar no histórico: ${e.message}` });
+    }
     pendente.current = true;
     setImprimindo(qual);
     // Se já estava no mesmo modo o efeito não dispara; força o print direto.
     if (qual === imprimindo) { pendente.current = false; setTimeout(() => window.print(), 50); }
   }
   function adicionarNaFila() { setFila((f) => [...f, { id: `${Date.now()}-${f.length}`, modelo, dados: { ...atual, itens: atual.itens ? [...atual.itens] : undefined } }]); }
-  function limpar() { if (window.confirm("Limpar os campos deste modelo?")) setDados((v) => ({ ...v, [modelo]: padrao()[modelo] })); }
+  function limpar() { if (window.confirm("Limpar os campos deste modelo?")) { setDados((v) => ({ ...v, [modelo]: padrao()[modelo] })); setIdAtual(""); } }
+  function trocarModelo(m) { setModelo(m); setIdAtual(""); }
+
+  function abrirDoHistorico(reg, { duplicar = false } = {}) {
+    const m = DOCUMENTOS[reg.modelo] ? reg.modelo : "pagamento";
+    const d = { ...padrao()[m], ...(reg.dados || {}) };
+    setModelo(m);
+    setDados((v) => ({ ...v, [m]: d }));
+    setIdAtual(duplicar ? "" : reg.id);
+    ultimo.current = duplicar ? { hash: "", id: "" } : { hash: hashDe(m, d), id: reg.id };
+    setAba("novo");
+  }
+  async function excluirDoHistorico(reg) {
+    if (!window.confirm(`Excluir o recibo de ${reg.nome || "sem nome"} (${titulo(reg.modelo)}) do histórico?`)) return;
+    try {
+      await apagar(COLECAO_HISTORICO, reg.id);
+      if (idAtual === reg.id) setIdAtual("");
+      if (ultimo.current.id === reg.id) ultimo.current = { hash: "", id: "" };
+      setAvisoHist({ tipo: "ok", texto: "Recibo excluído do histórico." });
+      carregarHistorico();
+    } catch (e) { setAvisoHist({ tipo: "erro", texto: `Não consegui excluir: ${e.message}` }); }
+  }
+
+  const histFiltrado = useMemo(() => {
+    const q = buscaHist.trim().toLocaleLowerCase("pt-BR");
+    return historico.filter((h) => (!modeloHist || h.modelo === modeloHist)
+      && (!q || `${h.nome || ""} ${h.titulo || ""} ${h.dados?.os || ""} ${h.dados?.nf || ""}`.toLocaleLowerCase("pt-BR").includes(q)));
+  }, [historico, buscaHist, modeloHist]);
+  const registroAberto = idAtual ? historico.find((h) => h.id === idAtual) : null;
+
+  const aviso = avisoHist && <p role="status" className={`rounded-lg px-3 py-2 text-xs ${avisoHist.tipo === "ok" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{avisoHist.texto}</p>;
 
   return <div className="space-y-4">
     <style>{ESTILO_IMPRESSAO}</style>
-    <PageTitle titulo="Recibos" descricao="Escolha o modelo, preencha os dados e imprima. O valor por extenso e os cálculos são automáticos." />
+    <PageTitle titulo="Recibos" descricao="Escolha o modelo, preencha os dados e imprima. O valor por extenso e os cálculos são automáticos; cada recibo impresso fica no histórico." />
 
+    <div className="flex gap-1 border-b border-slate-200" role="tablist">
+      {[["novo", "Novo recibo", FileText], ["historico", `Histórico${historico.length ? ` (${historico.length})` : ""}`, History]].map(([chave, rotulo, Icone]) =>
+        <button key={chave} type="button" role="tab" aria-selected={aba === chave} onClick={() => setAba(chave)}
+          className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold ${aba === chave ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}><Icone size={15} /> {rotulo}</button>)}
+    </div>
+
+    {aba === "historico" && <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      {aviso}
+      <div className="flex flex-wrap gap-2">
+        <label className="relative min-w-[220px] flex-1"><Search size={15} className="absolute left-3 top-3.5 text-slate-400" /><input className="input w-full pl-9" placeholder="Buscar por nome, OS ou NF…" value={buscaHist} onChange={(e) => setBuscaHist(e.target.value)} /></label>
+        <select className="input" value={modeloHist} onChange={(e) => setModeloHist(e.target.value)} aria-label="Filtrar por modelo"><option value="">Todos os modelos</option>{MODELOS.map((m) => <option key={m.chave} value={m.chave}>{m.titulo}</option>)}</select>
+      </div>
+      {carregandoHist ? <p className="p-6 text-center text-sm text-slate-500">Carregando histórico…</p>
+        : histFiltrado.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">{historico.length ? "Nenhum recibo com esse filtro." : "Nenhum recibo no histórico ainda. Os recibos aparecem aqui quando você imprime ou clica em “Salvar no histórico”."}</p>
+        : <div className="overflow-auto"><table className="w-full text-sm">
+          <thead><tr className="border-b text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-2 py-2">Data</th><th className="px-2 py-2">Modelo</th><th className="px-2 py-2">Nome</th><th className="px-2 py-2 text-right">Valor</th><th className="px-2 py-2">Gerado por</th><th className="px-2 py-2 text-right">Ações</th></tr></thead>
+          <tbody>{histFiltrado.map((h) => <tr key={h.id} className="border-b last:border-0 hover:bg-slate-50">
+            <td className="whitespace-nowrap px-2 py-2">{quandoBR(h.criadoEm)}</td>
+            <td className="px-2 py-2">{titulo(h.modelo)}</td>
+            <td className="px-2 py-2 font-semibold text-slate-900">{h.nome || "—"}</td>
+            <td className="whitespace-nowrap px-2 py-2 text-right">{moeda(h.valor)}</td>
+            <td className="px-2 py-2 text-slate-500">{h.atualizadoPor || "—"}</td>
+            <td className="whitespace-nowrap px-2 py-2 text-right">
+              <button type="button" className="btn-outline mr-1 text-xs" onClick={() => abrirDoHistorico(h)}><Printer size={14} /> Abrir / reimprimir</button>
+              <button type="button" className="btn-outline mr-1 text-xs" title="Abrir como novo recibo (outra pessoa, outro mês…)" onClick={() => abrirDoHistorico(h, { duplicar: true })}><Copy size={14} /> Duplicar</button>
+              <button type="button" className="btn-outline text-xs" aria-label="Excluir do histórico" onClick={() => excluirDoHistorico(h)}><Trash2 size={14} /></button>
+            </td></tr>)}</tbody></table></div>}
+    </section>}
+
+    {aba === "novo" && <>
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-      {MODELOS.map((m) => <button key={m.chave} type="button" onClick={() => setModelo(m.chave)} aria-pressed={modelo === m.chave}
+      {MODELOS.map((m) => <button key={m.chave} type="button" onClick={() => trocarModelo(m.chave)} aria-pressed={modelo === m.chave}
         className={`rounded-xl border p-3 text-left transition ${modelo === m.chave ? "border-teal-600 bg-teal-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}>
         <p className="font-bold text-slate-900">{m.titulo}</p><p className="mt-0.5 text-xs text-slate-500">{m.descricao}</p>
       </button>)}
@@ -459,16 +589,20 @@ export default function RecibosFinanceiro() {
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         {avisoCadastro && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{avisoCadastro}</p>}
+        {registroAberto && <p className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">Editando um recibo do histórico (de {quandoBR(registroAberto.criadoEm)}). Salvar ou imprimir atualiza esse registro; use “Salvar como novo” para manter o original.</p>}
+        {aviso && <div className="mb-3">{aviso}</div>}
         <Form d={atual} set={set} pessoas={pessoas} escolher={escolher} />
         <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           <button type="button" className="btn-primary" onClick={() => imprimir("atual")}><Printer size={16} /> Imprimir este recibo</button>
+          <button type="button" className="btn-outline" disabled={salvando} onClick={() => salvarNoHistorico()}><Save size={16} /> {salvando ? "Salvando…" : "Salvar no histórico"}</button>
+          {idAtual && <button type="button" className="btn-outline" disabled={salvando} onClick={() => salvarNoHistorico({ comoNovo: true })}><Copy size={16} /> Salvar como novo</button>}
           <button type="button" className="btn-outline" onClick={adicionarNaFila}><FilePlus2 size={16} /> Adicionar à fila</button>
           <button type="button" className="btn-outline" onClick={limpar}><Eraser size={16} /> Limpar</button>
         </div>
         {fila.length > 0 && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex items-center justify-between"><p className="text-sm font-bold text-slate-800">Fila de impressão ({fila.length})</p><button type="button" className="btn-primary text-sm" onClick={() => imprimir("fila")}><Printer size={15} /> Imprimir fila</button></div>
-          <ul className="space-y-1 text-sm">{fila.map((f) => <li key={f.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5"><span>{titulo(f.modelo)} — <b>{f.dados.nome || f.dados.pagador || "sem nome"}</b></span><button type="button" aria-label="Remover da fila" className="text-slate-400 hover:text-red-600" onClick={() => setFila((l) => l.filter((x) => x.id !== f.id))}><Trash2 size={15} /></button></li>)}</ul>
-          <p className="mt-2 text-xs text-slate-500">Cada recibo sai em uma página.</p>
+          <ul className="space-y-1 text-sm">{fila.map((f) => <li key={f.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5"><span>{titulo(f.modelo)} — <b>{nomeDoRecibo(f.dados) || "sem nome"}</b></span><button type="button" aria-label="Remover da fila" className="text-slate-400 hover:text-red-600" onClick={() => setFila((l) => l.filter((x) => x.id !== f.id))}><Trash2 size={15} /></button></li>)}</ul>
+          <p className="mt-2 text-xs text-slate-500">Cada recibo sai em uma página e é registrado no histórico.</p>
         </div>}
       </section>
 
@@ -479,6 +613,7 @@ export default function RecibosFinanceiro() {
         </div>
       </section>
     </div>
+    </>}
 
     <div className="recibos-impressao" aria-hidden="true">
       {impressao.map((i) => { const D = DOCUMENTOS[i.modelo]; return <div key={i.id} className="recibo-folha"><D d={i.dados} /></div>; })}

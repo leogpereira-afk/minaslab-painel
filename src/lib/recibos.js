@@ -138,3 +138,16 @@ export function identificacaoFiscal(doc) {
   if (digitos.length === 11) return `inscrito(a) no CPF nº ${texto}`;
   return `inscrito(a) no CPF/CNPJ nº ${texto}`;
 }
+
+// Valor e nome que aparecem na lista do histórico, calculados dos mesmos dados do recibo.
+export function valorDoRecibo(modelo, d = {}) {
+  switch (modelo) {
+    case "pagamento": case "estagio": return lerValor(d.valor);
+    case "horasExtras": return String(d.valorManual ?? "") !== "" ? lerValor(d.valorManual) : calcularHoraExtra(d).total;
+    case "cliente": return lerValor(d.valorPago);
+    case "danos": return calcularDescontoDano(d).total;
+    default: return 0;
+  }
+}
+
+export const nomeDoRecibo = (d = {}) => String(d.nome || d.pagador || "").trim();

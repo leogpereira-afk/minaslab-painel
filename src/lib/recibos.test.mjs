@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { valorPorExtenso, lerValor, dataExtenso, dataCurta, horasDecimais, horasHMS, horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal } from "./recibos.js";
+import { valorPorExtenso, lerValor, dataExtenso, dataCurta, horasDecimais, horasHMS, horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal, valorDoRecibo, nomeDoRecibo } from "./recibos.js";
 
 test("valor por extenso confere com os recibos de modelo", () => {
   assert.equal(valorPorExtenso(3000), "três mil reais");
@@ -98,4 +98,16 @@ test("lista de OS e identificação fiscal", () => {
   assert.equal(identificacaoFiscal("20.707.884/0017-93"), "inscrita no CNPJ nº 20.707.884/0017-93");
   assert.equal(identificacaoFiscal("083.864.166-02"), "inscrito(a) no CPF nº 083.864.166-02");
   assert.equal(identificacaoFiscal(""), "");
+});
+
+test("valor e nome do recibo para o histórico", () => {
+  assert.equal(valorDoRecibo("pagamento", { valor: "3.000,00" }), 3000);
+  assert.equal(valorDoRecibo("estagio", { valor: "800" }), 800);
+  assert.equal(valorDoRecibo("cliente", { valorPago: "460,00" }), 460);
+  assert.equal(valorDoRecibo("danos", { valorItem: "196,38", frete: "45,00", salario: "2300" }), 241.38);
+  assert.equal(valorDoRecibo("horasExtras", { salario: "1800", horasPagas: "10:27", valorManual: "" }), 128.22);
+  assert.equal(valorDoRecibo("horasExtras", { salario: "1800", horasPagas: "10:27", valorManual: "130,00" }), 130);
+  assert.equal(valorDoRecibo("desconhecido", {}), 0);
+  assert.equal(nomeDoRecibo({ nome: " Ana " }), "Ana");
+  assert.equal(nomeDoRecibo({ pagador: "Manserv" }), "Manserv");
 });
