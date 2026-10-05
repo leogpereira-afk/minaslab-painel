@@ -65,7 +65,7 @@ function DocPagamento({ d }) {
   return <>
     <Cabecalho titulo="RECIBO DE PAGAMENTO" />
     <p className="just">Eu, <b>{d.nome || "________________"}</b>, inscrito no CPF nº {d.cpf || "________________"}, declaro que recebi de {emp.nome}, inscrito no CPF/CNPJ nº {emp.cnpj}, a quantia de <b>{moeda(valor)}</b> ({valorPorExtenso(valor)}). {referente}</p>
-    {d.itens.length > 0 && <ul className="recibo-itens">{d.itens.map((i, n) => <li key={n}>{i.descricao || "Item"}{i.tipo === "desconto" ? " – desconto" : ""} – {moeda(lerValor(i.valor))}</li>)}</ul>}
+    {d.itens.length > 0 && <ul className="recibo-itens">{d.itens.map((i, n) => <li key={n}>{i.descricao || "Item"}{String(i.valor ?? "").trim() ? ` – ${moeda(lerValor(i.valor))}` : ""}</li>)}</ul>}
     <p className="just">O pagamento foi realizado no dia {dataExtenso(d.dataPagamento) || "________"}, referente aos serviços prestados no período de {competencia || "________"}.</p>
     <p className="just">Declaro, para os devidos fins, que o valor acima foi recebido integralmente e que não há pendências financeiras relacionadas a este serviço.</p>
     <p className="recibo-local">{d.cidade}, {dataExtenso(d.dataRecibo)}</p>
@@ -246,18 +246,17 @@ function FormPagamento({ d, set, pessoas, escolher }) {
     <Campo rotulo="Período — início"><Entrada d={d} set={set} campo="periodoInicio" type="date" /></Campo>
     <Campo rotulo="Período — fim"><Entrada d={d} set={set} campo="periodoFim" type="date" /></Campo>
     <Campo rotulo="Competência (opcional — por padrão, mês do fim do período)" largo><Entrada d={d} set={set} campo="competencia" placeholder={competenciaDe(d.periodoFim) || "agosto de 2026"} /></Campo>
-    <Campo rotulo="Texto livre após “Referente” (opcional — substitui tipo de serviço e período)" largo><textarea className="input w-full" rows={2} placeholder="Ex.: às coletas:" value={d.referenteLivre} onChange={(e) => set({ referenteLivre: e.target.value })} /></Campo>
-    <Campo rotulo="Cidade"><Entrada d={d} set={set} campo="cidade" /></Campo>
-    <Campo rotulo="Data do recibo"><Entrada d={d} set={set} campo="dataRecibo" type="date" /></Campo>
     <div className="sm:col-span-2">
-      <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Discriminação (opcional)</span><button type="button" className="btn-outline text-xs" onClick={() => set({ itens: [...d.itens, { descricao: "", valor: "", tipo: "credito" }] })}><Plus size={14} /> Adicionar linha</button></div>
+      <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Detalhes (opcional) — aparecem em lista logo abaixo da frase “Referente aos serviços prestados…”</span><button type="button" className="btn-outline text-xs" onClick={() => set({ itens: [...d.itens, { descricao: "", valor: "", tipo: "credito" }] })}><Plus size={14} /> Adicionar linha</button></div>
       {d.itens.map((i, n) => <div key={n} className="mb-2 grid grid-cols-[1fr_110px_110px_auto] gap-2">
-        <input className="input" placeholder="Ex.: Remuneração, Desconto INSS, Comissão…" value={i.descricao} onChange={(e) => mexerItem(n, { descricao: e.target.value })} />
+        <input className="input" placeholder="Ex.: Remuneração, Desconto INSS, Comissão Propostas novas 1%…" value={i.descricao} onChange={(e) => mexerItem(n, { descricao: e.target.value })} />
         <input className="input" inputMode="decimal" placeholder="0,00" value={i.valor} onChange={(e) => mexerItem(n, { valor: e.target.value })} />
         <select className="input" value={i.tipo} onChange={(e) => mexerItem(n, { tipo: e.target.value })}><option value="credito">Crédito</option><option value="desconto">Desconto</option></select>
         <button type="button" className="btn-outline" aria-label="Remover linha" onClick={() => set({ itens: d.itens.filter((_, k) => k !== n) })}><Trash2 size={15} /></button>
       </div>)}
     </div>
+    <Campo rotulo="Cidade"><Entrada d={d} set={set} campo="cidade" /></Campo>
+    <Campo rotulo="Data do recibo"><Entrada d={d} set={set} campo="dataRecibo" type="date" /></Campo>
   </div>;
 }
 
