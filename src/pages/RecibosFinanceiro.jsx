@@ -182,7 +182,7 @@ const DOCUMENTOS = { pagamento: DocPagamento, horasExtras: DocHorasExtras, estag
 const ESTILO_IMPRESSAO = `
 .recibo-folha{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:11.5pt;line-height:1.5;padding:18mm 22mm;box-sizing:border-box}
 .recibo-folha p{margin:0 0 10pt}.recibo-folha .just{text-align:justify}
-.recibo-logo{text-align:center;margin-bottom:12pt}.recibo-logo img{height:10mm;width:auto;display:inline-block}
+.recibo-logo{text-align:center;margin-bottom:16pt}.recibo-logo img{width:41.5mm;height:auto;display:inline-block}
 .recibo-titulo{text-align:center;font-size:14pt;font-weight:700;margin:0 0 16pt}
 .recibo-itens{margin:0 0 10pt;padding-left:18pt}.recibo-itens li{margin-bottom:2pt}
 .recibo-local{margin-top:22pt!important}
