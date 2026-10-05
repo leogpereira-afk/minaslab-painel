@@ -10,7 +10,7 @@ const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"B
 const data=v=>v?String(v).slice(0,10):"";
 const dataBr=v=>v?new Date(`${String(v).slice(0,10)}T12:00:00`).toLocaleDateString("pt-BR"):"—";
 const dig=v=>String(v||"").replace(/\D/g,"");
-const chaveCliente=x=>dig(x.cnpj_cpf)||String(x.cliente||"").trim().toUpperCase();
+const chaveCliente=x=>dig(x.cnpj_cpf)||String(x.cliente||"").trim().toUpperCase();const chaveGrupo=k=>{const t=String(k||"").trim();return dig(t).length>=11?dig(t):t.toUpperCase()};
 const badge={FATURADO:"bg-emerald-100 text-emerald-700",PAGO:"bg-emerald-100 text-emerald-700","A RECEBER":"bg-amber-100 text-amber-700",AGUARDANDO:"bg-blue-100 text-blue-700","PRONTO PARA FATURAR":"bg-blue-100 text-blue-700",PARCIAL:"bg-amber-100 text-amber-700",VENCIDO:"bg-red-100 text-red-700",DIVERGENCIA:"bg-violet-100 text-violet-700","NAO FATURAR":"bg-slate-100 text-slate-600",CANCELADO:"bg-slate-100 text-slate-600"};
 const label=s=>({"PRONTO PARA FATURAR":"Pronto para faturar","NAO FATURAR":"Não faturar",DIVERGENCIA:"Divergência"}[s]||String(s||"").toLowerCase().replace(/(^|\s)\S/g,m=>m.toUpperCase()));
 const Pill=({v})=>v?<span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge[String(v).toUpperCase()]||"bg-slate-100 text-slate-600"}`}>{label(v)}</span>:null;
@@ -33,7 +33,7 @@ export default function ServicosGeradosAgrupado({ somenteLeitura = false }){
  function fechar(){if(grupo)setVersaoLista(v=>v+1);setGrupo(null);setEdit(null);setItemEdit(null);setEditando(false);setModoAdd(false);setSelecionados([]);setErro("")}
  async function abrirAdicionar(){setErro("");setBusca("");setSelecionados([]);setModoAdd(true);try{const r=await servicosGeradosListar({busca:""});setDados(r.itens||[])}catch(e){setErro(e.message)}}
  const idsAgrupados=useMemo(()=>new Set(idsEmGrupo),[idsEmGrupo]);
- const elegiveis=useMemo(()=>dados.filter(x=>!x.grupo_faturamento&&!idsAgrupados.has(x.id)&&x.status_faturamento==="PRONTO PARA FATURAR"&&x.empresa_id===grupo?.empresa_id&&chaveCliente(x)===String(grupo?.cliente_chave||"").toUpperCase()),[dados,idsAgrupados,grupo]);
+ const elegiveis=useMemo(()=>dados.filter(x=>!x.grupo_faturamento&&!idsAgrupados.has(x.id)&&x.status_faturamento==="PRONTO PARA FATURAR"&&x.empresa_id===grupo?.empresa_id&&chaveCliente(x)===chaveGrupo(grupo?.cliente_chave)),[dados,idsAgrupados,grupo]);
  const filtrados=useMemo(()=>{const q=busca.trim().toLowerCase();return elegiveis.filter(x=>!q||`${x.os_numero} ${x.cliente} ${x.cnpj_cpf||""} ${x.contrato_proposta||""}`.toLowerCase().includes(q))},[elegiveis,busca]);
  const formasDisponiveis=useMemo(()=>{const vals=[...formas.map(valorForma),normal(edit?.forma_pagamento)].filter(Boolean);return [...new Set(vals)]},[formas,edit?.forma_pagamento]);
  function setCampo(campo,valor){setEdit(v=>({...v,[campo]:valor}));setDivergencias(v=>({...v,[campo]:valor===""?!!divOriginal[campo]:false}))}
