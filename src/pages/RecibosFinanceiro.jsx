@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Printer, Plus, Trash2, FilePlus2, Eraser, Calculator } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
+import { carregarColecoes } from "../services/dados.js";
+import { filtrarPessoasPorNome } from "../lib/rhApresentacao.js";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import {
   EMPRESAS_RECIBO, valorPorExtenso, moeda, numeroBR, lerValor, dataExtenso, dataCurta,
@@ -138,7 +140,7 @@ const DOCUMENTOS = { pagamento: DocPagamento, horasExtras: DocHorasExtras, estag
 const ESTILO_IMPRESSAO = `
 .recibo-folha{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:11.5pt;line-height:1.5;padding:18mm 22mm;box-sizing:border-box}
 .recibo-folha p{margin:0 0 10pt}.recibo-folha .just{text-align:justify}
-.recibo-logo{text-align:left;margin-bottom:14pt}.recibo-logo img{height:17mm;width:auto}
+.recibo-logo{text-align:center;margin-bottom:12pt}.recibo-logo img{height:11mm;width:auto;display:inline-block}
 .recibo-titulo{text-align:center;font-size:14pt;font-weight:700;margin:0 0 16pt}
 .recibo-itens{margin:0 0 10pt;padding-left:18pt}.recibo-itens li{margin-bottom:2pt}
 .recibo-local{margin-top:22pt!important}
@@ -164,11 +166,35 @@ function Entrada({ d, set, campo, ...resto }) {
   return <input className="input w-full" value={d[campo]} onChange={(e) => set({ [campo]: e.target.value })} {...resto} />;
 }
 
-function FormPagamento({ d, set }) {
+/* Nome com busca no cadastro do RH: ao escolher a pessoa, os dados dela entram no recibo (e continuam editáveis). */
+function CampoNome({ rotulo, d, set, pessoas, aoEscolher, placeholder = "Digite para buscar no cadastro" }) {
+  const [aberto, setAberto] = useState(false);
+  const termo = String(d.nome || "").trim();
+  const achadas = useMemo(
+    () => (aberto && termo.length >= 2 ? filtrarPessoasPorNome(pessoas, termo).slice(0, 8) : []),
+    [aberto, termo, pessoas],
+  );
+  return <label className="relative block text-sm">
+    <span className="mb-1 block font-semibold text-slate-700">{rotulo}</span>
+    <input className="input w-full" value={d.nome} placeholder={placeholder} autoComplete="off"
+      onChange={(e) => { set({ nome: e.target.value }); setAberto(true); }}
+      onFocus={() => setAberto(true)} onBlur={() => setTimeout(() => setAberto(false), 150)} />
+    {achadas.length > 0 && <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+      {achadas.map((pe) => <li key={pe.id}>
+        <button type="button" className="block w-full px-3 py-2 text-left hover:bg-teal-50" onMouseDown={(e) => { e.preventDefault(); aoEscolher(pe); setAberto(false); }}>
+          <span className="font-semibold text-slate-900">{pe.nome}</span>
+          <span className="ml-2 text-xs text-slate-500">{[pe.cargo, pe.cpf, pe.ativo === false ? "desligado" : ""].filter(Boolean).join(" · ")}</span>
+        </button>
+      </li>)}
+    </ul>}
+  </label>;
+}
+
+function FormPagamento({ d, set, pessoas, escolher }) {
   const mexerItem = (n, patch) => set({ itens: d.itens.map((i, k) => (k === n ? { ...i, ...patch } : i)) });
   return <div className="grid gap-3 sm:grid-cols-2">
     <SelectEmpresa valor={d.empresa} onChange={(empresa) => set({ empresa })} />
-    <Campo rotulo="Nome de quem recebeu"><Entrada d={d} set={set} campo="nome" placeholder="Nome completo" /></Campo>
+    <CampoNome rotulo="Nome de quem recebeu" d={d} set={set} pessoas={pessoas} aoEscolher={escolher} />
     <Campo rotulo="CPF"><Entrada d={d} set={set} campo="cpf" placeholder="000.000.000-00" /></Campo>
     <Campo rotulo="Valor total (R$)"><div className="flex gap-2"><Entrada d={d} set={set} campo="valor" inputMode="decimal" placeholder="0,00" />{d.itens.length > 0 && <button type="button" className="btn-outline whitespace-nowrap" title="Preencher com a soma dos itens" onClick={() => set({ valor: numeroBR(somarItens(d.itens)) })}><Calculator size={15} /> Somar itens</button>}</div></Campo>
     <Campo rotulo="Tipo de serviço"><Entrada d={d} set={set} campo="tipoServico" placeholder="colaborador(a) PJ, coletor, limpeza…" /></Campo>
@@ -191,11 +217,11 @@ function FormPagamento({ d, set }) {
   </div>;
 }
 
-function FormHorasExtras({ d, set }) {
+function FormHorasExtras({ d, set, pessoas, escolher }) {
   const c = calcularHoraExtra(d);
   return <div className="grid gap-3 sm:grid-cols-2">
     <SelectEmpresa valor={d.empresa} onChange={(empresa) => set({ empresa })} />
-    <Campo rotulo="Nome do colaborador"><Entrada d={d} set={set} campo="nome" /></Campo>
+    <CampoNome rotulo="Nome do colaborador" d={d} set={set} pessoas={pessoas} aoEscolher={escolher} />
     <Campo rotulo="CPF"><Entrada d={d} set={set} campo="cpf" placeholder="000.000.000-00" /></Campo>
     <Campo rotulo="Salário base (R$)"><Entrada d={d} set={set} campo="salario" inputMode="decimal" placeholder="0,00" /></Campo>
     <Campo rotulo="Jornada mensal (horas)"><Entrada d={d} set={set} campo="jornada" inputMode="numeric" /></Campo>
@@ -214,10 +240,10 @@ function FormHorasExtras({ d, set }) {
   </div>;
 }
 
-function FormEstagio({ d, set }) {
+function FormEstagio({ d, set, pessoas, escolher }) {
   return <div className="grid gap-3 sm:grid-cols-2">
     <SelectEmpresa valor={d.empresa} onChange={(empresa) => set({ empresa })} />
-    <Campo rotulo="Nome do estagiário"><Entrada d={d} set={set} campo="nome" /></Campo>
+    <CampoNome rotulo="Nome do estagiário" d={d} set={set} pessoas={pessoas} aoEscolher={escolher} />
     <Campo rotulo="CPF"><Entrada d={d} set={set} campo="cpf" placeholder="000.000.000-00" /></Campo>
     <Campo rotulo="Bolsa"><select className="input w-full" value={d.tipoBolsa} onChange={(e) => set({ tipoBolsa: e.target.value })}><option value="proporcional">Proporcional ao período</option><option value="integral">Integral</option></select></Campo>
     <Campo rotulo="Valor (R$)"><Entrada d={d} set={set} campo="valor" inputMode="decimal" placeholder="0,00" /></Campo>
@@ -229,11 +255,11 @@ function FormEstagio({ d, set }) {
   </div>;
 }
 
-function FormDanos({ d, set }) {
+function FormDanos({ d, set, pessoas, escolher }) {
   const c = calcularDescontoDano(d);
   return <div className="grid gap-3 sm:grid-cols-2">
     <SelectEmpresa valor={d.empresa} onChange={(empresa) => set({ empresa })} rotulo="Empresa" />
-    <Campo rotulo="Nome do colaborador"><Entrada d={d} set={set} campo="nome" /></Campo>
+    <CampoNome rotulo="Nome do colaborador" d={d} set={set} pessoas={pessoas} aoEscolher={escolher} />
     <Campo rotulo="CPF"><Entrada d={d} set={set} campo="cpf" placeholder="000.000.000-00" /></Campo>
     <Campo rotulo="Cargo"><Entrada d={d} set={set} campo="cargo" placeholder="Analista de laboratório II" /></Campo>
     <Campo rotulo="Descrição do item danificado" largo><textarea className="input w-full" rows={2} value={d.descricao} onChange={(e) => set({ descricao: e.target.value })} /></Campo>
@@ -261,12 +287,38 @@ export default function RecibosFinanceiro() {
   const [fila, setFila] = useState([]);
   const [imprimindo, setImprimindo] = useState("atual");
   const pendente = useRef(false);
+  const [pessoas, setPessoas] = useState([]);
+  const [avisoCadastro, setAvisoCadastro] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    carregarColecoes(["rh_pessoas"])
+      .then((r) => {
+        if (!vivo) return;
+        if (r._recusadas?.length) { setAvisoCadastro("Não consegui consultar o cadastro de pessoas; digite os dados manualmente."); return; }
+        // Ativos primeiro; desligados continuam na busca (recibo retroativo é comum).
+        setPessoas([...(r.rh_pessoas || [])].sort((a, b) => (b.ativo !== false) - (a.ativo !== false) || String(a.nome).localeCompare(String(b.nome), "pt-BR")));
+      })
+      .catch(() => { if (vivo) setAvisoCadastro("Não consegui consultar o cadastro de pessoas; digite os dados manualmente."); });
+    return () => { vivo = false; };
+  }, []);
 
   useEffect(() => {
     try { localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(dados)); } catch { /* rascunho é só conveniência */ }
   }, [dados]);
 
   const Form = FORMULARIOS[modelo], Doc = DOCUMENTOS[modelo], atual = dados[modelo];
+  const escolher = (pe) => {
+    const salario = pe.salario === "" || pe.salario == null || Number(pe.salario) === 0 ? "" : numeroBR(pe.salario);
+    const base = { nome: String(pe.nome || ""), cpf: String(pe.cpf || "") };
+    const porModelo = {
+      pagamento: pe.cargo ? { tipoServico: String(pe.cargo).toLocaleLowerCase("pt-BR") } : {},
+      horasExtras: salario ? { salario } : {},
+      estagio: salario ? { valor: salario } : {},
+      danos: { ...(pe.cargo ? { cargo: String(pe.cargo) } : {}), ...(salario ? { salario } : {}) },
+    };
+    setDados((v) => ({ ...v, [modelo]: { ...v[modelo], ...base, ...porModelo[modelo] } }));
+  };
   const set = (patch) => setDados((v) => ({ ...v, [modelo]: { ...v[modelo], ...patch } }));
   const titulo = (m) => MODELOS.find((x) => x.chave === m)?.titulo;
 
@@ -303,7 +355,8 @@ export default function RecibosFinanceiro() {
 
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <Form d={atual} set={set} />
+        {avisoCadastro && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{avisoCadastro}</p>}
+        <Form d={atual} set={set} pessoas={pessoas} escolher={escolher} />
         <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           <button type="button" className="btn-primary" onClick={() => imprimir("atual")}><Printer size={16} /> Imprimir este recibo</button>
           <button type="button" className="btn-outline" onClick={adicionarNaFila}><FilePlus2 size={16} /> Adicionar à fila</button>
