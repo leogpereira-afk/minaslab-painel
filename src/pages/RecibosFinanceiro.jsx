@@ -135,12 +135,13 @@ function DocDanos({ d }) {
   </>;
 }
 
+export { DocPagamento, DocHorasExtras, DocEstagio, DocDanos, ESTILO_IMPRESSAO };
 const DOCUMENTOS = { pagamento: DocPagamento, horasExtras: DocHorasExtras, estagio: DocEstagio, danos: DocDanos };
 
 const ESTILO_IMPRESSAO = `
 .recibo-folha{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:11.5pt;line-height:1.5;padding:18mm 22mm;box-sizing:border-box}
 .recibo-folha p{margin:0 0 10pt}.recibo-folha .just{text-align:justify}
-.recibo-logo{text-align:center;margin-bottom:12pt}.recibo-logo img{height:11mm;width:auto;display:inline-block}
+.recibo-logo{text-align:center;margin-bottom:12pt}.recibo-logo img{height:10mm;width:auto;display:inline-block}
 .recibo-titulo{text-align:center;font-size:14pt;font-weight:700;margin:0 0 16pt}
 .recibo-itens{margin:0 0 10pt;padding-left:18pt}.recibo-itens li{margin-bottom:2pt}
 .recibo-local{margin-top:22pt!important}
@@ -279,6 +280,30 @@ function FormDanos({ d, set, pessoas, escolher }) {
 
 const FORMULARIOS = { pagamento: FormPagamento, horasExtras: FormHorasExtras, estagio: FormEstagio, danos: FormDanos };
 
+/* A prévia mostra a folha A4 inteira (210 mm) reduzida para caber na coluna, em vez de espremer o texto numa largura menor. */
+const LARGURA_A4_PX = (210 / 25.4) * 96;
+function PreviaA4({ children }) {
+  const caixa = useRef(null), folha = useRef(null);
+  const [escala, setEscala] = useState(1), [altura, setAltura] = useState(0);
+  useEffect(() => {
+    const medir = () => {
+      if (caixa.current) setEscala(Math.min(1, caixa.current.clientWidth / LARGURA_A4_PX));
+      if (folha.current) setAltura(folha.current.offsetHeight);
+    };
+    medir();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(medir);
+    if (caixa.current) ro.observe(caixa.current);
+    if (folha.current) ro.observe(folha.current);
+    return () => ro.disconnect();
+  }, []);
+  return <div ref={caixa} className="w-full">
+    <div style={{ height: altura * escala }}>
+      <div ref={folha} className="recibo-folha shadow-md" style={{ width: "210mm", transform: `scale(${escala})`, transformOrigin: "top left" }}>{children}</div>
+    </div>
+  </div>;
+}
+
 /* ---------- Página ---------- */
 
 export default function RecibosFinanceiro() {
@@ -371,8 +396,8 @@ export default function RecibosFinanceiro() {
 
       <section className="min-w-0">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização</p>
-        <div className="overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-3">
-          <div className="recibo-folha mx-auto max-w-[210mm] shadow-md"><Doc d={atual} /></div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3">
+          <PreviaA4><Doc d={atual} /></PreviaA4>
         </div>
       </section>
     </div>
