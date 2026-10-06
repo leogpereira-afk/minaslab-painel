@@ -14,19 +14,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Check, Pencil, Trash2, Car, Wrench, AlertTriangle, CalendarClock,
-  CheckCircle2, HandCoins, Download,
+  CheckCircle2, HandCoins, Download, Wallet, Search, X,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { lerBens } from "../services/patrimonio.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
 import { chaveAlvo, proximasPorAlvo, somarMeses, PERIODO_CALIBRACAO_PADRAO, bensComoAlvos } from "../lib/manutencaoRegra.js";
 import { baixarPlanilha } from "../lib/planilha.js";
+import { CATEGORIAS_ALVO, resumoGastos, montarOpcoesAlvo, buscarAlvos } from "../lib/manutencaoGastos.js";
 import {
   dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, numero, paraNumero,
 } from "../lib/format.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
-  Segmented,
 } from "../components/ui.jsx";
 
 const COLECAO = "manutencoes";
@@ -229,23 +229,104 @@ function LinhaHistorico({ salvando, m, editavel, acoes }) {
   );
 }
 
+// Escolha do alvo da manutenção: carros, equipamentos E bens do patrimônio numa lista só, com busca por
+// digitação (nome, código da etiqueta, placa, marca, setor…) e filtro por categoria. Escolher o item já define o tipo.
+function SeletorAlvo({ form, setForm, carros, equipamentos, bens }) {
+  const [termo, setTermo] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const todas = useMemo(() => montarOpcoesAlvo({ carros, equipamentos, bens }), [carros, equipamentos, bens]);
+  const selecionado = todas.find((o) => o.tipoAlvo === form.alvoTipo && o.id === form.alvoId) || null;
+  // Registro antigo pode apontar para alvo desativado (ou fora do cadastro): continua mostrando o que está gravado,
+  // senão editar qualquer outro campo trocaria o alvo sem ninguém pedir.
+  const marcado = form.alvoId
+    ? selecionado
+      ? { ...selecionado, nome: selecionado.ativo === false ? `${selecionado.nome} (desativado)` : selecionado.nome }
+      : { tipoAlvo: form.alvoTipo, id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)`, detalhe: "" }
+    : null;
+  const ativas = useMemo(() => todas.filter((o) => o.ativo !== false), [todas]);
+  const porTermo = useMemo(() => buscarAlvos(ativas, termo, ""), [ativas, termo]);
+  const contagem = useMemo(() => {
+    const c = { "": porTermo.length };
+    for (const o of porTermo) c[o.tipoAlvo] = (c[o.tipoAlvo] || 0) + 1;
+    return c;
+  }, [porTermo]);
+  const visiveis = categoria ? porTermo.filter((o) => o.tipoAlvo === categoria) : porTermo;
+  const LIMITE = 60;
+  const escolher = (o) => {
+    setForm({ ...form, alvoTipo: o.tipoAlvo, alvoId: o.id, alvoNome: o.nome });
+    setTermo("");
+  };
+  const rotuloCategoria = (v) => CATEGORIAS_ALVO.find((c) => c.valor === v)?.singular || v;
+
+  return (
+    <div role="group" aria-label="Manutenção de quê">
+      <label className="label" htmlFor="m-busca-alvo">Manutenção de quê</label>
+      {marcado && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2" aria-live="polite">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{marcado.nome}{marcado.placa ? ` — ${marcado.placa}` : ""}</p>
+            <p className="text-xs text-slate-500">{rotuloCategoria(marcado.tipoAlvo)}{marcado.detalhe ? ` · ${marcado.detalhe}` : ""}</p>
+          </div>
+          <button type="button" className="btn-outline min-h-9 shrink-0 text-xs" onClick={() => setForm({ ...form, alvoId: "", alvoNome: "" })}>
+            <X size={14} strokeWidth={2.4} /> Trocar
+          </button>
+        </div>
+      )}
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-3.5 text-slate-400" aria-hidden="true" />
+        <input
+          id="m-busca-alvo" type="search" className="input w-full pl-9" autoComplete="off"
+          placeholder="Digite para buscar: nome, código da etiqueta, placa, marca…"
+          value={termo}
+          onChange={(e) => setTermo(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter com um único resultado escolhe ele — sem enviar o formulário por engano.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (visiveis.length === 1) escolher(visiveis[0]);
+            }
+          }}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por categoria">
+        {[{ valor: "", rotulo: "Todos" }, ...CATEGORIAS_ALVO].map((c) => (
+          <button
+            key={c.valor || "todos"} type="button" aria-pressed={categoria === c.valor}
+            onClick={() => setCategoria(c.valor)}
+            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${categoria === c.valor ? "border-brand bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}
+          >
+            {c.rotulo} <span className="opacity-75">({contagem[c.valor] || 0})</span>
+          </button>
+        ))}
+      </div>
+      <ul role="listbox" aria-label="Resultados" className="mt-2 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white">
+        {visiveis.length === 0 && <li className="px-3 py-4 text-center text-sm text-slate-500">Nada encontrado{termo ? ` para “${termo}”` : ""}. Confira a categoria ou cadastre em Carros, Equipamentos ou Patrimônio.</li>}
+        {visiveis.slice(0, LIMITE).map((o) => {
+          const ativo = form.alvoId === o.id && form.alvoTipo === o.tipoAlvo;
+          return (
+            <li key={`${o.tipoAlvo}|${o.id}`} role="option" aria-selected={ativo}>
+              <button
+                type="button" onClick={() => escolher(o)}
+                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50 ${ativo ? "bg-brand-50 font-semibold" : ""}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-slate-900">{o.nome}{o.placa ? ` — ${o.placa}` : ""}</span>
+                  {o.detalhe && !o.placa && <span className="block truncate text-xs text-slate-500">{o.detalhe}</span>}
+                </span>
+                <span className="chip shrink-0">{rotuloCategoria(o.tipoAlvo)}</span>
+              </button>
+            </li>
+          );
+        })}
+        {visiveis.length > LIMITE && <li className="px-3 py-2 text-center text-xs text-slate-500">Mostrando {LIMITE} de {visiveis.length}. Digite mais para afinar a busca.</li>}
+      </ul>
+    </div>
+  );
+}
+
 function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, aoSalvar, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
-
-  const lista = form.alvoTipo === "carro" ? carros : form.alvoTipo === "bem" ? bens : equipamentos;
-  const opcoes = lista.filter((a) => a.ativo !== false);
-  // Registro antigo pode apontar para alvo desativado (ou fora do cadastro):
-  // o select precisa continuar mostrando, senão editar qualquer outro campo
-  // trocaria o alvo sem ninguém pedir.
-  if (form.alvoId && !opcoes.some((a) => a.id === form.alvoId)) {
-    const antigo = lista.find((a) => a.id === form.alvoId);
-    opcoes.push(
-      antigo
-        ? { ...antigo, nome: `${antigo.nome} (desativado)`}
-        : { id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)`}
-    );
-  }
 
   const valido = form.descricao.trim() && form.alvoId && form.data;
 
@@ -260,30 +341,8 @@ function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, a
         }}
         className="space-y-4"
       >
-        <div role="group" aria-label="Manutenção de quê">
-          <span className="label">Manutenção de quê</span>
-          <Segmented
-            opcoes={[
-              { valor: "carro", rotulo: "Carro" },
-              { valor: "equipamento", rotulo: "Equipamento" },
-              { valor: "bem", rotulo: "Patrimônio" },
-            ]}
-            valor={form.alvoTipo}
-            onChange={(v) => setForm({ ...form, alvoTipo: v, alvoId: "" })}
-          />
-        </div>
+        <SeletorAlvo form={form} setForm={setForm} carros={carros} equipamentos={equipamentos} bens={bens} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
-          <div>
-            <label className="label" htmlFor="m-alvo">{form.alvoTipo === "carro" ? "Carro" : form.alvoTipo === "bem" ? "Bem do patrimônio" : "Equipamento"}</label>
-            <select id="m-alvo" className="select" value={form.alvoId} onChange={setCampo("alvoId")} required>
-              <option value="">— escolha —</option>
-              {opcoes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nome}{a.placa ? ` — ${a.placa}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
           <div>
             <label className="label" htmlFor="m-tipo">Tipo</label>
             <select id="m-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>
@@ -609,6 +668,56 @@ function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicion
   );
 }
 
+// Resumo do dinheiro da manutenção: o que JÁ foi gasto no ano (feitas) e o que AINDA vamos gastar (agendadas),
+// por categoria. Custo em branco não entra na soma (ausente não é "de graça"): vai contado como "sem valor".
+function PainelGastos({ r }) {
+  const cats = CATEGORIAS_ALVO;
+  const maior = Math.max(1, ...cats.flatMap((c) => [r.gasto.porCategoria[c.valor].total, r.previsto.porCategoria[c.valor].total]));
+  const largura = (v) => `${Math.max(v > 0 ? 3 : 0, Math.round((v / maior) * 100))}%`;
+  const totalGeral = r.gasto.total + r.previsto.total;
+  const resumoValor = (g) => (g.comValor > 0 ? moeda(g.total) : g.qtd > 0 ? "sem valor" : "—");
+  return (
+    <Card className="mb-6">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Gastos com manutenção · {r.ano}</h2>
+        <p className="text-sm text-slate-600">
+          Feito + a gastar: <strong className="tnum text-slate-900">{moeda(totalGeral)}</strong>
+          {r.previsto.atrasadas.qtd > 0 && (
+            <span className="ml-2 text-bad-700">
+              ({r.previsto.atrasadas.qtd} {r.previsto.atrasadas.qtd === 1 ? "agendada atrasada" : "agendadas atrasadas"}
+              {r.previsto.atrasadas.comValor > 0 ? ` · ${moeda(r.previsto.atrasadas.total)}` : ""})
+            </span>
+          )}
+        </p>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-ok-600" /> Gasto no ano (feitas)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand" /> A gastar (agendadas)</span>
+      </div>
+      <div className="space-y-3">
+        {cats.map((c) => {
+          const g = r.gasto.porCategoria[c.valor], p = r.previsto.porCategoria[c.valor];
+          return (
+            <div key={c.valor} className="grid grid-cols-1 gap-1 sm:grid-cols-[8rem_1fr] sm:items-center sm:gap-3">
+              <p className="text-sm font-semibold text-slate-800">{c.rotulo}</p>
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 flex-1 rounded-full bg-slate-100" aria-hidden="true"><div className="h-2.5 rounded-full bg-ok-600" style={{ width: largura(g.total) }} /></div>
+                  <span className="w-28 shrink-0 text-right text-xs tnum text-slate-700">{resumoValor(g)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 flex-1 rounded-full bg-slate-100" aria-hidden="true"><div className="h-2.5 rounded-full bg-brand" style={{ width: largura(p.total) }} /></div>
+                  <span className="w-28 shrink-0 text-right text-xs tnum text-slate-700">{resumoValor(p)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export default function Manutencoes() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
@@ -625,6 +734,7 @@ export default function Manutencoes() {
   const [modalEq, setModalEq] = useState(false);
   const [modalCarros, setModalCarros] = useState(false);
   const [filtroAlvo, setFiltroAlvo] = useState("");
+  const [buscaHist, setBuscaHist] = useState("");
   // Os cartões viram recorte: clicar filtra as seções; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
@@ -762,6 +872,7 @@ export default function Manutencoes() {
       comCusto: comCusto.length,
       semCusto: feitasAno.length - comCusto.length,
       custoAno,
+      gastos: resumoGastos(itens, hojeISO),
     };
   }, [itens, equipamentos, carros, bens, hojeISO]);
 
@@ -940,9 +1051,13 @@ export default function Manutencoes() {
       : recorte === "proximas"
         ? vm.agendadas.filter((m) => m.dias !== null && m.dias >= 0 && m.dias <= 30)
         : vm.agendadas;
-  const historicoVisivel = filtroAlvo
+  const historicoPorAlvo = filtroAlvo
     ? vm.feitas.filter((m) => `${m.alvoTipo}|${m.alvoId}` === filtroAlvo)
     : vm.feitas;
+  // Busca por digitação (nome do alvo, descrição, tipo, observação), além de escolher o alvo na lista.
+  const historicoVisivel = buscaHist.trim()
+    ? historicoPorAlvo.filter((m) => buscarAlvos([{ nome: [m.alvoNome, m.descricao, TIPOS[m.tipo], m.obs].filter(Boolean).join(" ") }], buscaHist).length > 0)
+    : historicoPorAlvo;
 
   // Sai o que está na tela — o mesmo recorte do filtro. Planilha que exporta
   // "tudo" enquanto a tela mostra um alvo entrega uma conta que ninguém pediu.
@@ -1034,7 +1149,7 @@ export default function Manutencoes() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           rotulo="Vencidas"
           valor={String(vm.vencidas)}
@@ -1053,13 +1168,26 @@ export default function Manutencoes() {
         />
         <StatCard rotulo="Feitas no ano" valor={String(vm.feitasAno)} tom="ok" icone={CheckCircle2} />
         <StatCard
-          rotulo="Custo no ano"
+          rotulo="Gasto no ano"
           valor={vm.comCusto > 0 ? moeda(vm.custoAno) : "sem registro"}
-          sub={vm.comCusto > 0 && vm.semCusto > 0 ? `${vm.semCusto} sem custo lançado` : undefined}
+          sub={vm.comCusto > 0 && vm.semCusto > 0 ? `${vm.semCusto} sem custo lançado` : "manutenções feitas"}
           tom="neutral"
           icone={HandCoins}
         />
+        <StatCard
+          rotulo="A gastar (agendadas)"
+          valor={vm.gastos.previsto.comValor > 0 ? moeda(vm.gastos.previsto.total) : vm.gastos.previsto.qtd > 0 ? "sem valor" : moeda(0)}
+          sub={
+            vm.gastos.previsto.qtd === 0
+              ? "nenhuma agendada"
+              : `${vm.gastos.previsto.qtd} ${vm.gastos.previsto.qtd === 1 ? "agendada" : "agendadas"}${vm.gastos.previsto.semValor > 0 ? ` · ${vm.gastos.previsto.semValor} sem valor` : ""}`
+          }
+          tom="brand"
+          icone={Wallet}
+        />
       </div>
+
+      <PainelGastos r={vm.gastos} />
 
       {recorte && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
@@ -1118,26 +1246,35 @@ export default function Manutencoes() {
             <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
               Histórico <span className="text-slate-400">({historicoVisivel.length})</span>
             </h2>
-            {vm.opcoesFiltro.length > 0 && (
+            <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="label" htmlFor="h-filtro">Filtrar histórico por alvo</label>
-                <select
-                  id="h-filtro"
-                  className="select min-h-11 w-full min-w-0 sm:w-56"
-                  value={filtroAlvo}
-                  onChange={(e) => setFiltroAlvo(e.target.value)}
-                >
-                  <option value="">Todos os alvos</option>
-                  {vm.opcoesFiltro.map((o) => (
-                    <option key={o.chave} value={o.chave}>{o.nome}</option>
-                  ))}
-                </select>
+                <label className="label" htmlFor="h-busca">Buscar no histórico</label>
+                <input
+                  id="h-busca" type="search" className="input min-h-11 w-full min-w-0 sm:w-56" autoComplete="off"
+                  placeholder="Digite alvo, descrição…" value={buscaHist} onChange={(e) => setBuscaHist(e.target.value)}
+                />
               </div>
-            )}
+              {vm.opcoesFiltro.length > 0 && (
+                <div>
+                  <label className="label" htmlFor="h-filtro">Filtrar histórico por alvo</label>
+                  <select
+                    id="h-filtro"
+                    className="select min-h-11 w-full min-w-0 sm:w-56"
+                    value={filtroAlvo}
+                    onChange={(e) => setFiltroAlvo(e.target.value)}
+                  >
+                    <option value="">Todos os alvos</option>
+                    {vm.opcoesFiltro.map((o) => (
+                      <option key={o.chave} value={o.chave}>{o.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
           {historicoVisivel.length === 0 ? (
             <Empty>
-              {filtroAlvo ? "Nenhuma manutenção feita para este alvo." : "Nenhuma manutenção feita ainda."}
+              {filtroAlvo || buscaHist.trim() ? "Nenhuma manutenção feita com este filtro." : "Nenhuma manutenção feita ainda."}
             </Empty>
           ) : (
             <div className="space-y-2">
@@ -1185,3 +1322,5 @@ export default function Manutencoes() {
     </div>
   );
 }
+
+export { PainelGastos, SeletorAlvo };
