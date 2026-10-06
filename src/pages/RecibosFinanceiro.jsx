@@ -491,21 +491,28 @@ export default function RecibosFinanceiro() {
     return () => clearTimeout(t);
   }, [imprimindo, fila]);
 
-  async function imprimir(qual) {
-    if (qual === "fila" && !fila.length) return;
-    // Imprimir registra no histórico; se o registro falhar, imprime assim mesmo e avisa.
-    try {
-      if (qual === "fila") {
-        const feitos = [];
-        for (const f of fila) feitos.push(f.registroId || await gravar(f.modelo, f.dados, { novo: true }));
-        setFila((l) => l.map((f, n) => ({ ...f, registroId: feitos[n] })));
-      } else {
-        await gravar(modelo, atual, { id: idAtual });
+  // Registrar no histórico leva de 0,5 a 3 s (ida e volta ao servidor). Não pode atrasar a impressão:
+  // a gravação sai em segundo plano e o aviso aparece depois, se falhar.
+  function registrarEmSegundoPlano(qual) {
+    (async () => {
+      try {
+        if (qual === "fila") {
+          const feitos = [];
+          for (const f of fila) feitos.push(f.registroId || await gravar(f.modelo, f.dados, { novo: true }));
+          setFila((l) => l.map((f, n) => ({ ...f, registroId: feitos[n] ?? f.registroId })));
+        } else {
+          await gravar(modelo, atual, { id: idAtual });
+        }
+        carregarHistorico();
+      } catch (e) {
+        setAvisoHist({ tipo: "erro", texto: `O recibo foi impresso, mas não consegui registrar no histórico: ${e.message}` });
       }
-      carregarHistorico();
-    } catch (e) {
-      setAvisoHist({ tipo: "erro", texto: `Imprimindo, mas não consegui registrar no histórico: ${e.message}` });
-    }
+    })();
+  }
+
+  function imprimir(qual) {
+    if (qual === "fila" && !fila.length) return;
+    registrarEmSegundoPlano(qual);
     pendente.current = true;
     setImprimindo(qual);
     // Se já estava no mesmo modo o efeito não dispara; força o print direto.

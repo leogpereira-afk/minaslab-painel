@@ -17,6 +17,18 @@ function replyTo(){const m=FROM_SECRET.match(/<([^>]+)>/);return (m?.[1]||FROM_S
 async function authOk(auth:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"emailEstado"})});return r.status}
 // Só crachá recusado desloga (401). Um tropeço do serviço (503, 546, 429) não é sessão vencida.
 async function porta(auth:string){const st=await authOk(auth);if(st===401)return out({erro:"Entre no sistema.",semSessao:true},401);if(st===403)return out({erro:"Sem permissão para os arquivos do financeiro."},403);if(st<200||st>=300)return out({erro:"O serviço de arquivos não respondeu. Tente de novo em instantes."},503);return null}
+// Regenerar o DANFSe leva 11–20 s. Só vale a pena quando o PDF guardado não existe ou foi gerado ANTES da última mudança
+// de layout do DANFSe. Ao mudar o layout em ml-financeiro-nfse-danfse, atualize esta data: as notas se atualizam na próxima abertura.
+const LAYOUT_DANFSE_EM=Date.parse("2026-09-28T14:38:00Z");
+async function pdfAtualizado(path:string){
+ try{
+  const i=path.lastIndexOf("/"),pasta=path.slice(0,i),nome=path.slice(i+1);
+  const {data,error}=await sb.storage.from("ml-arquivos").list(pasta,{limit:5,search:nome});
+  if(error)return false;
+  const f=(data||[]).find((x:any)=>x.name===nome),quando=Date.parse(t(f?.updated_at||f?.created_at));
+  return Number.isFinite(quando)&&quando>=LAYOUT_DANFSE_EM;
+ }catch{return false}
+}
 // A função de DANFSe só aceita o crachá de quem está logado como direção (ou o gatilho do banco para nota nova sem PDF).
 // Por isso repassamos o crachá de quem abriu o arquivo; com a chave de serviço ela devolvia 401 ("Entre no sistema").
 // Se a conta não for da direção (401/403), abre o PDF que já existe em vez de falhar.
@@ -24,6 +36,7 @@ async function regenerarPorPath(path:string,auth:string){
  if(!path||!path.toLowerCase().endsWith(".pdf"))return path;
  const {data:nota}=await sb.from("notas_fiscais").select("id,pdf_url,xml_url,origem,status_fiscal").eq("pdf_url",path).eq("apagado",false).maybeSingle();
  if(!nota?.id||!nota?.xml_url||t(nota.origem)!=="NFSE_NACIONAL")return path;
+ if(await pdfAtualizado(path))return path;
  const r=await fetch(DANFSE,{method:"POST",headers:{"Content-Type":"application/json","Authorization":auth},body:JSON.stringify({id:nota.id})});
  if(r.status===401||r.status===403)return path;
  if(!r.ok)throw new Error(`Falha ao atualizar DANFSe antes de abrir (HTTP ${r.status}).`);
@@ -31,7 +44,7 @@ async function regenerarPorPath(path:string,auth:string){
  if(!j?.ok)throw new Error(t(j?.erro)||"Falha ao atualizar DANFSe.");
  return t(j.pdfPath)||path;
 }
-async function regenerarNota(nota:any,auth:string){if(nota?.id&&nota?.xml_url&&t(nota.origem)==="NFSE_NACIONAL"){const r=await fetch(DANFSE,{method:"POST",headers:{"Content-Type":"application/json","Authorization":auth},body:JSON.stringify({id:nota.id})});if(r.status===401||r.status===403)return nota;if(!r.ok)throw new Error(`Falha ao atualizar DANFSe (HTTP ${r.status}).`);const j=await r.json().catch(()=>({}));if(!j?.ok)throw new Error(t(j?.erro)||"Falha ao atualizar DANFSe.");nota.pdf_url=t(j.pdfPath)||nota.pdf_url}return nota}
+async function regenerarNota(nota:any,auth:string){if(nota?.id&&nota?.xml_url&&t(nota.origem)==="NFSE_NACIONAL"&&!(nota.pdf_url&&await pdfAtualizado(t(nota.pdf_url)))){const r=await fetch(DANFSE,{method:"POST",headers:{"Content-Type":"application/json","Authorization":auth},body:JSON.stringify({id:nota.id})});if(r.status===401||r.status===403)return nota;if(!r.ok)throw new Error(`Falha ao atualizar DANFSe (HTTP ${r.status}).`);const j=await r.json().catch(()=>({}));if(!j?.ok)throw new Error(t(j?.erro)||"Falha ao atualizar DANFSe.");nota.pdf_url=t(j.pdfPath)||nota.pdf_url}return nota}
 async function baixar(path:string){if(!path||!path.startsWith("financeiro/"))return null;const {data:u,error:se}=await sb.storage.from("ml-arquivos").createSignedUrl(path,60);if(se||!u?.signedUrl)return null;const r=await fetch(u.signedUrl,{cache:"no-store",headers:{"Cache-Control":"no-cache"}});if(!r.ok)return null;return new Uint8Array(await r.arrayBuffer())}
 function b64(bytes:Uint8Array){let s="";for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s)}
 Deno.serve(async req=>{
