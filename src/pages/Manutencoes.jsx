@@ -26,7 +26,7 @@ import {
   dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, numero, paraNumero,
 } from "../lib/format.js";
 import {
-  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
+  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card, Segmented,
 } from "../components/ui.jsx";
 
 const COLECAO = "manutencoes";
@@ -668,6 +668,130 @@ function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicion
   );
 }
 
+// ---- Visão em LISTA (tabela compacta) das três seções. Mesmos dados e mesmos botões das linhas em cartão. ----
+const CHAVE_VISTA = "manutencoes.vista.v1";
+const lerVista = () => {
+  try { return localStorage.getItem(CHAVE_VISTA) === "lista" ? "lista" : "cartoes"; } catch { return "cartoes"; }
+};
+const ROTULO_ALVO = { carro: "Carro", equipamento: "Equipamento", bem: "Patrimônio" };
+
+function Tabela({ rotulo, colunas, children }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--hairline)" }}>
+      <table className="w-full min-w-[680px] text-sm" aria-label={rotulo}>
+        <thead>
+          <tr className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500" style={{ borderColor: "var(--hairline)" }}>
+            {colunas.map((c) => (
+              <th key={c.rotulo || "acoes"} scope="col" className={`px-3 py-2 font-semibold ${c.direita ? "text-right" : ""}`}>{c.rotulo}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+const celula = "px-3 py-2 align-middle";
+const linhaTabela = "border-b last:border-0 hover:bg-slate-50";
+
+function BotoesEditar({ m, salvando, acoes }) {
+  return (
+    <span className="flex items-center justify-end gap-0.5">
+      <button
+        type="button" disabled={salvando} onClick={() => acoes.abrirForm(m)} title="Editar"
+        aria-label={`Editar manutenção: ${m.descricao}, ${m.alvoNome}`}
+        className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      >
+        <Pencil size={14} />
+      </button>
+      <button
+        type="button" disabled={salvando} onClick={() => acoes.remover(m)} title="Apagar"
+        aria-label={`Apagar manutenção: ${m.descricao}, ${m.alvoNome}`}
+        className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+      >
+        <Trash2 size={14} />
+      </button>
+    </span>
+  );
+}
+
+const custoCelula = (c) =>
+  c == null || c === "" ? <span className="text-xs text-slate-400">sem registro</span> : moedaCheia(c);
+
+function TabelaAlvos({ alvos, editavel, salvando, aoAgendar }) {
+  const colunas = [{ rotulo: "Alvo" }, { rotulo: "Categoria" }, { rotulo: "Última / próxima" }, { rotulo: "Prazo" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Próxima manutenção por alvo" colunas={colunas}>
+      {alvos.map((a) => (
+        <tr key={`${a.alvoTipo}|${a.id}`} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          <td className={`${celula} font-medium text-slate-900`}>
+            {a.nome}{a.placa ? <span className="font-normal text-slate-500"> — {a.placa}</span> : null}
+            {a.km != null ? <span className="font-normal text-slate-500" title={a.kmEm ? `Quilometragem lida em ${dataLonga(a.kmEm)}` : "Quilometragem sem data de leitura"}>{" · "}{numero(a.km)} km</span> : null}
+          </td>
+          <td className={celula}>{ROTULO_ALVO[a.alvoTipo] || a.alvoTipo}</td>
+          <td className={`${celula} text-xs text-slate-500`}>{a.sub}</td>
+          <td className={celula}><span className={`${a.chip} whitespace-nowrap`}>{a.texto}</span></td>
+          {editavel && (
+            <td className={`${celula} text-right`}>
+              <button type="button" className="btn-outline min-h-9 text-xs" disabled={salvando} onClick={() => aoAgendar(a)} aria-label={`Agendar manutenção: ${a.nome}`}>Agendar</button>
+            </td>
+          )}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
+function TabelaAgendadas({ itens, editavel, salvando, acoes }) {
+  const colunas = [...(editavel ? [{ rotulo: "Feita?" }] : []), { rotulo: "Data" }, { rotulo: "Alvo" }, { rotulo: "Tipo" }, { rotulo: "Descrição" }, { rotulo: "Custo previsto", direita: true }, { rotulo: "Prazo" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Manutenções agendadas" colunas={colunas}>
+      {itens.map((m) => (
+        <tr key={m.id} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          {editavel && (
+            <td className={celula}>
+              <button
+                type="button" disabled={salvando} onClick={() => acoes.marcarFeita(m)} title="Marcar como feita"
+                aria-label={`Marcar manutenção como feita: ${m.descricao}, ${m.alvoNome}`}
+                className="grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition-colors hover:border-ok-600 hover:text-ok-700" style={{ borderColor: "var(--hairline)" }}
+              >
+                <Check size={15} />
+              </button>
+            </td>
+          )}
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.data ? dataCurta(m.data) : "sem data"}</td>
+          <td className={`${celula} font-medium text-slate-900`}>{m.alvoNome || "(alvo sem nome)"}</td>
+          <td className={celula}>{TIPOS[m.tipo] || m.tipo}</td>
+          <td className={celula}>{[m.descricao, m.obs].filter(Boolean).join(" · ")}</td>
+          <td className={`${celula} text-right tabular-nums`}>{custoCelula(m.custo)}</td>
+          <td className={celula}><span className={`${m.pz.chip} whitespace-nowrap`}>{m.pz.texto}</span></td>
+          {editavel && <td className={celula}><BotoesEditar m={m} salvando={salvando} acoes={acoes} /></td>}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
+function TabelaHistorico({ itens, editavel, salvando, acoes }) {
+  const colunas = [{ rotulo: "Data" }, { rotulo: "Alvo" }, { rotulo: "Tipo" }, { rotulo: "Descrição" }, { rotulo: "Custo", direita: true }, { rotulo: "Próxima" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Histórico de manutenções" colunas={colunas}>
+      {itens.map((m) => (
+        <tr key={m.id} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.data ? dataCurta(m.data) : "sem data"}</td>
+          <td className={`${celula} font-medium text-slate-900`}>{m.alvoNome || "(alvo sem nome)"}</td>
+          <td className={celula}>{TIPOS[m.tipo] || m.tipo}</td>
+          <td className={celula}>{[m.descricao, m.obs].filter(Boolean).join(" · ")}</td>
+          <td className={`${celula} text-right tabular-nums`}>{custoCelula(m.custo)}</td>
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.proxima ? dataCurta(m.proxima) : "—"}</td>
+          {editavel && <td className={celula}><BotoesEditar m={m} salvando={salvando} acoes={acoes} /></td>}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
 // Resumo do dinheiro da manutenção: o que JÁ foi gasto no ano (feitas) e o que AINDA vamos gastar (agendadas),
 // por categoria. Custo em branco não entra na soma (ausente não é "de graça"): vai contado como "sem valor".
 function PainelGastos({ r }) {
@@ -735,11 +859,17 @@ export default function Manutencoes() {
   const [modalCarros, setModalCarros] = useState(false);
   const [filtroAlvo, setFiltroAlvo] = useState("");
   const [buscaHist, setBuscaHist] = useState("");
+  const [vista, setVista] = useState(lerVista); // "cartoes" | "lista"
   // Os cartões viram recorte: clicar filtra as seções; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
   // outro e o dia congelado mentiria o prazo da calibração.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
+
+  const trocarVista = (v) => {
+    setVista(v);
+    try { localStorage.setItem(CHAVE_VISTA, v); } catch { /* preferência é só conveniência */ }
+  };
 
   const recarregar = useCallback(() => {
     setAtualizando(true);
@@ -1196,6 +1326,15 @@ export default function Manutencoes() {
         </div>
       )}
 
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ver como</span>
+        <Segmented
+          opcoes={[{ valor: "cartoes", rotulo: "Cartões" }, { valor: "lista", rotulo: "Lista" }]}
+          valor={vista}
+          onChange={trocarVista}
+        />
+      </div>
+
       <div className="space-y-6">
         <Card>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1210,17 +1349,18 @@ export default function Manutencoes() {
                   : "Nenhum carro ou equipamento ativo cadastrado."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {alvosVisiveis.map((a) => (
-                <LinhaAlvo
-                  key={`${a.alvoTipo}|${a.id}`}
-                  a={a}
-                  editavel={editavel}
-                  salvando={salvando}
-                  aoAgendar={() => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) })}
-                />
-              ))}
-            </div>
+            (() => {
+              const agendarAlvo = (a) => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) });
+              return vista === "lista" ? (
+                <TabelaAlvos alvos={alvosVisiveis} editavel={editavel} salvando={salvando} aoAgendar={agendarAlvo} />
+              ) : (
+                <div className="space-y-2">
+                  {alvosVisiveis.map((a) => (
+                    <LinhaAlvo key={`${a.alvoTipo}|${a.id}`} a={a} editavel={editavel} salvando={salvando} aoAgendar={() => agendarAlvo(a)} />
+                  ))}
+                </div>
+              );
+            })()
           )}
         </Card>
 
@@ -1233,11 +1373,15 @@ export default function Manutencoes() {
               {recorte ? "Nada neste recorte." : "Nenhuma manutenção agendada."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {agendadasVisiveis.map((m) => (
-                <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-              ))}
-            </div>
+            vista === "lista" ? (
+              <TabelaAgendadas itens={agendadasVisiveis} editavel={editavel} salvando={salvando} acoes={acoes} />
+            ) : (
+              <div className="space-y-2">
+                {agendadasVisiveis.map((m) => (
+                  <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                ))}
+              </div>
+            )
           )}
         </Card>
 
@@ -1277,11 +1421,15 @@ export default function Manutencoes() {
               {filtroAlvo || buscaHist.trim() ? "Nenhuma manutenção feita com este filtro." : "Nenhuma manutenção feita ainda."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {historicoVisivel.map((m) => (
-                <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-              ))}
-            </div>
+            vista === "lista" ? (
+              <TabelaHistorico itens={historicoVisivel} editavel={editavel} salvando={salvando} acoes={acoes} />
+            ) : (
+              <div className="space-y-2">
+                {historicoVisivel.map((m) => (
+                  <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                ))}
+              </div>
+            )
           )}
         </Card>
       </div>
@@ -1323,4 +1471,4 @@ export default function Manutencoes() {
   );
 }
 
-export { PainelGastos, SeletorAlvo };
+export { PainelGastos, SeletorAlvo, TabelaAlvos, TabelaAgendadas, TabelaHistorico };
