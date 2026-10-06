@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Check, Pencil, Trash2, Car, Wrench, AlertTriangle, CalendarClock,
-  CheckCircle2, HandCoins, Download,
+  CheckCircle2, HandCoins, Download, Wallet, Search, X, Paperclip, Upload,
 } from "lucide-react";
 import { listar, salvar, apagar } from "../services/dados.js";
 import { lerBens } from "../services/patrimonio.js";
@@ -22,11 +22,17 @@ import { getSessao, podeEditar } from "../lib/sessao.js";
 import { chaveAlvo, proximasPorAlvo, somarMeses, PERIODO_CALIBRACAO_PADRAO, bensComoAlvos } from "../lib/manutencaoRegra.js";
 import { baixarPlanilha } from "../lib/planilha.js";
 import {
+  CATEGORIAS_ALVO, resumoGastos, montarOpcoesAlvo, buscarAlvos, gastoPorMes, rankingGastos,
+  idOrcamento, orcamentoDoAno, situacaoOrcamento,
+} from "../lib/manutencaoGastos.js";
+import {
+  TIPOS_ANEXO, LIMITE_ANEXO, enviarAnexo, removerAnexo, lerArquivoBase64, novaPastaAnexos, abrirAnexo,
+} from "../services/manutencaoAnexos.js";
+import {
   dataCurta, dataLonga, diasEntre, ymdLocal, moeda, moedaCheia, numero, paraNumero,
 } from "../lib/format.js";
 import {
-  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
-  Segmented,
+  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card, Segmented,
 } from "../components/ui.jsx";
 
 const COLECAO = "manutencoes";
@@ -40,6 +46,7 @@ const TIPOS = {
 const VAZIO = {
   id: "", alvoTipo: "carro", alvoId: "", alvoNome: "", tipo: "preventiva",
   descricao: "", data: "", custo: "", proxima: "", status: "agendada", obs: "",
+  fornecedor: "", anexos: [], pastaAnexos: "",
 };
 
 // A ficha do carro vive como TEXTO enquanto está no formulário; ano e km viram
@@ -72,6 +79,24 @@ function prazoAgendada(dias) {
   if (dias === 0) return { texto: "HOJE", chip: "chip-warn" };
   if (dias <= 7) return { texto: `em ${ndias(dias)}`, chip: "chip-warn" };
   return { texto: `em ${ndias(dias)}`, chip: "chip" };
+}
+
+// Clipes dos anexos (nota, orçamento) de uma manutenção: um botão por anexo; passou de 3, o resto fica na edição.
+function ClipeAnexos({ anexos, aoAbrir }) {
+  if (!anexos?.length) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5">
+      {anexos.slice(0, 3).map((a) => (
+        <button
+          key={a.path} type="button" onClick={() => aoAbrir(a)} title={`Abrir: ${a.nome}`} aria-label={`Abrir anexo: ${a.nome}`}
+          className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-brand-700"
+        >
+          <Paperclip size={14} />
+        </button>
+      ))}
+      {anexos.length > 3 && <span className="text-xs text-slate-500">+{anexos.length - 3}</span>}
+    </span>
+  );
 }
 
 // Uma linha da Seção 1: o alvo e a próxima manutenção dele. O chip "sem
@@ -138,9 +163,10 @@ function LinhaAgendada({ salvando, m, editavel, acoes }) {
       <span className="min-w-0 flex-1 basis-48">
         <span className="block break-words font-display text-sm font-medium text-slate-900">{m.descricao}</span>
         <span className="block break-words text-xs text-slate-500">
-          {[m.alvoNome, TIPOS[m.tipo] || m.tipo, m.obs].filter(Boolean).join(" · ")}
+          {[m.alvoNome, TIPOS[m.tipo] || m.tipo, m.fornecedor && `Fornecedor: ${m.fornecedor}`, m.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
+      <ClipeAnexos anexos={m.anexos} aoAbrir={acoes.abrirAnexo} />
       <span className="shrink-0 text-right">
         <span className={`${m.pz.chip} whitespace-nowrap`}>{m.pz.texto}</span>
         <span className="mt-0.5 block text-xs tabular-nums text-slate-500">
@@ -190,9 +216,10 @@ function LinhaHistorico({ salvando, m, editavel, acoes }) {
           <span className="font-normal text-slate-500"> · {TIPOS[m.tipo] || m.tipo}</span>
         </span>
         <span className="block break-words text-xs text-slate-500">
-          {[m.descricao, m.obs].filter(Boolean).join(" · ")}
+          {[m.descricao, m.fornecedor && `Fornecedor: ${m.fornecedor}`, m.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
+      <ClipeAnexos anexos={m.anexos} aoAbrir={acoes.abrirAnexo} />
       {/* Custo ausente escreve "sem registro" — R$ 0 seria afirmar que foi de graça. */}
       <span className="shrink-0 text-sm tabular-nums text-slate-700">
         {m.custo == null || m.custo === "" ? (
@@ -229,23 +256,174 @@ function LinhaHistorico({ salvando, m, editavel, acoes }) {
   );
 }
 
-function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, aoSalvar, aoFechar }) {
+// Escolha do alvo da manutenção: carros, equipamentos E bens do patrimônio numa lista só, com busca por
+// digitação (nome, código da etiqueta, placa, marca, setor…) e filtro por categoria. Escolher o item já define o tipo.
+function SeletorAlvo({ form, setForm, carros, equipamentos, bens }) {
+  const [termo, setTermo] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const todas = useMemo(() => montarOpcoesAlvo({ carros, equipamentos, bens }), [carros, equipamentos, bens]);
+  const selecionado = todas.find((o) => o.tipoAlvo === form.alvoTipo && o.id === form.alvoId) || null;
+  // Registro antigo pode apontar para alvo desativado (ou fora do cadastro): continua mostrando o que está gravado,
+  // senão editar qualquer outro campo trocaria o alvo sem ninguém pedir.
+  const marcado = form.alvoId
+    ? selecionado
+      ? { ...selecionado, nome: selecionado.ativo === false ? `${selecionado.nome} (desativado)` : selecionado.nome }
+      : { tipoAlvo: form.alvoTipo, id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)`, detalhe: "" }
+    : null;
+  const ativas = useMemo(() => todas.filter((o) => o.ativo !== false), [todas]);
+  const porTermo = useMemo(() => buscarAlvos(ativas, termo, ""), [ativas, termo]);
+  const contagem = useMemo(() => {
+    const c = { "": porTermo.length };
+    for (const o of porTermo) c[o.tipoAlvo] = (c[o.tipoAlvo] || 0) + 1;
+    return c;
+  }, [porTermo]);
+  const visiveis = categoria ? porTermo.filter((o) => o.tipoAlvo === categoria) : porTermo;
+  const LIMITE = 60;
+  const escolher = (o) => {
+    setForm({ ...form, alvoTipo: o.tipoAlvo, alvoId: o.id, alvoNome: o.nome });
+    setTermo("");
+  };
+  const rotuloCategoria = (v) => CATEGORIAS_ALVO.find((c) => c.valor === v)?.singular || v;
+
+  return (
+    <div role="group" aria-label="Manutenção de quê">
+      <label className="label" htmlFor="m-busca-alvo">Manutenção de quê</label>
+      {marcado && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2" aria-live="polite">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{marcado.nome}{marcado.placa ? ` — ${marcado.placa}` : ""}</p>
+            <p className="text-xs text-slate-500">{rotuloCategoria(marcado.tipoAlvo)}{marcado.detalhe ? ` · ${marcado.detalhe}` : ""}</p>
+          </div>
+          <button type="button" className="btn-outline min-h-9 shrink-0 text-xs" onClick={() => setForm({ ...form, alvoId: "", alvoNome: "" })}>
+            <X size={14} strokeWidth={2.4} /> Trocar
+          </button>
+        </div>
+      )}
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-3.5 text-slate-400" aria-hidden="true" />
+        <input
+          id="m-busca-alvo" type="search" className="input w-full pl-9" autoComplete="off"
+          placeholder="Digite para buscar: nome, código da etiqueta, placa, marca…"
+          value={termo}
+          onChange={(e) => setTermo(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter com um único resultado escolhe ele — sem enviar o formulário por engano.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (visiveis.length === 1) escolher(visiveis[0]);
+            }
+          }}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por categoria">
+        {[{ valor: "", rotulo: "Todos" }, ...CATEGORIAS_ALVO].map((c) => (
+          <button
+            key={c.valor || "todos"} type="button" aria-pressed={categoria === c.valor}
+            onClick={() => setCategoria(c.valor)}
+            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${categoria === c.valor ? "border-brand bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}
+          >
+            {c.rotulo} <span className="opacity-75">({contagem[c.valor] || 0})</span>
+          </button>
+        ))}
+      </div>
+      <ul role="listbox" aria-label="Resultados" className="mt-2 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white">
+        {visiveis.length === 0 && <li className="px-3 py-4 text-center text-sm text-slate-500">Nada encontrado{termo ? ` para “${termo}”` : ""}. Confira a categoria ou cadastre em Carros, Equipamentos ou Patrimônio.</li>}
+        {visiveis.slice(0, LIMITE).map((o) => {
+          const ativo = form.alvoId === o.id && form.alvoTipo === o.tipoAlvo;
+          return (
+            <li key={`${o.tipoAlvo}|${o.id}`} role="option" aria-selected={ativo}>
+              <button
+                type="button" onClick={() => escolher(o)}
+                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50 ${ativo ? "bg-brand-50 font-semibold" : ""}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-slate-900">{o.nome}{o.placa ? ` — ${o.placa}` : ""}</span>
+                  {o.detalhe && !o.placa && <span className="block truncate text-xs text-slate-500">{o.detalhe}</span>}
+                </span>
+                <span className="chip shrink-0">{rotuloCategoria(o.tipoAlvo)}</span>
+              </button>
+            </li>
+          );
+        })}
+        {visiveis.length > LIMITE && <li className="px-3 py-2 text-center text-xs text-slate-500">Mostrando {LIMITE} de {visiveis.length}. Digite mais para afinar a busca.</li>}
+      </ul>
+    </div>
+  );
+}
+
+// Anexos da manutenção (nota fiscal, orçamento): PDF ou imagem de até 8 MB. O arquivo sobe na hora; a referência
+// só entra no registro quando você grava. Anexo enviado nesta edição e removido (ou formulário cancelado) é apagado do servidor.
+const tamanhoLegivel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+function AnexosForm({ form, setForm }) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  const anexos = form.anexos || [];
+
+  const escolher = async (e) => {
+    const arquivos = [...(e.target.files || [])];
+    e.target.value = "";
+    if (!arquivos.length) return;
+    setErro("");
+    setEnviando(true);
+    const pasta = form.pastaAnexos || novaPastaAnexos();
+    try {
+      for (const f of arquivos) {
+        if (f.size > LIMITE_ANEXO) throw new Error(`“${f.name}” passa de 8 MB.`);
+        if (!/^(application\/pdf|image\/(jpeg|png|webp))$/i.test(f.type)) throw new Error(`“${f.name}”: envie PDF, JPG, PNG ou WebP.`);
+        const anexo = await enviarAnexo(pasta, f.name, await lerArquivoBase64(f));
+        setForm((v) => ({ ...v, pastaAnexos: pasta, anexos: [...(v.anexos || []), { ...anexo, novo: true }] }));
+      }
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const abrir = async (a) => {
+    setErro("");
+    try { await abrirAnexo(a.path); } catch (err) { setErro(err.message); }
+  };
+  const remover = (a) => {
+    // Anexo antigo só perde a referência (o registro salvo continua apontando para ele até você gravar).
+    if (a.novo) removerAnexo(a.path).catch(() => {});
+    setForm((v) => ({ ...v, anexos: (v.anexos || []).filter((x) => x.path !== a.path) }));
+  };
+
+  return (
+    <div>
+      <span className="label">Anexos (nota fiscal, orçamento)</span>
+      {anexos.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {anexos.map((a) => (
+            <li key={a.path} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-sm" style={{ borderColor: "var(--hairline)" }}>
+              <span className="flex min-w-0 items-center gap-2">
+                <Paperclip size={14} className="shrink-0 text-slate-500" />
+                <span className="truncate">{a.nome}</span>
+                <span className="shrink-0 text-xs text-slate-400">{tamanhoLegivel(a.tamanho || 0)}</span>
+              </span>
+              <span className="flex shrink-0 gap-1">
+                <button type="button" className="btn-outline min-h-8 px-2 text-xs" onClick={() => abrir(a)}>Abrir</button>
+                <button type="button" className="btn-outline min-h-8 px-2 text-xs" onClick={() => remover(a)} aria-label={`Remover anexo ${a.nome}`}>Remover</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label className={`btn-outline inline-flex cursor-pointer items-center gap-2 ${enviando ? "pointer-events-none opacity-60" : ""}`}>
+        <Upload size={15} strokeWidth={2.2} /> {enviando ? "Enviando…" : "Anexar arquivo"}
+        <input type="file" className="sr-only" accept={TIPOS_ANEXO} multiple onChange={escolher} disabled={enviando} />
+      </label>
+      <span className="ml-2 text-xs text-slate-500">PDF, JPG, PNG ou WebP, até 8 MB cada.</span>
+      {erro && <p role="alert" className="mt-1 text-xs text-bad-700">{erro}</p>}
+    </div>
+  );
+}
+
+function FormManutencao({ form, setForm, carros, equipamentos, bens, fornecedores = [], salvando, aoSalvar, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
-
-  const lista = form.alvoTipo === "carro" ? carros : form.alvoTipo === "bem" ? bens : equipamentos;
-  const opcoes = lista.filter((a) => a.ativo !== false);
-  // Registro antigo pode apontar para alvo desativado (ou fora do cadastro):
-  // o select precisa continuar mostrando, senão editar qualquer outro campo
-  // trocaria o alvo sem ninguém pedir.
-  if (form.alvoId && !opcoes.some((a) => a.id === form.alvoId)) {
-    const antigo = lista.find((a) => a.id === form.alvoId);
-    opcoes.push(
-      antigo
-        ? { ...antigo, nome: `${antigo.nome} (desativado)`}
-        : { id: form.alvoId, nome: `${form.alvoNome || "?"} (fora do cadastro)`}
-    );
-  }
 
   const valido = form.descricao.trim() && form.alvoId && form.data;
 
@@ -260,30 +438,8 @@ function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, a
         }}
         className="space-y-4"
       >
-        <div role="group" aria-label="Manutenção de quê">
-          <span className="label">Manutenção de quê</span>
-          <Segmented
-            opcoes={[
-              { valor: "carro", rotulo: "Carro" },
-              { valor: "equipamento", rotulo: "Equipamento" },
-              { valor: "bem", rotulo: "Patrimônio" },
-            ]}
-            valor={form.alvoTipo}
-            onChange={(v) => setForm({ ...form, alvoTipo: v, alvoId: "" })}
-          />
-        </div>
+        <SeletorAlvo form={form} setForm={setForm} carros={carros} equipamentos={equipamentos} bens={bens} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
-          <div>
-            <label className="label" htmlFor="m-alvo">{form.alvoTipo === "carro" ? "Carro" : form.alvoTipo === "bem" ? "Bem do patrimônio" : "Equipamento"}</label>
-            <select id="m-alvo" className="select" value={form.alvoId} onChange={setCampo("alvoId")} required>
-              <option value="">— escolha —</option>
-              {opcoes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nome}{a.placa ? ` — ${a.placa}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
           <div>
             <label className="label" htmlFor="m-tipo">Tipo</label>
             <select id="m-tipo" className="select" value={form.tipo} onChange={setCampo("tipo")}>
@@ -296,6 +452,16 @@ function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, a
         <div>
           <label className="label" htmlFor="m-desc">O que foi (ou será) feito</label>
           <input id="m-desc" type="text" className="input" value={form.descricao} onChange={setCampo("descricao")} autoFocus required />
+        </div>
+        <div>
+          <label className="label" htmlFor="m-fornecedor">Fornecedor (opcional)</label>
+          <input
+            id="m-fornecedor" type="text" className="input" list="m-fornecedores" autoComplete="off"
+            placeholder="Quem fez ou vai fazer o serviço" value={form.fornecedor || ""} onChange={setCampo("fornecedor")}
+          />
+          <datalist id="m-fornecedores">
+            {fornecedores.map((f) => <option key={f} value={f} />)}
+          </datalist>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
           <div>
@@ -329,6 +495,7 @@ function FormManutencao({ form, setForm, carros, equipamentos, bens, salvando, a
           <label className="label" htmlFor="m-obs">Observações</label>
           <textarea id="m-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
         </div>
+        <AnexosForm form={form} setForm={setForm} />
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !valido}>
@@ -609,11 +776,331 @@ function ModalEquipamentos({ aberto, aoFechar, equipamentos, salvando, aoAdicion
   );
 }
 
+// ---- Visão em LISTA (tabela compacta) das três seções. Mesmos dados e mesmos botões das linhas em cartão. ----
+const CHAVE_VISTA = "manutencoes.vista.v1";
+const lerVista = () => {
+  try { return localStorage.getItem(CHAVE_VISTA) === "lista" ? "lista" : "cartoes"; } catch { return "cartoes"; }
+};
+const ROTULO_ALVO = { carro: "Carro", equipamento: "Equipamento", bem: "Patrimônio" };
+
+function Tabela({ rotulo, colunas, children }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--hairline)" }}>
+      <table className="w-full min-w-[680px] text-sm" aria-label={rotulo}>
+        <thead>
+          <tr className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500" style={{ borderColor: "var(--hairline)" }}>
+            {colunas.map((c) => (
+              <th key={c.rotulo || "acoes"} scope="col" className={`px-3 py-2 font-semibold ${c.direita ? "text-right" : ""}`}>{c.rotulo}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+const celula = "px-3 py-2 align-middle";
+const linhaTabela = "border-b last:border-0 hover:bg-slate-50";
+
+function BotoesEditar({ m, salvando, acoes }) {
+  return (
+    <span className="flex items-center justify-end gap-0.5">
+      <ClipeAnexos anexos={m.anexos} aoAbrir={acoes.abrirAnexo} />
+      <button
+        type="button" disabled={salvando} onClick={() => acoes.abrirForm(m)} title="Editar"
+        aria-label={`Editar manutenção: ${m.descricao}, ${m.alvoNome}`}
+        className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      >
+        <Pencil size={14} />
+      </button>
+      <button
+        type="button" disabled={salvando} onClick={() => acoes.remover(m)} title="Apagar"
+        aria-label={`Apagar manutenção: ${m.descricao}, ${m.alvoNome}`}
+        className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700"
+      >
+        <Trash2 size={14} />
+      </button>
+    </span>
+  );
+}
+
+const custoCelula = (c) =>
+  c == null || c === "" ? <span className="text-xs text-slate-400">sem registro</span> : moedaCheia(c);
+
+function TabelaAlvos({ alvos, editavel, salvando, aoAgendar }) {
+  const colunas = [{ rotulo: "Alvo" }, { rotulo: "Categoria" }, { rotulo: "Última / próxima" }, { rotulo: "Prazo" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Próxima manutenção por alvo" colunas={colunas}>
+      {alvos.map((a) => (
+        <tr key={`${a.alvoTipo}|${a.id}`} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          <td className={`${celula} font-medium text-slate-900`}>
+            {a.nome}{a.placa ? <span className="font-normal text-slate-500"> — {a.placa}</span> : null}
+            {a.km != null ? <span className="font-normal text-slate-500" title={a.kmEm ? `Quilometragem lida em ${dataLonga(a.kmEm)}` : "Quilometragem sem data de leitura"}>{" · "}{numero(a.km)} km</span> : null}
+          </td>
+          <td className={celula}>{ROTULO_ALVO[a.alvoTipo] || a.alvoTipo}</td>
+          <td className={`${celula} text-xs text-slate-500`}>{a.sub}</td>
+          <td className={celula}><span className={`${a.chip} whitespace-nowrap`}>{a.texto}</span></td>
+          {editavel && (
+            <td className={`${celula} text-right`}>
+              <button type="button" className="btn-outline min-h-9 text-xs" disabled={salvando} onClick={() => aoAgendar(a)} aria-label={`Agendar manutenção: ${a.nome}`}>Agendar</button>
+            </td>
+          )}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
+function TabelaAgendadas({ itens, editavel, salvando, acoes }) {
+  const colunas = [...(editavel ? [{ rotulo: "Feita?" }] : []), { rotulo: "Data" }, { rotulo: "Alvo" }, { rotulo: "Tipo" }, { rotulo: "Descrição" }, { rotulo: "Fornecedor" }, { rotulo: "Custo previsto", direita: true }, { rotulo: "Prazo" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Manutenções agendadas" colunas={colunas}>
+      {itens.map((m) => (
+        <tr key={m.id} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          {editavel && (
+            <td className={celula}>
+              <button
+                type="button" disabled={salvando} onClick={() => acoes.marcarFeita(m)} title="Marcar como feita"
+                aria-label={`Marcar manutenção como feita: ${m.descricao}, ${m.alvoNome}`}
+                className="grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition-colors hover:border-ok-600 hover:text-ok-700" style={{ borderColor: "var(--hairline)" }}
+              >
+                <Check size={15} />
+              </button>
+            </td>
+          )}
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.data ? dataCurta(m.data) : "sem data"}</td>
+          <td className={`${celula} font-medium text-slate-900`}>{m.alvoNome || "(alvo sem nome)"}</td>
+          <td className={celula}>{TIPOS[m.tipo] || m.tipo}</td>
+          <td className={celula}>{[m.descricao, m.obs].filter(Boolean).join(" · ")}</td>
+          <td className={`${celula} text-slate-600`}>{m.fornecedor || "—"}</td>
+          <td className={`${celula} text-right tabular-nums`}>{custoCelula(m.custo)}</td>
+          <td className={celula}><span className={`${m.pz.chip} whitespace-nowrap`}>{m.pz.texto}</span></td>
+          {editavel && <td className={celula}><BotoesEditar m={m} salvando={salvando} acoes={acoes} /></td>}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
+function TabelaHistorico({ itens, editavel, salvando, acoes }) {
+  const colunas = [{ rotulo: "Data" }, { rotulo: "Alvo" }, { rotulo: "Tipo" }, { rotulo: "Descrição" }, { rotulo: "Fornecedor" }, { rotulo: "Custo", direita: true }, { rotulo: "Próxima" }, ...(editavel ? [{ rotulo: "" }] : [])];
+  return (
+    <Tabela rotulo="Histórico de manutenções" colunas={colunas}>
+      {itens.map((m) => (
+        <tr key={m.id} className={linhaTabela} style={{ borderColor: "var(--hairline)" }}>
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.data ? dataCurta(m.data) : "sem data"}</td>
+          <td className={`${celula} font-medium text-slate-900`}>{m.alvoNome || "(alvo sem nome)"}</td>
+          <td className={celula}>{TIPOS[m.tipo] || m.tipo}</td>
+          <td className={celula}>{[m.descricao, m.obs].filter(Boolean).join(" · ")}</td>
+          <td className={`${celula} text-slate-600`}>{m.fornecedor || "—"}</td>
+          <td className={`${celula} text-right tabular-nums`}>{custoCelula(m.custo)}</td>
+          <td className={`${celula} whitespace-nowrap tabular-nums`}>{m.proxima ? dataCurta(m.proxima) : "—"}</td>
+          {editavel && <td className={celula}><BotoesEditar m={m} salvando={salvando} acoes={acoes} /></td>}
+        </tr>
+      ))}
+    </Tabela>
+  );
+}
+
+// Resumo do dinheiro da manutenção: o que JÁ foi gasto no ano (feitas) e o que AINDA vamos gastar (agendadas),
+// por categoria. Custo em branco não entra na soma (ausente não é "de graça"): vai contado como "sem valor".
+function PainelGastos({ r }) {
+  const cats = CATEGORIAS_ALVO;
+  const maior = Math.max(1, ...cats.flatMap((c) => [r.gasto.porCategoria[c.valor].total, r.previsto.porCategoria[c.valor].total]));
+  const largura = (v) => `${Math.max(v > 0 ? 3 : 0, Math.round((v / maior) * 100))}%`;
+  const totalGeral = r.gasto.total + r.previsto.total;
+  const resumoValor = (g) => (g.comValor > 0 ? moeda(g.total) : g.qtd > 0 ? "sem valor" : "—");
+  return (
+    <Card className="h-full">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Gastos com manutenção · {r.ano}</h2>
+        <p className="text-sm text-slate-600">
+          Feito + a gastar: <strong className="tnum text-slate-900">{moeda(totalGeral)}</strong>
+          {r.previsto.atrasadas.qtd > 0 && (
+            <span className="ml-2 text-bad-700">
+              ({r.previsto.atrasadas.qtd} {r.previsto.atrasadas.qtd === 1 ? "agendada atrasada" : "agendadas atrasadas"}
+              {r.previsto.atrasadas.comValor > 0 ? ` · ${moeda(r.previsto.atrasadas.total)}` : ""})
+            </span>
+          )}
+        </p>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-ok-600" /> Gasto no ano (feitas)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand" /> A gastar (agendadas + calibrações previstas)</span>
+      </div>
+      <div className="space-y-3">
+        {cats.map((c) => {
+          const g = r.gasto.porCategoria[c.valor], p = r.previsto.porCategoria[c.valor];
+          return (
+            <div key={c.valor} className="grid grid-cols-1 gap-1 sm:grid-cols-[8rem_1fr] sm:items-center sm:gap-3">
+              <p className="text-sm font-semibold text-slate-800">{c.rotulo}</p>
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 flex-1 rounded-full bg-slate-100" aria-hidden="true"><div className="h-2.5 rounded-full bg-ok-600" style={{ width: largura(g.total) }} /></div>
+                  <span className="w-28 shrink-0 text-right text-xs tnum text-slate-700">{resumoValor(g)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 flex-1 rounded-full bg-slate-100" aria-hidden="true"><div className="h-2.5 rounded-full bg-brand" style={{ width: largura(p.total) }} /></div>
+                  <span className="w-28 shrink-0 text-right text-xs tnum text-slate-700">{resumoValor(p)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// Orçamento anual: a meta de gasto e quanto dela já foi consumido (feito) e comprometido (a gastar).
+function OrcamentoAnual({ ano, situacao, editavel, salvando, aoSalvar }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [erro, setErro] = useState("");
+  const abrir = () => { setTexto(situacao ? String(situacao.orcamento).replace(".", ",") : ""); setErro(""); setEditando(true); };
+  const gravar = async () => {
+    const limpo = texto.trim();
+    const valor = limpo === "" ? null : paraNumero(limpo);
+    if (valor !== null && !(valor > 0)) { setErro("Informe um valor maior que zero (ou deixe em branco para remover)."); return; }
+    if (await aoSalvar(valor)) setEditando(false);
+  };
+  const formulario = (
+    <div className="flex flex-wrap items-end gap-2">
+      <div>
+        <label className="label" htmlFor="orc-valor">Orçamento de {ano} (R$)</label>
+        <input id="orc-valor" type="text" inputMode="decimal" className="input w-44" placeholder="0,00" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); gravar(); } }} />
+      </div>
+      <button type="button" className="btn-primary min-h-11" disabled={salvando} onClick={gravar}>{salvando ? "Gravando…" : "Gravar"}</button>
+      {situacao && <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => setEditando(false)}>Cancelar</button>}
+      {erro && <p role="alert" className="w-full text-xs text-bad-700">{erro}</p>}
+    </div>
+  );
+  return (
+    <Card className="h-full">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Orçamento de {ano}</h2>
+        {editavel && situacao && !editando && <button type="button" className="btn-outline min-h-9 text-xs" onClick={abrir}>Alterar</button>}
+      </div>
+      {!situacao || editando ? (
+        editavel ? (
+          <>
+            {!situacao && <p className="mb-3 text-sm text-slate-600">Defina quanto pretende gastar com manutenção em {ano} para acompanhar quanto já foi consumido.</p>}
+            {formulario}
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">Nenhum orçamento definido para {ano}.</p>
+        )
+      ) : (
+        <div>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="font-display text-2xl font-semibold tnum text-slate-900">{moeda(situacao.orcamento)}</span>
+            <span className={`text-sm font-semibold ${situacao.acima ? "text-bad-700" : "text-ok-700"}`}>
+              {situacao.restante >= 0 ? `Resta ${moeda(situacao.restante)}` : `Passa ${moeda(-situacao.restante)}`}
+            </span>
+          </div>
+          <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`Gasto ${situacao.pctGasto}% e a gastar ${situacao.pctPrevisto}% do orçamento`}>
+            <div className={situacao.gastoAcima ? "bg-bad-600" : "bg-ok-600"} style={{ width: `${situacao.pctGasto}%` }} />
+            <div className="bg-brand" style={{ width: `${situacao.pctPrevisto}%` }} />
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div><dt className="text-xs text-slate-500">Já gasto</dt><dd className="font-semibold tnum text-slate-900">{moeda(situacao.gasto)} <span className="font-normal text-slate-500">({Math.round((situacao.gasto / situacao.orcamento) * 100)}%)</span></dd></div>
+            <div><dt className="text-xs text-slate-500">A gastar</dt><dd className="font-semibold tnum text-slate-900">{moeda(situacao.previsto)} <span className="font-normal text-slate-500">({Math.round((situacao.previsto / situacao.orcamento) * 100)}%)</span></dd></div>
+          </dl>
+          {situacao.acima && <p role="status" className="mt-3 rounded-lg bg-bad-50 px-3 py-2 text-xs text-bad-800">A previsão (gasto + agendadas + calibrações) passa do orçamento em {moeda(-situacao.restante)}.</p>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Gasto mês a mês: o que saiu (feito) e o que vai sair (agendado e calibrações previstas), só manutenção com custo informado.
+function GraficoMensal({ meses, ano, mesAtual }) {
+  const maior = Math.max(1, ...meses.map((m) => Math.max(m.feito, m.previsto + m.estimado)));
+  const alt = (v) => (v > 0 ? `${Math.max(2, Math.round((v / maior) * 100))}%` : "0%");
+  const total = meses.reduce((n, m) => n + m.feito + m.previsto + m.estimado, 0);
+  return (
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Gasto mês a mês · {ano}</h2>
+        <div className="flex flex-wrap gap-4 text-xs text-slate-600" aria-hidden="true">
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-ok-600" /> Feito</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand" /> Agendado</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand/40" /> Calibração prevista</span>
+        </div>
+      </div>
+      {total === 0 ? (
+        <Empty>Nenhum custo informado em {ano} ainda. Preencha o custo nas manutenções para ver o gráfico.</Empty>
+      ) : (
+        <>
+          <div className="flex h-44 items-end gap-1 sm:gap-2">
+            {meses.map((m) => (
+              <div key={m.mes} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${m.rotulo}: feito ${moeda(m.feito)} · agendado ${moeda(m.previsto)} · calibração prevista ${moeda(m.estimado)}`}>
+                <div className="flex h-36 w-full items-end justify-center gap-0.5" aria-hidden="true">
+                  <div className="w-1/2 rounded-t bg-ok-600" style={{ height: alt(m.feito) }} />
+                  <div className="flex h-full w-1/2 flex-col justify-end">
+                    <div className="rounded-t bg-brand/40" style={{ height: `${m.previsto + m.estimado > 0 ? Math.round((m.estimado / maior) * 100) : 0}%` }} />
+                    <div className={m.estimado > 0 ? "bg-brand" : "rounded-t bg-brand"} style={{ height: `${m.previsto > 0 ? Math.max(2, Math.round((m.previsto / maior) * 100)) : 0}%` }} />
+                  </div>
+                </div>
+                <span className={`text-[10px] uppercase sm:text-xs ${m.mes === mesAtual ? "font-bold text-slate-900" : "text-slate-500"}`}>{m.rotulo}</span>
+              </div>
+            ))}
+          </div>
+          <table className="sr-only">
+            <caption>Gasto com manutenção por mês em {ano}</caption>
+            <thead><tr><th>Mês</th><th>Feito</th><th>Agendado</th><th>Calibração prevista</th></tr></thead>
+            <tbody>{meses.map((m) => <tr key={m.mes}><td>{m.rotulo}</td><td>{moeda(m.feito)}</td><td>{moeda(m.previsto)}</td><td>{moeda(m.estimado)}</td></tr>)}</tbody>
+          </table>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// Quem mais custa: equipamentos, carros e bens com maior gasto em manutenções FEITAS — para decidir o que vale trocar.
+function RankingGastos({ itens, ano }) {
+  const [escopo, setEscopo] = useState("ano");
+  const lista = useMemo(() => rankingGastos(itens, { ano: escopo === "ano" ? ano : "", limite: 8 }), [itens, escopo, ano]);
+  const maior = Math.max(1, ...lista.map((a) => a.total));
+  return (
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Quem mais custa</h2>
+        <Segmented
+          opcoes={[{ valor: "ano", rotulo: `Em ${ano}` }, { valor: "tudo", rotulo: "Todo o período" }]}
+          valor={escopo}
+          onChange={setEscopo}
+        />
+      </div>
+      {lista.length === 0 ? (
+        <Empty>Nenhuma manutenção feita com custo informado {escopo === "ano" ? `em ${ano}` : "até agora"}.</Empty>
+      ) : (
+        <ol className="space-y-2">
+          {lista.map((a, n) => (
+            <li key={a.chave} className="grid grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 gap-y-1">
+              <span className="text-xs font-semibold tabular-nums text-slate-400">{n + 1}º</span>
+              <span className="min-w-0 truncate text-sm font-medium text-slate-900">
+                {a.nome} <span className="chip ml-1 align-middle">{ROTULO_ALVO[a.alvoTipo] || a.alvoTipo}</span>
+              </span>
+              <span className="text-right text-sm font-semibold tabular-nums text-slate-900">{moeda(a.total)}</span>
+              <span />
+              <div className="h-2 rounded-full bg-slate-100" aria-hidden="true"><div className="h-2 rounded-full bg-ok-600" style={{ width: `${Math.max(3, Math.round((a.total / maior) * 100))}%` }} /></div>
+              <span className="text-right text-xs text-slate-500">{a.qtd} {a.qtd === 1 ? "manutenção" : "manutenções"}{a.semValor > 0 ? ` · ${a.semValor} sem custo` : ""}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
 export default function Manutencoes() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
 
   const [itens, setItens] = useState(null);
+  const [config, setConfig] = useState([]); // registros de configuração (orçamento do ano) — não são manutenções
   const [equipamentos, setEquipamentos] = useState(null);
   const [carros, setCarros] = useState(null);
   const [bens, setBens] = useState([]);
@@ -625,11 +1112,18 @@ export default function Manutencoes() {
   const [modalEq, setModalEq] = useState(false);
   const [modalCarros, setModalCarros] = useState(false);
   const [filtroAlvo, setFiltroAlvo] = useState("");
+  const [buscaHist, setBuscaHist] = useState("");
+  const [vista, setVista] = useState(lerVista); // "cartoes" | "lista"
   // Os cartões viram recorte: clicar filtra as seções; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
   // outro e o dia congelado mentiria o prazo da calibração.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
+
+  const trocarVista = (v) => {
+    setVista(v);
+    try { localStorage.setItem(CHAVE_VISTA, v); } catch { /* preferência é só conveniência */ }
+  };
 
   const recarregar = useCallback(() => {
     setAtualizando(true);
@@ -639,7 +1133,9 @@ export default function Manutencoes() {
     Promise.all([listar(COLECAO), listar("equipamentos"), listar("carros"), lerBens().catch(() => ({}))])
       .then(([ms, eqs, cs, bs]) => {
         setBens(bensComoAlvos(bs));
-        setItens(ms);
+        // Registros "config" (orçamento) moram na mesma coleção, mas não são manutenção: ficam fora de toda conta e lista.
+        setItens(ms.filter((m) => m.status !== "config"));
+        setConfig(ms.filter((m) => m.status === "config"));
         setEquipamentos(eqs);
         setCarros(cs);
         setErro(null);
@@ -674,6 +1170,7 @@ export default function Manutencoes() {
   const vm = useMemo(() => {
     if (!itens || !equipamentos || !carros) return null;
     const anoAtual = hojeISO.slice(0, 4);
+    const gastos = resumoGastos(itens, hojeISO);
 
     const agendadas = itens
       .filter((m) => m.status === "agendada")
@@ -762,14 +1259,22 @@ export default function Manutencoes() {
       comCusto: comCusto.length,
       semCusto: feitasAno.length - comCusto.length,
       custoAno,
+      gastos,
+      mensal: gastoPorMes(itens, gastos.estimadas, anoAtual),
+      orcamento: situacaoOrcamento(orcamentoDoAno(config, anoAtual), gastos.gasto.total, gastos.previsto.total),
+      fornecedores: [...new Set(itens.map((m) => String(m.fornecedor || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      mesAtual: Number(hojeISO.slice(5, 7)) - 1,
     };
-  }, [itens, equipamentos, carros, bens, hojeISO]);
+  }, [itens, config, equipamentos, carros, bens, hojeISO]);
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);
     try {
       // Derivados do render (dias, prazo) não vão ao banco — são conta da tela.
-      const { dias: _dias, pz: _pz, ...limpo } = dados;
+      const { dias: _dias, pz: _pz, pastaAnexos: _pasta, ...limpo } = dados;
+      // O sinal "novo" só serve ao formulário (decide se o arquivo é apagado ao remover/cancelar).
+      limpo.anexos = (limpo.anexos || []).map(({ novo: _novo, ...a }) => a);
+      limpo.fornecedor = String(limpo.fornecedor || "").trim();
       // CARIMBO: o nome do alvo é resolvido AGORA e gravado junto. Se o carro
       // ou o equipamento for renomeado depois, o histórico não quebra.
       const alvo = (limpo.alvoTipo === "carro" ? carros : limpo.alvoTipo === "bem" ? bens : equipamentos)?.find((a) => a.id === limpo.alvoId);
@@ -790,12 +1295,21 @@ export default function Manutencoes() {
   };
 
   const acoes = {
+    abrirAnexo: async (a) => {
+      try {
+        await abrirAnexo(a.path);
+      } catch (e) {
+        setAviso({ tipo: "erro", texto: e.message });
+      }
+    },
     abrirForm: (m) =>
       setForm(
         m
           ? {
               ...VAZIO,
               ...m,
+              anexos: m.anexos || [],
+              pastaAnexos: "",
               // Custo volta para o campo do jeito que se digita. Não usar
               // paraCampo aqui: ele devolve "" para 0, e custo zero REGISTRADO
               // não é a mesma coisa que custo sem registro.
@@ -817,6 +1331,29 @@ export default function Manutencoes() {
         setSalvando(false);
       }
     },
+  };
+
+  // Cancelar/fechar apaga do servidor os anexos enviados nesta edição e não gravados.
+  const fecharForm = () => {
+    (form?.anexos || []).filter((a) => a.novo).forEach((a) => removerAnexo(a.path).catch(() => {}));
+    setForm(null);
+  };
+
+  const salvarOrcamento = async (valor) => {
+    setSalvando(true);
+    try {
+      const ano = hojeISO.slice(0, 4);
+      if (valor === null) await apagar(COLECAO, idOrcamento(ano));
+      else await salvar(COLECAO, { id: idOrcamento(ano), status: "config", tipoRegistro: "orcamento", ano, valor });
+      setAviso({ tipo: "ok", texto: valor === null ? `Orçamento de ${ano} removido.` : `Orçamento de ${ano} gravado.` });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const salvarForm = () => {
@@ -940,9 +1477,13 @@ export default function Manutencoes() {
       : recorte === "proximas"
         ? vm.agendadas.filter((m) => m.dias !== null && m.dias >= 0 && m.dias <= 30)
         : vm.agendadas;
-  const historicoVisivel = filtroAlvo
+  const historicoPorAlvo = filtroAlvo
     ? vm.feitas.filter((m) => `${m.alvoTipo}|${m.alvoId}` === filtroAlvo)
     : vm.feitas;
+  // Busca por digitação (nome do alvo, descrição, tipo, observação), além de escolher o alvo na lista.
+  const historicoVisivel = buscaHist.trim()
+    ? historicoPorAlvo.filter((m) => buscarAlvos([{ nome: [m.alvoNome, m.descricao, TIPOS[m.tipo], m.obs].filter(Boolean).join(" ") }], buscaHist).length > 0)
+    : historicoPorAlvo;
 
   // Sai o que está na tela — o mesmo recorte do filtro. Planilha que exporta
   // "tudo" enquanto a tela mostra um alvo entrega uma conta que ninguém pediu.
@@ -964,6 +1505,7 @@ export default function Manutencoes() {
           { chave: "alvo", rotulo: "Alvo", tipo: "texto" },
           { chave: "tipo", rotulo: "Tipo", tipo: "texto" },
           { chave: "descricao", rotulo: "Descrição", tipo: "texto" },
+          { chave: "fornecedor", rotulo: "Fornecedor", tipo: "texto" },
           { chave: "custo", rotulo: "Custo", tipo: "dinheiro" },
           { chave: "proxima", rotulo: "Próxima", tipo: "data" },
           { chave: "status", rotulo: "Situação", tipo: "texto" },
@@ -973,6 +1515,7 @@ export default function Manutencoes() {
           alvo: m.alvoNome || "(alvo sem nome)",
           tipo: TIPOS[m.tipo] || m.tipo,
           descricao: m.descricao || "",
+          fornecedor: m.fornecedor || "",
           // Custo ausente vai VAZIO, não 0: a planilha vai ser somada, e um
           // zero inventado viraria "manutenção de graça" na conta do ano.
           custo: m.custo == null || m.custo === "" ? null : Number(m.custo),
@@ -1034,7 +1577,7 @@ export default function Manutencoes() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           rotulo="Vencidas"
           valor={String(vm.vencidas)}
@@ -1053,13 +1596,42 @@ export default function Manutencoes() {
         />
         <StatCard rotulo="Feitas no ano" valor={String(vm.feitasAno)} tom="ok" icone={CheckCircle2} />
         <StatCard
-          rotulo="Custo no ano"
+          rotulo="Gasto no ano"
           valor={vm.comCusto > 0 ? moeda(vm.custoAno) : "sem registro"}
-          sub={vm.comCusto > 0 && vm.semCusto > 0 ? `${vm.semCusto} sem custo lançado` : undefined}
+          sub={vm.comCusto > 0 && vm.semCusto > 0 ? `${vm.semCusto} sem custo lançado` : "manutenções feitas"}
           tom="neutral"
           icone={HandCoins}
         />
+        <StatCard
+          rotulo="A gastar (previsto)"
+          valor={vm.gastos.previsto.comValor > 0 ? moeda(vm.gastos.previsto.total) : vm.gastos.previsto.qtd > 0 ? "sem valor" : moeda(0)}
+          sub={
+            vm.gastos.previsto.qtd === 0
+              ? "nada agendado nem a vencer"
+              : [
+                  vm.gastos.previsto.agendadas.qtd > 0 && `${vm.gastos.previsto.agendadas.qtd} ${vm.gastos.previsto.agendadas.qtd === 1 ? "agendada" : "agendadas"}`,
+                  vm.gastos.previsto.estimadas.qtd > 0 && `${vm.gastos.previsto.estimadas.qtd} ${vm.gastos.previsto.estimadas.qtd === 1 ? "calibração prevista" : "calibrações previstas"}`,
+                  vm.gastos.previsto.semValor > 0 && `${vm.gastos.previsto.semValor} sem valor`,
+                ].filter(Boolean).join(" · ")
+          }
+          tom="brand"
+          icone={Wallet}
+        />
       </div>
+
+      <details open className="mb-6">
+        <summary className="mb-3 cursor-pointer select-none font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Gastos e orçamento
+        </summary>
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <PainelGastos r={vm.gastos} />
+            <OrcamentoAnual ano={vm.anoAtual} situacao={vm.orcamento} editavel={editavel} salvando={salvando} aoSalvar={salvarOrcamento} />
+          </div>
+          <GraficoMensal meses={vm.mensal} ano={vm.anoAtual} mesAtual={vm.mesAtual} />
+          <RankingGastos itens={itens} ano={vm.anoAtual} />
+        </div>
+      </details>
 
       {recorte && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
@@ -1067,6 +1639,15 @@ export default function Manutencoes() {
           <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
         </div>
       )}
+
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ver como</span>
+        <Segmented
+          opcoes={[{ valor: "cartoes", rotulo: "Cartões" }, { valor: "lista", rotulo: "Lista" }]}
+          valor={vista}
+          onChange={trocarVista}
+        />
+      </div>
 
       <div className="space-y-6">
         <Card>
@@ -1082,17 +1663,18 @@ export default function Manutencoes() {
                   : "Nenhum carro ou equipamento ativo cadastrado."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {alvosVisiveis.map((a) => (
-                <LinhaAlvo
-                  key={`${a.alvoTipo}|${a.id}`}
-                  a={a}
-                  editavel={editavel}
-                  salvando={salvando}
-                  aoAgendar={() => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) })}
-                />
-              ))}
-            </div>
+            (() => {
+              const agendarAlvo = (a) => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) });
+              return vista === "lista" ? (
+                <TabelaAlvos alvos={alvosVisiveis} editavel={editavel} salvando={salvando} aoAgendar={agendarAlvo} />
+              ) : (
+                <div className="space-y-2">
+                  {alvosVisiveis.map((a) => (
+                    <LinhaAlvo key={`${a.alvoTipo}|${a.id}`} a={a} editavel={editavel} salvando={salvando} aoAgendar={() => agendarAlvo(a)} />
+                  ))}
+                </div>
+              );
+            })()
           )}
         </Card>
 
@@ -1105,11 +1687,15 @@ export default function Manutencoes() {
               {recorte ? "Nada neste recorte." : "Nenhuma manutenção agendada."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {agendadasVisiveis.map((m) => (
-                <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-              ))}
-            </div>
+            vista === "lista" ? (
+              <TabelaAgendadas itens={agendadasVisiveis} editavel={editavel} salvando={salvando} acoes={acoes} />
+            ) : (
+              <div className="space-y-2">
+                {agendadasVisiveis.map((m) => (
+                  <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                ))}
+              </div>
+            )
           )}
         </Card>
 
@@ -1118,33 +1704,46 @@ export default function Manutencoes() {
             <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
               Histórico <span className="text-slate-400">({historicoVisivel.length})</span>
             </h2>
-            {vm.opcoesFiltro.length > 0 && (
+            <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="label" htmlFor="h-filtro">Filtrar histórico por alvo</label>
-                <select
-                  id="h-filtro"
-                  className="select min-h-11 w-full min-w-0 sm:w-56"
-                  value={filtroAlvo}
-                  onChange={(e) => setFiltroAlvo(e.target.value)}
-                >
-                  <option value="">Todos os alvos</option>
-                  {vm.opcoesFiltro.map((o) => (
-                    <option key={o.chave} value={o.chave}>{o.nome}</option>
-                  ))}
-                </select>
+                <label className="label" htmlFor="h-busca">Buscar no histórico</label>
+                <input
+                  id="h-busca" type="search" className="input min-h-11 w-full min-w-0 sm:w-56" autoComplete="off"
+                  placeholder="Digite alvo, descrição…" value={buscaHist} onChange={(e) => setBuscaHist(e.target.value)}
+                />
               </div>
-            )}
+              {vm.opcoesFiltro.length > 0 && (
+                <div>
+                  <label className="label" htmlFor="h-filtro">Filtrar histórico por alvo</label>
+                  <select
+                    id="h-filtro"
+                    className="select min-h-11 w-full min-w-0 sm:w-56"
+                    value={filtroAlvo}
+                    onChange={(e) => setFiltroAlvo(e.target.value)}
+                  >
+                    <option value="">Todos os alvos</option>
+                    {vm.opcoesFiltro.map((o) => (
+                      <option key={o.chave} value={o.chave}>{o.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
           {historicoVisivel.length === 0 ? (
             <Empty>
-              {filtroAlvo ? "Nenhuma manutenção feita para este alvo." : "Nenhuma manutenção feita ainda."}
+              {filtroAlvo || buscaHist.trim() ? "Nenhuma manutenção feita com este filtro." : "Nenhuma manutenção feita ainda."}
             </Empty>
           ) : (
-            <div className="space-y-2">
-              {historicoVisivel.map((m) => (
-                <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-              ))}
-            </div>
+            vista === "lista" ? (
+              <TabelaHistorico itens={historicoVisivel} editavel={editavel} salvando={salvando} acoes={acoes} />
+            ) : (
+              <div className="space-y-2">
+                {historicoVisivel.map((m) => (
+                  <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                ))}
+              </div>
+            )
           )}
         </Card>
       </div>
@@ -1155,9 +1754,10 @@ export default function Manutencoes() {
         carros={carros}
         equipamentos={equipamentos}
         bens={bens}
+        fornecedores={vm.fornecedores}
         salvando={salvando}
         aoSalvar={salvarForm}
-        aoFechar={() => setForm(null)}
+        aoFechar={fecharForm}
       />
 
       {editavel && (
@@ -1185,3 +1785,5 @@ export default function Manutencoes() {
     </div>
   );
 }
+
+export { PainelGastos, SeletorAlvo, TabelaAlvos, TabelaAgendadas, TabelaHistorico, OrcamentoAnual, GraficoMensal, RankingGastos, AnexosForm };
