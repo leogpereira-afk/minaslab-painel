@@ -800,6 +800,31 @@ function Tabela({ rotulo, colunas, children }) {
   );
 }
 
+const POR_PAGINA = 10;
+
+// Fatia a lista na página pedida (travando no intervalo válido, para lista que encolhe com filtro).
+function paginar(lista, pedida) {
+  const total = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+  const atual = Math.min(Math.max(1, pedida || 1), total);
+  return { itens: lista.slice((atual - 1) * POR_PAGINA, atual * POR_PAGINA), atual, total, qtd: lista.length };
+}
+
+function Paginacao({ pg, aoMudar }) {
+  if (pg.total <= 1) return null;
+  const de = (pg.atual - 1) * POR_PAGINA + 1;
+  const ate = Math.min(pg.atual * POR_PAGINA, pg.qtd);
+  return (
+    <nav aria-label="Paginação" className="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <span className="text-xs text-slate-500">{de}–{ate} de {pg.qtd}</span>
+      <span className="flex items-center gap-2">
+        <button type="button" className="btn-outline min-h-11" disabled={pg.atual <= 1} onClick={() => aoMudar(pg.atual - 1)}>Anterior</button>
+        <span className="text-sm text-slate-600">Página {pg.atual} de {pg.total}</span>
+        <button type="button" className="btn-outline min-h-11" disabled={pg.atual >= pg.total} onClick={() => aoMudar(pg.atual + 1)}>Próxima</button>
+      </span>
+    </nav>
+  );
+}
+
 const celula = "px-3 py-2 align-middle";
 const linhaTabela = "border-b last:border-0 hover:bg-slate-50";
 
@@ -1114,8 +1139,11 @@ export default function Manutencoes() {
   const [filtroAlvo, setFiltroAlvo] = useState("");
   const [buscaHist, setBuscaHist] = useState("");
   const [vista, setVista] = useState(lerVista); // "cartoes" | "lista"
-  // Os cartões viram recorte: clicar filtra as seções; clicar de novo volta.
+  // Os cartões viram destaque: clicar sobe os itens vencidos/próximos ao topo; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
+  const [aba, setAba] = useState("alvos"); // "alvos" | "agendadas" | "historico" | "gastos"
+  const [filtroPrazo, setFiltroPrazo] = useState("todos"); // "todos" | "prazo" | "semdata" | "urgentes"
+  const [pagina, setPagina] = useState({ alvos: 1, agendadas: 1, historico: 1 });
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
   // outro e o dia congelado mentiria o prazo da calibração.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
@@ -1465,18 +1493,26 @@ export default function Manutencoes() {
   if (erro && !vm && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!vm) return <CarregandoModulo />;
 
-  const alvosVisiveis =
-    recorte === "vencidas"
-      ? vm.alvos.filter((x) => x.situacao === "prazo" && x.dias < 0)
-      : recorte === "proximas"
-        ? vm.alvos.filter((x) => x.situacao === "prazo" && x.dias >= 0 && x.dias <= 30)
-        : vm.alvos;
-  const agendadasVisiveis =
-    recorte === "vencidas"
-      ? vm.agendadas.filter((m) => m.dias !== null && m.dias < 0)
-      : recorte === "proximas"
-        ? vm.agendadas.filter((m) => m.dias !== null && m.dias >= 0 && m.dias <= 30)
-        : vm.agendadas;
+  // O cartão clicado não esconde nada: quem se encaixa no recorte sobe ao topo (e fica em destaque).
+  const casaAlvo = (x) =>
+    recorte === "vencidas" ? x.situacao === "prazo" && x.dias < 0
+      : recorte === "proximas" ? x.situacao === "prazo" && x.dias >= 0 && x.dias <= 30
+        : false;
+  const casaAgendada = (m) =>
+    recorte === "vencidas" ? m.dias !== null && m.dias < 0
+      : recorte === "proximas" ? m.dias !== null && m.dias >= 0 && m.dias <= 30
+        : false;
+  const subirPrimeiro = (lista, casa) => (recorte ? [...lista.filter(casa), ...lista.filter((x) => !casa(x))] : lista);
+  const semData = (x) => x.situacao !== "prazo";
+  const alvosFiltrados =
+    filtroPrazo === "prazo" ? vm.alvos.filter((x) => x.situacao === "prazo")
+      : filtroPrazo === "semdata" ? vm.alvos.filter(semData)
+        : filtroPrazo === "urgentes" ? vm.alvos.filter((x) => x.situacao === "prazo" && x.dias <= 30)
+          : vm.alvos;
+  const alvosVisiveis = subirPrimeiro(alvosFiltrados, casaAlvo);
+  const qtdSemData = vm.alvos.filter(semData).length;
+  const agendadasVisiveis = subirPrimeiro(vm.agendadas, casaAgendada);
+  const emDestaque = (lista, casa) => (recorte ? lista.filter(casa).length : 0);
   const historicoPorAlvo = filtroAlvo
     ? vm.feitas.filter((m) => `${m.alvoTipo}|${m.alvoId}` === filtroAlvo)
     : vm.feitas;
@@ -1577,7 +1613,7 @@ export default function Manutencoes() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           rotulo="Vencidas"
           valor={String(vm.vencidas)}
@@ -1593,6 +1629,20 @@ export default function Manutencoes() {
           icone={CalendarClock}
           onClick={() => setRecorte(recorte === "proximas" ? null : "proximas")}
           ativo={recorte === "proximas"}
+        />
+        <StatCard
+          rotulo="Sem data"
+          valor={String(qtdSemData)}
+          sub="sem registro ou sem próxima marcada"
+          tom={qtdSemData > 0 ? "warn" : "ok"}
+          icone={CalendarClock}
+          onClick={() => {
+            const ligar = !(aba === "alvos" && filtroPrazo === "semdata");
+            setFiltroPrazo(ligar ? "semdata" : "todos");
+            setPagina((v) => ({ ...v, alvos: 1 }));
+            setAba("alvos");
+          }}
+          ativo={aba === "alvos" && filtroPrazo === "semdata"}
         />
         <StatCard rotulo="Feitas no ano" valor={String(vm.feitasAno)} tom="ok" icone={CheckCircle2} />
         <StatCard
@@ -1619,86 +1669,123 @@ export default function Manutencoes() {
         />
       </div>
 
-      <details open className="mb-6">
-        <summary className="mb-3 cursor-pointer select-none font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Gastos e orçamento
-        </summary>
-        <div className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <PainelGastos r={vm.gastos} />
-            <OrcamentoAnual ano={vm.anoAtual} situacao={vm.orcamento} editavel={editavel} salvando={salvando} aoSalvar={salvarOrcamento} />
-          </div>
-          <GraficoMensal meses={vm.mensal} ano={vm.anoAtual} mesAtual={vm.mesAtual} />
-          <RankingGastos itens={itens} ano={vm.anoAtual} />
-        </div>
-      </details>
-
       {recorte && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
-          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "vencidas" ? "Vencidas" : "Próximas em 30 dias"}.</p>
-          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtros</button>
+          <p role="status" className="text-sm text-brand-800">
+            Em destaque no topo: {recorte === "vencidas" ? "vencidas" : "próximas em 30 dias"} ({emDestaque(alvosVisiveis, casaAlvo)} alvos · {emDestaque(agendadasVisiveis, casaAgendada)} agendadas).
+          </p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Tirar destaque</button>
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ver como</span>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Segmented
-          opcoes={[{ valor: "cartoes", rotulo: "Cartões" }, { valor: "lista", rotulo: "Lista" }]}
-          valor={vista}
-          onChange={trocarVista}
+          opcoes={[
+            { valor: "alvos", rotulo: `Por alvo (${alvosVisiveis.length})` },
+            { valor: "agendadas", rotulo: `Agendadas (${agendadasVisiveis.length})` },
+            { valor: "historico", rotulo: `Histórico (${historicoVisivel.length})` },
+            { valor: "gastos", rotulo: "Gastos e orçamento" },
+          ]}
+          valor={aba}
+          onChange={setAba}
         />
+        {aba !== "gastos" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ver como</span>
+            <Segmented
+              opcoes={[{ valor: "cartoes", rotulo: "Cartões" }, { valor: "lista", rotulo: "Lista" }]}
+              valor={vista}
+              onChange={trocarVista}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="space-y-6">
+      {aba === "alvos" && (
         <Card>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mostrar</span>
+            <Segmented
+              opcoes={[
+                { valor: "todos", rotulo: "Todos" },
+                { valor: "prazo", rotulo: "Com prazo" },
+                { valor: "semdata", rotulo: `Sem data (${qtdSemData})` },
+                { valor: "urgentes", rotulo: "Vencidos/Próximos" },
+              ]}
+              valor={filtroPrazo}
+              onChange={(v) => { setFiltroPrazo(v); setPagina((p) => ({ ...p, alvos: 1 })); }}
+            />
+          </div>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
             Próxima manutenção por alvo <span className="text-slate-400">({alvosVisiveis.length})</span>
           </h2>
           {alvosVisiveis.length === 0 ? (
             <Empty>
-              {recorte
-                ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
+              {filtroPrazo !== "todos" && vm.alvos.length > 0
+                ? "Nenhum alvo neste filtro."
                 : editavel
-                  ? "Nenhum carro ou equipamento ativo. Cadastre pelos botões Carros e Equipamentos, lá em cima."
-                  : "Nenhum carro ou equipamento ativo cadastrado."}
+                ? "Nenhum carro ou equipamento ativo. Cadastre pelos botões Carros e Equipamentos, lá em cima."
+                : "Nenhum carro ou equipamento ativo cadastrado."}
             </Empty>
           ) : (
             (() => {
+              const pg = paginar(alvosVisiveis, pagina.alvos);
               const agendarAlvo = (a) => setForm({ ...VAZIO, data: hojeISO, alvoTipo: a.alvoTipo, alvoId: a.id, alvoNome: a.nome, ...(a.alvoTipo === "bem" ? { tipo: "calibracao", descricao: "Calibração" } : {}) });
-              return vista === "lista" ? (
-                <TabelaAlvos alvos={alvosVisiveis} editavel={editavel} salvando={salvando} aoAgendar={agendarAlvo} />
-              ) : (
-                <div className="space-y-2">
-                  {alvosVisiveis.map((a) => (
-                    <LinhaAlvo key={`${a.alvoTipo}|${a.id}`} a={a} editavel={editavel} salvando={salvando} aoAgendar={() => agendarAlvo(a)} />
-                  ))}
-                </div>
+              return (
+                <>
+                  {vista === "lista" ? (
+                    <TabelaAlvos alvos={pg.itens} editavel={editavel} salvando={salvando} aoAgendar={agendarAlvo} />
+                  ) : (
+                    <div className="space-y-2">
+                      {pg.itens.map((a) => (
+                        <div key={`${a.alvoTipo}|${a.id}`} className={casaAlvo(a) ? "rounded-xl ring-2 ring-brand/60" : undefined}>
+                          <LinhaAlvo a={a} editavel={editavel} salvando={salvando} aoAgendar={() => agendarAlvo(a)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Paginacao pg={pg} aoMudar={(n) => setPagina((v) => ({ ...v, alvos: n }))} />
+                </>
               );
             })()
           )}
         </Card>
+      )}
 
+      {aba === "agendadas" && (
         <Card>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
             Agendadas <span className="text-slate-400">({agendadasVisiveis.length})</span>
           </h2>
           {agendadasVisiveis.length === 0 ? (
             <Empty>
-              {recorte ? "Nada neste recorte." : "Nenhuma manutenção agendada."}
+              Nenhuma manutenção agendada.
             </Empty>
           ) : (
-            vista === "lista" ? (
-              <TabelaAgendadas itens={agendadasVisiveis} editavel={editavel} salvando={salvando} acoes={acoes} />
-            ) : (
-              <div className="space-y-2">
-                {agendadasVisiveis.map((m) => (
-                  <LinhaAgendada salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-                ))}
-              </div>
-            )
+            (() => {
+              const pg = paginar(agendadasVisiveis, pagina.agendadas);
+              return (
+                <>
+                  {vista === "lista" ? (
+                    <TabelaAgendadas itens={pg.itens} editavel={editavel} salvando={salvando} acoes={acoes} />
+                  ) : (
+                    <div className="space-y-2">
+                      {pg.itens.map((m) => (
+                        <div key={m.id} className={casaAgendada(m) ? "rounded-xl ring-2 ring-brand/60" : undefined}>
+                          <LinhaAgendada salvando={salvando} m={m} editavel={editavel} acoes={acoes} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Paginacao pg={pg} aoMudar={(n) => setPagina((v) => ({ ...v, agendadas: n }))} />
+                </>
+              );
+            })()
           )}
         </Card>
+      )}
 
+      {aba === "historico" && (
         <Card>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1709,7 +1796,7 @@ export default function Manutencoes() {
                 <label className="label" htmlFor="h-busca">Buscar no histórico</label>
                 <input
                   id="h-busca" type="search" className="input min-h-11 w-full min-w-0 sm:w-56" autoComplete="off"
-                  placeholder="Digite alvo, descrição…" value={buscaHist} onChange={(e) => setBuscaHist(e.target.value)}
+                  placeholder="Digite alvo, descrição…" value={buscaHist} onChange={(e) => { setBuscaHist(e.target.value); setPagina((v) => ({ ...v, historico: 1 })); }}
                 />
               </div>
               {vm.opcoesFiltro.length > 0 && (
@@ -1719,7 +1806,7 @@ export default function Manutencoes() {
                     id="h-filtro"
                     className="select min-h-11 w-full min-w-0 sm:w-56"
                     value={filtroAlvo}
-                    onChange={(e) => setFiltroAlvo(e.target.value)}
+                    onChange={(e) => { setFiltroAlvo(e.target.value); setPagina((v) => ({ ...v, historico: 1 })); }}
                   >
                     <option value="">Todos os alvos</option>
                     {vm.opcoesFiltro.map((o) => (
@@ -1735,18 +1822,37 @@ export default function Manutencoes() {
               {filtroAlvo || buscaHist.trim() ? "Nenhuma manutenção feita com este filtro." : "Nenhuma manutenção feita ainda."}
             </Empty>
           ) : (
-            vista === "lista" ? (
-              <TabelaHistorico itens={historicoVisivel} editavel={editavel} salvando={salvando} acoes={acoes} />
-            ) : (
-              <div className="space-y-2">
-                {historicoVisivel.map((m) => (
-                  <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
-                ))}
-              </div>
-            )
+            (() => {
+              const pg = paginar(historicoVisivel, pagina.historico);
+              return (
+                <>
+                  {vista === "lista" ? (
+                    <TabelaHistorico itens={pg.itens} editavel={editavel} salvando={salvando} acoes={acoes} />
+                  ) : (
+                    <div className="space-y-2">
+                      {pg.itens.map((m) => (
+                        <LinhaHistorico salvando={salvando} key={m.id} m={m} editavel={editavel} acoes={acoes} />
+                      ))}
+                    </div>
+                  )}
+                  <Paginacao pg={pg} aoMudar={(n) => setPagina((v) => ({ ...v, historico: n }))} />
+                </>
+              );
+            })()
           )}
         </Card>
+      )}
+
+      {aba === "gastos" && (
+      <div className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PainelGastos r={vm.gastos} />
+          <OrcamentoAnual ano={vm.anoAtual} situacao={vm.orcamento} editavel={editavel} salvando={salvando} aoSalvar={salvarOrcamento} />
+        </div>
+        <GraficoMensal meses={vm.mensal} ano={vm.anoAtual} mesAtual={vm.mesAtual} />
+        <RankingGastos itens={itens} ano={vm.anoAtual} />
       </div>
+      )}
 
       <FormManutencao
         form={form}
