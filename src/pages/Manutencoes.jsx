@@ -1142,6 +1142,7 @@ export default function Manutencoes() {
   // Os cartões viram destaque: clicar sobe os itens vencidos/próximos ao topo; clicar de novo volta.
   const [recorte, setRecorte] = useState(null); // "vencidas" | "proximas" | null
   const [aba, setAba] = useState("alvos"); // "alvos" | "agendadas" | "historico" | "gastos"
+  const [filtroPrazo, setFiltroPrazo] = useState("todos"); // "todos" | "prazo" | "semdata" | "urgentes"
   const [pagina, setPagina] = useState({ alvos: 1, agendadas: 1, historico: 1 });
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
   // outro e o dia congelado mentiria o prazo da calibração.
@@ -1502,7 +1503,14 @@ export default function Manutencoes() {
       : recorte === "proximas" ? m.dias !== null && m.dias >= 0 && m.dias <= 30
         : false;
   const subirPrimeiro = (lista, casa) => (recorte ? [...lista.filter(casa), ...lista.filter((x) => !casa(x))] : lista);
-  const alvosVisiveis = subirPrimeiro(vm.alvos, casaAlvo);
+  const semData = (x) => x.situacao !== "prazo";
+  const alvosFiltrados =
+    filtroPrazo === "prazo" ? vm.alvos.filter((x) => x.situacao === "prazo")
+      : filtroPrazo === "semdata" ? vm.alvos.filter(semData)
+        : filtroPrazo === "urgentes" ? vm.alvos.filter((x) => x.situacao === "prazo" && x.dias <= 30)
+          : vm.alvos;
+  const alvosVisiveis = subirPrimeiro(alvosFiltrados, casaAlvo);
+  const qtdSemData = vm.alvos.filter(semData).length;
   const agendadasVisiveis = subirPrimeiro(vm.agendadas, casaAgendada);
   const emDestaque = (lista, casa) => (recorte ? lista.filter(casa).length : 0);
   const historicoPorAlvo = filtroAlvo
@@ -1605,7 +1613,7 @@ export default function Manutencoes() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           rotulo="Vencidas"
           valor={String(vm.vencidas)}
@@ -1621,6 +1629,20 @@ export default function Manutencoes() {
           icone={CalendarClock}
           onClick={() => setRecorte(recorte === "proximas" ? null : "proximas")}
           ativo={recorte === "proximas"}
+        />
+        <StatCard
+          rotulo="Sem data"
+          valor={String(qtdSemData)}
+          sub="sem registro ou sem próxima marcada"
+          tom={qtdSemData > 0 ? "warn" : "ok"}
+          icone={CalendarClock}
+          onClick={() => {
+            const ligar = !(aba === "alvos" && filtroPrazo === "semdata");
+            setFiltroPrazo(ligar ? "semdata" : "todos");
+            setPagina((v) => ({ ...v, alvos: 1 }));
+            setAba("alvos");
+          }}
+          ativo={aba === "alvos" && filtroPrazo === "semdata"}
         />
         <StatCard rotulo="Feitas no ano" valor={String(vm.feitasAno)} tom="ok" icone={CheckCircle2} />
         <StatCard
@@ -1681,12 +1703,27 @@ export default function Manutencoes() {
 
       {aba === "alvos" && (
         <Card>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mostrar</span>
+            <Segmented
+              opcoes={[
+                { valor: "todos", rotulo: "Todos" },
+                { valor: "prazo", rotulo: "Com prazo" },
+                { valor: "semdata", rotulo: `Sem data (${qtdSemData})` },
+                { valor: "urgentes", rotulo: "Vencidos/Próximos" },
+              ]}
+              valor={filtroPrazo}
+              onChange={(v) => { setFiltroPrazo(v); setPagina((p) => ({ ...p, alvos: 1 })); }}
+            />
+          </div>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
             Próxima manutenção por alvo <span className="text-slate-400">({alvosVisiveis.length})</span>
           </h2>
           {alvosVisiveis.length === 0 ? (
             <Empty>
-              {editavel
+              {filtroPrazo !== "todos" && vm.alvos.length > 0
+                ? "Nenhum alvo neste filtro."
+                : editavel
                 ? "Nenhum carro ou equipamento ativo. Cadastre pelos botões Carros e Equipamentos, lá em cima."
                 : "Nenhum carro ou equipamento ativo cadastrado."}
             </Empty>
