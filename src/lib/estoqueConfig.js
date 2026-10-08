@@ -13,7 +13,9 @@ const unico = (lista, maiusculas = false) => {
 export function listasConfig(config) {
   const reg = Array.isArray(config) ? (config[0] || {}) : (config || {});
   const g = unico(linhas(reg.grupos), true), u = unico(linhas(reg.unidades));
-  return { grupos: g.length ? g : [...GRUPOS_PADRAO], unidades: u.length ? u : [...UNIDADES_PADRAO] };
+  // Tipos de fornecedor/provedor: sem padrão fixo; valem os cadastrados + os já usados em fornecedores e regras.
+  const t = unico(linhas(reg.tiposFornecedor), true);
+  return { grupos: g.length ? g : [...GRUPOS_PADRAO], unidades: u.length ? u : [...UNIDADES_PADRAO], tiposFornecedor: t };
 }
 // Junta a lista configurada com valores já usados (para não sumir opção de cadastro antigo).
 export function comUsados(lista, usados, maiusculas = false) {
@@ -21,3 +23,12 @@ export function comUsados(lista, usados, maiusculas = false) {
 }
 export const adicionarOpcao = (lista, valor, maiusculas = false) => unico([...lista, String(valor ?? "").trim()].filter(Boolean), maiusculas);
 export const removerOpcao = (lista, indice) => lista.filter((_, i) => i !== indice);
+// Lista final de TIPO DE FORNECEDOR / PROVEDOR (cadastrados em Configurações + já usados), em ordem alfabética.
+export const tiposFornecedorDisponiveis = (config, usados = []) =>
+  comUsados(listasConfig(config).tiposFornecedor, usados, true).sort((a, b) => a.localeCompare(b, "pt-BR"));
+// Quantos fornecedores e regras documentais usam o tipo (compara sem diferenciar maiúsculas/minúsculas).
+export function usoTipoFornecedor(tipo, fornecedores = [], regras = []) {
+  const k = String(tipo ?? "").trim().toUpperCase();
+  const igual = (x) => String(x?.tipoFornecedor ?? "").trim().toUpperCase() === k;
+  return { fornecedores: fornecedores.filter(igual).length, regras: regras.filter(igual).length };
+}
