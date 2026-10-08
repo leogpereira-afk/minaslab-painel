@@ -90,7 +90,7 @@ export function gerarPdfFinanceiro({ relatorio: r, tipo = 'executivo', empresa =
     tabela(['Emissão', 'Empresa / número', 'Cliente (tomador)', 'Valor', 'Status', 'Origem / chave'], r.notas.length ? r.notas.map(x => [
       data(x.data_emissao), `${empresaDo(x)}\nNF ${x.numero_nf || 's/ nº'}`, [x.nome_destinatario, x.cnpj_destinatario].filter(Boolean).join('\n'),
       moeda(x.valor_total), x.status_fiscal || x.status_omie || 'Sem status', [x.origem, x.chave_acesso].filter(Boolean).join('\n'),
-    ]) : [['Sem notas emitidas no período', '', '', '', '', '']], [3], [22, 50, 66, 30, 30, 70]);
+    ]) : [['Sem notas emitidas no período', '', '', '', '', '']], [3], [22, 50, 66, 28, 28, 70]);
   } else {
     const receber = tipo === 'receber', lista = receber ? r.receber : r.pagar, resumo = receber ? r.receberResumo : r.pagarResumo;
     texto(`${lista.length} títulos | Total ${moeda(resumo.total)} | Liquidado ${moeda(resumo.liquidado)} | Pendente ${moeda(resumo.pendente)}`, true);
