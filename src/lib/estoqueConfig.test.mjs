@@ -39,10 +39,10 @@ test("correção de saída: só direção e as pessoas listadas", () => {
   assert.equal(podeCorrigirSaida([], "maria", true), true);
   assert.equal(podeCorrigirSaida([], "", false), false);
 });
-test("perguntas da FAPE: padrão, personalizadas e sempre 4", () => {
+test("perguntas da FAPE: padrão (4), quantidade livre de 1 a 12 e sem linhas vazias", () => {
   assert.deepEqual(perguntasFape([]), PERGUNTAS_FAPE_PADRAO);
   assert.equal(perguntasFape(undefined).length, 4);
-  const p = perguntasFape([{ perguntasFape: "Nova 1\n\n  Nova 3  " }]);
-  assert.deepEqual(p, ["Nova 1", PERGUNTAS_FAPE_PADRAO[1], "Nova 3", PERGUNTAS_FAPE_PADRAO[3]]);
-  assert.equal(perguntasFape([{ perguntasFape: "a\nb\nc\nd\ne\nf" }]).length, 4);
+  assert.deepEqual(perguntasFape([{ perguntasFape: "Nova 1\n\n  Nova 3  " }]), ["Nova 1", "Nova 3"]);
+  assert.equal(perguntasFape([{ perguntasFape: "Só uma?" }]).length, 1);
+  assert.equal(perguntasFape([{ perguntasFape: Array.from({ length: 20 }, (_, i) => "P" + i).join("\n") }]).length, 12);
 });

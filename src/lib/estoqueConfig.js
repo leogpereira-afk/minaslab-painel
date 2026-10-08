@@ -39,8 +39,10 @@ export const listaQuemCorrigeSaidas = (config) => {
 };
 export const podeCorrigirSaida = (config, usuario, ehDirecao = false) =>
   !!ehDirecao || (!!usuario && listaQuemCorrigeSaidas(config).some((x) => x.toLowerCase() === String(usuario).trim().toLowerCase()));
-// Perguntas da FAPE (avaliação de provedores externos): 4 critérios fixos, texto editável em Configurações (estoque_config.perguntasFape, uma por linha).
-// Cada avaliação grava o texto da época (criterioNPergunta), então mudar a pergunta não altera avaliações já feitas.
+// Perguntas da FAPE (avaliação de provedores externos): de 1 a 12 critérios, texto e quantidade definidos em Configurações
+// (estoque_config.perguntasFape, uma por linha). Cada avaliação grava o texto da época (criterioNPergunta) e a quantidade
+// (qtdCriterios), então mudar as perguntas depois não altera avaliações já feitas.
+export const MAX_PERGUNTAS_FAPE = 12;
 export const PERGUNTAS_FAPE_PADRAO = [
   "A empresa possui alvarás e licenças aplicáveis para funcionamento?",
   "Quanto ao sistema de qualidade da empresa?",
@@ -49,6 +51,6 @@ export const PERGUNTAS_FAPE_PADRAO = [
 ];
 export const perguntasFape = (config) => {
   const reg = Array.isArray(config) ? (config[0] || {}) : (config || {});
-  const salvas = String(reg.perguntasFape ?? "").split(/\r?\n/).map((x) => x.trim());
-  return PERGUNTAS_FAPE_PADRAO.map((padrao, i) => salvas[i] || padrao);
+  const salvas = String(reg.perguntasFape ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, MAX_PERGUNTAS_FAPE);
+  return salvas.length ? salvas : [...PERGUNTAS_FAPE_PADRAO];
 };

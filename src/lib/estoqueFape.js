@@ -21,10 +21,10 @@ export function classificarFape(nota, maximo) {
   if (nota * 8 <= maximo * 5) return "BOM";
   return "ÓTIMO";
 }
-// respostas = 4 valores. Devolve null se alguma resposta for inválida/vazia ou se nenhum critério se aplicar.
+// respostas = de 1 a 12 valores (um por critério). Devolve null se alguma resposta for inválida/vazia ou se nenhum critério se aplicar.
 export function pontuarFape(respostas) {
   const lista = (respostas || []).map(normalizarRespostaFape);
-  if (lista.length !== 4 || lista.some((r) => !r)) return null;
+  if (!lista.length || lista.length > 12 || lista.some((r) => !r)) return null;
   const aplicaveis = lista.filter((r) => r !== "NÃO SE APLICA").length;
   if (!aplicaveis) return null;
   const notas = lista.map((r) => (r === "SIM" ? PONTOS_SIM : r === "NÃO" ? 0 : null));
@@ -37,4 +37,12 @@ export function textoNotaFape(av) {
   if (nota == null || nota === "") return "—";
   const max = tem ? Number(av.notaMaxima) : 8;
   return tem && max > 0 ? `${nota} / ${max} (${String(Math.round((Number(nota) / max) * 1000) / 10).replace(".", ",")}%)` : `${nota} / ${max}`;
+}
+// Quantos critérios a avaliação tem: o gravado (qtdCriterios) ou, nas avaliações sem esse campo, os que aparecem nos campos criterioN.
+export function qtdCriteriosAvaliacao(av) {
+  const q = Number(av?.qtdCriterios);
+  if (Number.isInteger(q) && q >= 1 && q <= 12) return q;
+  let n = 0;
+  for (let i = 1; i <= 12; i++) if (av && (av["criterio" + i + "Resposta"] != null || av["criterio" + i + "Nota"] != null || av["criterio" + i] != null || av["criterio" + i + "Pergunta"] != null)) n = i;
+  return n || 4;
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pontuarFape, classificarFape, normalizarRespostaFape, textoNotaFape } from "./estoqueFape.js";
+import { pontuarFape, classificarFape, normalizarRespostaFape, textoNotaFape, qtdCriteriosAvaliacao } from "./estoqueFape.js";
 
 test("respostas aceitam variações e viram a forma canônica", () => {
   assert.equal(normalizarRespostaFape("sim"), "SIM");
@@ -31,11 +31,25 @@ test("faixas com menos critérios aplicáveis usam o percentual", () => {
 test("resposta faltando, inválida ou nenhum critério aplicável = inválido", () => {
   assert.equal(pontuarFape(["SIM", "SIM", "SIM", ""]), null);
   assert.equal(pontuarFape(["SIM", "SIM", "SIM", "TALVEZ"]), null);
-  assert.equal(pontuarFape(["SIM", "SIM", "SIM"]), null);
+  assert.equal(pontuarFape([]), null);
+  assert.equal(pontuarFape(Array(13).fill("SIM")), null);
   assert.equal(pontuarFape(["NÃO SE APLICA", "NÃO SE APLICA", "NÃO SE APLICA", "NÃO SE APLICA"]), null);
 });
 test("avaliação antiga continua x / 8 e a nova mostra o máximo e o percentual", () => {
   assert.equal(textoNotaFape({ notaFinal: 5 }), "5 / 8");
   assert.equal(textoNotaFape({ notaFinal: 4, notaMaxima: 6 }), "4 / 6 (66,7%)");
   assert.equal(textoNotaFape({}), "—");
+});
+test("quantidade variável de critérios: 1, 3 e 6", () => {
+  assert.deepEqual([pontuarFape(["SIM"]).nota, pontuarFape(["SIM"]).maximo, pontuarFape(["SIM"]).classificacao], [2, 2, "ÓTIMO"]);
+  const tres = pontuarFape(["SIM", "NÃO", "NÃO SE APLICA"]);
+  assert.deepEqual([tres.nota, tres.maximo, tres.percentual, tres.classificacao], [2, 4, 50, "BOM"]);
+  const seis = pontuarFape(["SIM", "SIM", "SIM", "SIM", "NÃO", "NÃO"]);
+  assert.deepEqual([seis.nota, seis.maximo, seis.classificacao], [8, 12, "ÓTIMO"]);
+});
+test("qtdCriteriosAvaliacao: usa o gravado, descobre pelos campos ou assume 4", () => {
+  assert.equal(qtdCriteriosAvaliacao({ qtdCriterios: 6 }), 6);
+  assert.equal(qtdCriteriosAvaliacao({ criterio1Resposta: "SIM", criterio2Resposta: "NÃO", criterio3Resposta: "SIM" }), 3);
+  assert.equal(qtdCriteriosAvaliacao({ criterio1Nota: 2, criterio2Nota: 1, criterio3Nota: 2, criterio4Nota: 0 }), 4);
+  assert.equal(qtdCriteriosAvaliacao({}), 4);
 });
