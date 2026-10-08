@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listasConfig, comUsados, adicionarOpcao, removerOpcao, tiposFornecedorDisponiveis, usoTipoFornecedor, GRUPOS_PADRAO } from "./estoqueConfig.js";
+import { listasConfig, comUsados, adicionarOpcao, removerOpcao, tiposFornecedorDisponiveis, usoTipoFornecedor, podeCorrigirSaida, listaQuemCorrigeSaidas, GRUPOS_PADRAO } from "./estoqueConfig.js";
 
 test("sem configuração valem os padrões do legado", () => {
   assert.deepEqual(listasConfig([]).grupos, GRUPOS_PADRAO);
@@ -29,4 +29,13 @@ test("uso do tipo conta fornecedores e regras", () => {
   const r = [{ tipoFornecedor: "Compras" }];
   assert.deepEqual(usoTipoFornecedor("COMPRAS", f, r), { fornecedores: 2, regras: 1 });
   assert.deepEqual(usoTipoFornecedor("NADA", f, r), { fornecedores: 0, regras: 0 });
+});
+test("correção de saída: só direção e as pessoas listadas", () => {
+  const cfg = [{ quemCorrigeSaidas: "Ana\n\n joao " }];
+  assert.deepEqual(listaQuemCorrigeSaidas(cfg), ["Ana", "joao"]);
+  assert.equal(podeCorrigirSaida(cfg, "ana", false), true);
+  assert.equal(podeCorrigirSaida(cfg, "JOAO", false), true);
+  assert.equal(podeCorrigirSaida(cfg, "maria", false), false);
+  assert.equal(podeCorrigirSaida([], "maria", true), true);
+  assert.equal(podeCorrigirSaida([], "", false), false);
 });

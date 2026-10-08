@@ -708,6 +708,13 @@ Deno.serve(async (req) => {
           if (er) throw er;
           await bump(colecao); return resp({ ok: true, registro: salvo });
         }
+        if (colecao === "estoque_config" && !ehDirecao) {
+          // A lista de quem pode corrigir saídas é decidida só pela direção.
+          const { data: atual } = await sb.from(T_REG).select("registro").eq("colecao", "estoque_config").eq("id", String(registro?.id ?? "config-principal")).maybeSingle();
+          if (String((atual?.registro as Record<string, unknown> | undefined)?.quemCorrigeSaidas ?? "") !== String(registro?.quemCorrigeSaidas ?? "")) {
+            return resp({ erro: "Só a direção define quem pode corrigir saídas.", semPermissao: true }, 403);
+          }
+        }
         if (!registro?.id) registro.id = crypto.randomUUID();
         registro.atualizadoPor = usuario || "maquina"; registro.atualizadoEm = new Date().toISOString();
         const { data,error } = await sb.from(T_REG).upsert({colecao,id:String(registro.id),registro,apagado:false,atualizado_em:new Date().toISOString()}).select("registro").maybeSingle();
@@ -970,6 +977,34 @@ Deno.serve(async (req) => {
         }
         await bump("estoque_lotes"); await bump("estoque_movimentos");
         return resp(gravado ?? { ok:true, lote, movimento });
+      }
+
+      case "estoqueSaidaCorrigir": {
+        // Editar/excluir saída lançada errada = estorno + (opcionalmente) nova saída; o histórico nunca é apagado.
+        // Só a direção e as pessoas listadas em Configurações (estoque_config.quemCorrigeSaidas) podem corrigir.
+        if (!podeEditarEstoque("retirada-baixa")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+        if (!podeConsultarColecao("estoque_lotes") || !podeConsultarColecao("estoque_movimentos")) {
+          return resp({ erro: "Você não tem acesso à saída de estoque.", semPermissao: true }, 403);
+        }
+        if (!ehDirecao) {
+          const { data: cfg } = await sb.from(T_REG).select("registro").eq("colecao", "estoque_config").eq("id", "config-principal").eq("apagado", false).maybeSingle();
+          const autorizados = String((cfg?.registro as Record<string, unknown> | undefined)?.quemCorrigeSaidas ?? "").split(/\r?\n/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+          if (!autorizados.includes(usuario.toLowerCase())) return resp({ erro: "Você não tem permissão para corrigir saídas.", semPermissao: true }, 403);
+        }
+        const acaoCorrecao = String(body.acao ?? "");
+        const movimentoId = String(body.movimentoId ?? "");
+        if (!movimentoId || !["excluir", "editar"].includes(acaoCorrecao)) return resp({ erro: "Saída e ação de correção são obrigatórias." }, 400);
+        const novo = acaoCorrecao === "editar" && body.novo && typeof body.novo === "object" ? body.novo as Record<string, unknown> : null;
+        const { data: corrigido, error: corrigirErro } = await sb.rpc("ml_estoque_saida_corrigir", {
+          p_movimento_id: movimentoId, p_acao: acaoCorrecao, p_motivo: String(body.motivo ?? ""), p_usuario: usuario || "maquina", p_novo: novo,
+        });
+        if (corrigirErro) {
+          const msg = String(corrigirErro.message || "");
+          if (/motivo|saldo|lote|encontrada|corrigida|inválid|saídas/i.test(msg)) return resp({ erro: msg }, 409);
+          throw corrigirErro;
+        }
+        await bump("estoque_lotes"); await bump("estoque_movimentos");
+        return resp(corrigido ?? { ok: true });
       }
 
       case "upsert": {

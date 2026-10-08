@@ -32,3 +32,10 @@ export function usoTipoFornecedor(tipo, fornecedores = [], regras = []) {
   const igual = (x) => String(x?.tipoFornecedor ?? "").trim().toUpperCase() === k;
   return { fornecedores: fornecedores.filter(igual).length, regras: regras.filter(igual).length };
 }
+// Quem pode editar/excluir saídas: a direção, mais as pessoas marcadas em Configurações (estoque_config.quemCorrigeSaidas, uma por linha).
+export const listaQuemCorrigeSaidas = (config) => {
+  const reg = Array.isArray(config) ? (config[0] || {}) : (config || {});
+  return linhas(reg.quemCorrigeSaidas);
+};
+export const podeCorrigirSaida = (config, usuario, ehDirecao = false) =>
+  !!ehDirecao || (!!usuario && listaQuemCorrigeSaidas(config).some((x) => x.toLowerCase() === String(usuario).trim().toLowerCase()));

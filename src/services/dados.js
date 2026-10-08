@@ -169,6 +169,13 @@ export const estoqueEntrada = (lote, movimento = {}) =>
     return r;
   });
 
+// Corrige uma saída lançada errada (estorno; o histórico fica). acao: "excluir" | "editar"; novo = { quantidade, loteId, responsavel }.
+export const estoqueSaidaCorrigir = (movimentoId, acao, motivo, novo = null) =>
+  chamar("estoqueSaidaCorrigir", { movimentoId, acao, motivo, novo }).then((r) => {
+    if (!r?.ok) throw new Error("O servidor não confirmou a correção da saída.");
+    esquecerColecao("estoque_lotes"); esquecerColecao("estoque_movimentos");
+    return r;
+  });
 export const estoqueRetirada = (loteId, quantidade, dataAbertura = "", observacao = "", responsavel = "") =>
   chamar("estoqueRetirada", { loteId, quantidade, dataAbertura, observacao, responsavel }).then((r) => {
     if (!r?.ok || !r?.lote) throw new Error("O servidor não confirmou a retirada de estoque.");
