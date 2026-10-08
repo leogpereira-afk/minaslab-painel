@@ -5,6 +5,7 @@ import {
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
 import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
+import CampoFornecedor from "../components/financeiro/CampoFornecedor.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -903,17 +904,11 @@ export default function Despesas() {
                 ))}
               </select>
             </label>
-            <label>
-              <span className="label">Fornecedor</span>
-              <input
-                className="input"
-                required
-                value={form.fornecedor}
-                onChange={(e) =>
-                  setForm({ ...form, fornecedor: e.target.value })
-                }
-              />
-            </label>
+            <CampoFornecedor
+              valor={form.fornecedor}
+              aoDigitar={(v) => setForm((f) => ({ ...f, fornecedor: v }))}
+              aoEscolher={(c) => setForm((f) => ({ ...f, fornecedor: c.nome, cnpj_cpf: c.cnpj_cpf || f.cnpj_cpf }))}
+            />
             <label>
               <span className="label">CNPJ/CPF</span>
               <input
