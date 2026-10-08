@@ -585,10 +585,25 @@ Deno.serve(async (req) => {
         const fornecedorId=String(body.fornecedorId??"").trim();
         const avaliacao=(body.avaliacao??{}) as Record<string,unknown>;
         if(!fornecedorId) return resp({erro:"Fornecedor obrigatório."},400);
-        const notas=[1,2,3,4].map(i=>Number(avaliacao[`c${i}`]??avaliacao[`criterio${i}Nota`]??avaliacao[`criterio_${i}_nota`]??0));
-        if(notas.some(x=>!Number.isInteger(x)||x<0||x>2)) return resp({erro:"As quatro notas devem ser inteiros entre 0 e 2."},400);
-        const total=notas.reduce((a,b)=>a+b,0);
-        avaliacao.notaFinal=total; avaliacao.classificacaoNota=total<=2?"RUIM":total<=5?"BOM":"ÓTIMO";
+        // FAPE: cada critério é SIM (2 pts) / NÃO (0) / NÃO SE APLICA (fora da conta). A nota é calculada aqui, não na tela.
+        const semAcento=(v:unknown)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase().replace(/\s+/g," ");
+        const respostas=[1,2,3,4].map(i=>{const k=semAcento(avaliacao[`criterio${i}Resposta`]);return k==="SIM"?"SIM":k==="NAO"?"NÃO":(k==="NAO SE APLICA"||k==="N/A")?"NÃO SE APLICA":"";});
+        // Faixas do modelo antigo (0–2 de 8 RUIM, 3–5 BOM, 6–8 ÓTIMO) em percentual, com contas inteiras: ≤25% RUIM, ≤62,5% BOM, acima ÓTIMO.
+        const classificar=(nota:number,maximo:number)=>nota*4<=maximo?"RUIM":nota*8<=maximo*5?"BOM":"ÓTIMO";
+        if(respostas.some(r=>r)){
+          if(respostas.some(r=>!r)) return resp({erro:"Responda os quatro critérios com Sim, Não ou Não se aplica."},400);
+          const aplicaveis=respostas.filter(r=>r!=="NÃO SE APLICA").length;
+          if(!aplicaveis) return resp({erro:"Pelo menos um critério precisa se aplicar ao fornecedor."},400);
+          const nota=respostas.filter(r=>r==="SIM").length*2, maximo=aplicaveis*2;
+          respostas.forEach((r,i)=>{avaliacao[`criterio${i+1}Resposta`]=r; avaliacao[`criterio${i+1}Nota`]=r==="SIM"?2:r==="NÃO"?0:null;});
+          avaliacao.notaFinal=nota; avaliacao.notaMaxima=maximo; avaliacao.percentual=Math.round(nota/maximo*1000)/10; avaliacao.classificacaoNota=classificar(nota,maximo);
+        } else {
+          // Formato antigo (notas 0 a 2 por critério), mantido por compatibilidade.
+          const notas=[1,2,3,4].map(i=>Number(avaliacao[`c${i}`]??avaliacao[`criterio${i}Nota`]??avaliacao[`criterio_${i}_nota`]??0));
+          if(notas.some(x=>!Number.isInteger(x)||x<0||x>2)) return resp({erro:"As quatro notas devem ser inteiros entre 0 e 2."},400);
+          const total=notas.reduce((a,b)=>a+b,0);
+          avaliacao.notaFinal=total; avaliacao.classificacaoNota=total<=2?"RUIM":total<=5?"BOM":"ÓTIMO";
+        }
         const {data,error}=await sb.rpc("ml_estoque_avaliar_fornecedor",{p_avaliacao:avaliacao,p_fornecedor_id:fornecedorId,p_usuario:usuario||"maquina"});
         if(error) throw error;
         await bump("estoque_avaliacoes_fornecedor"); await bump("estoque_fornecedores");
