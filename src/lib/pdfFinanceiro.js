@@ -85,12 +85,12 @@ export function gerarPdfFinanceiro({ relatorio: r, tipo = 'executivo', empresa =
     tabela(['Data', 'Empresa / conta', 'Descrição / documento / identificador', 'Tipo', 'Valor', 'Origem', 'Conciliado'], r.bancos.length ? r.bancos.map(m => [data(m.data_movimento), `${empresaDo(m)}\n${contaDo(m)}`, [m.descricao, m.documento, m.fitid || m.id_omie || m.id].filter(Boolean).join('\n'), m.tipo, m.valor == null || !Number.isFinite(Number(m.valor)) ? 'Valor inválido' : moeda(Math.abs(Number(m.valor))), m.origem || 'Não informada', m.conciliado ? 'Sim' : 'Não']) : [['Sem registros no período', '', '', '', '', '', '']], [4], [22, 47, 101, 22, 28, 25, 24]);
   } else if (tipo === 'notas') {
     const n = r.notasResumo;
-    texto(`${n.registros} notas | Válidas ${n.validas} | Canceladas ${n.canceladas} | Total emitido ${moeda(n.total)}`, true);
+    texto(`${n.registros} ${n.registros === 1 ? "nota" : "notas"} | Válidas ${n.validas} | Canceladas ${n.canceladas} | Total emitido ${moeda(n.total)}`, true);
     texto('Notas emitidas pela data de emissão. Canceladas aparecem no detalhe, fora do total. O filtro de conta bancária não se aplica às notas.');
     tabela(['Emissão', 'Empresa / número', 'Cliente (tomador)', 'Valor', 'Status', 'Origem / chave'], r.notas.length ? r.notas.map(x => [
       data(x.data_emissao), `${empresaDo(x)}\nNF ${x.numero_nf || 's/ nº'}`, [x.nome_destinatario, x.cnpj_destinatario].filter(Boolean).join('\n'),
       moeda(x.valor_total), x.status_fiscal || x.status_omie || 'Sem status', [x.origem, x.chave_acesso].filter(Boolean).join('\n'),
-    ]) : [['Sem notas emitidas no período', '', '', '', '', '']], [3], [22, 50, 66, 28, 28, 70]);
+    ]) : [['Sem notas emitidas no período', '', '', '', '', '']], [3], [26, 46, 62, 30, 34, 70]);
   } else {
     const receber = tipo === 'receber', lista = receber ? r.receber : r.pagar, resumo = receber ? r.receberResumo : r.pagarResumo;
     texto(`${lista.length} títulos | Total ${moeda(resumo.total)} | Liquidado ${moeda(resumo.liquidado)} | Pendente ${moeda(resumo.pendente)}`, true);
