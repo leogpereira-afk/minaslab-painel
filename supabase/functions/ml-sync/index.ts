@@ -1022,6 +1022,17 @@ Deno.serve(async (req) => {
         return resp(corrigido ?? { ok: true });
       }
 
+      case "estoqueTipoFornecedorRenomear": {
+        // Renomeia/une um TIPO DE FORNECEDOR em fornecedores, regras documentais e na lista de Configurações, numa transação só.
+        if (!podeEditarEstoque("configuracoes") || !podeEditarEstoque("fornecedores")) return resp({ erro: "Seu acesso lê, mas não edita configurações e fornecedores.", semPermissao: true }, 403);
+        const antigo = String(body.antigo ?? "").trim(), novo = String(body.novo ?? "").trim();
+        if (!antigo || !novo) return resp({ erro: "Informe o tipo atual e o novo nome." }, 400);
+        const { data: renomeado, error: renomearErro } = await sb.rpc("ml_estoque_tipo_fornecedor_renomear", { p_antigo: antigo, p_novo: novo, p_usuario: usuario || "maquina" });
+        if (renomearErro) throw renomearErro;
+        await bump("estoque_fornecedores"); await bump("estoque_regras_documentos_fornecedor"); await bump("estoque_config");
+        return resp(renomeado ?? { ok: true });
+      }
+
       case "upsert": {
         const colecao = String(body.colecao ?? "");
         const registro = body.registro as Record<string, unknown>;
