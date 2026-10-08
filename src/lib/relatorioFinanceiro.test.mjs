@@ -55,3 +55,14 @@ test('CSV preserva aspas/quebras e impede fórmulas em texto externo', () => {
   assert.equal(celulaCsvFinanceiro(-30),'"-30"');
   assert.equal(celulaCsvFinanceiro('Nome\ncom "aspas"'),'"Nome\ncom ""aspas"""');
 });
+test('notas emitidas: só SAIDA no período e na empresa; cancelada fica no detalhe, fora do total', () => {
+  const nota = (id, mais = {}) => ({ id, empresa_id: 'e1', tipo: 'SAIDA', numero_nf: id, data_emissao: '2026-09-10', valor_total: 100.1, status_fiscal: 'AUTORIZADA', ...mais });
+  const r = montar({ ...filtro, notas: [
+    nota('1'), nota('2', { valor_total: 0.2 }), nota('3', { status_fiscal: 'CANCELADA', valor_total: 9000 }),
+    nota('4', { status_fiscal: '', status_omie: 'C' }), nota('5', { tipo: 'ENTRADA' }), nota('6', { empresa_id: 'e2' }),
+    nota('7', { data_emissao: '2026-08-31' }), nota('8', { data_emissao: '2026-02-30' }), nota('9', { valor_total: null }),
+  ] });
+  assert.deepEqual(r.notas.map(n => n.id), ['1', '2', '3', '4', '9']);
+  assert.equal(r.notasResumo.registros, 5); assert.equal(r.notasResumo.canceladas, 2); assert.equal(r.notasResumo.validas, 3);
+  assert.equal(r.notasResumo.total, 100.3); assert.equal(r.notasResumo.semValor, 1);
+});

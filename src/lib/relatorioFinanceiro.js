@@ -51,7 +51,23 @@ function totalTitulos(lista, campoOriginal, campoPago, hoje) {
   const soma = campo => ativos.reduce((s, r) => s + cents(r[campo]), 0) / 100;
   return { total: soma(campoOriginal), liquidado: soma(campoPago), pendente: soma('valor_pendente'), vencido: ativos.filter(r => dataValida(r.data_vencimento) && r.data_vencimento.slice(0, 10) < hoje && cents(r.valor_pendente) > 0).reduce((s, r) => s + cents(r.valor_pendente), 0) / 100, registros: lista.length, cancelados: lista.length - ativos.length };
 }
-export function montarRelatorioFinanceiro({ movimentos = [], recebimentos = [], despesas = [], empresa = '', conta = '', de, ate, hoje = new Date().toLocaleDateString('en-CA') }) {
+// Notas EMITIDAS (tipo SAIDA) pela data de emissão. Cancelada fica no detalhe, fora dos totais.
+export const notaCancelada = n => ['CANCELADA', 'CANCELADO', 'C'].some(x => [n.status_fiscal, n.status_omie].some(st => String(st || '').toUpperCase() === x));
+export function notasEmitidas(notas = [], { empresa = '', de, ate } = {}) {
+  const lista = notas
+    .filter(n => String(n.tipo || '').toUpperCase() === 'SAIDA' && (!empresa || n.empresa_id === empresa) && dataValida(n.data_emissao) && String(n.data_emissao).slice(0, 10) >= de && String(n.data_emissao).slice(0, 10) <= ate)
+    .sort((a, b) => String(a.data_emissao).localeCompare(String(b.data_emissao)) || String(a.numero_nf || '').localeCompare(String(b.numero_nf || ''), 'pt-BR', { numeric: true }) || String(a.id || '').localeCompare(String(b.id || '')));
+  const ativas = lista.filter(n => !notaCancelada(n));
+  const comValor = ativas.filter(n => n.valor_total != null && n.valor_total !== '' && Number.isFinite(Number(n.valor_total)));
+  return {
+    lista,
+    resumo: {
+      registros: lista.length, validas: ativas.length, canceladas: lista.length - ativas.length,
+      total: comValor.reduce((t, n) => t + cents(n.valor_total), 0) / 100, semValor: ativas.length - comValor.length,
+    },
+  };
+}
+export function montarRelatorioFinanceiro({ movimentos = [], recebimentos = [], despesas = [], notas = [], empresa = '', conta = '', de, ate, hoje = new Date().toLocaleDateString('en-CA') }) {
   if (!periodoValido(de, ate)) throw new Error('Informe um período válido: a data inicial deve ser anterior ou igual à final.');
   const filtrar = (lista, banco, p) => lista.filter(r => { const data = chaveData(r, banco); return noEscopo(r, empresa, conta) && dataValida(data) && data >= p.de && data <= p.ate; }).sort((a, b) => chaveData(a, banco).localeCompare(chaveData(b, banco)) || String(a.id || '').localeCompare(String(b.id || '')));
   const periodo = { de, ate }, anterior = periodoAnterior(de, ate);
@@ -66,7 +82,8 @@ export function montarRelatorioFinanceiro({ movimentos = [], recebimentos = [], 
   const pagarResumo = totalTitulos(pagar, 'valor_original', 'valor_pago', hoje);
   const semData = [[movimentos, true], [recebimentos, false], [despesas, false]].reduce((s, [lista, tipo]) => s + lista.filter(r => noEscopo(r, empresa, conta) && !dataValida(chaveData(r, tipo))).length, 0);
   const semConta = conta ? [...recebimentos, ...despesas].filter(r => (!empresa || r.empresa_id === empresa) && !contaId(r) && dataValida(chaveData(r, false)) && chaveData(r, false) >= de && chaveData(r, false) <= ate).length : 0;
-  return { periodo, anterior, banco, bancoAnterior, bancos, receber, pagar, receberResumo: totalTitulos(receber, 'valor_previsto', 'valor_recebido', hoje), pagarResumo,
+  const emitidas = notasEmitidas(notas, { empresa, de, ate });
+  return { periodo, anterior, banco, bancoAnterior, bancos, receber, pagar, notas: emitidas.lista, notasResumo: emitidas.resumo, receberResumo: totalTitulos(receber, 'valor_previsto', 'valor_recebido', hoje), pagarResumo,
     meses: movimentosPorMes(bancos),
     categorias: [...categorias.values()].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome)).map(c => ({ ...c, total: c.total / 100, pendente: c.pendente / 100, participacao: pagarResumo.total > 0 ? c.total / (pagarResumo.total * 100) * 100 : null })),
     qualidade: { semData, semConta, semVencimento: [...receber, ...pagar].filter(r => !r.data_vencimento).length, semCategoria: pagar.filter(r => !cancelado(r) && !r.categoria?.nome && !r.categoria_texto).length },
@@ -86,6 +103,7 @@ export function notasRelatorio(r) {
   if (r.qualidade.semConta) notas.push(`${r.qualidade.semConta} títulos do período estão sem conta vinculada e ficaram fora do filtro bancário.`);
   if (r.qualidade.semVencimento) notas.push(`${r.qualidade.semVencimento} títulos foram selecionados pela data de lançamento por não terem vencimento.`);
   if (r.qualidade.semCategoria) notas.push(`${r.qualidade.semCategoria} despesas do período estão sem categoria.`);
+  if (r.notasResumo?.canceladas) notas.push(`${r.notasResumo.canceladas} notas emitidas canceladas constam no detalhe, fora do total emitido.`);
   if (r.banco.invalidos) notas.push(`${r.banco.invalidos} movimentos têm valor ou tipo inválido: constam no extrato detalhado e não foram somados.`);
   if (r.receberResumo.cancelados + r.pagarResumo.cancelados) notas.push(`${r.receberResumo.cancelados + r.pagarResumo.cancelados} títulos cancelados constam no detalhe, fora dos totais e categorias.`);
   return notas;
