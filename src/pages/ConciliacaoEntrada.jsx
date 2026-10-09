@@ -35,6 +35,7 @@ export default function ConciliacaoEntrada(){
 
 function ConciliacaoMovimentoDireta({movimentoId}){
   const navigate=useNavigate();
+  const [sp]=useSearchParams();
   const [movimento,setMovimento]=useState(null),[titulos,setTitulos]=useState([]),[selecionados,setSelecionados]=useState([]),[busca,setBusca]=useState("");
   const [ajustes,setAjustes]=useState({});
   const [loading,setLoading]=useState(true),[salvando,setSalvando]=useState(false),[erro,setErro]=useState("");
@@ -52,7 +53,9 @@ function ConciliacaoMovimentoDireta({movimentoId}){
   const valoresValidos=calculos.every(x=>x.valor>.005&&x.valor<=x.restante+.01&&x.esperado>=-.005);
   const pode=selecionadosObj.length>0&&valoresValidos&&Math.abs(diferenca)<=.01;
 
-  function fechar(){navigate("/financas/movimentacao-conta",{replace:true});}
+  // Volta para a tela de onde veio (Bancos ou Movimentação da conta); só aceita caminho interno de Finanças.
+  const voltarPara=(()=>{const v=sp.get("voltar")||"";return /^\/financas\/[a-z0-9\-/]*$/.test(v)?v:"/financas/movimentacao-conta"})();
+  function fechar(){navigate(voltarPara,{replace:true});}
   function alternar(x){setErro("");setSelecionados(atual=>{const existe=atual.includes(x.id);const prox=existe?atual.filter(id=>id!==x.id):[...atual,x.id];setAjustes(a=>{const n={...a};if(existe)delete n[x.id];else n[x.id]={...ajusteVazio(),valorTitulo:restanteTitulo(x,tipoReal).toFixed(2)};return n});return prox})}
   function setCampo(id,campo,valor){setAjustes(a=>({...a,[id]:{...(a[id]||ajusteVazio()),[campo]:valor}}))}
 
