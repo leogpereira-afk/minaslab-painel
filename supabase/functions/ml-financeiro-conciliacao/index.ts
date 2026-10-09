@@ -25,7 +25,8 @@ Deno.serve(async req=>{
       const {data:existentes,error:erroBusca}=await sb.from("conciliacoes").select("id,recebimento_id,despesa_id,valor_conciliado,valor_movimento").eq("movimento_id",movimentoId);
       if(erroBusca)throw erroBusca;
       if(!existentes?.length)return json({erro:"Este movimento não possui conciliação para desfazer."},400);
-      const {error}=await sb.from("conciliacoes").delete().eq("movimento_id",movimentoId);
+      // Apaga pela função do banco: ela registra QUEM desfez na trilha de auditoria (audit_log).
+      const {error}=await sb.rpc("financeiro_desfazer_conciliacao",{p_coluna:"movimento_id",p_id:movimentoId,p_usuario:txt(user.sub)||"direcao"});
       if(error)throw error;
       return json({ok:true,removidas:existentes.length,itens:existentes});
     }
@@ -36,7 +37,7 @@ Deno.serve(async req=>{
       const {data:existentes,error:erroBusca}=await sb.from("conciliacoes").select("id,movimento_id,recebimento_id,despesa_id,valor_conciliado,valor_movimento").eq(coluna,tituloId);
       if(erroBusca)throw erroBusca;
       if(!existentes?.length)return json({erro:"Este título não possui conciliação para desfazer."},400);
-      const {error}=await sb.from("conciliacoes").delete().eq(coluna,tituloId);
+      const {error}=await sb.rpc("financeiro_desfazer_conciliacao",{p_coluna:coluna,p_id:tituloId,p_usuario:txt(user.sub)||"direcao"});
       if(error)throw error;
       return json({ok:true,removidas:existentes.length,itens:existentes});
     }
