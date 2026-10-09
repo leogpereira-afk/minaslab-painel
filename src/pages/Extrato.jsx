@@ -240,20 +240,11 @@ export default function Extrato() {
 
   async function abrirConciliacao(m) {
     if (!empresa) { setErro("Selecione uma empresa para conciliar com segurança."); return; }
-    setDetalhando(null);
-    setConciliando(m);
-    setBuscaConciliacao("");
-    setSelecionados([]);
-    setCarregandoCandidatos(true);
-    try {
-      const [r, d] = await Promise.all([finRecebimentosListar(empresa), finDespesasListar(empresa)]);
-      setReceber(r);
-      setPagar(d);
-    } catch (e) {
-      setErro(e.message);
-    } finally {
-      setCarregandoCandidatos(false);
-    }
+    // Um só caminho para conciliar (o mesmo da Movimentação da conta): a tela de Conciliação confere o valor
+    // do banco com o título e pede juros, multa ou desconto quando há diferença. Esta janela antiga conciliava
+    // só o menor valor e deixava o resto solto.
+    const tipo = m.tipo === "CREDITO" ? "RECEBIMENTO" : "DESPESA";
+    navigate(`/financas/conciliacao?tipo=${tipo}&empresaId=${encodeURIComponent(m.empresa_id || empresa)}&movimentoId=${encodeURIComponent(m.id || "")}&voltar=${encodeURIComponent("/financas/extrato")}`);
   }
   function fecharConciliacao() { setConciliando(null); setBuscaConciliacao(""); setSelecionados([]); }
   function alternarTitulo(id) { setSelecionados((atual) => atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]); }
