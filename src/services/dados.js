@@ -146,6 +146,7 @@ export const estoquePedidoSalvar = (pedidoCodigo, itens) => chamar("estoquePedid
 
 // Laudo de recebimento atômico no servidor: IRnn sequencial, nota/parecer recalculados, operador = usuário logado e item CONCLUÍDO juntos.
 export const estoqueInspecaoRegistrar = (itemId, inspecao, dataChegada = "") => chamar("estoqueInspecaoRegistrar", { itemId, inspecao, dataChegada }).then((r) => { if (!r?.ok || !r?.inspecao) throw new Error("O servidor não confirmou a inspeção."); esquecerColecao("estoque_inspecoes"); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
+export const estoqueInspecaoEditar = (inspecaoId, inspecao) => chamar("estoqueInspecaoEditar", { inspecaoId, inspecao }).then((r) => { if (!r?.ok || !r?.inspecao) throw new Error("O servidor não confirmou a edição da inspeção."); esquecerColecao("estoque_inspecoes"); esquecerColecao("estoque_logs_compras"); return r; });
 // Anexo (NF/certificado) da entrada: vai para a pasta-mãe no Drive e o link fica no lote.
 export const estoqueLoteAnexo = (loteId, arquivo) => chamar("estoqueLoteAnexo", { loteId, ...arquivo }).then((r) => { if (!r?.ok || !r?.url) throw new Error("O servidor não confirmou o anexo da entrada."); esquecerColecao("estoque_lotes"); return r; });
 // Link do PDF do laudo (já salvo na pasta do PC) guardado na inspeção.
