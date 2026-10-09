@@ -200,15 +200,28 @@ export default function ClientesFinanceiro() {
     try {
       setErro("");
       setOk("");
+      const criou = !form.id;
+      const nome = String(form.nome || "").trim();
       await finClienteSalvar(form);
       setOk(
-        form.id
-          ? "Cliente atualizado com sucesso."
-          : "Cliente cadastrado com sucesso.",
+        criou
+          ? `Cliente "${nome}" cadastrado com sucesso. A lista está filtrada por esse nome; limpe a busca para ver todos.`
+          : "Cliente atualizado com sucesso.",
       );
       setModalCliente(false);
       setForm(novo());
-      await Promise.all([carregar(pagina), carregarIndicadores()]);
+      if (criou) {
+        // A lista é por ordem alfabética e paginada: o cliente novo cairia numa página qualquer e pareceria
+        // que não salvou. Filtra pelo nome para ele aparecer logo.
+        setStatus("");
+        if (busca === nome) await Promise.all([carregar(1), carregarIndicadores()]);
+        else {
+          setBusca(nome);
+          await carregarIndicadores();
+        }
+      } else {
+        await Promise.all([carregar(pagina), carregarIndicadores()]);
+      }
     } catch (e) {
       setErro(e.message);
     }
