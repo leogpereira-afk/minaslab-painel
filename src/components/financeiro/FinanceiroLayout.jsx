@@ -20,6 +20,7 @@ const principais=[
 const complementares=[
  {label:"Aplicações financeiras",curto:"Aplicações",to:"/financas/aplicacoes",icon:Landmark,descricao:"Aportes, resgates e rendimentos."},
  {label:"Retiradas dos sócios",curto:"Sócios",to:"/financas/socios",icon:Users,descricao:"Movimentações por favorecido e natureza."},
+ {label:"Fechamento M Lab",curto:"Fechamento",to:"/financas/fechamento-mlab",icon:ListChecks,descricao:"Conferência do mês: banco × títulos, pendências e repasses."},
  {label:"Conferência financeira",curto:"Conferência",to:"/financas/conferencia",icon:ListChecks,descricao:"Datas, históricos e documentos para revisão."},
  {label:"Fluxo de Caixa",to:"/financas/fluxo-caixa",icon:LineChart,descricao:"Previsto, realizado e projeção financeira."},
  {label:"Relatórios",to:"/financas/relatorios",icon:BarChart3,descricao:"Análises e exportações financeiras."},

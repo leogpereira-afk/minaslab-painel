@@ -33,7 +33,7 @@ test('débito procura despesa pelo valor_original', () => {
   assert.equal(s[0].exato, true);
 });
 test('lote: dois pix somados fecham uma NF (5.000 + 800 = 5.800)', () => {
-  const lotes = sugerirLotes([mov('a', 5000, 'Pix MINASLABBRASIL'), mov('b', 800, 'Pix MINASLABBRASIL'), mov('c', 225, 'x')], [rec('t', '131', 'MINASLAB LTDA', 5800)]);
+  const lotes = sugerirLotes([mov('a', 5000, 'Pix recebido de MINASLABBRASIL'), mov('b', 800, 'Pix recebido de MINASLABBRASIL'), mov('c', 225, 'x')], [rec('t', '131', 'MINASLAB LTDA', 5800)]);
   assert.equal(lotes.length, 1); assert.deepEqual(lotes[0].movimentos.map(m => m.id), ['a', 'b']); assert.equal(lotes[0].valor, 5800);
 });
 test('lote não aparece se um movimento sozinho já fecha o título', () => {
@@ -45,4 +45,26 @@ test('NF citada por um movimento fica reservada para ele e some das sugestões d
   const r = sugerirTodos([mov('x', 225, 'Pix recebido de MINASLABBRASIL LTDA'), mov('y', 225, 'DOC. NF 122 FAT. 1')], titulos, []);
   assert.deepEqual(r.get('x'), []);
   assert.equal(r.get('y')[0].titulo.id, 'a');
+});
+import { pagadorDe, repassesPorMes } from './conciliacaoSugestao.js';
+test('pagador sai da descrição do Pix recebido', () => {
+  assert.equal(pagadorDe('Pix recebido de MINASLABBRASIL LTDA'), 'minaslabbrasil ltda');
+  assert.equal(pagadorDe('Pix recebido c6 de RODRIGO DA CRUZ ALMEIDA'), 'rodrigo da cruz almeida');
+  assert.equal(pagadorDe('Ref. Liq. Boleto Comp Externo'), null);
+});
+test('lote com três movimentos do mesmo pagador fecha a NF; outro pagador não entra', () => {
+  const ms = [mov('a', 1000, 'Pix recebido de MINASLABBRASIL LTDA'), mov('b', 2000, 'Pix recebido de MINASLABBRASIL LTDA'), mov('c', 500, 'Pix recebido de MINASLABBRASIL LTDA'), mov('d', 700, 'Pix recebido de OUTRO LTDA'), mov('e', 77, 'Pix recebido de MINASLABBRASIL LTDA')];
+  const l = sugerirLotes(ms, [rec('t', '9', 'MINASLAB LTDA', 3500)]);
+  assert.equal(l.length, 1); assert.deepEqual(l[0].movimentos.map(m => m.id).sort(), ['a', 'b', 'c']);
+  assert.deepEqual(sugerirLotes([mov('a', 1000, 'Pix recebido de AAA'), mov('b', 2500, 'Pix recebido de BBB')], [rec('t', '9', 'X', 3500)]), []);
+});
+test('lote real da M Lab: 5.000 + 800 = NF 131 mesmo havendo outro repasse de 225 no mês', () => {
+  const ms = [mov('a', 5000, 'Pix recebido de MINASLABBRASIL LTDA'), mov('b', 800, 'Pix recebido de MINASLABBRASIL LTDA'), mov('c', 225, 'Pix recebido de MINASLABBRASIL LTDA')];
+  const l = sugerirLotes(ms, [rec('t', '131', 'MINASLAB LTDA', 5800)]);
+  assert.deepEqual(l[0].movimentos.map(m => m.id), ['a', 'b']);
+});
+test('repasses por mês somam os pendentes da MinasLab em cada mês', () => {
+  const ms = [mov('a', 2117, 'Pix recebido de MINASLABBRASIL LTDA', { data_movimento: '2026-10-05' }), mov('b', 610.01, 'Pix recebido de MINASLABBRASIL LTDA', { data_movimento: '2026-10-05' }), mov('c', 5000, 'Pix recebido de MINASLABBRASIL LTDA', { data_movimento: '2026-09-03' }), mov('d', 265, 'Pix recebido c6 de RODRIGO', { data_movimento: '2026-10-07' })];
+  const r = repassesPorMes(ms);
+  assert.deepEqual(r.map(x => [x.mes, x.total, x.movimentos.length]), [['2026-09', 5000, 1], ['2026-10', 2727.01, 2]]);
 });

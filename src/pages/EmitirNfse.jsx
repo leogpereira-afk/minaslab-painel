@@ -45,6 +45,9 @@ export default function EmitirNfse(){
   // trazia a mesma OS de volta e abria caminho para uma segunda NFS-e dela.
   function soltarOrigem(){setOrigemServico(null);if(location.state?.servicoGerado)navigate(location.pathname,{replace:true,state:null})}
   const [origemAplicada,setOrigemAplicada]=useState(false);
+  // Vinda da Conciliação M Lab: NF do mês para a MinasLab com o total repassado (cliente, valor e descrição já preenchidos).
+  const [notaMes,setNotaMes]=useState(()=>location.state?.notaMes||null);
+  const [notaMesAplicada,setNotaMesAplicada]=useState(false);
   const [estado,setEstado]=useState(null);
   const [clientes,setClientes]=useState([]);
   const [rascunhos,setRascunhos]=useState([]);
@@ -73,6 +76,8 @@ export default function EmitirNfse(){
   async function carregar(){setCarregando(true);setErro("");try{const [e,c,r]=await Promise.all([finNfseEstado(),finClientesListar(""),finNfseListar()]);setEstado(e);setClientes(c);setRascunhos(r)}catch(ex){setErro(ex.message)}finally{setCarregando(false)}}
   useEffect(()=>{carregar()},[]);
   useEffect(()=>{if(!origemServico||origemAplicada||!clientes.length)return;const dig=v=>String(v||"").replace(/\D/g,"");const achado=clientes.find(c=>dig(c.cnpj_cpf)===dig(origemServico.cnpj_cpf));const valor=String(Number(origemServico.valor_faturar||origemServico.valor_original||0)||"");setForm(v=>({...v,cliente_id:achado?.id||"",data_vencimento:origemServico.data_vencimento||"",valor_unitario:valor,valor_total:valor,forma_pagamento:origemServico.forma_pagamento||v.forma_pagamento,servico_descricao:`Serviços Prestados pela M Lab : ${origemServico.contrato_proposta?`Contrato: ${origemServico.contrato_proposta} | `:""}OS: ${origemServico.os_numero}` ,observacao:[origemServico.observacao,`OS ${origemServico.os_numero}`].filter(Boolean).join(" · ")}));if(!achado){setNovoCliente(true);setCliente(c=>({...c,nome:origemServico.cliente||"",cnpj_cpf:origemServico.cnpj_cpf||""}))}setOrigemAplicada(true);setOk(`Dados carregados da OS ${origemServico.os_numero}. Confira cliente, serviço e tributação antes de emitir.`)},[clientes,origemServico,origemAplicada]);
+
+  useEffect(()=>{if(!notaMes||notaMesAplicada||!clientes.length)return;const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();const alvo=norm(notaMes.clienteNome);const achado=clientes.find(c=>c.ativo!==false&&!c.mesclado_para&&norm(c.nome)===alvo)||clientes.find(c=>c.ativo!==false&&!c.mesclado_para&&norm(c.nome).startsWith(alvo));const valor=String(Number(notaMes.valor||0)||"");setForm(v=>({...v,cliente_id:achado?.id||"",valor_unitario:valor,valor_total:valor,quantidade:"1",servico_descricao:`Serviços Prestados pela M Lab : ${notaMes.descricao}`,observacao:notaMes.referencia||v.observacao}));if(!achado){setNovoCliente(true);setCliente(c=>({...c,nome:notaMes.clienteNome||""}))}setNotaMesAplicada(true);setNotaMes(null);navigate(location.pathname,{replace:true,state:null});setOk(`Dados da NF do mês carregados (${achado?achado.nome:notaMes.clienteNome}, ${Number(notaMes.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}). Confira vencimento, serviço e tributação antes de emitir.`)},[clientes,notaMes,notaMesAplicada]);
 
   const item=useMemo(()=>calcularItem(form),[form.quantidade,form.valor_unitario,form.desconto_percentual]);
   const clientesFiltrados=useMemo(()=>{const q=busca.trim().toLowerCase();if(!q)return clientes.slice(0,120);return clientes.filter(x=>`${x.nome||""} ${x.nome_fantasia||""} ${x.cnpj_cpf||""} ${x.email||""}`.toLowerCase().includes(q)).slice(0,120)},[clientes,busca]);
