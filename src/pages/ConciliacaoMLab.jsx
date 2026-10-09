@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Link2, RefreshCw, Sparkles } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
 import { financeiroOpcoes, finDespesasListar, finMovimentosListar, finRecebimentosListar } from "../services/financeiro.js";
-import { finConciliarAjustado } from "../services/conciliacaoAjustes.js";
+import { finComplementarDiferenca, finConciliarAjustado } from "../services/conciliacaoAjustes.js";
 import { invalidarCopiaFinanceira } from "../services/financeiroCache.js";
 import { repassesPorMes, restanteMovimento, sugerirLotes, sugerirTodos } from "../lib/conciliacaoSugestao.js";
 
@@ -118,6 +118,28 @@ export default function ConciliacaoMLab() {
     );
   }
 
+  // Movimento já conciliado em parte (banco acima do título): a sobra é juros ou multa da conciliação que já existe.
+  function registrarSobra(m) {
+    const restMov = restanteMovimento(m);
+    const tipo = ajusteEscolhido[m.id] || "juros";
+    return (async () => {
+      if (salvando) return;
+      if (!window.confirm(`Registrar ${moeda(restMov)} como ${tipo} na conciliação já feita deste movimento (${dataBR(m.data_movimento)})? O movimento passa a ficar conciliado.`)) return;
+      setSalvando(`sobra-${m.id}`);
+      setErro("");
+      setAviso("");
+      try {
+        await finComplementarDiferenca({ movimentoId: m.id, tipoAjuste: tipo });
+        setAviso(`${moeda(restMov)} registrados como ${tipo}.`);
+      } catch (e) {
+        setErro(e.message);
+      } finally {
+        setSalvando("");
+        await carregar(true);
+      }
+    })();
+  }
+
   function conciliarLote(l) {
     const debito = l.movimentos[0].tipo === "DEBITO";
     const passos = l.movimentos.map((m) => {
@@ -223,6 +245,15 @@ export default function ConciliacaoMLab() {
                     <p className="mt-0.5 text-lg font-bold">{moeda(Math.abs(Number(m.valor)))}{parcial && <span className="ml-2 text-sm font-medium text-amber-700">já conciliado {moeda(Math.abs(Number(m.valor)) - restMov)} · falta {moeda(restMov)}</span>}</p>
                   </div>
                   <div className="min-w-0 lg:w-[58%]">
+                    {parcial && restMov <= (Math.abs(Number(m.valor)) - restMov) * 0.2 && (
+                      <div className="mb-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="group" aria-label="Sobra de valor">
+                        Sobraram <b>{moeda(restMov)}</b> depois da conciliação já feita. Se for juros ou multa, registre aqui, na conciliação existente:
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select aria-label="Tipo da sobra" className="select w-auto py-1" value={ajusteEscolhido[m.id] || "juros"} onChange={(e) => setAjusteEscolhido((a) => ({ ...a, [m.id]: e.target.value }))}><option value="juros">juros</option><option value="multa">multa</option></select>
+                          <button type="button" className="btn-primary" disabled={!!salvando} onClick={() => registrarSobra(m)}>{salvando === `sobra-${m.id}` ? "Registrando…" : `Registrar ${moeda(restMov)}`}</button>
+                        </div>
+                      </div>
+                    )}
                     {melhor ? (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
                         <p className="text-sm"><b>NF {melhor.titulo.numero_nf || melhor.titulo.documento || "s/n"} · {nomeTitulo(melhor.titulo)}</b> · {moeda(melhor.restante)} · vence {dataBR(melhor.titulo.data_vencimento)}</p>

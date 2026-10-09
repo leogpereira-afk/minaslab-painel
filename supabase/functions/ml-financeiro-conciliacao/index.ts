@@ -41,6 +41,29 @@ Deno.serve(async req=>{
       if(error)throw error;
       return json({ok:true,removidas:existentes.length,itens:existentes});
     }
+    if(action==="complementar_diferenca"){
+      // Registra como juros ou multa a diferença que sobrou em um movimento já conciliado em parte (banco acima do título),
+      // dentro da própria conciliação existente. O banco valida que tudo fecha e recalcula o movimento.
+      const movimentoId=txt(b.movimentoId),tipoAjuste=txt(b.tipoAjuste).toLowerCase();
+      if(!movimentoId||!["juros","multa"].includes(tipoAjuste))return json({erro:"Informe o movimento e se a diferença é juros ou multa."},400);
+      const {data:mov,error:erroMov}=await sb.from("movimentos_bancarios").select("id,valor,tipo,conciliado").eq("id",movimentoId).maybeSingle();
+      if(erroMov)throw erroMov;
+      if(!mov)return json({erro:"Movimento bancário não encontrado."},404);
+      const {data:vinculos,error:erroV}=await sb.from("conciliacoes").select("id,valor_conciliado,valor_movimento,juros,multa,observacao,created_at").eq("movimento_id",movimentoId).order("created_at",{ascending:false});
+      if(erroV)throw erroV;
+      if(!vinculos?.length)return json({erro:"Este movimento ainda não tem conciliação para complementar. Concilie com um título primeiro."},400);
+      const soma=vinculos.reduce((s:number,v:any)=>s+num(v.valor_movimento??v.valor_conciliado),0);
+      const dif=Math.round((Math.abs(num(mov.valor))-soma)*100)/100;
+      if(dif<=0.005)return json({erro:"Não há diferença a registrar neste movimento."},400);
+      const alvo=vinculos[0];
+      const campo=tipoAjuste==="juros"?"juros":"multa";
+      const quem=txt(user.sub)||"direcao";
+      const hoje=new Date().toISOString().slice(0,10);
+      const nota=`Diferença de R$ ${dif.toFixed(2).replace(".",",")} registrada como ${campo} em ${hoje} por ${quem}`;
+      const {data,error}=await sb.from("conciliacoes").update({valor_movimento:Math.round((num(alvo.valor_movimento??alvo.valor_conciliado)+dif)*100)/100,[campo]:Math.round((num(alvo[campo])+dif)*100)/100,observacao:[txt(alvo.observacao),nota].filter(Boolean).join(" | ")}).eq("id",alvo.id).select("*").maybeSingle();
+      if(error)throw error;
+      return json({ok:true,item:data,diferenca:dif});
+    }
     if(action!=="conciliar")return json({erro:"Ação inválida."},400);
     const movimentoId=txt(b.movimentoId),recebimentoId=b.recebimentoId||null,despesaId=b.despesaId||null;
     const valorTitulo=num(b.valorTitulo),valorMovimento=num(b.valorMovimento),desconto=num(b.desconto),juros=num(b.juros),multa=num(b.multa),ajuste=num(b.ajuste);
