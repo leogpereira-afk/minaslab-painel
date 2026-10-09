@@ -7,7 +7,7 @@ import { PageTitle } from "../components/ui.jsx";
 import { financeiroOpcoes, finDespesasListar, finMovimentosListar, finRecebimentosListar } from "../services/financeiro.js";
 import { finConciliarAjustado } from "../services/conciliacaoAjustes.js";
 import { invalidarCopiaFinanceira } from "../services/financeiroCache.js";
-import { restanteMovimento, sugerirLotes, sugerirTodos } from "../lib/conciliacaoSugestao.js";
+import { repassesPorMes, restanteMovimento, sugerirLotes, sugerirTodos } from "../lib/conciliacaoSugestao.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBR = (v) => {
@@ -62,6 +62,9 @@ export default function ConciliacaoMLab() {
   }, [pendentes, receber, pagar]);
   const lotes = useMemo(() => [...sugerirLotes(pendentes, receber, "CREDITO"), ...sugerirLotes(pendentes, pagar, "DEBITO")], [pendentes, receber, pagar]);
   const idsEmLote = useMemo(() => new Set(lotes.flatMap((l) => l.movimentos.map((x) => x.id))), [lotes]);
+  // Repasses da MinasLab (Pix) que ainda não fecham nenhuma NF: no fim do mês você emite a NFS-e com o total.
+  const repasses = useMemo(() => repassesPorMes(pendentes.filter((m) => !idsEmLote.has(m.id)), "minaslab"), [pendentes, idsEmLote]);
+  const idsRepasse = useMemo(() => new Set(repasses.flatMap((r) => r.movimentos.map((m) => m.id))), [repasses]);
 
   const visiveis = linhas.filter(({ m, sugestoes }) => {
     if (filtro === "exatas") return sugestoes[0]?.exato;
@@ -132,6 +135,14 @@ export default function ConciliacaoMLab() {
     );
   }
 
+  const nomeMes = (aaaamm) => {
+    const [a, m] = aaaamm.split("-");
+    return `${["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][Number(m) - 1]}/${a}`;
+  };
+  function emitirNotaDoMes(r) {
+    navigate("/financas/notas-fiscais/emitir", { state: { notaMes: { clienteNome: "MINASLAB LTDA", valor: r.total, descricao: `Serviços prestados em ${nomeMes(r.mes)}`, referencia: `Repasses recebidos em ${nomeMes(r.mes)}: ${r.movimentos.map((m) => `${dataBR(m.data_movimento)} ${moeda(restanteMovimento(m))}`).join("; ")}` } } });
+  }
+
   function abrirTelaCompleta(m) {
     const tipo = m.tipo === "CREDITO" ? "RECEBIMENTO" : "DESPESA";
     navigate(`/financas/conciliacao?tipo=${tipo}&empresaId=${encodeURIComponent(m.empresa_id || empresa?.id || "")}&movimentoId=${encodeURIComponent(m.id)}&voltar=${encodeURIComponent("/financas/conciliacao-mlab")}`);
@@ -171,6 +182,24 @@ export default function ConciliacaoMLab() {
                   <p className="text-slate-600">{l.movimentos.map((m) => `${dataBR(m.data_movimento)} ${moeda(restanteMovimento(m))}`).join("  +  ")}</p>
                 </div>
                 <button type="button" className="btn-primary shrink-0" disabled={!!salvando} onClick={() => conciliarLote(l)}>{salvando === `lote-${l.titulo.id}` ? "Conciliando…" : "Conciliar os dois"}</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {repasses.length > 0 && filtro !== "sem" && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4" aria-label="Repasses da MinasLab">
+          <h2 className="font-bold text-amber-900">Repasses da MinasLab aguardando a NF do mês</h2>
+          <p className="mb-2 text-sm text-amber-900/80">Pix recebidos da MinasLab que ainda não têm NF. Emita a NFS-e com o total do mês; depois dela criada, esta tela oferece conciliar todos de uma vez.</p>
+          <div className="space-y-2">
+            {repasses.map((r) => (
+              <div key={r.mes} className="flex flex-col gap-2 rounded-xl bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm">
+                  <b className="capitalize">{nomeMes(r.mes)}</b> · {r.movimentos.length} {r.movimentos.length === 1 ? "repasse" : "repasses"} · total <b>{moeda(r.total)}</b>
+                  <p className="text-slate-600">{r.movimentos.map((m) => `${dataBR(m.data_movimento)} ${moeda(restanteMovimento(m))}`).join("  ·  ")}</p>
+                </div>
+                <button type="button" className="btn-primary shrink-0" onClick={() => emitirNotaDoMes(r)}>Emitir NFS-e de {moeda(r.total)}</button>
               </div>
             ))}
           </div>
@@ -225,7 +254,7 @@ export default function ConciliacaoMLab() {
                       </div>
                     ) : (
                       <div className="rounded-xl border border-dashed p-3 text-sm text-slate-600">
-                        {idsEmLote.has(m.id) ? "Faz parte de uma sugestão em lote (acima)." : "Nenhum título parecido encontrado."}
+                        {idsEmLote.has(m.id) ? "Faz parte de uma sugestão em lote (acima)." : idsRepasse.has(m.id) ? "Repasse da MinasLab: aguardando a NF do mês (acima)." : "Nenhum título parecido encontrado."}
                         <div className="mt-2"><button type="button" className="btn-outline" disabled={!!salvando} onClick={() => abrirTelaCompleta(m)}><Link2 size={14} />Escolher título</button></div>
                       </div>
                     )}

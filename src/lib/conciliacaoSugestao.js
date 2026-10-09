@@ -63,27 +63,78 @@ export function sugerirTitulos(movimento, titulos = [], { limite = 3 } = {}) {
   return lista.sort((a, b) => b.pontos - a.pontos || Math.abs(a.diferenca) - Math.abs(b.diferenca)).slice(0, limite);
 }
 
-// Dois movimentos pendentes do mesmo tipo que, somados, fecham exatamente o restante de um título
-// (ex.: 5.000,00 + 800,00 para uma NF de 5.800,00). Só entra o que não tem sugestão individual exata.
-export function sugerirLotes(movimentos = [], titulos = [], tipoMov = "CREDITO") {
-  const pend = movimentos.filter((m) => m.tipo === tipoMov && restanteMovimento(m) > 0.005);
+// Quem pagou, quando a descrição do banco traz: "Pix recebido de FULANO LTDA", "Pix recebido c6 de FULANO".
+export function pagadorDe(descricao = "") {
+  const m = /pix\s+recebido(?:\s+c6)?\s+de\s+(.+)$/i.exec(String(descricao).trim());
+  return m ? semAcento(m[1]).replace(/\s+/g, " ").trim() : null;
+}
+
+// Movimentos pendentes de um mesmo pagador que, somados, fecham exatamente o restante de um título
+// (ex.: 5.000,00 + 800,00 para uma NF de 5.800,00 emitida no fim do mês). Só entra o que não tem um movimento
+// exato sozinho para o título. Agrupa por pagador para não juntar valores de pessoas diferentes.
+export function sugerirLotes(movimentos = [], titulos = [], tipoMov = "CREDITO", { maxItens = 14 } = {}) {
+  const grupos = new Map();
+  for (const m of movimentos) {
+    if (m.tipo !== tipoMov || restanteMovimento(m) <= 0.005) continue;
+    const quem = pagadorDe(m.descricao);
+    if (!quem) continue;
+    grupos.set(quem, [...(grupos.get(quem) || []), m]);
+  }
+  const todosPend = movimentos.filter((m) => m.tipo === tipoMov && restanteMovimento(m) > 0.005);
   const usados = new Set();
   const lotes = [];
   for (const t of titulos) {
     if (["CANCELADO", "CANCELADA"].includes(String(t?.status || "").toUpperCase()) || t?.apagado) continue;
     const alvo = centavos(restanteTituloConc(t, tipoMov));
     if (alvo <= 0) continue;
-    if (pend.some((m) => centavos(restanteMovimento(m)) === alvo)) continue; // já tem um movimento exato sozinho
-    for (let i = 0; i < pend.length; i++) {
-      for (let j = i + 1; j < pend.length; j++) {
-        if (usados.has(pend[i].id) || usados.has(pend[j].id)) continue;
-        if (centavos(restanteMovimento(pend[i])) + centavos(restanteMovimento(pend[j])) !== alvo) continue;
-        lotes.push({ titulo: t, movimentos: [pend[i], pend[j]], valor: alvo / 100 });
-        usados.add(pend[i].id); usados.add(pend[j].id);
+    if (todosPend.some((m) => centavos(restanteMovimento(m)) === alvo)) continue; // um movimento sozinho já fecha
+    for (const grupo of grupos.values()) {
+      const livres = grupo.filter((m) => !usados.has(m.id)).slice(0, maxItens);
+      if (livres.length < 2) continue;
+      const valores = livres.map((m) => centavos(restanteMovimento(m)));
+      let achado = null;
+      // Soma de subconjuntos (até 2^14): primeiro o menor número de movimentos.
+      for (let tam = 2; tam <= livres.length && !achado; tam++) {
+        const busca = (ini, falta, soma, escolhidos) => {
+          if (achado) return;
+          if (escolhidos.length === tam) { if (soma === alvo) achado = escolhidos.slice(); return; }
+          for (let k = ini; k < livres.length; k++) {
+            if (soma + valores[k] > alvo) continue;
+            escolhidos.push(k);
+            busca(k + 1, falta - 1, soma + valores[k], escolhidos);
+            escolhidos.pop();
+            if (achado) return;
+          }
+        };
+        busca(0, tam, 0, []);
+      }
+      if (achado) {
+        const ms = achado.map((k) => livres[k]);
+        lotes.push({ titulo: t, movimentos: ms, valor: alvo / 100 });
+        ms.forEach((m) => usados.add(m.id));
+        break;
       }
     }
   }
   return lotes;
+}
+
+// Repasses por mês: movimentos pendentes cujo pagador contém o trecho informado (ex.: "minaslab"), agrupados por mês
+// da data do banco. Serve para emitir a NF do mês com o total repassado e depois conciliar tudo de uma vez.
+export function repassesPorMes(movimentos = [], trecho = "minaslab") {
+  const alvo = semAcento(trecho);
+  const meses = new Map();
+  for (const m of movimentos) {
+    if (m.tipo !== "CREDITO" || restanteMovimento(m) <= 0.005) continue;
+    const quem = pagadorDe(m.descricao);
+    if (!quem || !quem.includes(alvo)) continue;
+    const mes = String(m.data_movimento).slice(0, 7);
+    const g = meses.get(mes) || { mes, movimentos: [], total: 0 };
+    g.movimentos.push(m);
+    g.total = (centavos(g.total) + centavos(restanteMovimento(m))) / 100;
+    meses.set(mes, g);
+  }
+  return [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes));
 }
 
 // Sugestões de todos os pendentes de uma vez. Título que um movimento já cita pelo número da NF fica reservado
