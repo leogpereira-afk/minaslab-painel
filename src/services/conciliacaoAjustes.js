@@ -22,3 +22,12 @@ export async function finConciliarAjustado(payload){
   invalidarCopiaFinanceira();
   return body||{};
 }
+
+// Registra como juros ou multa a diferença que sobrou num movimento já conciliado em parte.
+export async function finComplementarDiferenca({movimentoId,tipoAjuste}){
+  const resp=await comCracha(URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"complementar_diferenca",movimentoId,tipoAjuste})});
+  const body=await resp.json().catch(()=>null);
+  if(!resp.ok)throw new Error(erroTexto(body)||mensagemDoStatus(resp.status));
+  invalidarCopiaFinanceira();
+  return body||{};
+}
