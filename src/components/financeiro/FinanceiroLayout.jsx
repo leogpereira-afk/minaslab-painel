@@ -14,6 +14,7 @@ const principais=[
  {label:"Pagar",to:"/financas/contas-a-pagar",icon:ArrowUpCircle},
  {label:"Bancos",to:"/financas/movimentacao-conta",icon:Landmark},
  {label:"Conciliação",to:"/financas/conciliacao",icon:ListChecks},
+ {label:"Conciliar M Lab",to:"/financas/conciliacao-mlab",icon:ListChecks},
  {label:"Notas",to:"/financas/notas-fiscais",icon:FileText},
 ];
 const complementares=[
