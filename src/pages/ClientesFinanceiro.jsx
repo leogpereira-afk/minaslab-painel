@@ -23,6 +23,7 @@ import {
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
 import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
+import { digitandoMaiusculas } from "../lib/padraoCadastro.js";
 import {
   finListaPaginada,
   finClientesListar,
@@ -607,14 +608,14 @@ export default function ClientesFinanceiro() {
               className="input"
               placeholder="Razão social / Nome *"
               value={form.nome || ""}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              onChange={(e) => setForm({ ...form, nome: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
               placeholder="Nome fantasia"
               value={form.nome_fantasia || ""}
               onChange={(e) =>
-                setForm({ ...form, nome_fantasia: e.target.value })
+                setForm({ ...form, nome_fantasia: digitandoMaiusculas(e.target.value) })
               }
             />
             <input
@@ -676,7 +677,7 @@ export default function ClientesFinanceiro() {
               className="input"
               placeholder="Logradouro"
               value={form.logradouro || ""}
-              onChange={(e) => setForm({ ...form, logradouro: e.target.value })}
+              onChange={(e) => setForm({ ...form, logradouro: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
@@ -689,20 +690,20 @@ export default function ClientesFinanceiro() {
               placeholder="Complemento"
               value={form.complemento || ""}
               onChange={(e) =>
-                setForm({ ...form, complemento: e.target.value })
+                setForm({ ...form, complemento: digitandoMaiusculas(e.target.value) })
               }
             />
             <input
               className="input"
               placeholder="Bairro"
               value={form.bairro || ""}
-              onChange={(e) => setForm({ ...form, bairro: e.target.value })}
+              onChange={(e) => setForm({ ...form, bairro: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
               placeholder="Cidade"
               value={form.cidade || ""}
-              onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+              onChange={(e) => setForm({ ...form, cidade: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"

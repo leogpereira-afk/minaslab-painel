@@ -1,4 +1,5 @@
 import { invalidarCopiaFinanceira } from "./financeiroCache.js";
+import { padronizarCliente } from "../lib/padraoCadastro.js";
 import { caminhoFinanceiro } from "../lib/financeiroIntegridade.js";
 import {FINANCEIRO,FINANCEIRO_LISTAS,FINANCEIRO_ARQUIVOS,FINANCEIRO_OMIE_PREVIEW,FINANCEIRO_OMIE_V2,FINANCEIRO_OMIE_EXTRATO,FINANCEIRO_C6,FINANCEIRO_BOLETO,FINANCEIRO_CLIENTES,FINANCEIRO_NFSE,FINANCEIRO_NFSE_DPS,FINANCEIRO_NFSE_SEFIN,FINANCEIRO_NFSE_DANFSE,FINANCEIRO_NFSE_HOMOLOGACAO,FINANCEIRO_NFSE_PRODUCAO,FINANCEIRO_NFSE_CANCELAMENTO,FINANCEIRO_NFSE_IMPORTACAO} from "../lib/api.js";import{comCracha,mensagemDoStatus}from"../lib/sessao.js";
 function erroTexto(v){if(v==null)return"";if(typeof v==="string")return v.trim();if(typeof v==="number"||typeof v==="boolean")return String(v);if(v instanceof Error)return v.message||String(v);if(Array.isArray(v))return v.map(erroTexto).filter(Boolean).join(" ");if(typeof v==="object"){for(const k of["message","mensagem","error_description","details","hint","code","faultstring"]){const s=erroTexto(v[k]);if(s)return s}try{return JSON.stringify(v)}catch{return String(v)}}return String(v)}
@@ -60,7 +61,7 @@ export const finC6Importar=(empresaId,csvText)=>chamarC6("importar",{empresaId,c
 export const finBoletoAnalisar=arquivo=>chamarBoleto("analisar",arquivo);
 export const finBoletoVincular=(despesaId,path,dados)=>chamarBoleto("vincular",{despesaId,path,dados});
 export const finClientesListar=(busca="")=>chamarClientes("listar",{busca}).then(r=>r.itens||[]);
-export const finClienteSalvar=registro=>chamarClientes("salvar",{registro});
+export const finClienteSalvar=registro=>chamarClientes("salvar",{registro:padronizarCliente(registro)});
 export const finClienteCep=cep=>chamarClientes("cep",{cep});
 export const finClienteSetAtivo=(id,ativo)=>chamarClientes("setAtivo",{id,ativo});
 export const finClienteMesclar=(origemId,destinoId)=>chamarClientes("mesclar",{origemId,destinoId});
