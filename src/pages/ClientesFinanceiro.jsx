@@ -23,6 +23,7 @@ import {
   useFiltrosColunaTabela,
 } from "../components/financeiro/FiltrosColunaTabela.jsx";
 import PaginacaoFinanceiro from "../components/financeiro/PaginacaoFinanceiro.jsx";
+import { digitandoMaiusculas } from "../lib/padraoCadastro.js";
 import {
   finListaPaginada,
   finClientesListar,
@@ -200,15 +201,28 @@ export default function ClientesFinanceiro() {
     try {
       setErro("");
       setOk("");
+      const criou = !form.id;
+      const nome = String(form.nome || "").trim();
       await finClienteSalvar(form);
       setOk(
-        form.id
-          ? "Cliente atualizado com sucesso."
-          : "Cliente cadastrado com sucesso.",
+        criou
+          ? `Cliente "${nome}" cadastrado com sucesso. A lista está filtrada por esse nome; limpe a busca para ver todos.`
+          : "Cliente atualizado com sucesso.",
       );
       setModalCliente(false);
       setForm(novo());
-      await Promise.all([carregar(pagina), carregarIndicadores()]);
+      if (criou) {
+        // A lista é por ordem alfabética e paginada: o cliente novo cairia numa página qualquer e pareceria
+        // que não salvou. Filtra pelo nome para ele aparecer logo.
+        setStatus("");
+        if (busca === nome) await Promise.all([carregar(1), carregarIndicadores()]);
+        else {
+          setBusca(nome);
+          await carregarIndicadores();
+        }
+      } else {
+        await Promise.all([carregar(pagina), carregarIndicadores()]);
+      }
     } catch (e) {
       setErro(e.message);
     }
@@ -594,14 +608,14 @@ export default function ClientesFinanceiro() {
               className="input"
               placeholder="Razão social / Nome *"
               value={form.nome || ""}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              onChange={(e) => setForm({ ...form, nome: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
               placeholder="Nome fantasia"
               value={form.nome_fantasia || ""}
               onChange={(e) =>
-                setForm({ ...form, nome_fantasia: e.target.value })
+                setForm({ ...form, nome_fantasia: digitandoMaiusculas(e.target.value) })
               }
             />
             <input
@@ -663,7 +677,7 @@ export default function ClientesFinanceiro() {
               className="input"
               placeholder="Logradouro"
               value={form.logradouro || ""}
-              onChange={(e) => setForm({ ...form, logradouro: e.target.value })}
+              onChange={(e) => setForm({ ...form, logradouro: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
@@ -676,20 +690,20 @@ export default function ClientesFinanceiro() {
               placeholder="Complemento"
               value={form.complemento || ""}
               onChange={(e) =>
-                setForm({ ...form, complemento: e.target.value })
+                setForm({ ...form, complemento: digitandoMaiusculas(e.target.value) })
               }
             />
             <input
               className="input"
               placeholder="Bairro"
               value={form.bairro || ""}
-              onChange={(e) => setForm({ ...form, bairro: e.target.value })}
+              onChange={(e) => setForm({ ...form, bairro: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"
               placeholder="Cidade"
               value={form.cidade || ""}
-              onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+              onChange={(e) => setForm({ ...form, cidade: digitandoMaiusculas(e.target.value) })}
             />
             <input
               className="input"

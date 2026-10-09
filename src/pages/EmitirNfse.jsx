@@ -3,6 +3,7 @@ import { ArrowLeft, BriefcaseBusiness, FileCode2, FileText, CheckCircle2, FilePl
 import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import DetalheNotaCorpo from "../components/financeiro/DetalheNotaFiscal.jsx";
+import { padronizarCliente } from "../lib/padraoCadastro.js";
 import { finArquivoUrl, finClientesListar, finNfseEmitir, finNfseEmitirProducao, finNfseEstado, finNfseListar, finNfsePreparar, finNfseRascunhoSalvar, finNfseVerificarCertificado } from "../services/financeiro.js";
 import { servicoGeradoVincularNfse } from "../services/servicosGerados.js";
 
@@ -87,7 +88,7 @@ export default function EmitirNfse(){
 
   function atualizarItem(campo,valor){setForm(v=>{const prox={...v,[campo]:valor};const c=calcularItem(prox);return {...prox,valor_total:c.total?c.total.toFixed(2):""}});setPreparacao(null)}
   function limpar(){soltarOrigem();setForm(vazio());setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setAba("servico");setOk("");setErro("")}
-  function registro(){const c=calcularItem(form);return {...form,cliente_id:novoCliente?"":form.cliente_id,cliente:novoCliente?cliente:null,email_nfse:form.email_nfse||"",quantidade:c.quantidade,valor_unitario:c.valorUnitario,desconto_percentual:c.desconto,valor_total:c.total,aliquota_simples_nacional:Number(form.aliquota_simples_nacional||2.01)}}
+  function registro(){const c=calcularItem(form);return {...form,cliente_id:novoCliente?"":form.cliente_id,cliente:novoCliente?padronizarCliente(cliente):null,email_nfse:form.email_nfse||"",quantidade:c.quantidade,valor_unitario:c.valorUnitario,desconto_percentual:c.desconto,valor_total:c.total,aliquota_simples_nacional:Number(form.aliquota_simples_nacional||2.01)}}
   function escolherCliente(x){const es=emailsValidos(x.email);setForm(v=>({...v,cliente_id:x.id,email_nfse:es.length===1?es[0]:""}));setNovoCliente(false);setCliente(clienteNovo());setPreparacao(null);setClienteModal(false);setBusca("")}
   function abrirNovoCliente(){setNovoCliente(true);setForm(v=>({...v,cliente_id:""}));setClienteModal(false);setPreparacao(null)}
   function escolherServico(x){setForm(v=>({...v,codigo_servico:x.codigo,nbs:x.nbs,servico_descricao:v.servico_descricao||x.nome}));setPreparacao(null);setServicoModal(false);setBuscaServico("")}
