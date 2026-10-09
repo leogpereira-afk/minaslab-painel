@@ -150,7 +150,7 @@ export default function ConciliacaoMLab() {
 
   return (
     <div className="space-y-5">
-      <PageTitle titulo="Conciliar M Lab" descricao="O que ainda falta conciliar no banco da M Lab, com o título provável já sugerido. Você confere e confirma." />
+      <PageTitle titulo="Conciliar" descricao="O que ainda falta conciliar no banco da M Lab, com o título provável já sugerido. Você confere e confirma." />
 
       {erro && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
       {aviso && <div role="status" className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700"><CheckCircle2 size={16} />{aviso}</div>}

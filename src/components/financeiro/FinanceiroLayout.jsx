@@ -13,8 +13,7 @@ const principais=[
  {label:"Receber",to:"/financas/contas-a-receber",icon:ArrowDownCircle},
  {label:"Pagar",to:"/financas/contas-a-pagar",icon:ArrowUpCircle},
  {label:"Bancos",to:"/financas/movimentacao-conta",icon:Landmark},
- {label:"Conciliação",to:"/financas/conciliacao",icon:ListChecks},
- {label:"Conciliar M Lab",to:"/financas/conciliacao-mlab",icon:ListChecks},
+ {label:"Conciliar",to:"/financas/conciliacao-mlab",icon:ListChecks},
  {label:"Notas",to:"/financas/notas-fiscais",icon:FileText},
 ];
 const complementares=[
@@ -28,7 +27,7 @@ const complementares=[
  {label:"Recibos",to:"/financas/recibos",icon:ReceiptText,descricao:"Recibos, horas extras, estágio e termos para imprimir."},
  {label:"Configurações",to:"/financas/configuracoes",icon:Settings,descricao:"Contas, categorias e parâmetros do Financeiro."},
 ];
-function ativa(location,label,to){const p=location.pathname;if(label==="Visão Geral")return p===to;if(label==="Receber")return p===to||p==="/financas/recebimentos";if(label==="Pagar")return p===to||p==="/financas/despesas";if(label==="Bancos")return p===to||p==="/financas/bancos"||p==="/financas/extrato";if(label==="Conciliação")return p===to||p.startsWith("/financas/conciliacao-titulos");if(label==="Notas")return p.startsWith("/financas/notas-fiscais");return p===to||p.startsWith(`${to}/`)}
+function ativa(location,label,to){const p=location.pathname;if(label==="Visão Geral")return p===to;if(label==="Receber")return p===to||p==="/financas/recebimentos";if(label==="Pagar")return p===to||p==="/financas/despesas";if(label==="Bancos")return p===to||p==="/financas/bancos"||p==="/financas/extrato";if(label==="Conciliar")return p.startsWith("/financas/conciliacao");if(label==="Notas")return p.startsWith("/financas/notas-fiscais");return p===to||p.startsWith(`${to}/`)}
 function periodoSalvo(){try{const p=JSON.parse(sessionStorage.getItem(PERIODO_KEY)||"{}");return{de:String(p?.de||""),ate:String(p?.ate||"")}}catch{return{de:"",ate:""}}}
 function mesAtual(){const d=new Date(),a=d.getFullYear(),m=d.getMonth()+1,mm=String(m).padStart(2,"0"),ultimo=new Date(a,m,0).getDate();return{de:`${a}-${mm}-01`,ate:`${a}-${mm}-${String(ultimo).padStart(2,"0")}`}}
 function rotaPeriodo(p){return p==="/financas/contas-a-receber"||p==="/financas/recebimentos"||p==="/financas/contas-a-pagar"||p==="/financas/despesas"||p==="/financas/notas-fiscais"||p.startsWith("/financas/conciliacao-titulos")}
