@@ -6,6 +6,7 @@
 import { SYNC } from "../lib/api.js";
 import { comCracha, mensagemDoStatus, getToken, aoMudarSessao } from "../lib/sessao.js";
 import { novoId } from "../lib/format.js";
+import { mensagemAmigavel } from "../lib/errosAmigaveis.js";
 
 async function chamar(action, corpo = {}) {
   const resp = await comCracha(SYNC, {
@@ -14,7 +15,7 @@ async function chamar(action, corpo = {}) {
     body: JSON.stringify({ action, ...corpo }),
   });
   const body = await resp.json().catch(() => null);
-  if (!resp.ok) throw new Error(body?.erro || mensagemDoStatus(resp.status));
+  if (!resp.ok) throw new Error(body?.erro ? mensagemAmigavel(body.erro) : mensagemDoStatus(resp.status));
   return body;
 }
 
