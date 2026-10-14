@@ -4,6 +4,7 @@ import { AlarmClock, CheckCircle2, ChevronRight, Download, Edit3, FlaskConical, 
 import { PageShell } from '../../components/ui/PageShell'
 import { Modal } from '../../components/ui/Modal'
 import { Badge, Button, Card, CardBody, FieldLabel, Input, Select } from '../../components/ui/DesignSystem'
+import { TableFooter } from '../../components/ui/DataDisplay'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -25,6 +26,7 @@ const activeStatuses:Status[]=['AGUARDANDO_ENVIO','ENVIADA','NO_PROVEDOR']
 const carriers=['Azul Cargo','Logtime','União','Braspress','Correios','Entrega própria','Outra']
 const periods=[['90','Últimos 90 dias'],['180','Últimos 6 meses'],['ANO','Este ano'],['TODOS','Todo o histórico']] as const
 const empty:Form={laboratorio_parceiro_id:'',numero_os:'',numero_proposta:'',grupo:'',amostras:'',data_recebimento:'',data_envio:'',data_chegada:'',prazo_dias:'',prazo_tipo:'UTEIS',previsao_resultado:'',data_resultado:'',data_envio_cliente:'',proposta_provedor:'',valor_proposta_provedor:'',transportadora:'',codigo_rastreio:'',valor_frete:'',status:'AGUARDANDO_ENVIO',observacoes:''}
+const PAGE_SIZE=25
 const brl=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'})
 const pct=new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:0})
 const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -46,7 +48,7 @@ export function AcompanhamentoProvedores(){
  const{hasPermission,session}=useAuth(),canWrite=hasPermission('crm.write')||hasPermission('operational.import')
  const[rows,setRows]=useState<Envio[]>([]),[labs,setLabs]=useState<Lab[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('')
  const[query,setQuery]=useState(''),[provider,setProvider]=useState('TODOS'),[statusFilter,setStatusFilter]=useState('ATIVOS'),[period,setPeriod]=useState('TODOS')
- const[formOpen,setFormOpen]=useState(false),[editing,setEditing]=useState<string|null>(null),[form,setForm]=useState<Form>(empty),[saving,setSaving]=useState(false)
+ const[formOpen,setFormOpen]=useState(false),[editing,setEditing]=useState<string|null>(null),[form,setForm]=useState<Form>(empty),[saving,setSaving]=useState(false),[page,setPage]=useState(1)
 
  const load=useCallback(async()=>{setLoading(true);setError('');const[e,l]=await Promise.all([
   supabase.from('provedor_envios').select('*,cliente:clientes(razao_social,nome_fantasia)').is('deleted_at',null).order('data_envio',{ascending:false,nullsFirst:true}).limit(5000),
@@ -60,6 +62,8 @@ export function AcompanhamentoProvedores(){
   const st=statusFilter==='TODOS'||(statusFilter==='ATIVOS'?activeStatuses.includes(x.status)||pendingClient(x):statusFilter==='ATRASADOS'?late(x):statusFilter==='VENCENDO'?dueSoon(x):x.status===statusFilter)
   return (!q||text.includes(q))&&(provider==='TODOS'||providerName(x,labs)===provider)&&st}).sort((a,b)=>Number(late(b))-Number(late(a))||(a.data_prevista??'9999').localeCompare(b.data_prevista??'9999')),[periodRows,query,provider,statusFilter,labs])
 
+ useEffect(()=>{setPage(1)},[query,provider,statusFilter,period])
+ const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE)),current=Math.min(page,pages),pageRows=filtered.slice((current-1)*PAGE_SIZE,current*PAGE_SIZE)
  const stats=useMemo(()=>({active:rows.filter(x=>activeStatuses.includes(x.status)).length,late:rows.filter(late).length,soon:rows.filter(dueSoon).length,client:rows.filter(pendingClient).length}),[rows])
  const providers=useMemo(()=>{const names=new Set<string>([...labs.map(l=>l.nome),...rows.map(x=>providerName(x,labs))]);return [...names].sort((a,b)=>a.localeCompare(b,'pt-BR'))},[labs,rows])
  const byProvider=useMemo(()=>{const map=new Map<string,Envio[]>();for(const x of periodRows){if(x.status==='CANCELADA')continue;const k=providerName(x,labs);map.set(k,[...(map.get(k)??[]),x])}
@@ -104,7 +108,7 @@ export function AcompanhamentoProvedores(){
    <Button variant="secondary" onClick={exportCsv} disabled={!filtered.length}><Download className="h-4 w-4"/>Exportar</Button></CardBody></Card>
 
   <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">OS / proposta</th><th className="px-4 py-3">Amostras</th><th className="px-4 py-3">Provedor</th><th className="px-4 py-3">Envio</th><th className="px-4 py-3">Previsão</th><th className="px-4 py-3">Transporte</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead>
-   <tbody>{!loading&&filtered.length===0?<tr><td colSpan={8} className="p-12 text-center text-slate-500">Nenhum envio encontrado.</td></tr>:filtered.map(x=>{const next=flow[flow.indexOf(x.status)+1];return <tr key={x.id} className={`border-b border-slate-100 last:border-0 ${late(x)?'bg-red-50/40':''}`}>
+   <tbody>{!loading&&filtered.length===0?<tr><td colSpan={8} className="p-12 text-center text-slate-500">Nenhum envio encontrado.</td></tr>:pageRows.map(x=>{const next=flow[flow.indexOf(x.status)+1];return <tr key={x.id} className={`border-b border-slate-100 last:border-0 ${late(x)?'bg-red-50/40':''}`}>
     <td className="px-4 py-3"><div className="font-semibold">{x.ordem_servico_id?<Link className="text-teal-700 hover:underline" to={`/ordens-servico/${x.ordem_servico_id}`}>{x.numero_os}</Link>:x.numero_os||'Sem OS'}</div><div className="text-xs text-slate-500">{x.numero_proposta?(x.proposta_id?<Link className="hover:underline" to={`/propostas/${x.proposta_id}`}>{x.numero_proposta}</Link>:x.numero_proposta):'—'}</div>{x.cliente_id&&<Link to={`/clientes/${x.cliente_id}`} className="block max-w-56 truncate text-xs text-slate-500 hover:underline">{clientName(x)}</Link>}</td>
     <td className="max-w-64 px-4 py-3"><div className="line-clamp-2">{x.amostras||'—'}</div><div className="text-xs text-slate-500">{x.grupo??''}</div></td>
     <td className="px-4 py-3 font-medium">{providerName(x,labs)}</td>
@@ -113,7 +117,7 @@ export function AcompanhamentoProvedores(){
     <td className="px-4 py-3">{x.transportadora||'—'}<div className="text-xs text-slate-500">{x.codigo_rastreio??''}{x.valor_frete!=null?` · ${brl.format(x.valor_frete)}`:''}</div></td>
     <td className="px-4 py-3"><Badge variant={statusInfo[x.status].variant}>{statusInfo[x.status].label}</Badge></td>
     <td className="px-4 py-3"><div className="flex justify-end gap-2">{canWrite&&next&&<button type="button" title={`Marcar como ${statusInfo[next].label.toLowerCase()}`} onClick={()=>void advance(x)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-50">{statusInfo[next].label}<ChevronRight className="h-3.5 w-3.5"/></button>}{canWrite&&<button type="button" title="Editar" aria-label="Editar" onClick={()=>edit(x)} className="rounded-lg border border-slate-200 p-2 text-slate-600"><Edit3 className="h-4 w-4"/></button>}</div></td></tr>})}</tbody></table></div>
-   <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">{filtered.length} de {rows.length} envios</div></Card>
+   <TableFooter><span>{filtered.length} de {rows.length} envios · página {current} de {pages}</span><div className="flex gap-2"><Button variant="secondary" disabled={current<=1} onClick={()=>setPage(current-1)}>Anterior</Button><Button variant="secondary" disabled={current>=pages} onClick={()=>setPage(current+1)}>Próxima</Button></div></TableFooter></Card>
 
   <EnvioForm open={formOpen} editing={!!editing} close={()=>setFormOpen(false)} form={form} setForm={setForm} save={save} saving={saving} labs={labs}/>
  </PageShell>
