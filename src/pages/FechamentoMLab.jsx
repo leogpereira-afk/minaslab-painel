@@ -9,9 +9,11 @@ import { invalidarCopiaFinanceira } from "../services/financeiroCache.js";
 import { hojeSaoPaulo } from "../lib/tituloVencido.js";
 import { montarFechamento } from "../lib/fechamentoMes.js";
 import { conferirOsNotas } from "../lib/conferenciaOsNotas.js";
+import { conferirStatusPagamento } from "../lib/conferenciaStatusPagamento.js";
 
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ehMLab = (e) => String(e?.nome || "").toLowerCase().replace(/[^a-z]/g, "").startsWith("mlab");
+const ehMinasLab = (e) => String(e?.nome || "").toLowerCase().replace(/[^a-z]/g, "").startsWith("minaslab");
 const ESTILO = {
   ok: { icone: CheckCircle2, cor: "text-emerald-700", faixa: "border-emerald-200 bg-emerald-50", rotulo: "Em ordem" },
   atencao: { icone: AlertTriangle, cor: "text-amber-700", faixa: "border-amber-200 bg-amber-50", rotulo: "Atenção" },
@@ -64,11 +66,14 @@ export default function FechamentoMLab() {
       const op = await financeiroOpcoes();
       const mlab = (op?.empresas || []).find(ehMLab);
       if (!mlab) throw new Error("Empresa M Lab não encontrada no cadastro.");
-      const [movimentos, receber, pagar, notas, ser] = await Promise.all([
+      const minas = (op?.empresas || []).find(ehMinasLab);
+      const [movimentos, receber, pagar, notas, ser, receberMinas, serMinas] = await Promise.all([
         finMovimentosListar(mlab.id), finRecebimentosListar(mlab.id), finDespesasListar(mlab.id),
         finNotasListar(""), servicosGeradosListar({ empresaId: mlab.id }),
+        minas ? finRecebimentosListar(minas.id) : Promise.resolve([]),
+        minas ? servicosGeradosListar({ empresaId: minas.id }) : Promise.resolve(null),
       ]);
-      setDados({ movimentos, receber, pagar, notas, servicos: ser?.itens || [], empresaId: mlab.id, nomeOutras: Object.fromEntries((op?.empresas || []).map((e) => [e.id, e.nome])) });
+      setDados({ movimentos, receber, pagar, notas, servicos: ser?.itens || [], empresaId: mlab.id, minasId: minas?.id || "", receberMinas, servicosMinas: serMinas?.itens || [], nomeOutras: Object.fromEntries((op?.empresas || []).map((e) => [e.id, e.nome])) });
     } catch (e) {
       setErro(e.message || "Não foi possível carregar o fechamento.");
     } finally {
@@ -80,8 +85,11 @@ export default function FechamentoMLab() {
   const f = useMemo(() => (dados && /^\d{4}-\d{2}$/.test(mes) ? montarFechamento({ movimentos: dados.movimentos, receber: dados.receber, pagar: dados.pagar, mes, hoje }) : null), [dados, mes, hoje]);
   // Serviços Gerados × Notas emitidas: não depende do mês (confere a M Lab inteira).
   const os = useMemo(() => (dados ? conferirOsNotas({ servicos: dados.servicos, notas: dados.notas, recebimentos: dados.receber, empresaId: dados.empresaId, nomeOutras: dados.nomeOutras }) : null), [dados]);
-  const totalErros = (f?.erros || 0) + (os?.erros || 0);
-  const totalAtencoes = (f?.atencoes || 0) + (os?.atencoes || 0);
+  // Status de pagamento das OS × título ligado, nas duas empresas.
+  const pgtoMLab = useMemo(() => (dados ? conferirStatusPagamento({ servicos: dados.servicos, recebimentos: dados.receber, empresaId: dados.empresaId, hoje }) : null), [dados, hoje]);
+  const pgtoMinas = useMemo(() => (dados?.minasId ? conferirStatusPagamento({ servicos: dados.servicosMinas, recebimentos: dados.receberMinas, empresaId: dados.minasId, hoje }) : null), [dados, hoje]);
+  const totalErros = (f?.erros || 0) + (os?.erros || 0) + (pgtoMLab?.erros || 0) + (pgtoMinas?.erros || 0);
+  const totalAtencoes = (f?.atencoes || 0) + (os?.atencoes || 0) + (pgtoMLab?.atencoes || 0) + (pgtoMinas?.atencoes || 0);
 
   return (
     <div className="space-y-5">
@@ -134,6 +142,16 @@ export default function FechamentoMLab() {
               {os.itens.map((i) => <Conferencia key={i.id} i={i} />)}
             </section>
           )}
+
+          {[["M Lab", pgtoMLab], ["MinasLab", pgtoMinas]].filter(([, r]) => r).map(([nome, r]) => (
+            <section key={nome} className="space-y-3" aria-label={`Status de pagamento dos Serviços Gerados — ${nome}`}>
+              <div>
+                <h2 className="font-bold text-slate-800">Serviços Gerados: status de pagamento × título — {nome}</h2>
+                <p className="text-sm text-slate-600">{r.totalOs} OS faturadas conferidas com o título ligado a cada uma. Esta conferência não depende do mês escolhido.</p>
+              </div>
+              {r.itens.map((i) => <Conferencia key={i.id} i={i} />)}
+            </section>
+          ))}
         </>
       )}
     </div>
