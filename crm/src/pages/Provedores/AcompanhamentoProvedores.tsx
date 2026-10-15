@@ -5,6 +5,8 @@ import { PageShell } from '../../components/ui/PageShell'
 import { Modal } from '../../components/ui/Modal'
 import { Badge, Button, Card, CardBody, FieldLabel, Input, Select } from '../../components/ui/DesignSystem'
 import { TableFooter } from '../../components/ui/DataDisplay'
+import { PeriodSelect } from '../../components/ui/PeriodFilter'
+import { ALL_PERIOD, inPeriod as inYearMonth, yearsFrom, type PeriodFilter } from '../../lib/period'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -43,11 +45,12 @@ const dueSoon=(x:Envio)=>waitingResult(x)&&!!x.data_prevista&&x.data_prevista>=t
 const pendingClient=(x:Envio)=>x.status==='RESULTADO_RECEBIDO'&&!x.data_envio_cliente
 const providerName=(x:Envio,labs:Lab[])=>labs.find(l=>l.id===x.laboratorio_parceiro_id)?.nome??x.provedor_nome??'Sem provedor'
 const clientName=(x:Envio)=>x.cliente?.nome_fantasia||x.cliente?.razao_social||''
+const envioDate=(x:Envio)=>x.data_envio??x.data_recebimento
 
 export function AcompanhamentoProvedores(){
  const{hasPermission,session}=useAuth(),canWrite=hasPermission('crm.write')||hasPermission('operational.import')
  const[rows,setRows]=useState<Envio[]>([]),[labs,setLabs]=useState<Lab[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('')
- const[query,setQuery]=useState(''),[provider,setProvider]=useState('TODOS'),[statusFilter,setStatusFilter]=useState('ATIVOS'),[period,setPeriod]=useState('TODOS')
+ const[query,setQuery]=useState(''),[provider,setProvider]=useState('TODOS'),[statusFilter,setStatusFilter]=useState('ATIVOS'),[period,setPeriod]=useState('TODOS'),[ymFilter,setYmFilter]=useState<PeriodFilter>(ALL_PERIOD)
  const[formOpen,setFormOpen]=useState(false),[editing,setEditing]=useState<string|null>(null),[form,setForm]=useState<Form>(empty),[saving,setSaving]=useState(false),[page,setPage]=useState(1)
 
  const load=useCallback(async()=>{setLoading(true);setError('');const[e,l]=await Promise.all([
@@ -56,21 +59,23 @@ export function AcompanhamentoProvedores(){
   const fail=e.error||l.error;if(fail)setError(fail.message);else{setRows((e.data??[]) as unknown as Envio[]);setLabs((l.data??[]) as Lab[])}setLoading(false)},[])
  useEffect(()=>{void load()},[load])
 
- const inPeriod=useCallback((x:Envio)=>{if(period==='TODOS')return true;const ref=x.data_envio??x.data_recebimento;if(!ref)return activeStatuses.includes(x.status);if(period==='ANO')return ref.slice(0,4)===today().slice(0,4);const from=new Date();from.setDate(from.getDate()-Number(period));return ref>=iso(from)},[period])
- const periodRows=useMemo(()=>rows.filter(inPeriod),[rows,inPeriod])
+ const years=useMemo(()=>yearsFrom(rows.map(envioDate)),[rows])
+ const ymRows=useMemo(()=>rows.filter(x=>inYearMonth(envioDate(x),ymFilter)),[rows,ymFilter])
+ const inPeriod=useCallback((x:Envio)=>{if(period==='TODOS')return true;const ref=envioDate(x);if(!ref)return activeStatuses.includes(x.status);if(period==='ANO')return ref.slice(0,4)===today().slice(0,4);const from=new Date();from.setDate(from.getDate()-Number(period));return ref>=iso(from)},[period])
+ const periodRows=useMemo(()=>ymRows.filter(inPeriod),[ymRows,inPeriod])
  const filtered=useMemo(()=>periodRows.filter(x=>{const q=query.trim().toLowerCase();const text=`${x.numero_os??''} ${x.numero_proposta??''} ${x.amostras??''} ${x.grupo??''} ${x.codigo_rastreio??''} ${x.proposta_provedor??''} ${clientName(x)} ${providerName(x,labs)}`.toLowerCase()
   const st=statusFilter==='TODOS'||(statusFilter==='ATIVOS'?activeStatuses.includes(x.status)||pendingClient(x):statusFilter==='ATRASADOS'?late(x):statusFilter==='VENCENDO'?dueSoon(x):x.status===statusFilter)
   return (!q||text.includes(q))&&(provider==='TODOS'||providerName(x,labs)===provider)&&st}).sort((a,b)=>Number(late(b))-Number(late(a))||(a.data_prevista??'9999').localeCompare(b.data_prevista??'9999')),[periodRows,query,provider,statusFilter,labs])
 
- useEffect(()=>{setPage(1)},[query,provider,statusFilter,period])
+ useEffect(()=>{setPage(1)},[query,provider,statusFilter,period,ymFilter])
  const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE)),current=Math.min(page,pages),pageRows=filtered.slice((current-1)*PAGE_SIZE,current*PAGE_SIZE)
- const stats=useMemo(()=>({active:rows.filter(x=>activeStatuses.includes(x.status)).length,late:rows.filter(late).length,soon:rows.filter(dueSoon).length,client:rows.filter(pendingClient).length}),[rows])
+ const stats=useMemo(()=>({active:ymRows.filter(x=>activeStatuses.includes(x.status)).length,late:ymRows.filter(late).length,soon:ymRows.filter(dueSoon).length,client:ymRows.filter(pendingClient).length}),[ymRows])
  const providers=useMemo(()=>{const names=new Set<string>([...labs.map(l=>l.nome),...rows.map(x=>providerName(x,labs))]);return [...names].sort((a,b)=>a.localeCompare(b,'pt-BR'))},[labs,rows])
  const byProvider=useMemo(()=>{const map=new Map<string,Envio[]>();for(const x of periodRows){if(x.status==='CANCELADA')continue;const k=providerName(x,labs);map.set(k,[...(map.get(k)??[]),x])}
   return [...map.entries()].map(([name,list])=>{const done=list.filter(x=>x.data_resultado&&(x.data_chegada||x.data_envio));const turn=done.map(x=>businessDaysBetween((x.data_chegada||x.data_envio)!,x.data_resultado!));const withDeadline=done.filter(x=>x.data_prevista);const onTime=withDeadline.filter(x=>x.data_resultado!<=x.data_prevista!).length
    const proposals=new Map<string,number>();for(const x of list){if(x.valor_proposta_provedor==null)continue;const key=x.proposta_provedor?.trim().toLowerCase()||`envio:${x.id}`;proposals.set(key,Math.max(proposals.get(key)??0,x.valor_proposta_provedor))}
    return{name,total:list.length,active:list.filter(x=>activeStatuses.includes(x.status)).length,late:list.filter(late).length,soon:list.filter(dueSoon).length,avg:turn.length?turn.reduce((a,b)=>a+b,0)/turn.length:null,onTime:withDeadline.length?onTime/withDeadline.length:null,measured:withDeadline.length,freight:list.reduce((n,x)=>n+(x.valor_frete??0),0),value:[...proposals.values()].reduce((a,b)=>a+b,0)}}).sort((a,b)=>b.total-a.total)},[periodRows,labs])
- const alerts=useMemo(()=>rows.filter(x=>late(x)||dueSoon(x)||pendingClient(x)).sort((a,b)=>(a.data_prevista??'').localeCompare(b.data_prevista??'')).slice(0,8),[rows])
+ const alerts=useMemo(()=>ymRows.filter(x=>late(x)||dueSoon(x)||pendingClient(x)).sort((a,b)=>(a.data_prevista??'').localeCompare(b.data_prevista??'')).slice(0,8),[ymRows])
 
  function newEnvio(){setEditing(null);setForm({...empty,data_recebimento:today()});setFormOpen(true)}
  function edit(x:Envio){setEditing(x.id);const s=(v:string|number|null)=>v==null?'':String(v);setForm({laboratorio_parceiro_id:x.laboratorio_parceiro_id??'',numero_os:s(x.numero_os),numero_proposta:s(x.numero_proposta),grupo:s(x.grupo),amostras:s(x.amostras),data_recebimento:s(x.data_recebimento),data_envio:s(x.data_envio),data_chegada:s(x.data_chegada),prazo_dias:s(x.prazo_dias),prazo_tipo:x.prazo_tipo,previsao_resultado:s(x.previsao_resultado),data_resultado:s(x.data_resultado),data_envio_cliente:s(x.data_envio_cliente),proposta_provedor:s(x.proposta_provedor),valor_proposta_provedor:s(x.valor_proposta_provedor),transportadora:s(x.transportadora),codigo_rastreio:s(x.codigo_rastreio),valor_frete:s(x.valor_frete),status:x.status,observacoes:s(x.observacoes)});setFormOpen(true)}
@@ -101,9 +106,10 @@ export function AcompanhamentoProvedores(){
    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Provedor</th><th className="px-4 py-3 text-right">Envios</th><th className="px-4 py-3 text-right">Em andamento</th><th className="px-4 py-3 text-right">Atrasados</th><th className="px-4 py-3 text-right" title="Dias úteis entre a chegada (ou envio) e o resultado">Prazo médio real</th><th className="px-4 py-3 text-right" title="Resultados recebidos até a data prevista">No prazo</th><th className="px-4 py-3 text-right">Frete</th><th className="px-4 py-3 text-right" title="Soma das propostas do provedor, sem repetir a mesma proposta">Propostas</th></tr></thead>
     <tbody>{byProvider.length===0?<tr><td colSpan={8} className="p-8 text-center text-slate-500">{loading?'Carregando...':'Nenhum envio no período.'}</td></tr>:byProvider.map(p=><tr key={p.name} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={()=>setProvider(provider===p.name?'TODOS':p.name)}><td className="px-4 py-3 font-semibold">{p.name}{provider===p.name&&<Badge variant="brand" className="ml-2">filtrado</Badge>}</td><td className="px-4 py-3 text-right">{p.total}</td><td className="px-4 py-3 text-right">{p.active}</td><td className={`px-4 py-3 text-right ${p.late?'font-semibold text-red-700':''}`}>{p.late}</td><td className="px-4 py-3 text-right">{p.avg==null?'—':`${p.avg.toFixed(1).replace('.',',')} d úteis`}</td><td className="px-4 py-3 text-right">{p.onTime==null?'—':<span className={p.onTime>=.9?'text-teal-700':p.onTime>=.7?'text-amber-700':'text-red-700'}>{pct.format(p.onTime)} <span className="text-xs text-slate-400">({p.measured})</span></span>}</td><td className="px-4 py-3 text-right">{brl.format(p.freight)}</td><td className="px-4 py-3 text-right">{brl.format(p.value)}</td></tr>)}</tbody></table></div></Card>
 
-  <Card><CardBody className="grid gap-3 md:grid-cols-[1fr_200px_220px_auto_auto]"><Input aria-label="Buscar envio" placeholder="OS, proposta, cliente, amostra, rastreio..." value={query} onChange={e=>setQuery(e.target.value)}/>
+  <Card><CardBody className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_200px_220px_auto_auto_auto]"><Input aria-label="Buscar envio" placeholder="OS, proposta, cliente, amostra, rastreio..." value={query} onChange={e=>setQuery(e.target.value)}/>
    <Select aria-label="Provedor" value={provider} onChange={e=>setProvider(e.target.value)}><option value="TODOS">Todos os provedores</option>{providers.map(p=><option key={p}>{p}</option>)}</Select>
    <Select aria-label="Status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="ATIVOS">Em aberto</option><option value="ATRASADOS">Atrasados</option><option value="VENCENDO">Vencem em até 2 dias</option><option value="TODOS">Todos os status</option>{(Object.keys(statusInfo) as Status[]).map(s=><option key={s} value={s}>{statusInfo[s].label}</option>)}</Select>
+   <PeriodSelect value={ymFilter} onChange={setYmFilter} years={years}/>
    <Button variant="secondary" onClick={()=>void load()}><RefreshCw className={`h-4 w-4 ${loading?'animate-spin':''}`}/>Atualizar</Button>
    <Button variant="secondary" onClick={exportCsv} disabled={!filtered.length}><Download className="h-4 w-4"/>Exportar</Button></CardBody></Card>
 
