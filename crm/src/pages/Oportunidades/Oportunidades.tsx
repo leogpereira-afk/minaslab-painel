@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BriefcaseBusiness, CircleDollarSign, Plus, Search, Target, Trophy, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PageShell } from '../../components/ui/PageShell'
@@ -23,6 +23,7 @@ const statuses=['ABERTA','GANHA','PERDIDA','CANCELADA']
 const emptyForm={cliente_id:'',titulo:'',valor_estimado:'',estagio:'NOVO CONTATO',responsavel_id:'',previsao_fechamento:''}
 
 export function Oportunidades(){
+ const lastRequest=useRef(0)
  const{profile,hasPermission}=useAuth();const canWrite=hasPermission('crm.write')
  const[rows,setRows]=useState<Opp[]>([]);const[clients,setClients]=useState<Client[]>([]);const[people,setPeople]=useState<Person[]>([]);const[q,setQ]=useState('');const[query,setQuery]=useState('');const[stage,setStage]=useState('TODAS');const[status,setStatus]=useState('TODOS');const[owner,setOwner]=useState('TODOS');const[period,setPeriod]=useState<PeriodFilter>(ALL_PERIOD);const[error,setError]=useState('');const[loading,setLoading]=useState(true);const[page,setPage]=useState(1);const[total,setTotal]=useState(0);const[stats,setStats]=useState<Stats>({open_count:0,won_count:0,lost_count:0,open_value:0,conversion:0});const[open,setOpen]=useState(false);const[saving,setSaving]=useState(false);const[form,setForm]=useState({...emptyForm})
 
@@ -40,8 +41,10 @@ export function Oportunidades(){
   if(e)setError(e.message);else{setClients((clientsResult.data??[]) as Client[]);setPeople((peopleResult.data??[]) as Person[])}
  }
  async function loadRows(){
+  const requestId=++lastRequest.current
   setLoading(true);setError('')
   const{data,error:rpcError}=await supabase.rpc('crm_oportunidades_list_v2',{p_query:query||null,p_stage:stage,p_status:status,p_responsible:owner==='TODOS'?null:owner,p_page:page,p_page_size:TABLE_PAGE_SIZE,...periodParams(period)})
+  if(requestId!==lastRequest.current)return
   if(rpcError)setError(rpcError.message);else{const payload=(data??{}) as RpcPayload;setRows(Array.isArray(payload.rows)?payload.rows:[]);setTotal(Number(payload.total||0));setStats(payload.stats??{open_count:0,won_count:0,lost_count:0,open_value:0,conversion:0})}
   setLoading(false)
  }
