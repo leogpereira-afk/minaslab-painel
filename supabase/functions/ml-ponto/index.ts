@@ -676,13 +676,42 @@ Deno.serve(async (req) => {
           if (f?.jibbleId) fichaPorJibble.set(String(f.jibbleId), f);
         }
 
+        /* FICHA DO RH AINDA SEM RELÓGIO. Quem é cadastrado no RH antes de entrar
+           no Jibble não tem jibbleId; sem este passo, a sincronização criava uma
+           SEGUNDA ficha (pes_<jibbleId>) e a pessoa ficava duplicada. O vínculo
+           por nome só vale quando é SEM AMBIGUIDADE: exatamente uma ficha do RH
+           sem relógio e exatamente uma pessoa do relógio ainda sem ficha com
+           aquele nome. Homônimos (2+ de qualquer lado) seguem como antes. */
+        const chaveNome = (s: unknown) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
+        const fichasSemRelogio = new Map<string, Record<string, any>[]>();
+        for (const l of fichasBrutas ?? []) {
+          const f = l.registro as Record<string, any>;
+          if (!f || f.jibbleId || f.ativo === false) continue;
+          const k = chaveNome(f.nome);
+          if (k) fichasSemRelogio.set(k, [...(fichasSemRelogio.get(k) ?? []), f]);
+        }
+        const relogioSemFicha = new Map<string, number>();
+        for (const p of doRelogio) {
+          if (fichaPorJibble.has(p.jibbleId)) continue;
+          const k = chaveNome(p.nome);
+          relogioSemFicha.set(k, (relogioSemFicha.get(k) ?? 0) + 1);
+        }
+
         const agora = new Date().toISOString();
         const novas: Record<string, unknown>[] = [];
         const completadas: Record<string, unknown>[] = [];
         const divergencias: Record<string, unknown>[] = [];
 
         for (const p of doRelogio) {
-          const ficha = fichaPorJibble.get(p.jibbleId);
+          let ficha = fichaPorJibble.get(p.jibbleId);
+          if (!ficha) {
+            const k = chaveNome(p.nome);
+            const candidatas = fichasSemRelogio.get(k) ?? [];
+            if (candidatas.length === 1 && relogioSemFicha.get(k) === 1) {
+              ficha = candidatas[0];
+              fichaPorJibble.set(p.jibbleId, ficha); // o de-para abaixo carimba o vínculo na ficha do RH
+            }
+          }
           if (!ficha) {
             novas.push({
               id: `pes_${p.jibbleId}`,
