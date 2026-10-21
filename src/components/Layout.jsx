@@ -14,6 +14,7 @@ import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
 import Notificacoes from "./Notificacoes.jsx";
 import Avatar from "./tarefas/Avatar.jsx";
+import { nomeCurto } from "../lib/nomes.js";
 import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
 
 /* O MENU E UMA LISTA SO. A Impresilk pagou dois dias de procura porque a lista
@@ -110,7 +111,7 @@ function RodapeSessao({ sessao, aoSair, aoTrocarSenha }) {
       <div className="flex items-center justify-between gap-2">
         <Avatar usuario={sessao?.usuario} nome={sessao?.nome || sessao?.usuario} tamanho={34} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-sm font-semibold text-slate-800">{sessao?.nome || sessao?.usuario}</span>
+          <span className="block truncate font-display text-sm font-semibold text-slate-800" title={sessao?.nome || ""}>{nomeCurto(sessao?.nome) || sessao?.usuario}</span>
           <span className="block text-xs text-slate-500">{PAPEL_ROTULO[sessao?.papel] || sessao?.papel}</span>
         </span>
         <span className="flex shrink-0 items-center">

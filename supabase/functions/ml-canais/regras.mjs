@@ -25,7 +25,17 @@ export function somarDias(iso, n) {
 /** Está na casa? (mesma regra do RH: ativo !== false e sem desligadoEm) */
 export const naCasa = (p) => !!p && p.ativo !== false && !String(p.desligadoEm ?? "").trim();
 
-export const nomeCurto = (p) => String(p?.apelido || p?.nome || "").trim();
+/* Nome para o mural: primeiro e último nome, sem caixa alta ("ANA CLAUDIA
+   GONÇALVES PESSOA" → "Ana Pessoa"). Mesma regra de src/lib/nomes.js. */
+const PARTICULAS = new Set(["da", "de", "do", "das", "dos", "e", "di", "du"]);
+const capitalizar = (w) => w.toLocaleLowerCase("pt-BR").replace(/(^|[-'])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase("pt-BR"));
+export function primeiroEUltimo(nome) {
+  const partes = String(nome ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return "";
+  const uteis = partes.filter((w) => !PARTICULAS.has(w.toLocaleLowerCase("pt-BR")));
+  return (uteis.length >= 2 ? [uteis[0], uteis[uteis.length - 1]] : [partes[0]]).map(capitalizar).join(" ");
+}
+export const nomeCurto = (p) => primeiroEUltimo(p?.nome || p?.apelido);
 
 /* Ficha duplicada no RH (mesma pessoa cadastrada duas vezes) não pode virar
    dois parabéns: fica uma por nome + data de nascimento. */

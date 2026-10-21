@@ -8,6 +8,7 @@ import { clsx } from "clsx";
 import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
+import { nomeCurto } from "../lib/nomes.js";
 import { TIPOS_POST, MESES, tempoRelativo, periodoFerias } from "../lib/canais.js";
 import {
   canaisFeed, canaisPublicar, canaisApagarPost, canaisComentar, canaisApagarComentario, canaisCurtir, canaisConfig, canaisSalvarConfig,
@@ -31,6 +32,7 @@ export default function Canais() {
   const [editando, setEditando] = useState(null); // null | {} (novo) | post
   const [ajustes, setAjustes] = useState(false);
   const [editarDestaque, setEditarDestaque] = useState(false);
+  const [previaAniv, setPreviaAniv] = useState(false);
   const rolou = useRef(false);
 
   const carregar = useCallback(async () => {
@@ -107,13 +109,17 @@ export default function Canais() {
 
         <aside className="space-y-4">
           <Destaque destaque={dados.destaque} podeEditar={dados.podePublicar} aoEditar={() => setEditarDestaque(true)} />
-          <Aniversariantes lista={dados.aniversariantes} hoje={dados.hoje} />
+          <Aniversariantes lista={dados.aniversariantes} hoje={dados.hoje} aoVerPrevia={dados.direcao ? () => setPreviaAniv(true) : null} />
           <Ferias lista={dados.ferias} direcao={dados.direcao} />
         </aside>
       </div>
 
       <Compositor post={editando} aoFechar={() => setEditando(null)}
         aoSalvar={async (p) => { await canaisPublicar(p); setEditando(null); setAviso({ tipo: "ok", texto: p.id ? "Publicação atualizada." : "Publicado! Todos foram avisados no sino." }); carregar(); }} />
+      <Modal titulo="Prévia do parabéns automático" aberto={previaAniv} aoFechar={() => setPreviaAniv(false)} largura="max-w-2xl">
+        <p className="mb-3 text-sm text-slate-600">É assim que o post aparece sozinho no mural, às 8h do dia do aniversário, com o nome que está no RH. Esta prévia não é publicada: ninguém mais vê.</p>
+        <Post post={previaParabens(dados.nome, dados.hoje)} eu={dados.eu} podePublicar={false} aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} />
+      </Modal>
       <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={() => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: "Destaque do mês atualizado." }); carregar(); }} />
       <Ajustes aberto={ajustes} aoFechar={() => setAjustes(false)} aoSalvo={() => { setAjustes(false); setAviso({ tipo: "ok", texto: "Ajustes salvos." }); carregar(); }} />
     </div>
@@ -142,7 +148,7 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
             : <Avatar usuario={p.autor} nome={p.autor_nome} tamanho={36} />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-slate-800">{aniv ? "Canais MinasLab" : p.autor_nome || p.autor}</span>
+              <span className="font-semibold text-slate-800">{aniv ? "Canais MinasLab" : nomeCurto(p.autor_nome) || p.autor}</span>
               <span className={clsx("rounded-full px-2 py-0.5 text-xs font-semibold", tipo.cor)}>{tipo.rotulo}</span>
               {p.fixado && <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><Pin size={12} /> Fixado</span>}
             </div>
@@ -178,7 +184,7 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
                 <Avatar usuario={c.usuario} nome={c.nome} tamanho={28} />
                 <div className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 shadow-sm">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-800">{c.nome || c.usuario}</span>
+                    <span className="text-sm font-semibold text-slate-800">{nomeCurto(c.nome) || c.usuario}</span>
                     <span className="shrink-0 text-xs text-slate-400">{tempoRelativo(c.criado_em)}</span>
                   </div>
                   <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{c.texto}</p>
@@ -192,6 +198,16 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
       </div>
     </Card>
   );
+}
+
+function previaParabens(nome, hoje) {
+  const n = nomeCurto(nome) || "Colaborador";
+  return {
+    id: "previa", tipo: "aniversario", titulo: `Feliz aniversário, ${n}! 🎂`,
+    texto: `Hoje é dia de comemorar! A família MinasLab deseja a você, ${n}, um novo ano cheio de saúde, alegria e conquistas. Deixe aqui o seu recado de parabéns 🎉`,
+    hoje: true, dia: Number(hoje.slice(8, 10)), mes: Number(hoje.slice(5, 7)), criado_em: `${hoje}T08:00:00-03:00`,
+    curtidas: 0, curti: false, quemCurtiu: [], comentarios: [],
+  };
 }
 
 function resumoCurtidas(nomes) {
@@ -217,13 +233,14 @@ function NovoComentario({ aoEnviar, placeholder }) {
   );
 }
 
-function Aniversariantes({ lista, hoje }) {
+function Aniversariantes({ lista, hoje, aoVerPrevia }) {
   const mes = Number(hoje.slice(5, 7)), dia = Number(hoje.slice(8, 10));
   return (
     <Card className="overflow-hidden !p-0">
       <div className="flex items-center gap-2 bg-gradient-to-r from-pink-50 to-amber-50 px-4 py-3">
         <Cake size={18} className="text-pink-600" />
-        <h2 className="font-display font-bold text-slate-800">Aniversariantes de {MESES[mes - 1]}</h2>
+        <h2 className="flex-1 font-display font-bold text-slate-800">Aniversariantes de {MESES[mes - 1]}</h2>
+        {aoVerPrevia && <button type="button" className="text-xs font-semibold text-brand-700 hover:underline" onClick={aoVerPrevia}>Prévia</button>}
       </div>
       <ul className="divide-y divide-slate-100">
         {lista.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">Nenhum aniversariante cadastrado neste mês.</li>}
@@ -243,7 +260,7 @@ function Aniversariantes({ lista, hoje }) {
 
 const nomeMes = (mes) => (mes ? `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}` : "");
 const iniciaisNome = (n) => String(n || "?").trim().split(/\s+/).filter((p) => p.length > 2 || /^[A-ZÀ-Ú]/.test(p)).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
-const tituloNome = (n) => String(n || "").toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, a, b) => a + b.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
+const tituloNome = nomeCurto;
 
 function Destaque({ destaque: d, podeEditar, aoEditar }) {
   if (!d && !podeEditar) return null;
