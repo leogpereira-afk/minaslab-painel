@@ -37,8 +37,8 @@ test("aniversariantes do mês: só quem está na casa, sem ano, ordenados", () =
   ];
   const l = aniversariantesDoMes(pessoas, 2026, 10, ["g"]);
   assert.deepEqual(l, [
-    { pessoaId: "b", nome: "Bia", dia: 3, mes: 10 },
-    { pessoaId: "a", nome: "Pessoa a", dia: 21, mes: 10 },
+    { pessoaId: "b", nome: "Pessoa B", dia: 3, mes: 10 },
+    { pessoaId: "a", nome: "Pessoa A", dia: 21, mes: 10 },
   ]);
   assert.ok(!JSON.stringify(l).includes("1990"));
 });
@@ -75,8 +75,8 @@ test("informativo de férias: em curso e próximas 30 dias", () => {
   ];
   const l = informativoFerias(ferias, pessoas, "2026-10-21");
   assert.deepEqual(l, [
-    { nome: "Pessoa a", inicio: "2026-10-10", retorno: "2026-10-30", emCurso: true },
-    { nome: "Pessoa b", inicio: "2026-11-10", retorno: "2026-11-30", emCurso: false },
+    { nome: "Pessoa A", inicio: "2026-10-10", retorno: "2026-10-30", emCurso: true },
+    { nome: "Pessoa B", inicio: "2026-11-10", retorno: "2026-11-30", emCurso: false },
   ]);
 });
 
@@ -125,4 +125,9 @@ test("foto anexada: só imagem e caminho guardado válido", async () => {
   assert.equal(ehFotoGuardada("canais/123e4567-e89b-12d3-a456-426614174000.jpg"), true);
   assert.equal(ehFotoGuardada("../outros/x.jpg"), false);
   assert.equal(validarPost({ titulo: "x", imagem: "canais/123e4567-e89b-12d3-a456-426614174000.jpg" }).ok, true);
+});
+
+test("mural mostra primeiro e último nome", async () => {
+  const { nomeCurto } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  assert.equal(nomeCurto({ nome: "JOSE ROBERTO DOS SANTOS ALVES", apelido: "ZE" }), "Jose Alves");
 });

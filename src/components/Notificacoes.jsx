@@ -1,5 +1,6 @@
 // O sino do painel: quantas novidades a pessoa tem (tarefas hoje; calendário e mensagens depois) e a lista.
 // Confere a cada 30 s. Se a pessoa permitir, também avisa pelo navegador quando chega algo com a aba em segundo plano.
+import { suavizarTexto } from "../lib/nomes.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, BellRing, CheckCheck, Volume2, VolumeX } from "lucide-react";
@@ -30,7 +31,7 @@ export default function Notificacoes({ className }) {
       const novos = r.itens.filter((n) => !n.lida && !jaAvisados.current.has(n.id) && Date.now() - Date.parse(n.criado_em) < 120000).slice(0, 3);
       r.itens.forEach((n) => jaAvisados.current.add(n.id));
       for (const n of novos) {
-        const aviso = new Notification(n.titulo, { body: n.corpo, tag: n.id });
+        const aviso = new Notification(suavizarTexto(n.titulo), { body: suavizarTexto(n.corpo), tag: n.id });
         aviso.onclick = () => { window.focus(); navigate(n.link || "/tarefas"); aviso.close(); };
       }
     } catch { /* aviso do navegador é só conforto */ }
@@ -97,10 +98,10 @@ export default function Notificacoes({ className }) {
               <li key={n.id}>
                 <button type="button" onClick={() => abrirAviso(n)} className={clsx("block w-full rounded-xl border px-3 py-2.5 text-left transition hover:bg-slate-50", n.lida ? "bg-white" : "border-sky-200 bg-sky-50")} style={n.lida ? { borderColor: "var(--hairline)" } : undefined}>
                   <span className="flex items-start justify-between gap-2">
-                    <span className={clsx("text-sm [overflow-wrap:anywhere]", n.lida ? "text-slate-700" : "font-semibold text-slate-900")}>{n.titulo}</span>
+                    <span className={clsx("text-sm [overflow-wrap:anywhere]", n.lida ? "text-slate-700" : "font-semibold text-slate-900")}>{suavizarTexto(n.titulo)}</span>
                     <span className="shrink-0 text-[11px] text-slate-400">{tempoRelativo(n.criado_em)}</span>
                   </span>
-                  {n.corpo && <span className="mt-0.5 block text-xs text-slate-500 [overflow-wrap:anywhere]">{n.corpo}</span>}
+                  {n.corpo && <span className="mt-0.5 block text-xs text-slate-500 [overflow-wrap:anywhere]">{suavizarTexto(n.corpo)}</span>}
                 </button>
               </li>
             ))}

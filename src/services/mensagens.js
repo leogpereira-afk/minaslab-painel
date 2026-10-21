@@ -1,12 +1,13 @@
 // Messenger: conversa com a função ml-messenger. Quem pode ler cada conversa é decidido no servidor.
 import { API } from "../lib/api.js";
 import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
+import { encurtarNomes } from "../lib/nomes.js";
 
 async function chamar(corpo) {
   const resp = await comCracha(`${API}/ml-messenger`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
   const dados = await resp.json().catch(() => null);
   if (!resp.ok) throw new Error(dados?.erro || mensagemDoStatus(resp.status));
-  return dados || {};
+  return encurtarNomes(dados || {});
 }
 const msg = (action, corpo = {}) => chamar({ action, ...corpo });
 
