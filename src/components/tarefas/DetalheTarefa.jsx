@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
+import ArquivosTarefa from "./ArquivosTarefa.jsx";
 import { STATUS_TAREFA, deInputLocal, diasDeAtraso, paraInputLocal, progressoChecklist, rotuloPrazo } from "../../lib/tarefas.js";
 import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaPessoas, tarefaStatus } from "../../services/tarefas.js";
 
@@ -264,6 +265,8 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                 </div>
               )}
             </section>
+
+            <ArquivosTarefa id={id} anexos={dados.anexos || []} nomes={nomes} eu={dados.eu} pode={pode} executar={executar} />
 
             {(dados.subtarefas.length > 0 || pode.colaborar) && (
               <section aria-label="Subtarefas" className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>

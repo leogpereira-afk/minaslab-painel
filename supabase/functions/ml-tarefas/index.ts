@@ -198,13 +198,14 @@ async function listar(c: Ctx, b: any) {
 
 async function obter(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
-  const [{ data: checklist, error: e1 }, { data: mensagens, error: e2 }, { data: leituras, error: e3 }, { data: filhas, error: e4 }] = await Promise.all([
+  const [{ data: checklist, error: e1 }, { data: mensagens, error: e2 }, { data: leituras, error: e3 }, { data: filhas, error: e4 }, { data: anexos, error: e6 }] = await Promise.all([
     sb.from("ml_tarefa_checklist").select("*").eq("tarefa_id", a.t.id).order("ordem", { ascending: true }),
     sb.from("ml_tarefa_mensagens").select("*").eq("tarefa_id", a.t.id).order("criado_em", { ascending: true }).limit(1000),
     sb.from("ml_tarefa_leituras").select("usuario,visto_em").eq("tarefa_id", a.t.id),
     sb.from("ml_tarefas").select("id,titulo,status").eq("tarefa_pai_id", a.t.id).eq("apagada", false),
+    sb.from("ml_tarefa_anexos").select("id,nome,tipo,tamanho,autor,criado_em").eq("tarefa_id", a.t.id).eq("apagado", false).order("criado_em", { ascending: true }),
   ]);
-  if (e1) throw e1; if (e2) throw e2; if (e3) throw e3; if (e4) throw e4;
+  if (e1) throw e1; if (e2) throw e2; if (e3) throw e3; if (e4) throw e4; if (e6) throw e6;
   let pai = null;
   if (a.t.tarefa_pai_id) {
     const { data } = await sb.from("ml_tarefas").select("id,titulo,status").eq("id", a.t.tarefa_pai_id).eq("apagada", false).maybeSingle();
@@ -216,7 +217,7 @@ async function obter(c: Ctx, b: any) {
   await sb.from("ml_notificacoes").update({ lida: true }).eq("usuario", c.eu).eq("ref_id", a.t.id).eq("lida", false);
 
   const nomes: Record<string, string> = {};
-  for (const u of [...envolvidos(a), ...(mensagens ?? []).map((m: any) => m.autor), ...(checklist ?? []).map((i: any) => i.feito_por), ...(leituras ?? []).map((l: any) => l.usuario)]) if (u) nomes[u] = nomeDe(c, u);
+  for (const u of [...envolvidos(a), ...(mensagens ?? []).map((m: any) => m.autor), ...(checklist ?? []).map((i: any) => i.feito_por), ...(leituras ?? []).map((l: any) => l.usuario), ...(anexos ?? []).map((x: any) => x.autor)]) if (u) nomes[u] = nomeDe(c, u);
   const t = a.t;
   return {
     tarefa: {
@@ -225,6 +226,7 @@ async function obter(c: Ctx, b: any) {
       participantes: a.participantes, observadores: a.observadores,
     },
     checklist: checklist ?? [], mensagens: mensagens ?? [], visualizacoes: (leituras ?? []).filter((l: any) => l.usuario !== c.eu), subtarefas: filhas ?? [], pai,
+    anexos: (anexos ?? []).map((x: any) => ({ id: x.id, nome: x.nome, tipo: x.tipo, tamanho: x.tamanho, autor: x.autor, criadoEm: x.criado_em })),
     nomes, eu: c.eu, pode: { gerir: a.gestor, colaborar: a.colaborador, excluir: t.proprietario === c.eu || c.direcao },
   };
 }
@@ -412,6 +414,80 @@ async function mensagem(c: Ctx, b: any) {
   return { ok: true, mensagem: data };
 }
 
+
+// ---------------------------------------------------------------- anexos
+const BUCKET_ARQUIVOS = "ml-arquivos";
+const MAX_ANEXO_BYTES = 8 * 1024 * 1024;
+const MAX_ANEXOS_POR_TAREFA = 30;
+// Tipos aceitos (pelo nome do arquivo; o tipo que o navegador diz não vale). Nada executável.
+const TIPOS_ANEXO: Record<string, string> = {
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  csv: "text/csv", txt: "text/plain", xml: "application/xml", zip: "application/zip",
+};
+const extensaoDe = (nome: string) => (nome.split(".").length > 1 ? nome.split(".").pop()!.toLowerCase() : "");
+const nomeSeguro = (nome: string) => nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(-80) || "arquivo";
+
+async function anexoEnviar(c: Ctx, b: any) {
+  const a = await carregarTarefa(c, b.id);
+  if (!a.colaborador) erro(403, "Observador só comenta; quem participa, o responsável e o proprietário anexam arquivos.");
+  const nome = txt(b.nome).replace(/[\\/]/g, "_").slice(-150);
+  if (!nome) erro(400, "O arquivo está sem nome.");
+  const ext = extensaoDe(nome);
+  const tipo = TIPOS_ANEXO[ext];
+  if (!tipo) erro(400, `Não aceito arquivo .${ext || "sem extensão"}. Aceitos: PDF, imagens, Word, Excel, PowerPoint, CSV, TXT, XML e ZIP.`);
+  const b64 = String(b.base64 ?? "").replace(/^data:[^;]+;base64,/, "");
+  if (!b64) erro(400, "Escolha o arquivo.");
+  let bytes: Uint8Array;
+  try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); } catch { return erro(400, "Arquivo inválido."); }
+  if (!bytes.length) erro(400, "O arquivo está vazio.");
+  if (bytes.length > MAX_ANEXO_BYTES) erro(400, "O arquivo passa de 8 MB. Reduza ou divida.");
+  const { count, error: eCount } = await sb.from("ml_tarefa_anexos").select("id", { count: "exact", head: true }).eq("tarefa_id", a.t.id).eq("apagado", false);
+  if (eCount) throw eCount;
+  if ((count ?? 0) >= MAX_ANEXOS_POR_TAREFA) erro(400, `Esta tarefa já tem ${MAX_ANEXOS_POR_TAREFA} arquivos.`);
+  const caminho = `tarefas/${a.t.id}/${crypto.randomUUID()}-${nomeSeguro(nome)}`;
+  const { error: eUp } = await sb.storage.from(BUCKET_ARQUIVOS).upload(caminho, bytes, { contentType: tipo, upsert: false });
+  if (eUp) throw eUp;
+  const { data, error } = await sb.from("ml_tarefa_anexos").insert({ tarefa_id: a.t.id, nome, tipo, tamanho: bytes.length, caminho, autor: c.eu }).select("id,nome,tipo,tamanho,autor,criado_em").single();
+  if (error) { await sb.storage.from(BUCKET_ARQUIVOS).remove([caminho]); throw error; }
+  await avisoSistema(a.t.id, `${nomeDe(c, c.eu)} anexou "${nome}".`, null);
+  await tocar(a.t.id);
+  await notificar(c, envolvidos(a), { tipo: "tarefa_anexo", titulo: `${nomeDe(c, c.eu)} anexou um arquivo em "${a.t.titulo}"`.slice(0, 160), corpo: nome, tarefaId: a.t.id });
+  return { ok: true, anexo: { id: data.id, nome: data.nome, tipo: data.tipo, tamanho: data.tamanho, autor: data.autor, criadoEm: data.criado_em } };
+}
+
+async function carregarAnexo(a: { t: Tarefa }, id: unknown) {
+  const aid = txt(id);
+  if (!UUID.test(aid)) erro(400, "Arquivo inválido.");
+  const { data, error } = await sb.from("ml_tarefa_anexos").select("*").eq("id", aid).eq("tarefa_id", a.t.id).eq("apagado", false).maybeSingle();
+  if (error) throw error;
+  if (!data) erro(404, "Não encontrei esse arquivo.");
+  return data;
+}
+
+async function anexoUrl(c: Ctx, b: any) {
+  const a = await carregarTarefa(c, b.id); // quem vê a tarefa baixa
+  const anexo = await carregarAnexo(a, b.anexo_id);
+  const { data, error } = await sb.storage.from(BUCKET_ARQUIVOS).createSignedUrl(anexo.caminho, 120, { download: anexo.nome });
+  if (error || !data?.signedUrl) throw error ?? new Error("Não consegui gerar o link do arquivo.");
+  return { ok: true, url: data.signedUrl, nome: anexo.nome };
+}
+
+async function anexoApagar(c: Ctx, b: any) {
+  const a = await carregarTarefa(c, b.id);
+  const anexo = await carregarAnexo(a, b.anexo_id);
+  if (anexo.autor !== c.eu && !a.gestor) erro(403, "Só quem anexou, o proprietário, o responsável ou a direção apagam o arquivo.");
+  const { error } = await sb.from("ml_tarefa_anexos").update({ apagado: true }).eq("id", anexo.id);
+  if (error) throw error;
+  const { error: eRm } = await sb.storage.from(BUCKET_ARQUIVOS).remove([anexo.caminho]);
+  if (eRm) console.error("anexoApagar", eRm);
+  await avisoSistema(a.t.id, `${nomeDe(c, c.eu)} removeu o arquivo "${anexo.nome}".`, null);
+  await tocar(a.t.id);
+  return { ok: true };
+}
+
 async function excluir(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
   if (a.t.proprietario !== c.eu && !c.direcao) erro(403, "Só o proprietário ou a direção apagam a tarefa.");
@@ -421,7 +497,7 @@ async function excluir(c: Ctx, b: any) {
 }
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
-  usuarios: (c) => usuarios(c), listar, obter, criar, atualizar, delegar, status: mudarStatus, pessoas: definirPessoas, checklist, mensagem, excluir,
+  usuarios: (c) => usuarios(c), listar, obter, criar, atualizar, delegar, status: mudarStatus, pessoas: definirPessoas, checklist, mensagem, excluir, anexo_enviar: anexoEnviar, anexo_url: anexoUrl, anexo_apagar: anexoApagar,
 };
 
 Deno.serve(async (req) => {

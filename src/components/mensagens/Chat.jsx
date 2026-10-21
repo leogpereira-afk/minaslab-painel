@@ -1,14 +1,16 @@
 // Uma conversa aberta: mensagens, envio, tique de "visualizado" e participantes do grupo.
 // Atualiza sozinha a cada poucos segundos (só as mensagens novas, pela posição `seq`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, Loader2, PanelRight, Send, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Loader2, PanelRight, Paperclip, Send, Trash2, UserPlus } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
 import SobreConversa from "./SobreConversa.jsx";
 import FotoGrupo from "./FotoGrupo.jsx";
+import AnexoMensagem from "./AnexoMensagem.jsx";
+import { ACEITAR_NO_INPUT, lerArquivoParaEnvio, problemaDoArquivo } from "../../lib/anexos.js";
 import { corDoAvatar, horaLocal } from "../../lib/tarefas.js";
 import { comSeparadores, mesclarMensagens, quemViu, situacaoDaMensagem } from "../../lib/mensagens.js";
-import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaObter, conversaSilenciar } from "../../services/mensagens.js";
+import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaEnviarArquivo, conversaObter, conversaSilenciar } from "../../services/mensagens.js";
 
 const INTERVALO = 4000;
 let contadorLocal = 0;
@@ -25,6 +27,8 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const [agora, setAgora] = useState(() => new Date());
   const rolagem = useRef(null);
   const campo = useRef(null);
+  const entradaArquivo = useRef(null);
+  const [arrastando, setArrastando] = useState(false);
   const colarNoFim = useRef(true);
   const ultimaSeq = useRef(0);
 
@@ -94,6 +98,36 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
     } finally { setEnviando(false); campo.current?.focus(); }
   };
 
+  // Arquivos e imagens: pelo clipe, arrastando para a conversa ou colando (Ctrl+V) um print. A legenda é o texto que estiver digitado.
+  const enviarArquivos = async (lista) => {
+    const arquivos = [...lista];
+    if (!arquivos.length || !dados) return;
+    const recusados = arquivos.map(problemaDoArquivo).filter(Boolean);
+    const validos = arquivos.filter((a) => !problemaDoArquivo(a));
+    setErro(recusados.join(" "));
+    let legenda = texto.trim();
+    setEnviando(true);
+    for (const arq of validos) {
+      const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: legenda, anexo: { nome: arq.name, tamanho: arq.size }, apagada: false, criadoEm: new Date().toISOString() };
+      colarNoFim.current = true;
+      setMensagens((l) => [...l, provisoria]);
+      try {
+        const { nome, base64 } = await lerArquivoParaEnvio(arq);
+        const r = await conversaEnviarArquivo(id, nome, base64, legenda);
+        setMensagens((l) => mesclarMensagens(l.filter((m) => m.id !== provisoria.id), [r.mensagem]));
+        ultimaSeq.current = Math.max(ultimaSeq.current, r.mensagem.seq);
+        if (legenda) { setTexto(""); legenda = ""; }
+        aoMudou?.();
+      } catch (ex) {
+        setMensagens((l) => l.filter((m) => m.id !== provisoria.id));
+        setErro(ex.message);
+        break;
+      }
+    }
+    setEnviando(false);
+    campo.current?.focus();
+  };
+
   const maisAntigasPedir = async () => {
     const primeira = mensagens.find((m) => m.seq != null);
     if (!primeira || carregandoAntigas) return;
@@ -123,7 +157,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const c = dados.conversa;
   return (
     <div className="relative flex h-full min-h-0">
-    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col" aria-label={`Conversa com ${c.titulo}`}>
+    <section className={clsx("flex h-full min-h-0 min-w-0 flex-1 flex-col", arrastando && "ring-2 ring-inset ring-sky-400")} aria-label={`Conversa com ${c.titulo}`} onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); setArrastando(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setArrastando(false); }} onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setArrastando(false); void enviarArquivos(e.dataTransfer.files); } }}>
       <header className="flex items-center gap-3 border-b px-3 py-2.5" style={{ borderColor: "var(--hairline)" }}>
         <button type="button" className="btn-ghost h-9 w-9 shrink-0 p-0 lg:hidden" onClick={aoVoltar} aria-label="Voltar para as conversas"><ArrowLeft size={18} /></button>
         <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setPainel(true)} aria-label={grupo ? "Ver sobre o grupo" : "Ver sobre a conversa"}>
@@ -155,7 +189,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
               {minha && !m.apagada && m.seq != null && <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 group-hover:block group-focus-within:block" onClick={() => apagar(m)} aria-label="Apagar mensagem" title="Apagar mensagem"><Trash2 size={13} /></button>}
               <div className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900")}>
                 {!minha && grupo && !mesmoAutor && <p className="text-xs font-semibold" style={{ color: corDoAvatar(m.autor) }}>{nomeDe(m.autor)}</p>}
-                {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.texto}</p>}
+                {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <p className={clsx("whitespace-pre-wrap [overflow-wrap:anywhere]", m.anexo && "mt-1.5")}>{m.texto}</p>}</>}
                 <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
                   {horaLocal(m.criadoEm)}
                   {minha && !m.apagada && (situacao === "enviando" ? <Loader2 size={12} className="animate-spin" aria-label="Enviando" /> : situacao === "visualizada" ? <CheckCheck size={14} className="text-sky-600" aria-label="Visualizada" /> : <Check size={14} aria-label="Enviada" />)}
@@ -169,7 +203,9 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
 
       {erro && <div role="alert" className="border-t bg-red-50 px-3 py-2 text-sm text-red-700" style={{ borderColor: "var(--hairline)" }}>{erro}</div>}
       <form className="flex items-end gap-2 border-t bg-white p-2.5" style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-        <textarea ref={campo} className="input max-h-32 min-h-[44px] flex-1 resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem" aria-label="Escreva uma mensagem" value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
+        <input ref={entradaArquivo} type="file" multiple accept={ACEITAR_NO_INPUT} className="sr-only" aria-label="Escolher arquivos para enviar" onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; void enviarArquivos(l); }} />
+        <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
+        <textarea ref={campo} className="input max-h-32 min-h-[44px] flex-1 resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem" aria-label="Escreva uma mensagem" value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); void enviarArquivos(f); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
         <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={!texto.trim() || enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
       </form>
 

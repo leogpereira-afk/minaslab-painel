@@ -28,3 +28,5 @@ export const avisarContador = () => { try { window.dispatchEvent(new Event("mens
 export const conversaFotoGrupo = (id, base64) => msg("foto_grupo", { id, base64 });
 export const conversaFotoGrupoRemover = (id) => msg("foto_grupo", { id, remover: true });
 export const conversaDescricao = (id, descricao) => msg("descricao", { id, descricao });
+export const conversaEnviarArquivo = (id, nome, base64, texto = "") => msg("enviar_arquivo", { id, nome, base64, texto });
+export const conversaArquivoUrl = (id, mensagemId, baixar = false) => msg("arquivo_url", { id, mensagem_id: mensagemId, baixar });

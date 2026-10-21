@@ -4,7 +4,7 @@
 // Privacidade: só os membros leem uma conversa. Nem a direção lê conversa dos outros.
 // "Lida" é por posição: cada membro guarda a `seq` da última mensagem que já viu (lido_ate).
 //
-// Ações: foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
+// Ações: enviar_arquivo, arquivo_url, foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -17,6 +17,20 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const txt = (v: unknown) => String(v ?? "").trim();
 const BUCKET_FOTOS = "ml-fotos-perfil";
+const BUCKET_ARQUIVOS = "ml-arquivos";
+const MAX_ANEXO_BYTES = 8 * 1024 * 1024;
+// Tipos aceitos (pelo nome do arquivo; o tipo que o navegador diz não vale). Nada executável.
+const TIPOS_ANEXO: Record<string, string> = {
+  pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  csv: "text/csv", txt: "text/plain", xml: "application/xml", zip: "application/zip",
+};
+const extensaoDe = (nome: string) => (nome.split(".").length > 1 ? nome.split(".").pop()!.toLowerCase() : "");
+const nomeSeguro = (nome: string) => nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(-80) || "arquivo";
+const anexoDe = (m: any) => (m.anexo_caminho ? { nome: m.anexo_nome, tipo: m.anexo_tipo, tamanho: m.anexo_tamanho } : null);
+const dizDe = (m: any) => (m.anexo_caminho ? `📎 ${m.anexo_nome}${txt(m.texto) ? ` — ${txt(m.texto)}` : ""}` : m.texto);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class Falha extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -240,7 +254,7 @@ async function obter(c: Ctx, b: any) {
   return {
     conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, foto: a.conv.foto ?? null, descricao: a.conv.descricao ?? "", criadoEm: a.conv.criado_em, silenciado: !!a.meu.silenciado },
     membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
-    mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, apagada: m.apagada, criadoEm: m.criado_em })),
+    mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em })),
     maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
   };
 }
@@ -253,7 +267,43 @@ async function enviar(c: Ctx, b: any) {
   if (error) throw error;
   await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(texto), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
   await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
-  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, apagada: false, criadoEm: data.criado_em } };
+  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, anexo: null, apagada: false, criadoEm: data.criado_em } };
+}
+
+async function enviarArquivo(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const nome = txt(b.nome).replace(/[\\/]/g, "_").slice(-150);
+  if (!nome) erro(400, "O arquivo está sem nome.");
+  const ext = extensaoDe(nome);
+  const tipo = TIPOS_ANEXO[ext];
+  if (!tipo) erro(400, `Não aceito arquivo .${ext || "sem extensão"}. Aceitos: PDF, imagens, Word, Excel, PowerPoint, CSV, TXT, XML e ZIP.`);
+  const b64 = String(b.base64 ?? "").replace(/^data:[^;]+;base64,/, "");
+  if (!b64) erro(400, "Escolha o arquivo.");
+  let bytes: Uint8Array;
+  try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); } catch { return erro(400, "Arquivo inválido."); }
+  if (!bytes.length) erro(400, "O arquivo está vazio.");
+  if (bytes.length > MAX_ANEXO_BYTES) erro(400, "O arquivo passa de 8 MB. Reduza ou divida.");
+  const legenda = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, 1000);
+  const caminho = `conversas/${a.conv.id}/${crypto.randomUUID()}-${nomeSeguro(nome)}`;
+  const { error: eUp } = await sb.storage.from(BUCKET_ARQUIVOS).upload(caminho, bytes, { contentType: tipo, upsert: false });
+  if (eUp) throw eUp;
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto: legenda, anexo_nome: nome, anexo_tipo: tipo, anexo_tamanho: bytes.length, anexo_caminho: caminho }).select("*").single();
+  if (error) { await sb.storage.from(BUCKET_ARQUIVOS).remove([caminho]); throw error; }
+  await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(dizDe(data)), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
+  await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, anexo: anexoDe(data), apagada: false, criadoEm: data.criado_em } };
+}
+
+async function arquivoUrl(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id); // só membro baixa
+  const mid = txt(b.mensagem_id);
+  if (!UUID.test(mid)) erro(400, "Mensagem inválida.");
+  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("*").eq("id", mid).eq("conversa_id", a.conv.id).eq("apagada", false).maybeSingle();
+  if (error) throw error;
+  if (!m?.anexo_caminho) erro(404, "Não encontrei esse arquivo.");
+  const { data, error: eUrl } = await sb.storage.from(BUCKET_ARQUIVOS).createSignedUrl(m.anexo_caminho, 300, b.baixar === true ? { download: m.anexo_nome } : undefined);
+  if (eUrl || !data?.signedUrl) throw eUrl ?? new Error("Não consegui gerar o link do arquivo.");
+  return { ok: true, url: data.signedUrl, nome: m.anexo_nome };
 }
 
 async function mudarMembros(c: Ctx, b: any) {
@@ -371,21 +421,22 @@ async function apagarMensagem(c: Ctx, b: any) {
   const a = await carregarConversa(c, b.id);
   const mid = txt(b.mensagem_id);
   if (!UUID.test(mid)) erro(400, "Mensagem inválida.");
-  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("id,autor,conversa_id,tipo").eq("id", mid).maybeSingle();
+  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("id,autor,conversa_id,tipo,anexo_caminho").eq("id", mid).maybeSingle();
   if (error) throw error;
   if (!m || m.conversa_id !== a.conv.id || m.tipo !== "mensagem") erro(404, "Não encontrei essa mensagem.");
   if (m.autor !== c.eu) erro(403, "Você só apaga as suas próprias mensagens.");
   const { error: e2 } = await sb.from("ml_conversa_mensagens").update({ apagada: true }).eq("id", mid);
   if (e2) throw e2;
-  const { data: ult } = await sb.from("ml_conversa_mensagens").select("texto,autor,criado_em,apagada,tipo").eq("conversa_id", a.conv.id).order("seq", { ascending: false }).limit(20);
+  if (m.anexo_caminho) { const { error: eRm } = await sb.storage.from(BUCKET_ARQUIVOS).remove([m.anexo_caminho]); if (eRm) console.error("apagarArquivo", eRm); }
+  const { data: ult } = await sb.from("ml_conversa_mensagens").select("texto,autor,criado_em,apagada,tipo,anexo_nome,anexo_caminho").eq("conversa_id", a.conv.id).order("seq", { ascending: false }).limit(20);
   const vivo = (ult ?? []).find((x: any) => !x.apagada);
-  await sb.from("ml_conversas").update(vivo ? { ultima_msg_texto: resumoTexto(vivo.texto), ultima_msg_autor: vivo.autor, ultima_msg_em: vivo.criado_em } : { ultima_msg_texto: "", ultima_msg_autor: null }).eq("id", a.conv.id);
+  await sb.from("ml_conversas").update(vivo ? { ultima_msg_texto: resumoTexto(dizDe(vivo)), ultima_msg_autor: vivo.autor, ultima_msg_em: vivo.criado_em } : { ultima_msg_texto: "", ultima_msg_autor: null }).eq("id", a.conv.id);
   return { ok: true };
 }
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   usuarios: (c) => usuarios(c), conversas: (c) => listarConversas(c), contar: (c) => contar(c),
-  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao,
+  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao, enviar_arquivo: enviarArquivo, arquivo_url: arquivoUrl,
 };
 
 Deno.serve(async (req) => {
