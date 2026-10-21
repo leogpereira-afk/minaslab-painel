@@ -1,4 +1,6 @@
 import { useState } from "react";
+// Mesma trava do RH do painel: estes registros também aparecem na ficha do RH.
+import { bloqueio } from "../../../src/lib/rh/feedbackCadencia.js";
 import { useBase } from "../hooks/base.jsx";
 import { Card, Cabecalho, Pontos, GraficoMeses, iniciais, Chip, Abas, Paginacao, usePaginacao } from "../components/ui.jsx";
 import { SeletorMes } from "../components/Layout.jsx";
@@ -60,6 +62,9 @@ export default function Pessoas({ param }) {
 
   const salvarFb = async () => {
     if (!texto.trim()) { setErro("Escreva o resumo da conversa."); return; }
+    const motivo = [texto, comb].map(bloqueio).find(Boolean);
+    if (motivo === "grave") { setErro("Assédio, agressão e ocorrência de segurança têm canal próprio, com sigilo (Lei 14.457/2022, art. 23), e não entram no registro de conversa. Nada foi gravado."); return; }
+    if (motivo === "sensivel") { setErro("Saúde, religião, sindicato e deficiência são dado pessoal sensível (LGPD, art. 11) e não entram num registro de conversa sobre trabalho. Nada foi gravado."); return; }
     setSalvando(true);
     setErro("");
     try {
@@ -141,7 +146,7 @@ export default function Pessoas({ param }) {
               <input id="fb-prazo" type="date" className="entrada" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
             </div>
             {erro && <div className="aviso ruim">{erro}</div>}
-            <div><button type="button" className="btn" disabled={salvando} onClick={salvarFb}>{salvando ? "Salvando…" : "Salvar feedback"}</button></div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><button type="button" className="btn" disabled={salvando} onClick={salvarFb}>{salvando ? "Salvando…" : "Salvar feedback"}</button><span className="suave peq">{membro.rhPessoaId ? "Também aparece na ficha do RH do painel." : "Para aparecer no RH do painel, ligue esta pessoa ao cadastro do RH em Equipe e metas."}</span></div>
           </div>
           {fbs.length > 0 && <button type="button" className="btn claro mini" style={{ marginTop: 16 }} onClick={() => setAba("historico")}>Ver as {fbs.length} conversas anteriores</button>}
         </Card>

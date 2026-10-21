@@ -148,6 +148,9 @@ function LinhaFeedback({ l, aberta, aoAlternar, editavel, acoes }) {
                   {c.origem === "treinamento" && (
                     <span className="chip" title="Fala de treinamento não zera o relógio da conversa de trabalho.">treinamento</span>
                   )}
+                  {c.fonte === "gestao" && (
+                    <span className="chip" title="Registrada na Gestão. Para editar ou apagar, use a Gestão.">Gestão · {c.setorGestao}</span>
+                  )}
                 </span>
                 <span className="block whitespace-pre-wrap">
                   {c.oQueAconteceu || c.roteiro || <span className="text-slate-400">sem texto registrado</span>}
@@ -156,7 +159,7 @@ function LinhaFeedback({ l, aberta, aoAlternar, editavel, acoes }) {
                   <span className="block text-xs text-slate-500">Combinado: {c.combinado}</span>
                 )}
               </span>
-              {editavel && (
+              {editavel && !c.somenteLeitura && (
                 <button
                   type="button"
                   onClick={() => acoes.apagarConversa(c)}
