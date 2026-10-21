@@ -97,11 +97,21 @@ export function situacao(real, metas) {
  * Pontos fortes e a melhorar de uma pessoa no mês, a partir dos números.
  * Cada ponto: { tom: ok|alerta|ruim, tipo, titulo, texto }.
  */
+/** A pessoa tem meta medida pelo CRM (propostas, aprovação ou ligações)? Laboratório e coleta não têm. */
+export const usaCRM = (membro) => { const m = metasDe(membro); return !!(m.propostas || m.aprovacao || m.ligacoes); };
+
 export function pontos(resumo, membro, mes, nOcorrencias = 0) {
   const metas = metasDe(membro);
   const r = realizado(resumo, membro, mes);
   const avg = mediaAnterior(resumo, membro, mes);
   const out = [];
+
+  // Quem não tem meta no CRM (laboratório, coleta) é acompanhado pelas metas da
+  // função; dos números do sistema, só as ocorrências valem para ela.
+  if (!usaCRM(membro)) {
+    if (nOcorrencias > 0) out.push({ tom: "ruim", tipo: "ocorrencias", titulo: `${nOcorrencias} ocorrência${nOcorrencias > 1 ? "s" : ""} no mês`, texto: "Veja os fatos em Ocorrências antes da conversa." });
+    return out;
+  }
 
   if (!membro?.crmProfileId) {
     out.push({ tom: "alerta", tipo: "vinculo", titulo: "Sem vínculo com o CRM", texto: "Vincule a pessoa ao usuário do CRM em Equipe e metas para puxar os números." });

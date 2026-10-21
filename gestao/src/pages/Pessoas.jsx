@@ -6,7 +6,7 @@ import { Card, Cabecalho, Pontos, GraficoMeses, iniciais, Chip, Abas, Paginacao,
 import { SeletorMes } from "../components/Layout.jsx";
 import { navegar } from "../lib/rota.js";
 import { pct, mesLongo, mesNome, mesCurto, dataCurta, hojeBR, brl } from "../lib/format.js";
-import { realizado, metasDe, mediaAnterior, pontos, roteiroFeedback, serie } from "../lib/calculos.js";
+import { realizado, metasDe, mediaAnterior, pontos, roteiroFeedback, serie, usaCRM, metasDaFuncao } from "../lib/calculos.js";
 import { treinamentosDaPessoa, fmtNota, aprovado } from "../lib/treinamentosPessoa.js";
 import { catalogo, trilhaEmQualquerLugar } from "../lib/catalogo.js";
 import { BotaoCertificado } from "../components/CertificadoTreinamento.jsx";
@@ -91,9 +91,11 @@ export default function Pessoas({ param }) {
           <div><h2 style={{ fontSize: 22 }}>{membro.nome}</h2><div className="suave peq">{funcaoDe(membro)?.nome || membro.funcao || "Sem função"}</div></div>
         </div>
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-          <Mini rot="Propostas" val={metas.propostas ? `${r.enviadas} / ${metas.propostas}` : r.enviadas} sub={avg != null ? `média anterior ${Math.round(avg)}` : "sem histórico"} />
-          <Mini rot="Aprovação" val={pct(r.taxa)} sub={metas.aprovacao ? `meta ${metas.aprovacao}%` : "sem meta"} />
-          <Mini rot="Valor aprovado" val={brl(r.valorAprovado, true)} sub="pelo mês do aceite" />
+          {usaCRM(membro) ? <>
+            <Mini rot="Propostas" val={metas.propostas ? `${r.enviadas} / ${metas.propostas}` : r.enviadas} sub={avg != null ? `média anterior ${Math.round(avg)}` : "sem histórico"} />
+            <Mini rot="Aprovação" val={pct(r.taxa)} sub={metas.aprovacao ? `meta ${metas.aprovacao}%` : "sem meta"} />
+            <Mini rot="Valor aprovado" val={brl(r.valorAprovado, true)} sub="pelo mês do aceite" />
+          </> : <Mini rot="Metas da função" val={metasDaFuncao(funcaoDe(membro)).length} sub="conferir no mês" />}
           <Mini rot="Ocorrências" val={nOc} sub="no mês" />
         </div>
       </Card>
@@ -106,7 +108,7 @@ export default function Pessoas({ param }) {
           <div style={{ marginTop: 6 }}><Pontos lista={lista} /></div>
           {funcaoDe(membro) && <div style={{ marginTop: 14 }}><MetasFuncao f={funcaoDe(membro)} titulo={`Metas de ${funcaoDe(membro).nome} (conferir no mês)`} /></div>}
         </Card>
-        {setor === "comercial" && <Card>
+        {setor === "comercial" && usaCRM(membro) && <Card>
           <h3>Evolução de propostas</h3>
           <div className="suave peq" style={{ marginTop: 4 }}>{metas.propostas ? `Linha tracejada: meta de ${metas.propostas} por mês` : "Sem meta definida"}</div>
           <GraficoMeses serie={serie(resumo, membro, mes, 9)} mesDestaque={mes} meta={metas.propostas} rotuloMes={mesCurto} />
