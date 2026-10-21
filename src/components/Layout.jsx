@@ -4,10 +4,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, MessageCircle, PackageSearch, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
-import { getSessao, sair, podeAbrir } from "../lib/sessao.js";
+import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
 import { useAcessoGestao } from "../lib/acessoGestao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
@@ -22,6 +22,7 @@ import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
    lugar. */
 const MODULOS = [
   { id: "inicio", rotulo: "Início", caminho: "/", icone: LayoutDashboard, grupo: "Agenda" },
+  { id: "canais", rotulo: "Canais MinasLab", caminho: "/canais", icone: Newspaper, grupo: "Agenda" },
   { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", icone: ListChecks, grupo: "Agenda" },
   { id: "mensagens", rotulo: "Mensagens", caminho: "/mensagens", icone: MessageCircle, grupo: "Agenda" },
   { id: "calendario", rotulo: "Calendário", caminho: "/calendario", icone: CalendarDays, grupo: "Agenda" },
@@ -49,7 +50,7 @@ const MODULOS = [
 
 const CORES_MODULO = {
   patrimonio: ["#0369a1", "#e0f2fe"],
-  inicio: ["#0f766e", "#d9f4ef"], tarefas: ["#0369a1", "#e0f2fe"], mensagens: ["#0e7490", "#cffafe"], calendario: ["#2563eb", "#e5edff"],
+  inicio: ["#0f766e", "#d9f4ef"], canais: ["#db2777", "#fce5f1"], tarefas: ["#0369a1", "#e0f2fe"], mensagens: ["#0e7490", "#cffafe"], calendario: ["#2563eb", "#e5edff"],
   compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
@@ -70,7 +71,7 @@ function Marca() {
 function ItensMenu({ sessao, aoNavegar }) {
   const gestao = useAcessoGestao(sessao);
   const [busca, setBusca] = useState("");
-  const pode = (id) => (id === "gestao" ? gestao : podeAbrir(id, sessao));
+  const pode = (id) => (id === "gestao" ? gestao : id === "inicio" && soColaborador(sessao) ? false : podeAbrir(id, sessao));
   const normalizar = (valor) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/coes\b/g, "cao");
   const modulos = MODULOS.filter(mo => pode(mo.id) && normalizar(mo.rotulo).includes(normalizar(busca.trim())));
   return <div className="ml-navigation">
