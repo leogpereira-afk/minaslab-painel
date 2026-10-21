@@ -118,7 +118,7 @@ export default function Canais() {
         aoSalvar={async (p) => { await canaisPublicar(p); setEditando(null); setAviso({ tipo: "ok", texto: p.id ? "Publicação atualizada." : "Publicado! Todos foram avisados no sino." }); carregar(); }} />
       <Modal titulo="Prévia do parabéns automático" aberto={previaAniv} aoFechar={() => setPreviaAniv(false)} largura="max-w-2xl">
         <p className="mb-3 text-sm text-slate-600">É assim que o post aparece sozinho no mural, às 8h do dia do aniversário, com o nome que está no RH. Esta prévia não é publicada: ninguém mais vê.</p>
-        <Post post={previaParabens(dados.nome, dados.hoje)} eu={dados.eu} podePublicar={false} aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} />
+        <Post post={previaParabens(dados.nome, dados.hoje, dados.eu)} eu={dados.eu} podePublicar={false} aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} />
       </Modal>
       <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={() => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: "Destaque do mês atualizado." }); carregar(); }} />
       <Ajustes aberto={ajustes} aoFechar={() => setAjustes(false)} aoSalvo={() => { setAjustes(false); setAviso({ tipo: "ok", texto: "Ajustes salvos." }); carregar(); }} />
@@ -134,7 +134,7 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
     <Card id={`post-${p.id}`} className={clsx("scroll-mt-20 overflow-hidden !p-0", destaque && "ring-2 ring-brand-400", aniv && "border-pink-200")}>
       {aniv && (
         <div className="flex items-center gap-4 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-amber-400 px-5 py-6 text-white">
-          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/20 text-3xl" aria-hidden="true">🎂</span>
+          <FotoAniversariante post={p} />
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wider opacity-90">{p.hoje ? "Aniversário hoje" : `Aniversário em ${String(p.dia).padStart(2, "0")}/${String(p.mes).padStart(2, "0")}`}</p>
             <h2 className="font-display text-xl font-bold leading-tight">{p.titulo}</h2>
@@ -205,14 +205,20 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
   );
 }
 
-function previaParabens(nome, hoje) {
+function previaParabens(nome, hoje, eu) {
   const n = nomeCurto(nome) || "Colaborador";
   return {
     id: "previa", tipo: "aniversario", titulo: `Feliz aniversário, ${n}! 🎂`,
     texto: `Hoje é dia de comemorar! A família MinasLab deseja a você, ${n}, um novo ano cheio de saúde, alegria e conquistas. Deixe aqui o seu recado de parabéns 🎉`,
     hoje: true, dia: Number(hoje.slice(8, 10)), mes: Number(hoje.slice(5, 7)), criado_em: `${hoje}T08:00:00-03:00`,
-    curtidas: 0, curti: false, quemCurtiu: [], comentarios: [],
+    curtidas: 0, curti: false, quemCurtiu: [], comentarios: [], nome: n, usuario: eu,
   };
+}
+
+function FotoAniversariante({ post: p }) {
+  if (p.foto) return <img src={p.foto} alt={p.nome || ""} className="h-20 w-20 shrink-0 rounded-full object-cover ring-4 ring-white/70 shadow-lg" />;
+  if (p.usuario) return <span className="shrink-0 rounded-full ring-4 ring-white/70 shadow-lg"><Avatar usuario={p.usuario} nome={p.nome} tamanho={80} /></span>;
+  return <span className="grid h-20 w-20 shrink-0 place-items-center rounded-full bg-white/20 text-4xl" aria-hidden="true">🎂</span>;
 }
 
 function resumoCurtidas(nomes) {
@@ -254,6 +260,9 @@ function Aniversariantes({ lista, hoje, aoVerPrevia }) {
             <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-xl text-center font-display text-sm font-bold leading-none", a.dia === dia ? "bg-pink-500 text-white" : a.dia < dia ? "bg-slate-100 text-slate-400" : "bg-amber-100 text-amber-800")}>
               {String(a.dia).padStart(2, "0")}
             </span>
+            {a.foto
+              ? <img src={a.foto} alt="" className={clsx("h-9 w-9 shrink-0 rounded-full object-cover", a.dia < dia && "opacity-60")} />
+              : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">{iniciaisNome(a.nome)}</span>}
             <span className={clsx("min-w-0 flex-1 truncate text-sm font-medium", a.dia < dia ? "text-slate-500" : "text-slate-800")}>{a.nome}</span>
             {a.dia === dia && <span className="text-xs font-semibold text-pink-600">hoje 🎉</span>}
           </li>
