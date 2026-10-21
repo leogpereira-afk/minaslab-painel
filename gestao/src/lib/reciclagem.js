@@ -17,11 +17,11 @@ export const PERIODO_SUGERIDO = {
   "analise-critica": 12, "crm-sem-furos": 12, "proposta-sem-erro": 12, "os-correta": 12,
   atendimento: 12, tecnico: 24, licitacoes: 0, "follow-up": 0, spin: 0, gestora: 0,
   "pg012-satisfacao": 12, "pg013-reclamacoes": 12, "pg010-recebimento": 12, "pg011-armazenamento": 12,
-  "am-amostragem": 12, "am-coletas-especiais": 12, "am-purga": 12, integracao: 0, "gestao-tempo": 12, "aspecto-visual": 12,
+  "am-amostragem": 12, "am-coletas-especiais": 12, "am-purga": 12, integracao: 0, "gestao-tempo": 12, "aspecto-visual": 12, "painel-dia-a-dia": 0,
 };
 
 /** Prazo sugerido para quem acabou de entrar (dias). */
-export const PRAZO_NOVO_SUGERIDO = { integracao: 30 };
+export const PRAZO_NOVO_SUGERIDO = { integracao: 30, "painel-dia-a-dia": 30 };
 
 export const AVISO_DIAS = 30;
 export const ID_CONFIG = "periodicidade";

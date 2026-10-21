@@ -1,0 +1,50 @@
+// Treinamento "Painel MinasLab no dia a dia": como usar Canais MinasLab,
+// Tarefas, Mensagens, Calendário e Compromissos. Estilo colorido, com quiz
+// (o teste da trilha sai dos quizzes).
+
+const S = (layout, campos = {}, notas = "") => ({ layout, ...campos, notas });
+
+const PAINEL = () => [
+  S("capa", { titulo: "Painel MinasLab no dia a dia", subtitulo: "Canais · Tarefas · Mensagens · Calendário · Compromissos", texto: "Um lugar só para avisar, combinar, lembrar e cumprir o que foi combinado.", destaque: "Canais · Tarefas · Mensagens · Calendário · Compromissos" }, "Abertura (2 min): pergunte quantos grupos de WhatsApp e papéis cada um usa para lembrar das coisas do trabalho. A ideia é trazer tudo para o painel."),
+  S("agenda", { titulo: "O que vamos ver", itens: "1 | Entrar e se achar\n2 | Canais MinasLab\n3 | Tarefas\n4 | Mensagens\n5 | Calendário\n6 | Compromissos\n7 | Onde registrar cada coisa" }),
+  S("frase", { titulo: "Por que usar o painel", frase: "Combinado que não está registrado vira esquecimento.", texto: "No painel, o aviso chega para todos, a tarefa tem dono e prazo e o compromisso aparece no calendário de quem precisa." }),
+  S("colunas", { titulo: "Entrar e se achar", itens: "## Login próprio\nCada pessoa tem usuário e senha. Quem cria é a gestão, em Acessos. Não empreste sua senha.\n## Menu\nNo computador, à esquerda. No celular, no botão ☰. Você só vê os módulos liberados para você.\n## Sino 🔔\nAvisa nova tarefa, mensagem, compromisso e publicação. Clique no aviso para ir direto ao assunto.\n## Sessão\nO acesso vale 12 horas. Depois disso, é só entrar de novo.", destaque: "Comece o dia pelo sino e pelo Canais." }, "Faça junto: cada pessoa entra com o próprio login e abre o sino."),
+
+  S("colunas", { titulo: "Canais MinasLab: o mural da empresa", itens: "## O que tem\nNotícias, comunicados e eventos da MinasLab. Comunicado importante fica fixado no topo.\n## Automático\nParabéns no dia do aniversário (com foto), aniversariantes do mês, destaque do mês e informativo de férias.\n## O que você faz\nCurte ❤️, comenta e deixa recado de parabéns. Você pode apagar o seu comentário.\n## Quem publica\nA gestão. Toda publicação nova chega no sino de todos.", destaque: "Aviso para a equipe toda é no Canais, não em grupo de mensagem." }, "Abra o Canais ao vivo e mostre o comunicado fixado e a lista de aniversariantes."),
+
+  S("tabela", { titulo: "Tarefas: quem é quem", itens: "Papel | O que faz\nProprietário | Quem criou a tarefa e acompanha o resultado\nResponsável | Quem executa e conclui\nParticipante | Ajuda e pode mexer na lista de verificação\nObservador | Só acompanha e recebe os avisos", destaque: "Toda tarefa tem UM responsável. Se ninguém é responsável, ninguém faz." }),
+  S("fluxo", { titulo: "A vida de uma tarefa", itens: "Criar | Título claro, responsável e prazo\nIniciar | Status em andamento\nAguardando | Parou por depender de outra pessoa\nConversar | Dúvidas e arquivos dentro da tarefa\nConcluir | Quem pediu é avisado" }, "Mostre o botão de status e a conversa dentro da tarefa."),
+  S("colunas", { titulo: "Tarefas: recursos que ajudam", itens: "## Quadro Prazo\nColunas Vencido, Vence hoje, Esta semana, Próxima semana, Mais tarde e Sem prazo. Olhe primeiro o Vencido.\n## Lista de verificação\nDivide a tarefa em passos que vão sendo marcados.\n## Anexos e conversa\nFoto, PDF e combinados ficam na própria tarefa, não espalhados.\n## Lembrete e repetição\nAviso antes do prazo; tarefas que se repetem todo dia, em dias úteis, toda semana ou todo mês.\n## Urgente e delegar\nMarque urgente só quando for mesmo. Delegar passa o responsável para outra pessoa." }),
+
+  S("colunas", { titulo: "Mensagens: conversa rápida", itens: "## Individual ou grupo\nConverse com uma pessoa ou crie um grupo do setor ou do assunto.\n## O que dá para enviar\nTexto, emoji, arquivo, imagem e mensagem de voz.\n## Leitura\nO sinal mostra se a mensagem foi enviada ou visualizada.\n## Privacidade\nSó quem está na conversa lê. Nem a direção lê a conversa dos outros.", destaque: "Pedido com prazo vira TAREFA. Mensagem é para conversa rápida." }),
+
+  S("colunas", { titulo: "Calendário: o mês inteiro numa tela", itens: "## Junta tudo\nCompromissos, sessões de licitação, manutenções e a agenda da equipe. Clique no evento para abrir a origem.\n## Agenda da equipe\nTreinamento, reunião, evento, férias e ausência. Escolha pessoas ou marque “Todos da equipe”.\n## Avisos\nQuem foi convidado recebe no sino e tem lembrete no dia, às 8h.\n## Férias e ausência\nSempre com um responsável que cobre a pessoa nesse período.", destaque: "Treinamento marcado pela gestão já aparece no seu Calendário." }),
+
+  S("colunas", { titulo: "Compromissos: a agenda de trabalho", itens: "## Tipos\nReunião, visita, retorno ao cliente, entrega de laudo, cobrança e outros.\n## Abre pelo atrasado\nA tela mostra primeiro o que já passou da hora e depois o de hoje.\n## Com cliente\nRegistre o cliente, a data e a hora: aparece também no Calendário.\n## Feito\nClique em “Marcar como feito” assim que fizer, para não ficar como atrasado." }, "Se o Compromissos não aparece no seu menu, é porque ele não foi liberado para a sua função."),
+
+  S("tabela", { titulo: "Onde registrar cada coisa?", itens: "Situação | Onde\nAviso para a equipe toda | Canais MinasLab (gestão publica)\nAlgo a fazer com prazo e dono | Tarefas\nConversa rápida, dúvida pontual | Mensagens\nReunião, treinamento, férias, ausência | Calendário (agenda da equipe)\nRetorno ao cliente, visita, entrega de laudo | Compromissos", destaque: "Na dúvida: tem prazo e dono? Então é tarefa." }),
+  S("topicos", { titulo: "Combinados de uso", texto: "# Todo dia\nAbrir o sino e o Canais no começo do expediente\nOlhar a coluna Vencido das Tarefas\n# Ao trabalhar\nAtualizar o status da tarefa e concluir quando terminar\nConversar dentro da tarefa sobre aquela tarefa\n# Sempre\nPedido com prazo vai para Tarefas, não para mensagem solta\nFérias e ausência no Calendário, com responsável" }),
+
+  S("quiz", { titulo: "Quiz", texto: "A gestora precisa avisar a equipe toda sobre a folga do fim de ano. Onde publicar?", itens: "Num grupo de Mensagens\n* No Canais MinasLab\nNuma tarefa para cada pessoa", destaque: "Aviso para todos é no Canais: fica no mural e chega no sino de todo mundo." }),
+  S("quiz", { titulo: "Quiz", texto: "Você pediu a um colega para conferir um laudo até sexta. Como registrar?", itens: "Mensagem dizendo “confere pra mim?”\n* Tarefa com ele como responsável e prazo na sexta\nAnotar no caderno", destaque: "Pedido com prazo e dono é tarefa: os dois acompanham e ninguém esquece." }),
+  S("quiz", { titulo: "Quiz", texto: "Sua tarefa parou porque depende da resposta do cliente. Qual status usar?", itens: "Concluída\n* Aguardando\nDeixar em andamento sem falar nada", destaque: "Aguardando mostra que a tarefa travou por outra pessoa, e não por esquecimento." }),
+  S("quiz", { titulo: "Quiz", texto: "Quem consegue ler uma conversa sua em Mensagens?", itens: "Toda a direção\n* Só quem está na conversa\nQualquer pessoa com login", destaque: "Mensagens são privadas: só os participantes da conversa leem." }),
+  S("quiz", { titulo: "Quiz", texto: "Você vai tirar férias. O que precisa marcar no Calendário?", itens: "Só as datas\n* As datas e quem fica responsável enquanto você estiver fora\nNada, o RH avisa", destaque: "Férias e ausência sempre com responsável: quem cobre recebe o aviso." }),
+  S("quiz", { titulo: "Quiz", texto: "Ficou combinado retornar ao cliente amanhã às 10h. Onde registrar?", itens: "No Canais\n* Em Compromissos, tipo Retorno ao cliente\nNuma mensagem para si mesmo", destaque: "Compromisso com cliente vai em Compromissos e aparece no Calendário." }),
+
+  S("topicos", { titulo: "Mão na massa", texto: "# Em 10 minutos, cada pessoa\nEntra com o próprio login e abre o sino\nCurte e comenta a publicação de boas-vindas no Canais\nCria uma tarefa para si com prazo e uma lista de verificação\nManda uma mensagem para o colega ao lado\nAbre o Calendário e encontra este treinamento", destaque: "Quem terminar ajuda o colega do lado." }, "Antes do treinamento, publique no Canais uma mensagem de boas-vindas e marque este treinamento no Calendário para todos."),
+  S("compromissos", { titulo: "Compromissos" }, "Feche com 1 a 3 combinados da equipe, por exemplo: todo pedido com prazo vira tarefa; sino e Canais todo começo de dia."),
+  S("encerramento", { titulo: "Obrigada!", subtitulo: "Avisar no Canais, combinar em Tarefas, conversar em Mensagens e marcar no Calendário.", texto: "Registre a aplicação em Treinamentos › Trilhas › Registrar aplicação.", destaque: "Canais · Tarefas · Mensagens · Calendário · Compromissos" }),
+];
+
+export const MODELO_PAINEL = { id: "painel-dia-a-dia", categoria: "treinamento", tema: "colorido", nome: "Painel MinasLab no dia a dia", desc: "Como usar Canais MinasLab, Tarefas, Mensagens, Calendário e Compromissos, e onde registrar cada coisa. Com quiz e prática.", titulo: "Painel MinasLab no Dia a Dia", slides: PAINEL };
+
+export const TRILHA_PAINEL = {
+  id: "painel-dia-a-dia", modelo: "painel-dia-a-dia", minutos: 40, tema: "integracao", setores: ["comercial", "laboratorio"],
+  nome: "Painel MinasLab no dia a dia", publico: "Toda a equipe com login no painel",
+  documento: "",
+  objetivo: "Cada pessoa usa o painel para receber avisos (Canais), combinar o que tem prazo (Tarefas), conversar (Mensagens) e marcar compromissos e ausências (Calendário e Compromissos).",
+  gatilho: "manual", indicador: "Tarefas vencidas e pedidos feitos fora do painel",
+  slides: ["Login, menu e sino de avisos.", "Canais: comunicados, parabéns, aniversariantes, destaque e férias; curtir e comentar.", "Tarefas: papéis, status, quadro Prazo, lista de verificação, lembrete.", "Mensagens: conversa rápida e privada; pedido com prazo vira tarefa.", "Calendário e Compromissos: agenda da equipe, férias com responsável, compromisso com cliente."],
+  exercicio: "Cada pessoa entra com o próprio login, comenta no Canais, cria uma tarefa com prazo e lista de verificação, manda uma mensagem e encontra o treinamento no Calendário.",
+};
