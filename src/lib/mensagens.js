@@ -64,3 +64,21 @@ export function horaNaLista(iso, agora = new Date(), horaLocal) {
 }
 
 export const contadorTexto = (n) => (n > 99 ? "99+" : String(n));
+
+/**
+ * Conversas com mensagem NOVA desde a consulta anterior (para tocar som e avisar no navegador).
+ * `anterior` = Map id → { naoLidas, em } da consulta passada (null na primeira: não avisa o que já estava lá).
+ * Não avisa a conversa que a pessoa está olhando agora (`abertaId` com a aba visível): ali a leitura é na hora.
+ */
+export function conversasNovas(anterior, atuais, { abertaId = "", abaVisivel = false } = {}) {
+  if (!anterior) return [];
+  return (atuais || []).filter((c) => {
+    if (abaVisivel && abertaId && c.id === abertaId) return false;
+    const antes = anterior.get(c.id);
+    return c.em !== (antes?.em ?? "") && c.naoLidas > (antes?.naoLidas ?? 0);
+  });
+}
+export const fotografiaDasNovas = (atuais) => new Map((atuais || []).map((c) => [c.id, { naoLidas: c.naoLidas, em: c.em }]));
+
+/** Título da aba com a contagem: "(3) Mensagens · MinasLab". Tira um prefixo antigo antes de pôr o novo. */
+export const tituloComContagem = (titulo, total) => { const limpo = String(titulo || "").replace(/^\(\d+\+?\)\s*/, ""); return total > 0 ? `(${total > 99 ? "99+" : total}) ${limpo}` : limpo; };
