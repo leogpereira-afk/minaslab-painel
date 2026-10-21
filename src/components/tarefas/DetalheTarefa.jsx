@@ -1,7 +1,7 @@
 // A tarefa aberta: dados e lista de verificação à esquerda, bate-papo da tarefa à direita (como no Bitrix24).
 // O servidor decide quem pode o quê (`pode`); aqui só se mostram os botões que a pessoa pode usar.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Eye, Flame, ListChecks, MoreHorizontal, Pause, Play, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { CheckCircle2, Eye, Flame, Hourglass, ListChecks, Lock, MoreHorizontal, Play, Plus, RotateCcw, Search, Send, Trash2, UserPlus, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
@@ -102,6 +102,8 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   const [novoMarcador, setNovoMarcador] = useState("");
   const [menu, setMenu] = useState(false);
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
+  const [delegando, setDelegando] = useState(false);
+  const [buscaDelegar, setBuscaDelegar] = useState("");
 
   const carregar = useCallback(async () => {
     try {
@@ -286,19 +288,29 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
               {tarefa.status !== "concluida" && pode.gerir && <button type="button" className="btn-primary" disabled={ocupado} onClick={() => executar(() => tarefaStatus(id, "concluir"))}><CheckCircle2 size={16} />Concluir</button>}
               {tarefa.status === "concluida" && pode.gerir && <button type="button" className="btn-primary" disabled={ocupado} onClick={() => executar(() => tarefaStatus(id, "reabrir"))}><RotateCcw size={16} />Reabrir</button>}
               {(tarefa.status === "nova" || tarefa.status === "aguardando") && pode.colaborar && <button type="button" className="btn-outline" disabled={ocupado} onClick={() => executar(() => tarefaStatus(id, "iniciar"))}><Play size={16} />Iniciar</button>}
-              {(pode.colaborar && tarefa.status === "em_andamento") && <button type="button" className="btn-outline" disabled={ocupado} onClick={() => executar(() => tarefaStatus(id, "pausar"))}><Pause size={16} />Em espera</button>}
-              {pode.excluir && (
+              {(tarefa.status !== "concluida" || pode.excluir) && (
                 <div className="relative">
                   <button type="button" className="btn-ghost h-10 w-10 p-0" aria-label="Mais opções" aria-expanded={menu} onClick={() => { setMenu((v) => !v); setConfirmaExcluir(false); }}><MoreHorizontal size={18} /></button>
                   {menu && (
                     <div className="absolute bottom-full left-0 z-40 mb-1 w-56 rounded-xl border bg-white p-1 shadow-lg" style={{ borderColor: "var(--hairline)" }}>
-                      {!confirmaExcluir
-                        ? <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50" onClick={() => setConfirmaExcluir(true)}><Trash2 size={15} />Excluir tarefa</button>
-                        : (
-                          <div className="p-2 text-sm"><p className="mb-2 text-slate-700">Excluir esta tarefa para todos?</p>
-                            <div className="flex gap-2"><button type="button" className="btn-outline h-9 min-h-0 flex-1" onClick={() => setConfirmaExcluir(false)}>Não</button><button type="button" className="h-9 flex-1 rounded-xl bg-red-600 px-3 text-sm font-semibold text-white hover:bg-red-700" onClick={() => executar(async () => { await tarefaExcluir(id); aoMudou?.(); aoFechar(); })}>Excluir</button></div>
-                          </div>
-                        )}
+                      {!confirmaExcluir ? (
+                        <>
+                          {tarefa.status !== "concluida" && tarefa.status !== "aguardando" && pode.colaborar && (
+                            <button type="button" className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50" onClick={() => { setMenu(false); void executar(() => tarefaStatus(id, "pausar")); }}>Pausar<Hourglass size={15} className="text-slate-400" aria-hidden="true" /></button>
+                          )}
+                          {tarefa.status !== "concluida" && (
+                            <button type="button" disabled={!pode.gerir} title={pode.gerir ? "Passar a tarefa para outra pessoa" : "Só o proprietário, o responsável ou a direção delegam"} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent" onClick={() => { setMenu(false); setBuscaDelegar(""); setDelegando(true); }}>
+                              <span className="flex items-center gap-1.5">{!pode.gerir && <Lock size={13} className="text-sky-600" aria-hidden="true" />}Delegar</span>
+                              <UserPlus size={15} className="text-slate-400" aria-hidden="true" />
+                            </button>
+                          )}
+                          {pode.excluir && <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50" onClick={() => setConfirmaExcluir(true)}><Trash2 size={15} />Excluir tarefa</button>}
+                        </>
+                      ) : (
+                        <div className="p-2 text-sm"><p className="mb-2 text-slate-700">Excluir esta tarefa para todos?</p>
+                          <div className="flex gap-2"><button type="button" className="btn-outline h-9 min-h-0 flex-1" onClick={() => setConfirmaExcluir(false)}>Não</button><button type="button" className="h-9 flex-1 rounded-xl bg-red-600 px-3 text-sm font-semibold text-white hover:bg-red-700" onClick={() => executar(async () => { await tarefaExcluir(id); aoMudou?.(); aoFechar(); })}>Excluir</button></div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -310,6 +322,25 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
             <BatePapo dados={dados} aoEnviar={async (t) => { await tarefaMensagem(id, t); await carregar(); aoMudou?.(); }} />
           </div>
         </div>
+      )}
+      {delegando && (
+        <Modal titulo="Passar a tarefa para outra pessoa" aberto aoFechar={() => setDelegando(false)} largura="max-w-sm">
+          <div className="space-y-2">
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input autoFocus className="input h-10 min-h-0 pl-9 text-sm" placeholder="Pesquisar pessoa" aria-label="Pesquisar pessoa" value={buscaDelegar} onChange={(e) => setBuscaDelegar(e.target.value)} />
+            </div>
+            <ul className="max-h-72 overflow-auto">
+              {usuarios.filter((u) => u.usuario !== tarefa.responsavel && (!buscaDelegar.trim() || `${u.nome} ${u.usuario}`.toLowerCase().includes(buscaDelegar.trim().toLowerCase()))).map((u) => (
+                <li key={u.usuario}>
+                  <button type="button" className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-slate-50" onClick={() => { setDelegando(false); void executar(() => tarefaDelegar(id, u.usuario)); }}>
+                    <Avatar usuario={u.usuario} nome={u.nome} tamanho={32} /><span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{u.nome}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Modal>
       )}
     </Modal>
   );
