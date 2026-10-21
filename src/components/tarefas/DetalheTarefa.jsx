@@ -7,7 +7,7 @@ import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
 import ArquivosTarefa from "./ArquivosTarefa.jsx";
-import { LEMBRETES, STATUS_TAREFA, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
+import { LEMBRETES, STATUS_TAREFA, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
 import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaPessoas, tarefaStatus } from "../../services/tarefas.js";
 
 const FUSO = "America/Sao_Paulo";
@@ -228,6 +228,7 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                   ) : <span>{rotuloLembrete(tarefa.lembrete)}</span>}
                 </Linha>
               )}
+              {dados.recorrencia && <Linha rotulo="Repete"><span className="text-slate-600">{resumoRecorrencia(dados.recorrencia)}{dados.recorrencia.ativa ? "" : " (pausada)"}</span></Linha>}
               <Linha rotulo="Situação"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.classe}`}>{st.rotulo}</span></Linha>
               <Linha rotulo="Criada em"><span className="text-slate-600">{rotuloPrazo(tarefa.criadoEm, agora)}</span></Linha>
               <Linha rotulo="Participantes">

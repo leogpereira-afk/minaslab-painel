@@ -202,3 +202,31 @@ export function quandoAvisa(prazo, lembrete) {
   const d = new Date(new Date(prazo).getTime() - Number(lembrete) * 60000);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
+
+/** Repetição das tarefas. Dias da semana: 0 = domingo ... 6 = sábado (igual ao servidor). */
+export const TIPOS_REPETICAO = [
+  { id: "", rotulo: "Não repetir" },
+  { id: "diaria", rotulo: "Todo dia" },
+  { id: "dias_uteis", rotulo: "Dias úteis (segunda a sexta)" },
+  { id: "semanal", rotulo: "Toda semana" },
+  { id: "mensal", rotulo: "Todo mês" },
+];
+export const DIAS_SEMANA = [
+  { id: 1, curto: "Seg", nome: "segunda" }, { id: 2, curto: "Ter", nome: "terça" }, { id: 3, curto: "Qua", nome: "quarta" },
+  { id: 4, curto: "Qui", nome: "quinta" }, { id: 5, curto: "Sex", nome: "sexta" }, { id: 6, curto: "Sáb", nome: "sábado" }, { id: 0, curto: "Dom", nome: "domingo" },
+];
+/** "Todo dia às 08:00", "Toda segunda e quarta às 09:30", "Todo dia 5 do mês às 08:00". */
+export function resumoRecorrencia(r) {
+  if (!r) return "";
+  const hora = String(r.hora || "08:00").slice(0, 5);
+  if (r.tipo === "diaria") return `Todo dia às ${hora}`;
+  if (r.tipo === "dias_uteis") return `Dias úteis às ${hora}`;
+  if (r.tipo === "semanal") {
+    const nomes = [...(r.dias_semana || [])].sort((a, b) => (a || 7) - (b || 7)).map((d) => DIAS_SEMANA.find((x) => x.id === d)?.nome).filter(Boolean);
+    if (!nomes.length) return "";
+    const lista = nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
+    return `Toda ${lista} às ${hora}`;
+  }
+  if (r.tipo === "mensal") return `Todo dia ${r.dia_mes} do mês às ${hora}`;
+  return "";
+}

@@ -1,11 +1,11 @@
 // Criar tarefa: formulário rápido (nome, descrição, responsável, prazo, lista de verificação)
 // e "formulário detalhado" (participantes, observadores, marcadores) — como no Bitrix24.
 import { useMemo, useState } from "react";
-import { Bell, Flame, ListChecks, Plus, X } from "lucide-react";
+import { Bell, Flame, ListChecks, Plus, Repeat, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Modal } from "../ui.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
-import { LEMBRETES, atalhosDePrazo, deInputLocal, lembreteDoSelect } from "../../lib/tarefas.js";
+import { DIAS_SEMANA, LEMBRETES, TIPOS_REPETICAO, atalhosDePrazo, deInputLocal, lembreteDoSelect } from "../../lib/tarefas.js";
 import { tarefaCriar } from "../../services/tarefas.js";
 
 export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada }) {
@@ -15,6 +15,10 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
   const [prazo, setPrazo] = useState("");
   const [urgente, setUrgente] = useState(false);
   const [lembrete, setLembrete] = useState("");
+  const [repete, setRepete] = useState("");
+  const [diasSemana, setDiasSemana] = useState([]);
+  const [diaMes, setDiaMes] = useState(String(new Date().getDate()));
+  const [horaRepete, setHoraRepete] = useState("08:00");
   const [checklist, setChecklist] = useState([]);
   const [novoItem, setNovoItem] = useState("");
   const [detalhado, setDetalhado] = useState(false);
@@ -33,6 +37,7 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
     e.preventDefault();
     if (salvando) return;
     if (!titulo.trim()) { setErro("Dê um nome para a tarefa."); return; }
+    if (repete === "semanal" && !diasSemana.length) { setErro("Escolha pelo menos um dia da semana para repetir."); return; }
     setSalvando(true);
     setErro("");
     try {
@@ -41,6 +46,7 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
       const r = await tarefaCriar({
         titulo, descricao, responsavel, prazo: deInputLocal(prazo), lembrete: prazo ? lembreteDoSelect(lembrete) : null, urgente, participantes, observadores, marcadores,
         checklist: itens.map((texto) => ({ texto })), tarefa_pai_id: pai?.id || null,
+        recorrencia: repete ? { tipo: repete, dias_semana: diasSemana, dia_mes: Number(diaMes), hora: horaRepete } : null,
       });
       aoCriada(r.id);
     } catch (ex) {
@@ -119,6 +125,39 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
                 <input className="input h-9 min-h-0 text-sm" placeholder="Novo marcador e Enter" aria-label="Novo marcador" value={novoMarcador} maxLength={30} onChange={(e) => setNovoMarcador(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarMarcador(); } }} />
               </div>
             </div>
+          </div>
+        )}
+
+        {!pai && (
+          <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+              <Repeat size={14} aria-hidden="true" />Repetir
+              <select className="input h-9 min-h-0 w-auto text-sm" aria-label="Repetir" value={repete} onChange={(e) => setRepete(e.target.value)}>
+                {TIPOS_REPETICAO.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}
+              </select>
+            </label>
+            {repete === "semanal" && (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Dias da semana">
+                {DIAS_SEMANA.map((d) => {
+                  const marcado = diasSemana.includes(d.id);
+                  return <button key={d.id} type="button" aria-pressed={marcado} onClick={() => setDiasSemana((l) => (marcado ? l.filter((x) => x !== d.id) : [...l, d.id]))} className={clsx("rounded-full border px-3 py-1 text-xs font-medium", marcado ? "border-brand-400 bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50")} style={marcado ? undefined : { borderColor: "var(--hairline)" }}>{d.curto}</button>;
+                })}
+              </div>
+            )}
+            {repete === "mensal" && (
+              <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">Todo dia
+                <input type="number" min={1} max={31} className="input h-9 min-h-0 w-20 text-sm" aria-label="Dia do mês" value={diaMes} onChange={(e) => setDiaMes(e.target.value)} />
+                <span className="text-xs text-slate-500">(em mês curto, vale o último dia)</span>
+              </label>
+            )}
+            {repete && (
+              <>
+                <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">Criar a nova tarefa às
+                  <input type="time" className="input h-9 min-h-0 w-auto text-sm" aria-label="Hora de criar a nova tarefa" value={horaRepete} onChange={(e) => setHoraRepete(e.target.value || "08:00")} />
+                </label>
+                <p className="text-xs text-slate-500">Esta tarefa é criada agora; as próximas nascem sozinhas{prazo ? ", com o prazo na mesma hora e a mesma distância desta" : ""}. Dá para pausar em Repetições.</p>
+              </>
+            )}
           </div>
         )}
 

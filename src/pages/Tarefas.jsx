@@ -2,13 +2,14 @@
 // Quem pode o quê é decidido no servidor (ml-tarefas); esta página só mostra o que a pessoa enxerga.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Flame, LayoutGrid, List, MessageSquare, Plus, RefreshCw, Search } from "lucide-react";
+import { Flame, LayoutGrid, List, MessageSquare, Plus, RefreshCw, Repeat, Search } from "lucide-react";
 import { clsx } from "clsx";
 import { PageTitle } from "../components/ui.jsx";
 import QuadroPrazo from "../components/tarefas/QuadroPrazo.jsx";
 import ListaTarefas from "../components/tarefas/ListaTarefas.jsx";
 import FormularioTarefa from "../components/tarefas/FormularioTarefa.jsx";
 import DetalheTarefa from "../components/tarefas/DetalheTarefa.jsx";
+import ListaRecorrentes from "../components/tarefas/ListaRecorrentes.jsx";
 import { PAPEIS_FILTRO, resumoDasTarefas } from "../lib/tarefas.js";
 import { ehDirecao } from "../lib/sessao.js";
 import { tarefasListar, tarefasUsuarios } from "../services/tarefas.js";
@@ -29,6 +30,7 @@ export default function Tarefas() {
   const [erro, setErro] = useState("");
   const [atualizando, setAtualizando] = useState(false);
   const [criando, setCriando] = useState(null); // null | { pai?: {id,titulo} }
+  const [repeticoes, setRepeticoes] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
   const aberta = params.get("abrir");
   const direcao = ehDirecao();
@@ -99,6 +101,7 @@ export default function Tarefas() {
             <button key={id} type="button" aria-pressed={visao === id} onClick={() => setVisao(id)} className={clsx("inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-display text-sm font-medium", visao === id ? "bg-brand text-white" : "text-slate-600 hover:bg-slate-100")}><Icone size={14} aria-hidden="true" />{rotulo}</button>
           ))}
         </div>
+        <button type="button" className="btn-outline h-10 min-h-0" onClick={() => setRepeticoes(true)}><Repeat size={15} aria-hidden="true" />Repetições</button>
         <button type="button" className="btn-ghost h-10 w-10 p-0" onClick={() => carregar()} disabled={atualizando} aria-label="Atualizar" title="Atualizar"><RefreshCw size={16} className={atualizando ? "animate-spin" : ""} /></button>
       </div>
 
@@ -115,6 +118,7 @@ export default function Tarefas() {
         : <ListaTarefas tarefas={tarefas} nomes={nomes} agora={agora} aoAbrir={abrir} aoCriar={() => setCriando({})} />)}
       {lista && visao === "prazo" && situacao !== "abertas" && <p className="text-xs text-slate-500">O quadro por prazo mostra só as tarefas em andamento; aqui está a lista.</p>}
 
+      {repeticoes && <ListaRecorrentes aoFechar={() => setRepeticoes(false)} />}
       {criando && <FormularioTarefa usuarios={usuarios} eu={eu} pai={criando.pai} aoFechar={() => setCriando(null)} aoCriada={criada} />}
       {aberta && (
         <DetalheTarefa

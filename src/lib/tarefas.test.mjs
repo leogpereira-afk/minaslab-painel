@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agruparPorPrazo, atalhosDePrazo, atrasoTexto, colunaDoPrazo, corDoAvatar, deInputLocal, diasDeAtraso, diaLocal, iniciais, paraInputLocal, progressoChecklist, resumoDasTarefas, rotuloPrazo, semanaDe, tempoRelativo, LEMBRETES, lembreteDoSelect, quandoAvisa, rotuloLembrete } from "./tarefas.js";
+import { agruparPorPrazo, atalhosDePrazo, atrasoTexto, colunaDoPrazo, corDoAvatar, deInputLocal, diasDeAtraso, diaLocal, iniciais, paraInputLocal, progressoChecklist, resumoDasTarefas, rotuloPrazo, semanaDe, tempoRelativo, LEMBRETES, lembreteDoSelect, quandoAvisa, rotuloLembrete, resumoRecorrencia } from "./tarefas.js";
 
 // Quarta-feira, 21/10/2026, 14:00 em São Paulo (17:00 UTC).
 const AGORA = new Date("2026-10-21T17:00:00Z");
@@ -131,4 +131,15 @@ test("lembrete: quando avisa é o prazo menos os minutos", () => {
   assert.equal(quandoAvisa("2026-10-21T21:00:00Z", 1440), "2026-10-20T21:00:00.000Z");
   assert.equal(quandoAvisa(null, 60), null);
   assert.equal(quandoAvisa("2026-10-21T21:00:00Z", null), null);
+});
+
+test("repetição: resumo em português", () => {
+  assert.equal(resumoRecorrencia({ tipo: "diaria", hora: "08:00:00" }), "Todo dia às 08:00");
+  assert.equal(resumoRecorrencia({ tipo: "dias_uteis", hora: "17:30" }), "Dias úteis às 17:30");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [1], hora: "09:00" }), "Toda segunda às 09:00");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [3, 1], hora: "09:00" }), "Toda segunda e quarta às 09:00");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [0, 5, 1], hora: "09:00" }), "Toda segunda, sexta e domingo às 09:00"); // domingo por último
+  assert.equal(resumoRecorrencia({ tipo: "mensal", dia_mes: 5, hora: "08:00" }), "Todo dia 5 do mês às 08:00");
+  assert.equal(resumoRecorrencia(null), "");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [], hora: "08:00" }), "");
 });
