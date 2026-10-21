@@ -116,6 +116,18 @@ export function informativoFerias(ferias, pessoas, hoje, janela = 30) {
 
 export const TIPOS = ["noticia", "comunicado", "evento"];
 
+/* Foto anexada: fica no bucket privado ml-arquivos, pasta canais/; o post guarda só o caminho. */
+export const ehFotoGuardada = (v) => /^canais\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(String(v ?? ""));
+const TIPOS_FOTO = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+export const MAX_FOTO_BYTES = 4 * 1024 * 1024;
+/** Lê a foto enviada pela tela (data URL). Devolve { ok, erro, ext, mime, base64 }. */
+export function lerFoto(dataUrl) {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ""));
+  if (!m) return { ok: false, erro: "A foto precisa ser JPG, PNG ou WEBP." };
+  if (Math.floor(m[2].length * 3 / 4) > MAX_FOTO_BYTES) return { ok: false, erro: "Foto grande demais (até 4 MB)." };
+  return { ok: true, mime: m[1], ext: TIPOS_FOTO[m[1]], base64: m[2] };
+}
+
 /** Confere e limpa o que vem da tela para um post. Devolve { ok, erro, post }. */
 export function validarPost(b) {
   const tipo = TIPOS.includes(b?.tipo) ? b.tipo : "noticia";
@@ -123,7 +135,7 @@ export function validarPost(b) {
   const texto = String(b?.texto ?? "").trim().slice(0, 6000);
   let imagem = String(b?.imagem ?? "").trim();
   if (!titulo) return { ok: false, erro: "Dê um título para a publicação." };
-  if (imagem && !/^https:\/\/[^\s"'<>]+$/i.test(imagem)) return { ok: false, erro: "O link da imagem precisa começar com https://" };
+  if (imagem && !/^https:\/\/[^\s"'<>]+$/i.test(imagem) && !ehFotoGuardada(imagem)) return { ok: false, erro: "O link da imagem precisa começar com https://" };
   imagem = imagem.slice(0, 1000);
   return { ok: true, post: { tipo, titulo, texto, imagem, fixado: !!b?.fixado } };
 }

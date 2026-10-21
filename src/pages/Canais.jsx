@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { clsx } from "clsx";
-import { Award, Cake, Heart, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
+import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import { TIPOS_POST, MESES, tempoRelativo, periodoFerias } from "../lib/canais.js";
@@ -158,7 +158,7 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
         </div>
         {!aniv && <h2 className="font-display text-lg font-bold leading-snug text-slate-900">{p.titulo}</h2>}
         {p.texto && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-700">{p.texto}</p>}
-        {p.imagem && <img src={p.imagem} alt="" loading="lazy" className="max-h-[480px] w-full rounded-xl border border-slate-100 object-cover" referrerPolicy="no-referrer" />}
+        {p.imagemUrl && <img src={p.imagemUrl} alt="" loading="lazy" className="max-h-[480px] w-full rounded-xl border border-slate-100 object-cover" referrerPolicy="no-referrer" />}
 
         <div className="flex items-center gap-1 border-t border-slate-100 pt-2">
           <button type="button" onClick={aoCurtir} aria-pressed={p.curti}
@@ -360,18 +360,51 @@ function Linha({ f }) {
 
 const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false };
 
+/* Reduz a foto no navegador antes de enviar: até 1600 px no lado maior, JPEG. */
+function reduzirFoto(arquivo, max = 1600) {
+  return new Promise((ok, falha) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      ok(cv.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); falha(new Error("Não consegui abrir essa imagem.")); };
+    img.src = url;
+  });
+}
+
 function Compositor({ post, aoFechar, aoSalvar }) {
   const [f, setF] = useState(VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [foto, setFoto] = useState(null);
+  const [previaAntiga, setPreviaAntiga] = useState("");
   useEffect(() => {
-    if (post) { setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado } : {}) }); setErro(""); }
+    if (post) {
+      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado } : {}) });
+      setFoto(null); setPreviaAntiga(post.id ? post.imagemUrl || "" : ""); setErro("");
+    }
   }, [post]);
+  const ehLink = f.imagem.startsWith("https://");
+  const previa = foto || (ehLink ? f.imagem : f.imagem ? previaAntiga : "");
+  async function anexar(e) {
+    const arq = e.target.files?.[0];
+    e.target.value = "";
+    if (!arq) return;
+    try { setErro(""); setFoto(await reduzirFoto(arq)); } catch (er) { setErro(er.message); }
+  }
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   async function salvar(e) {
     e.preventDefault();
     setSalvando(true); setErro("");
-    try { await aoSalvar(f); } catch (er) { setErro(er.message); }
+    try { await aoSalvar(foto ? { ...f, foto } : f); } catch (er) { setErro(er.message); }
     setSalvando(false);
   }
   return (
@@ -389,9 +422,21 @@ function Compositor({ post, aoFechar, aoSalvar }) {
           <input className="input w-full" value={f.titulo} onChange={set("titulo")} maxLength={160} required autoFocus /></label>
         <label className="block"><span className="label">Texto</span>
           <textarea className="input min-h-[160px] w-full" value={f.texto} onChange={set("texto")} maxLength={6000} /></label>
-        <label className="block"><span className="label">Link de uma imagem (opcional)</span>
-          <input className="input w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="https://…" /></label>
-        {f.imagem.startsWith("https://") && <img src={f.imagem} alt="Prévia" className="max-h-48 rounded-lg border object-cover" referrerPolicy="no-referrer" />}
+        <div>
+          <span className="label">Foto (opcional)</span>
+          {previa
+            ? <div className="relative inline-block">
+                <img src={previa} alt="Prévia da foto" className="max-h-56 rounded-xl border object-cover" referrerPolicy="no-referrer" />
+                <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-bad-700 shadow" onClick={() => { setFoto(null); setF((x) => ({ ...x, imagem: "" })); }}>Tirar foto</button>
+              </div>
+            : <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 hover:border-brand-300 hover:bg-brand-50/40">
+                <ImagePlus size={24} className="text-brand-600" />
+                <span className="font-semibold text-brand-700">Anexar foto</span>
+                <span className="text-xs">JPG, PNG ou WEBP · do computador ou do celular</span>
+                <input type="file" accept="image/*" className="sr-only" onChange={anexar} />
+              </label>}
+          {!previa && <input className="input mt-2 w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="ou cole o link de uma imagem (https://…)" aria-label="Link de uma imagem" />}
+        </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={f.fixado} onChange={set("fixado")} /> Fixar no topo do mural
         </label>

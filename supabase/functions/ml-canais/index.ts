@@ -16,7 +16,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   hojeSP, aniversariantesDoMes, parabensRecentes, informativoFerias, ehRefAniversario,
   validarPost, validarComentario, naCasa, nomeCurto, validarDestaque, normNome,
+  lerFoto, ehFotoGuardada,
 } from "./regras.mjs";
+const BUCKET = "ml-arquivos";
 
 const U = Deno.env.get("SUPABASE_URL")!;
 const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
@@ -139,11 +141,20 @@ async function feed(c: Ctx, b: any) {
   if (e1) throw e1;
   if (e2) throw e2;
 
+  const caminhos = todos.map((p) => p.imagem).filter(ehFotoGuardada);
+  const links = new Map<string, string>();
+  if (caminhos.length) {
+    const { data: ass, error: e3 } = await sb.storage.from(BUCKET).createSignedUrls(caminhos, 6 * 3600);
+    if (e3) console.error("fotos", e3);
+    for (const a of ass ?? []) if (a.path && a.signedUrl) links.set(a.path, a.signedUrl);
+  }
+
   const saida = todos.map((p) => {
     const ref = String(p.id);
     const cs = (curtidas ?? []).filter((x: any) => x.post_ref === ref);
     return {
       ...p,
+      imagemUrl: ehFotoGuardada(p.imagem) ? links.get(p.imagem) ?? "" : p.imagem || "",
       curtidas: cs.length,
       curti: cs.some((x: any) => x.usuario === c.eu),
       quemCurtiu: cs.map((x: any) => x.nome || x.usuario),
@@ -164,6 +175,15 @@ async function publicar(c: Ctx, b: any) {
   exigirPublicador(c);
   const v = validarPost(b);
   if (!v.ok) erro(400, v.erro);
+  if (b.foto) {
+    const f = lerFoto(b.foto);
+    if (!f.ok) erro(400, f.erro);
+    const caminho = `canais/${crypto.randomUUID()}.${f.ext}`;
+    const bin = Uint8Array.from(atob(f.base64), (ch) => ch.charCodeAt(0));
+    const { error: eu } = await sb.storage.from(BUCKET).upload(caminho, bin, { contentType: f.mime, upsert: false });
+    if (eu) throw eu;
+    v.post.imagem = caminho;
+  }
   const id = txt(b.id);
   if (id) {
     if (!UUID.test(id)) erro(400, "Publicação inválida.");

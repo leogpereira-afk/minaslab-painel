@@ -117,3 +117,12 @@ test("ficha duplicada no RH não vira dois parabéns", () => {
   assert.equal(parabensRecentes(pessoas, "2026-10-21").length, 1);
   assert.equal(aniversariantesDoMes(pessoas, 2026, 10).length, 1);
 });
+
+test("foto anexada: só imagem e caminho guardado válido", async () => {
+  const { lerFoto, ehFotoGuardada } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  assert.equal(lerFoto("data:image/png;base64,iVBORw0KGgo=").ext, "png");
+  assert.equal(lerFoto("data:text/html;base64,PGI+").ok, false);
+  assert.equal(ehFotoGuardada("canais/123e4567-e89b-12d3-a456-426614174000.jpg"), true);
+  assert.equal(ehFotoGuardada("../outros/x.jpg"), false);
+  assert.equal(validarPost({ titulo: "x", imagem: "canais/123e4567-e89b-12d3-a456-426614174000.jpg" }).ok, true);
+});
