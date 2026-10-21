@@ -4,7 +4,7 @@
 // Regra de visão: a pessoa vê a tarefa se for proprietária, responsável, participante ou observadora;
 // a direção vê qualquer uma. As pessoas são os usuários do painel (ml_contas.usuario).
 //
-// Ações: usuarios, listar, obter, criar, atualizar, delegar, status, pessoas, checklist, mensagem, excluir.
+// Ações: usuarios, listar, obter, criar, atualizar, delegar, status, pessoas, checklist, mensagem, excluir, anexo_*, recorrencias, recorrencia_ativar, recorrencia_excluir.
 // Cada mudança importante vira um aviso do sistema no bate-papo da tarefa e uma notificação (sino) para quem importa.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -53,6 +53,7 @@ async function lerPorIds(tabela: string, coluna: string, ids: string[], cols = "
 
 const fmtDia = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric", month: "long", year: "numeric" });
 const fmtHora = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const rotuloLembrete = (min: number) => (min % 1440 === 0 ? `${min / 1440} dia${min > 1440 ? "s" : ""}` : min % 60 === 0 ? `${min / 60} hora${min > 60 ? "s" : ""}` : `${min} minutos`);
 const quando = (iso: string) => { const d = new Date(iso); return `${fmtDia.format(d)}, ${fmtHora.format(d)}`; };
 
 function lerPrazo(v: unknown): string | null {
@@ -61,6 +62,33 @@ function lerPrazo(v: unknown): string | null {
   if (Number.isNaN(d.getTime())) erro(400, "Prazo inválido.");
   return d.toISOString();
 }
+
+// Lembrete: minutos ANTES do prazo (0 = na hora). Vazio = sem lembrete.
+const LEMBRETES_MIN = [0, 15, 30, 60, 120, 1440, 2880];
+function lerLembrete(v: unknown): number | null {
+  if (v === null || v === undefined || txt(v) === "") return null;
+  const n = Number(v);
+  if (!LEMBRETES_MIN.includes(n)) erro(400, "Lembrete inválido.");
+  return n;
+}
+
+// Repetição: { tipo: diaria|dias_uteis|semanal|mensal, dias_semana: [0..6], dia_mes: 1..31, hora: "HH:MM" }.
+const TIPOS_REC = ["diaria", "dias_uteis", "semanal", "mensal"];
+const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+function lerRecorrencia(v: any) {
+  const tipo = txt(v?.tipo);
+  if (!TIPOS_REC.includes(tipo)) erro(400, "Escolha como a tarefa se repete.");
+  const hora = txt(v?.hora) || "08:00";
+  if (!HORA.test(hora)) erro(400, "Hora da repetição inválida.");
+  const dias = [...new Set((Array.isArray(v?.dias_semana) ? v.dias_semana : []).map(Number))].filter((n) => Number.isInteger(n) && n >= 0 && n <= 6).sort() as number[];
+  if (tipo === "semanal" && !dias.length) erro(400, "Escolha pelo menos um dia da semana.");
+  const diaMes = Number(v?.dia_mes);
+  if (tipo === "mensal" && !(Number.isInteger(diaMes) && diaMes >= 1 && diaMes <= 31)) erro(400, "Escolha o dia do mês.");
+  return { tipo, hora, dias_semana: tipo === "semanal" ? dias : [], dia_mes: tipo === "mensal" ? diaMes : null };
+}
+const fmtDiaIso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+const diaSP = (d: Date) => fmtDiaIso.format(d); // AAAA-MM-DD
+const horaSP = (d: Date) => fmtHora.format(d); // HH:MM
 
 // ---------------------------------------------------------------- contexto da chamada
 type Ctx = { eu: string; nome: string; direcao: boolean; nomes: Map<string, string> };
@@ -179,7 +207,7 @@ async function listar(c: Ctx, b: any) {
     const nuncaVista = !visto && t.proprietario !== c.eu;
     const papeis = [t.proprietario === c.eu && "proprietario", t.responsavel === c.eu && "responsavel", participantes.includes(c.eu) && "participante", observadores.includes(c.eu) && "observador"].filter(Boolean) as string[];
     return {
-      id: t.id, titulo: t.titulo, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status,
+      id: t.id, titulo: t.titulo, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status, lembrete: t.lembrete_min ?? null,
       criadoEm: t.criado_em, concluidaEm: t.concluida_em, marcadores: t.marcadores ?? [], participantes, observadores,
       checklist: { feitos: its.filter((i: any) => i.feito).length, total: its.length },
       naoLidas: novas + (nuncaVista ? 1 : 0), subtarefas: subs.get(t.id) ?? 0, meusPapeis: papeis, descricao: t.descricao,
@@ -216,16 +244,21 @@ async function obter(c: Ctx, b: any) {
   if (e5) console.error("leitura", e5);
   await sb.from("ml_notificacoes").update({ lida: true }).eq("usuario", c.eu).eq("ref_id", a.t.id).eq("lida", false);
 
+  let recorrencia = null;
+  if (a.t.recorrencia_id) {
+    const { data } = await sb.from("ml_tarefa_recorrencias").select("id,tipo,dias_semana,dia_mes,hora,ativa").eq("id", a.t.recorrencia_id).maybeSingle();
+    if (data) recorrencia = { id: data.id, tipo: data.tipo, dias_semana: data.dias_semana, dia_mes: data.dia_mes, hora: String(data.hora).slice(0, 5), ativa: data.ativa };
+  }
   const nomes: Record<string, string> = {};
   for (const u of [...envolvidos(a), ...(mensagens ?? []).map((m: any) => m.autor), ...(checklist ?? []).map((i: any) => i.feito_por), ...(leituras ?? []).map((l: any) => l.usuario), ...(anexos ?? []).map((x: any) => x.autor)]) if (u) nomes[u] = nomeDe(c, u);
   const t = a.t;
   return {
     tarefa: {
-      id: t.id, titulo: t.titulo, descricao: t.descricao, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status,
+      id: t.id, titulo: t.titulo, descricao: t.descricao, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status, lembrete: t.lembrete_min ?? null,
       criadoEm: t.criado_em, iniciadaEm: t.iniciada_em, concluidaEm: t.concluida_em, concluidaPor: t.concluida_por, marcadores: t.marcadores ?? [],
       participantes: a.participantes, observadores: a.observadores,
     },
-    checklist: checklist ?? [], mensagens: mensagens ?? [], visualizacoes: (leituras ?? []).filter((l: any) => l.usuario !== c.eu), subtarefas: filhas ?? [], pai,
+    checklist: checklist ?? [], mensagens: mensagens ?? [], visualizacoes: (leituras ?? []).filter((l: any) => l.usuario !== c.eu), subtarefas: filhas ?? [], pai, recorrencia,
     anexos: (anexos ?? []).map((x: any) => ({ id: x.id, nome: x.nome, tipo: x.tipo, tamanho: x.tamanho, autor: x.autor, criadoEm: x.criado_em })),
     nomes, eu: c.eu, pode: { gerir: a.gestor, colaborar: a.colaborador, excluir: t.proprietario === c.eu || c.direcao },
   };
@@ -247,7 +280,7 @@ async function criar(c: Ctx, b: any) {
   if (txt(b.tarefa_pai_id)) { const pai = await carregarTarefa(c, b.tarefa_pai_id); paiId = pai.t.id; }
 
   const { data: nova, error } = await sb.from("ml_tarefas").insert({
-    titulo, descricao: txt(b.descricao).slice(0, 20000), proprietario: c.eu, responsavel, prazo: lerPrazo(b.prazo), urgente: b.urgente === true,
+    titulo, descricao: txt(b.descricao).slice(0, 20000), proprietario: c.eu, responsavel, prazo: lerPrazo(b.prazo), urgente: b.urgente === true, lembrete_min: lerLembrete(b.lembrete),
     marcadores: lerMarcadores(b.marcadores), tarefa_pai_id: paiId,
   }).select("*").single();
   if (error) throw error;
@@ -259,7 +292,24 @@ async function criar(c: Ctx, b: any) {
   const itens = lista.map((i: any, n: number) => ({ tarefa_id: nova.id, grupo: txt(i?.grupo).slice(0, 80) || "Lista de verificação", texto: txt(i?.texto).slice(0, 300), ordem: n })).filter((i: any) => i.texto);
   if (itens.length) { const { error: e } = await sb.from("ml_tarefa_checklist").insert(itens); if (e) throw e; }
 
-  await avisoSistema(nova.id, `${nomeDe(c, c.eu)} criou a tarefa.`, null);
+  let repete = "";
+  if (b.recorrencia) {
+    const r = lerRecorrencia(b.recorrencia);
+    // O prazo das próximas segue o da primeira: mesma hora e a mesma distância (em dias) da criação.
+    const prazoPrimeira = nova.prazo ? new Date(nova.prazo) : null;
+    const diasAte = prazoPrimeira ? Math.round((Date.parse(diaSP(prazoPrimeira)) - Date.parse(diaSP(new Date()))) / 86400000) : 0;
+    const { data: proxima, error: eP } = await sb.rpc("ml_recorrencia_proxima", { p_tipo: r.tipo, p_dias_semana: r.dias_semana, p_dia_mes: r.dia_mes, p_hora: r.hora, p_apos: new Date().toISOString() });
+    if (eP) throw eP;
+    const { data: regra, error: eR } = await sb.from("ml_tarefa_recorrencias").insert({
+      criador: c.eu, titulo, descricao: nova.descricao, responsavel, participantes, observadores, urgente: nova.urgente, marcadores: nova.marcadores ?? [],
+      checklist: itens.map((i: any) => i.texto), tipo: r.tipo, dias_semana: r.dias_semana, dia_mes: r.dia_mes, hora: r.hora,
+      prazo_dias: Math.min(Math.max(diasAte, 0), 90), prazo_hora: prazoPrimeira ? horaSP(prazoPrimeira) : null, lembrete_min: nova.lembrete_min ?? null, proxima_em: proxima,
+    }).select("id").single();
+    if (eR) throw eR;
+    await sb.from("ml_tarefas").update({ recorrencia_id: regra.id }).eq("id", nova.id);
+    repete = " Ela se repete automaticamente.";
+  }
+  await avisoSistema(nova.id, `${nomeDe(c, c.eu)} criou a tarefa.${repete}`, null);
   await notificar(c, [responsavel], { tipo: "tarefa_nova", titulo: "Nova tarefa para você", corpo: titulo, tarefaId: nova.id });
   await notificar(c, participantes, { tipo: "tarefa_participante", titulo: "Você foi adicionado a uma tarefa", corpo: titulo, tarefaId: nova.id });
   await notificar(c, observadores, { tipo: "tarefa_observador", titulo: "Você acompanha uma tarefa", corpo: titulo, tarefaId: nova.id });
@@ -279,6 +329,12 @@ async function atualizar(c: Ctx, b: any) {
     const antes = a.t.prazo ? new Date(a.t.prazo).toISOString() : null;
     if (p !== antes) { mudou.prazo = p; avisos.push(p ? `${quem} alterou o prazo para ${quando(p)}.` : `${quem} removeu o prazo.`); }
   }
+  if ("lembrete" in b) {
+    const l = lerLembrete(b.lembrete);
+    if (l !== (a.t.lembrete_min ?? null)) { mudou.lembrete_min = l; avisos.push(l === null ? `${quem} removeu o lembrete.` : `${quem} definiu um lembrete ${l === 0 ? "para a hora do prazo" : `${rotuloLembrete(l)} antes do prazo`}.`); }
+  }
+  // Mudou o prazo ou o lembrete: o aviso volta a valer.
+  if ("prazo" in mudou || "lembrete_min" in mudou) mudou.lembrete_enviado_em = null;
   if ("urgente" in b && (b.urgente === true) !== a.t.urgente) { mudou.urgente = b.urgente === true; avisos.push(b.urgente === true ? `${quem} marcou a tarefa como urgente.` : `${quem} tirou a marca de urgente.`); }
   if ("marcadores" in b) { const m = lerMarcadores(b.marcadores); if (m.join("|") !== (a.t.marcadores ?? []).join("|")) mudou.marcadores = m; }
   if (!Object.keys(mudou).length) return { ok: true, semMudanca: true };
@@ -488,6 +544,63 @@ async function anexoApagar(c: Ctx, b: any) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- repetições
+async function carregarRegra(c: Ctx, id: unknown) {
+  const rid = txt(id);
+  if (!UUID.test(rid)) erro(400, "Repetição inválida.");
+  const { data, error } = await sb.from("ml_tarefa_recorrencias").select("*").eq("id", rid).maybeSingle();
+  if (error) throw error;
+  if (!data) erro(404, "Não encontrei essa repetição.");
+  if (data.criador !== c.eu && data.responsavel !== c.eu && !c.direcao) erro(403, "Você não participa desta repetição.");
+  return data;
+}
+const regraDeSaida = (c: Ctx, r: any) => ({
+  id: r.id, titulo: r.titulo, criador: r.criador, responsavel: r.responsavel, tipo: r.tipo, dias_semana: r.dias_semana, dia_mes: r.dia_mes, hora: String(r.hora).slice(0, 5),
+  ativa: r.ativa, proximaEm: r.ativa ? r.proxima_em : null, ultimaEm: r.ultima_em, pode: r.criador === c.eu || c.direcao,
+});
+async function recorrenciasListar(c: Ctx) {
+  const base = () => sb.from("ml_tarefa_recorrencias").select("*").order("criado_em", { ascending: false }).limit(300);
+  let linhas: any[];
+  if (c.direcao) {
+    const { data, error } = await base();
+    if (error) throw error;
+    linhas = data ?? [];
+  } else {
+    const [{ data: d1, error: e1 }, { data: d2, error: e2 }] = await Promise.all([base().eq("criador", c.eu), base().eq("responsavel", c.eu)]);
+    if (e1) throw e1; if (e2) throw e2;
+    const mapa = new Map<string, any>();
+    for (const r of [...(d1 ?? []), ...(d2 ?? [])]) mapa.set(r.id, r);
+    linhas = [...mapa.values()].sort((x, y) => String(y.criado_em).localeCompare(String(x.criado_em)));
+  }
+  const regras = linhas.map((r: any) => regraDeSaida(c, r));
+  const nomes: Record<string, string> = {};
+  for (const r of regras) { nomes[r.criador] = nomeDe(c, r.criador); nomes[r.responsavel] = nomeDe(c, r.responsavel); }
+  return { regras, nomes, eu: c.eu };
+}
+async function recorrenciaAtivar(c: Ctx, b: any) {
+  const r = await carregarRegra(c, b.id);
+  if (r.criador !== c.eu && !c.direcao) erro(403, "Só quem criou a repetição ou a direção pausam e retomam.");
+  const ativa = b.ativa === true;
+  if (ativa && !c.nomes.has(r.responsavel)) erro(400, "O responsável desta repetição não está mais ativo. Apague e crie de novo.");
+  const patch: Record<string, unknown> = { ativa };
+  if (ativa) {
+    // Retomar não despeja as tarefas do tempo parado: recalcula a partir de agora.
+    const { data: proxima, error: eP } = await sb.rpc("ml_recorrencia_proxima", { p_tipo: r.tipo, p_dias_semana: r.dias_semana, p_dia_mes: r.dia_mes, p_hora: r.hora, p_apos: new Date().toISOString() });
+    if (eP) throw eP;
+    patch.proxima_em = proxima;
+  }
+  const { error } = await sb.from("ml_tarefa_recorrencias").update(patch).eq("id", r.id);
+  if (error) throw error;
+  return { ok: true };
+}
+async function recorrenciaExcluir(c: Ctx, b: any) {
+  const r = await carregarRegra(c, b.id);
+  if (r.criador !== c.eu && !c.direcao) erro(403, "Só quem criou a repetição ou a direção apagam.");
+  const { error } = await sb.from("ml_tarefa_recorrencias").delete().eq("id", r.id); // as tarefas já criadas ficam (recorrencia_id vira vazio)
+  if (error) throw error;
+  return { ok: true };
+}
+
 async function excluir(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
   if (a.t.proprietario !== c.eu && !c.direcao) erro(403, "Só o proprietário ou a direção apagam a tarefa.");
@@ -498,6 +611,7 @@ async function excluir(c: Ctx, b: any) {
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   usuarios: (c) => usuarios(c), listar, obter, criar, atualizar, delegar, status: mudarStatus, pessoas: definirPessoas, checklist, mensagem, excluir, anexo_enviar: anexoEnviar, anexo_url: anexoUrl, anexo_apagar: anexoApagar,
+  recorrencias: (c) => recorrenciasListar(c), recorrencia_ativar: recorrenciaAtivar, recorrencia_excluir: recorrenciaExcluir,
 };
 
 Deno.serve(async (req) => {

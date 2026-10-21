@@ -7,7 +7,7 @@ import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
 import ArquivosTarefa from "./ArquivosTarefa.jsx";
-import { STATUS_TAREFA, deInputLocal, diasDeAtraso, paraInputLocal, progressoChecklist, rotuloPrazo } from "../../lib/tarefas.js";
+import { LEMBRETES, STATUS_TAREFA, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
 import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaPessoas, tarefaStatus } from "../../services/tarefas.js";
 
 const FUSO = "America/Sao_Paulo";
@@ -216,6 +216,19 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                   {atraso > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasado {atraso} dia{atraso > 1 ? "s" : ""}</span>}
                 </div>
               </Linha>
+              {tarefa.prazo && tarefa.status !== "concluida" && (pode.gerir || tarefa.lembrete !== null) && (
+                <Linha rotulo="Lembrete">
+                  {pode.gerir ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select className="input h-9 min-h-0 w-auto text-sm" aria-label="Lembrete" value={tarefa.lembrete ?? ""} onChange={(e) => executar(() => tarefaAtualizar(id, { lembrete: lembreteDoSelect(e.target.value) }))}>
+                        {LEMBRETES.map((l) => <option key={String(l.valor)} value={l.valor ?? ""}>{l.rotulo}</option>)}
+                      </select>
+                      {quandoAvisa(tarefa.prazo, tarefa.lembrete) && <span className="text-xs text-slate-500">avisa {rotuloPrazo(quandoAvisa(tarefa.prazo, tarefa.lembrete), agora).toLowerCase()}</span>}
+                    </div>
+                  ) : <span>{rotuloLembrete(tarefa.lembrete)}</span>}
+                </Linha>
+              )}
+              {dados.recorrencia && <Linha rotulo="Repete"><span className="text-slate-600">{resumoRecorrencia(dados.recorrencia)}{dados.recorrencia.ativa ? "" : " (pausada)"}</span></Linha>}
               <Linha rotulo="Situação"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.classe}`}>{st.rotulo}</span></Linha>
               <Linha rotulo="Criada em"><span className="text-slate-600">{rotuloPrazo(tarefa.criadoEm, agora)}</span></Linha>
               <Linha rotulo="Participantes">

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agruparPorPrazo, atalhosDePrazo, atrasoTexto, colunaDoPrazo, corDoAvatar, deInputLocal, diasDeAtraso, diaLocal, iniciais, paraInputLocal, progressoChecklist, resumoDasTarefas, rotuloPrazo, semanaDe, tempoRelativo } from "./tarefas.js";
+import { agruparPorPrazo, atalhosDePrazo, atrasoTexto, colunaDoPrazo, corDoAvatar, deInputLocal, diasDeAtraso, diaLocal, iniciais, paraInputLocal, progressoChecklist, resumoDasTarefas, rotuloPrazo, semanaDe, tempoRelativo, LEMBRETES, lembreteDoSelect, quandoAvisa, rotuloLembrete, resumoRecorrencia } from "./tarefas.js";
 
 // Quarta-feira, 21/10/2026, 14:00 em São Paulo (17:00 UTC).
 const AGORA = new Date("2026-10-21T17:00:00Z");
@@ -112,4 +112,34 @@ test("tempo relativo do sino", () => {
   assert.equal(tempoRelativo("2026-10-21T10:00:00Z", AGORA), "há 7 h");
   assert.equal(tempoRelativo("2026-10-19T17:00:00Z", AGORA), "há 2 dias");
   assert.equal(tempoRelativo("2026-10-01T17:00:00Z", AGORA), "01/10/2026");
+});
+
+test("lembrete: opções, rótulo e conversão do select", () => {
+  assert.equal(LEMBRETES[0].valor, null);
+  assert.deepEqual(LEMBRETES.map((l) => l.valor), [null, 0, 15, 30, 60, 120, 1440, 2880]);
+  assert.equal(rotuloLembrete(60), "1 hora antes");
+  assert.equal(rotuloLembrete(0), "Na hora do prazo");
+  assert.equal(rotuloLembrete(undefined), "Sem lembrete");
+  assert.equal(lembreteDoSelect(""), null);
+  assert.equal(lembreteDoSelect("0"), 0);
+  assert.equal(lembreteDoSelect("1440"), 1440);
+});
+
+test("lembrete: quando avisa é o prazo menos os minutos", () => {
+  assert.equal(quandoAvisa("2026-10-21T21:00:00Z", 60), "2026-10-21T20:00:00.000Z");
+  assert.equal(quandoAvisa("2026-10-21T21:00:00Z", 0), "2026-10-21T21:00:00.000Z");
+  assert.equal(quandoAvisa("2026-10-21T21:00:00Z", 1440), "2026-10-20T21:00:00.000Z");
+  assert.equal(quandoAvisa(null, 60), null);
+  assert.equal(quandoAvisa("2026-10-21T21:00:00Z", null), null);
+});
+
+test("repetição: resumo em português", () => {
+  assert.equal(resumoRecorrencia({ tipo: "diaria", hora: "08:00:00" }), "Todo dia às 08:00");
+  assert.equal(resumoRecorrencia({ tipo: "dias_uteis", hora: "17:30" }), "Dias úteis às 17:30");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [1], hora: "09:00" }), "Toda segunda às 09:00");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [3, 1], hora: "09:00" }), "Toda segunda e quarta às 09:00");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [0, 5, 1], hora: "09:00" }), "Toda segunda, sexta e domingo às 09:00"); // domingo por último
+  assert.equal(resumoRecorrencia({ tipo: "mensal", dia_mes: 5, hora: "08:00" }), "Todo dia 5 do mês às 08:00");
+  assert.equal(resumoRecorrencia(null), "");
+  assert.equal(resumoRecorrencia({ tipo: "semanal", dias_semana: [], hora: "08:00" }), "");
 });

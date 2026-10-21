@@ -32,3 +32,7 @@ export const avisosTodosLidos = () => avisos("todas");
 export const tarefaAnexoEnviar = (id, nome, base64) => tarefas("anexo_enviar", { id, nome, base64 });
 export const tarefaAnexoUrl = (id, anexoId) => tarefas("anexo_url", { id, anexo_id: anexoId });
 export const tarefaAnexoApagar = (id, anexoId) => tarefas("anexo_apagar", { id, anexo_id: anexoId });
+
+export const tarefaRecorrencias = () => tarefas("recorrencias");
+export const tarefaRecorrenciaAtivar = (id, ativa) => tarefas("recorrencia_ativar", { id, ativa });
+export const tarefaRecorrenciaExcluir = (id) => tarefas("recorrencia_excluir", { id });
