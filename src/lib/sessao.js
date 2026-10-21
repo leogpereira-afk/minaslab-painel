@@ -148,7 +148,7 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (ehDirecao(sessao)) return true;
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
     if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
-    return modulo === "inicio" || modulo === "tarefas" || sessao.paginas_consulta.includes(modulo) ||
+    return modulo === "inicio" || modulo === "tarefas" || modulo === "mensagens" || sessao.paginas_consulta.includes(modulo) ||
       (["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }
   if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;
