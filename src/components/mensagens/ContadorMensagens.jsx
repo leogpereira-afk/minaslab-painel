@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { contadorTexto, conversasNovas, fotografiaDasNovas, tituloComContagem } from "../../lib/mensagens.js";
-import { tocarAviso } from "../../lib/somAviso.js";
+import { somLigado, tocarAviso } from "../../lib/somAviso.js";
 import { conversasContar } from "../../services/mensagens.js";
 
 const PODE_AVISAR = typeof window !== "undefined" && "Notification" in window;
-export const somLigado = () => { try { return localStorage.getItem("ml_msg_som") !== "0"; } catch { return true; } };
 
 export default function ContadorMensagens() {
   const navigate = useNavigate();

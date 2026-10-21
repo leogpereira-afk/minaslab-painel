@@ -2,10 +2,11 @@
 // Confere a cada 30 s. Se a pessoa permitir, também avisa pelo navegador quando chega algo com a aba em segundo plano.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, BellRing, CheckCheck } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Volume2, VolumeX } from "lucide-react";
 import { clsx } from "clsx";
 import { Modal } from "./ui.jsx";
 import { tempoRelativo } from "../lib/tarefas.js";
+import { ligarSom, somLigado, tocarAviso } from "../lib/somAviso.js";
 import { avisoLido, avisosContar, avisosListar, avisosTodosLidos } from "../services/tarefas.js";
 
 const PODE_AVISAR = typeof window !== "undefined" && "Notification" in window;
@@ -19,6 +20,7 @@ export default function Notificacoes({ className }) {
   const [aberto, setAberto] = useState(false);
   const [itens, setItens] = useState([]);
   const [erro, setErro] = useState("");
+  const [som, setSom] = useState(somLigado);
   const [permissao, setPermissao] = useState(PODE_AVISAR ? Notification.permission : "denied");
 
   const avisarNoNavegador = useCallback(async () => {
@@ -41,13 +43,14 @@ export default function Notificacoes({ className }) {
       setNaoLidas(n);
       const subiu = ultimoTotal.current !== null && n > ultimoTotal.current;
       ultimoTotal.current = n;
+      if (subiu && somLigado()) tocarAviso(); // toda notificação nova apita
       if (subiu && PODE_AVISAR && Notification.permission === "granted" && document.hidden) void avisarNoNavegador();
     } catch { /* sem rede por um instante: tenta de novo no próximo ciclo */ }
   }, [avisarNoNavegador]);
 
   useEffect(() => {
     void contar();
-    const t = setInterval(() => { if (!document.hidden || (PODE_AVISAR && Notification.permission === "granted")) void contar(); }, 30000);
+    const t = setInterval(() => { if (!document.hidden || (PODE_AVISAR && Notification.permission === "granted")) void contar(); }, 15000);
     const volta = () => { if (!document.hidden) void contar(); };
     document.addEventListener("visibilitychange", volta);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", volta); };
@@ -70,6 +73,7 @@ export default function Notificacoes({ className }) {
     if (n.link) navigate(n.link);
   };
   const marcarTodas = async () => { try { await avisosTodosLidos(); setItens((l) => l.map((x) => ({ ...x, lida: true }))); setNaoLidas(0); ultimoTotal.current = 0; } catch (ex) { setErro(ex.message); } };
+  const alternarSom = () => { const novo = !som; setSom(novo); ligarSom(novo); if (novo) tocarAviso(); };
   const ativarNavegador = async () => { if (PODE_AVISAR) setPermissao(await Notification.requestPermission()); };
 
   return (
@@ -82,6 +86,7 @@ export default function Notificacoes({ className }) {
         <div className="space-y-3 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button type="button" className="btn-outline h-9 min-h-0 text-sm" onClick={marcarTodas} disabled={!naoLidas}><CheckCheck size={14} />Marcar todas como lidas</button>
+            <button type="button" onClick={alternarSom} aria-pressed={som} className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">{som ? <Volume2 size={15} aria-hidden="true" /> : <VolumeX size={15} aria-hidden="true" />}Som {som ? "ligado" : "desligado"}</button>
             {PODE_AVISAR && permissao === "default" && <button type="button" className="text-sm text-brand-700 underline" onClick={ativarNavegador}>Avisar também pelo navegador</button>}
           </div>
           {PODE_AVISAR && permissao === "denied" && <p className="text-xs text-slate-500">Os avisos do navegador estão bloqueados. Libere nas configurações do site se quiser recebê-los.</p>}

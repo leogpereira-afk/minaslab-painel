@@ -1,8 +1,7 @@
 // Liga e desliga os avisos de mensagem nova: toque e aviso do navegador (que a própria pessoa precisa permitir).
 import { useState } from "react";
 import { Bell, BellOff, Volume2, VolumeX } from "lucide-react";
-import { tocarAviso } from "../../lib/somAviso.js";
-import { somLigado } from "./ContadorMensagens.jsx";
+import { ligarSom, somLigado, tocarAviso } from "../../lib/somAviso.js";
 
 const PODE = typeof window !== "undefined" && "Notification" in window;
 
@@ -12,7 +11,7 @@ export default function AvisosDoMessenger() {
   const alternarSom = () => {
     const novo = !som;
     setSom(novo);
-    try { localStorage.setItem("ml_msg_som", novo ? "1" : "0"); } catch { /* sem armazenamento local, só vale nesta aba */ }
+    ligarSom(novo);
     if (novo) tocarAviso();
   };
   const pedir = async () => { if (PODE) setPermissao(await Notification.requestPermission()); };
