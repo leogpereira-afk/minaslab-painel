@@ -27,6 +27,19 @@ export const naCasa = (p) => !!p && p.ativo !== false && !String(p.desligadoEm ?
 
 export const nomeCurto = (p) => String(p?.apelido || p?.nome || "").trim();
 
+/* Ficha duplicada no RH (mesma pessoa cadastrada duas vezes) não pode virar
+   dois parabéns: fica uma por nome + data de nascimento. */
+const chaveNome = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+export function semDuplicadas(pessoas) {
+  const vistos = new Set();
+  return (pessoas || []).filter((p) => {
+    const k = `${chaveNome(p?.nome)}|${String(p?.dataNascimento ?? "").slice(5, 10)}`;
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+}
+
 /** Dia e mês do aniversário no ano pedido (29/02 cai em 28/02 nos anos comuns). */
 export function aniversarioNoAno(dataNascimento, ano) {
   const m = ISO.exec(String(dataNascimento ?? ""));
@@ -42,8 +55,7 @@ export function aniversarioNoAno(dataNascimento, ano) {
  * Devolve só { pessoaId, nome, dia, mes } de quem está na casa e não pediu para ficar de fora.
  */
 export function aniversariantesDoMes(pessoas, ano, mes, ocultos = []) {
-  return (pessoas || [])
-    .filter((p) => naCasa(p) && !ocultos.includes(p.id) && nomeCurto(p))
+  return semDuplicadas((pessoas || []).filter((p) => naCasa(p) && !ocultos.includes(p.id) && nomeCurto(p)))
     .map((p) => ({ p, a: aniversarioNoAno(p.dataNascimento, ano) }))
     .filter(({ a }) => a && a.mes === mes)
     .map(({ p, a }) => ({ pessoaId: p.id, nome: nomeCurto(p), dia: a.dia, mes: a.mes }))
@@ -62,8 +74,7 @@ export function parabensRecentes(pessoas, hoje, { dias = 7, ocultos = [] } = {})
   for (let i = 0; i < dias; i++) {
     const dia = somarDias(hoje, -i);
     const ano = Number(dia.slice(0, 4));
-    for (const p of pessoas || []) {
-      if (!naCasa(p) || ocultos.includes(p.id) || !nomeCurto(p)) continue;
+    for (const p of semDuplicadas((pessoas || []).filter((x) => naCasa(x) && !ocultos.includes(x.id) && nomeCurto(x)))) {
       const a = aniversarioNoAno(p.dataNascimento, ano);
       if (!a || a.data !== dia) continue;
       const nome = nomeCurto(p);
@@ -105,6 +116,18 @@ export function informativoFerias(ferias, pessoas, hoje, janela = 30) {
 
 export const TIPOS = ["noticia", "comunicado", "evento"];
 
+/* Foto anexada: fica no bucket privado ml-arquivos, pasta canais/; o post guarda só o caminho. */
+export const ehFotoGuardada = (v) => /^canais\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(String(v ?? ""));
+const TIPOS_FOTO = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+export const MAX_FOTO_BYTES = 4 * 1024 * 1024;
+/** Lê a foto enviada pela tela (data URL). Devolve { ok, erro, ext, mime, base64 }. */
+export function lerFoto(dataUrl) {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ""));
+  if (!m) return { ok: false, erro: "A foto precisa ser JPG, PNG ou WEBP." };
+  if (Math.floor(m[2].length * 3 / 4) > MAX_FOTO_BYTES) return { ok: false, erro: "Foto grande demais (até 4 MB)." };
+  return { ok: true, mime: m[1], ext: TIPOS_FOTO[m[1]], base64: m[2] };
+}
+
 /** Confere e limpa o que vem da tela para um post. Devolve { ok, erro, post }. */
 export function validarPost(b) {
   const tipo = TIPOS.includes(b?.tipo) ? b.tipo : "noticia";
@@ -112,7 +135,7 @@ export function validarPost(b) {
   const texto = String(b?.texto ?? "").trim().slice(0, 6000);
   let imagem = String(b?.imagem ?? "").trim();
   if (!titulo) return { ok: false, erro: "Dê um título para a publicação." };
-  if (imagem && !/^https:\/\/[^\s"'<>]+$/i.test(imagem)) return { ok: false, erro: "O link da imagem precisa começar com https://" };
+  if (imagem && !/^https:\/\/[^\s"'<>]+$/i.test(imagem) && !ehFotoGuardada(imagem)) return { ok: false, erro: "O link da imagem precisa começar com https://" };
   imagem = imagem.slice(0, 1000);
   return { ok: true, post: { tipo, titulo, texto, imagem, fixado: !!b?.fixado } };
 }
@@ -122,4 +145,25 @@ export function validarComentario(texto) {
   if (!t) return { ok: false, erro: "Escreva o comentário." };
   if (t.length > 1000) return { ok: false, erro: "Comentário muito longo (até 1000 caracteres)." };
   return { ok: true, texto: t };
+}
+
+const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
+export const normNome = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Destaque do mês (funcionário do mês) que a gestão escolhe para o Canais.
+ * itens: até 4 qualidades "Rótulo: texto". fotoId: id da foto em Gestão › Destaque do mês › Fotos.
+ */
+export function validarDestaque(b) {
+  if (!b || b.limpar) return { ok: true, destaque: null };
+  const nome = String(b.nome ?? "").trim().slice(0, 120);
+  const mes = String(b.mes ?? "").trim();
+  if (!nome) return { ok: false, erro: "Escolha quem é o destaque." };
+  if (!MES.test(mes)) return { ok: false, erro: "Escolha o mês do destaque." };
+  const itens = (Array.isArray(b.itens) ? b.itens : String(b.itens ?? "").split("\n"))
+    .map((l) => (typeof l === "string" ? l : `${l?.rotulo ?? ""}: ${l?.texto ?? ""}`))
+    .map((l) => String(l).trim()).filter(Boolean).slice(0, 4)
+    .map((l) => { const i = l.indexOf(":"); return i > 0 ? { rotulo: l.slice(0, i).trim().slice(0, 40), texto: l.slice(i + 1).trim().slice(0, 140) } : { rotulo: "", texto: l.slice(0, 140) }; });
+  const fotoId = String(b.fotoId ?? "").trim().slice(0, 80);
+  return { ok: true, destaque: { nome, mes, itens, fotoId } };
 }

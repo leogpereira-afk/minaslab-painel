@@ -3,14 +3,15 @@
 // aniversariantes do mês e informativo de férias. Todo mundo com login no
 // painel curte e comenta. Quem pode o quê é decidido no servidor (ml-canais).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { clsx } from "clsx";
-import { Cake, Heart, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
+import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import { TIPOS_POST, MESES, tempoRelativo, periodoFerias } from "../lib/canais.js";
 import {
   canaisFeed, canaisPublicar, canaisApagarPost, canaisComentar, canaisApagarComentario, canaisCurtir, canaisConfig, canaisSalvarConfig,
+  canaisDestaqueOpcoes, canaisSalvarDestaque,
 } from "../services/canais.js";
 
 const FILTROS = [
@@ -29,6 +30,7 @@ export default function Canais() {
   const [filtro, setFiltro] = useState("tudo");
   const [editando, setEditando] = useState(null); // null | {} (novo) | post
   const [ajustes, setAjustes] = useState(false);
+  const [editarDestaque, setEditarDestaque] = useState(false);
   const rolou = useRef(false);
 
   const carregar = useCallback(async () => {
@@ -104,13 +106,15 @@ export default function Canais() {
         </div>
 
         <aside className="space-y-4">
+          <Destaque destaque={dados.destaque} podeEditar={dados.podePublicar} aoEditar={() => setEditarDestaque(true)} />
           <Aniversariantes lista={dados.aniversariantes} hoje={dados.hoje} />
-          <Ferias lista={dados.ferias} />
+          <Ferias lista={dados.ferias} direcao={dados.direcao} />
         </aside>
       </div>
 
       <Compositor post={editando} aoFechar={() => setEditando(null)}
         aoSalvar={async (p) => { await canaisPublicar(p); setEditando(null); setAviso({ tipo: "ok", texto: p.id ? "Publicação atualizada." : "Publicado! Todos foram avisados no sino." }); carregar(); }} />
+      <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={() => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: "Destaque do mês atualizado." }); carregar(); }} />
       <Ajustes aberto={ajustes} aoFechar={() => setAjustes(false)} aoSalvo={() => { setAjustes(false); setAviso({ tipo: "ok", texto: "Ajustes salvos." }); carregar(); }} />
     </div>
   );
@@ -154,7 +158,7 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
         </div>
         {!aniv && <h2 className="font-display text-lg font-bold leading-snug text-slate-900">{p.titulo}</h2>}
         {p.texto && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-700">{p.texto}</p>}
-        {p.imagem && <img src={p.imagem} alt="" loading="lazy" className="max-h-[480px] w-full rounded-xl border border-slate-100 object-cover" referrerPolicy="no-referrer" />}
+        {p.imagemUrl && <img src={p.imagemUrl} alt="" loading="lazy" className="max-h-[480px] w-full rounded-xl border border-slate-100 object-cover" referrerPolicy="no-referrer" />}
 
         <div className="flex items-center gap-1 border-t border-slate-100 pt-2">
           <button type="button" onClick={aoCurtir} aria-pressed={p.curti}
@@ -237,7 +241,93 @@ function Aniversariantes({ lista, hoje }) {
   );
 }
 
-function Ferias({ lista }) {
+const nomeMes = (mes) => (mes ? `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}` : "");
+const iniciaisNome = (n) => String(n || "?").trim().split(/\s+/).filter((p) => p.length > 2 || /^[A-ZÀ-Ú]/.test(p)).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
+const tituloNome = (n) => String(n || "").toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, a, b) => a + b.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
+
+function Destaque({ destaque: d, podeEditar, aoEditar }) {
+  if (!d && !podeEditar) return null;
+  return (
+    <Card className="overflow-hidden !p-0">
+      <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-3">
+        <Award size={18} className="text-amber-600" />
+        <h2 className="flex-1 font-display font-bold text-slate-800">Destaque do mês</h2>
+        {podeEditar && <button type="button" className="text-xs font-semibold text-brand-700 hover:underline" onClick={aoEditar}>{d ? "Trocar" : "Escolher"}</button>}
+      </div>
+      {!d && <p className="px-4 py-3 text-sm text-slate-500">Escolha o funcionário do mês para aparecer aqui.</p>}
+      {d && (
+        <div className="px-4 py-4 text-center">
+          <div className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-full bg-amber-100 font-display text-2xl font-bold text-amber-700 ring-4 ring-amber-300 ring-offset-2">
+            {d.foto ? <img src={d.foto} alt="" className="h-full w-full object-cover" /> : iniciaisNome(d.nome)}
+          </div>
+          <p className="mt-3 font-display text-lg font-bold leading-tight text-slate-900">{tituloNome(d.nome)}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">🏆 {nomeMes(d.mes)}</p>
+          {d.itens?.length > 0 && (
+            <ul className="mt-3 space-y-1.5 text-left">
+              {d.itens.map((it, i) => (
+                <li key={i} className="flex gap-2 text-sm text-slate-700"><span className="text-amber-500">★</span><span>{it.rotulo && <b className="font-semibold text-slate-800">{it.rotulo}: </b>}{it.texto}</span></li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function mesAnterior() {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function EditarDestaque({ aberto, aoFechar, aoSalvo }) {
+  const [op, setOp] = useState(null);
+  const [f, setF] = useState({ nome: "", fotoId: "", mes: mesAnterior(), itens: "" });
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    if (!aberto) return;
+    setOp(null); setErro("");
+    canaisDestaqueOpcoes().then((r) => {
+      setOp(r);
+      const a = r.atual;
+      setF(a ? { nome: a.nome, fotoId: a.fotoId || "", mes: a.mes, itens: (a.itens || []).map((i) => (i.rotulo ? `${i.rotulo}: ${i.texto}` : i.texto)).join("\n") } : { nome: "", fotoId: "", mes: mesAnterior(), itens: "" });
+    }).catch((e) => setErro(e.message));
+  }, [aberto]);
+  async function salvar(corpo) {
+    setSalvando(true); setErro("");
+    try { await canaisSalvarDestaque(corpo); aoSalvo(); } catch (e) { setErro(e.message); }
+    setSalvando(false);
+  }
+  return (
+    <Modal titulo="Destaque do mês" aberto={aberto} aoFechar={aoFechar}>
+      {!op && !erro && <p className="text-sm text-slate-500">Carregando…</p>}
+      {erro && <p className="mb-3 text-sm text-bad-700" role="alert">{erro}</p>}
+      {op && (
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); salvar(f); }}>
+          <label className="block"><span className="label">Quem</span>
+            <select className="input w-full" value={f.nome} required onChange={(e) => { const p = op.pessoas.find((x) => x.nome === e.target.value); setF((x) => ({ ...x, nome: e.target.value, fotoId: p?.fotoId || "" })); }}>
+              <option value="">Escolha…</option>
+              {op.pessoas.map((p) => <option key={p.nome} value={p.nome}>{tituloNome(p.nome)}{p.fotoId ? " 📷" : ""}</option>)}
+            </select>
+          </label>
+          <label className="block"><span className="label">Mês</span>
+            <input className="input w-full" type="month" value={f.mes} required onChange={(e) => setF((x) => ({ ...x, mes: e.target.value }))} /></label>
+          <label className="block"><span className="label">Por que (uma linha por qualidade, até 4)</span>
+            <textarea className="input min-h-[110px] w-full" value={f.itens} placeholder={"Laboratório: excelência nos processos\nDesempenho: prontidão e agilidade"} onChange={(e) => setF((x) => ({ ...x, itens: e.target.value }))} /></label>
+          <p className="text-xs text-slate-500">A foto vem de Gestão › Destaque do mês › Fotos (📷 = tem foto). Use foto só com autorização da pessoa.</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            {op.atual && <button type="button" className="btn-ghost mr-auto text-bad-600" disabled={salvando} onClick={() => window.confirm("Tirar o destaque do mural?") && salvar({ limpar: true })}>Tirar do mural</button>}
+            <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function Ferias({ lista, direcao }) {
   const agora = lista.filter((f) => f.emCurso), proximas = lista.filter((f) => !f.emCurso);
   return (
     <Card className="overflow-hidden !p-0">
@@ -254,6 +344,7 @@ function Ferias({ lista }) {
         <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wider text-emerald-700">Próximos 30 dias</p>
         <ul className="divide-y divide-slate-100">{proximas.map((f, i) => <Linha key={i} f={f} />)}</ul>
       </>}
+      {direcao && <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">Vem do RH. <Link to="/rh?aba=ferias" className="font-semibold text-brand-700 hover:underline">Lançar férias no RH</Link></p>}
     </Card>
   );
 }
@@ -269,18 +360,51 @@ function Linha({ f }) {
 
 const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false };
 
+/* Reduz a foto no navegador antes de enviar: até 1600 px no lado maior, JPEG. */
+function reduzirFoto(arquivo, max = 1600) {
+  return new Promise((ok, falha) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      ok(cv.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); falha(new Error("Não consegui abrir essa imagem.")); };
+    img.src = url;
+  });
+}
+
 function Compositor({ post, aoFechar, aoSalvar }) {
   const [f, setF] = useState(VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [foto, setFoto] = useState(null);
+  const [previaAntiga, setPreviaAntiga] = useState("");
   useEffect(() => {
-    if (post) { setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado } : {}) }); setErro(""); }
+    if (post) {
+      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado } : {}) });
+      setFoto(null); setPreviaAntiga(post.id ? post.imagemUrl || "" : ""); setErro("");
+    }
   }, [post]);
+  const ehLink = f.imagem.startsWith("https://");
+  const previa = foto || (ehLink ? f.imagem : f.imagem ? previaAntiga : "");
+  async function anexar(e) {
+    const arq = e.target.files?.[0];
+    e.target.value = "";
+    if (!arq) return;
+    try { setErro(""); setFoto(await reduzirFoto(arq)); } catch (er) { setErro(er.message); }
+  }
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   async function salvar(e) {
     e.preventDefault();
     setSalvando(true); setErro("");
-    try { await aoSalvar(f); } catch (er) { setErro(er.message); }
+    try { await aoSalvar(foto ? { ...f, foto } : f); } catch (er) { setErro(er.message); }
     setSalvando(false);
   }
   return (
@@ -298,9 +422,21 @@ function Compositor({ post, aoFechar, aoSalvar }) {
           <input className="input w-full" value={f.titulo} onChange={set("titulo")} maxLength={160} required autoFocus /></label>
         <label className="block"><span className="label">Texto</span>
           <textarea className="input min-h-[160px] w-full" value={f.texto} onChange={set("texto")} maxLength={6000} /></label>
-        <label className="block"><span className="label">Link de uma imagem (opcional)</span>
-          <input className="input w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="https://…" /></label>
-        {f.imagem.startsWith("https://") && <img src={f.imagem} alt="Prévia" className="max-h-48 rounded-lg border object-cover" referrerPolicy="no-referrer" />}
+        <div>
+          <span className="label">Foto (opcional)</span>
+          {previa
+            ? <div className="relative inline-block">
+                <img src={previa} alt="Prévia da foto" className="max-h-56 rounded-xl border object-cover" referrerPolicy="no-referrer" />
+                <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-bad-700 shadow" onClick={() => { setFoto(null); setF((x) => ({ ...x, imagem: "" })); }}>Tirar foto</button>
+              </div>
+            : <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 hover:border-brand-300 hover:bg-brand-50/40">
+                <ImagePlus size={24} className="text-brand-600" />
+                <span className="font-semibold text-brand-700">Anexar foto</span>
+                <span className="text-xs">JPG, PNG ou WEBP · do computador ou do celular</span>
+                <input type="file" accept="image/*" className="sr-only" onChange={anexar} />
+              </label>}
+          {!previa && <input className="input mt-2 w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="ou cole o link de uma imagem (https://…)" aria-label="Link de uma imagem" />}
+        </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={f.fixado} onChange={set("fixado")} /> Fixar no topo do mural
         </label>

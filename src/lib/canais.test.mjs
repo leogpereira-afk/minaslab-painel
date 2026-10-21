@@ -5,6 +5,7 @@ import {
   ehRefAniversario, validarPost, validarComentario,
 } from "../../supabase/functions/ml-canais/regras.mjs";
 import { tempoRelativo, periodoFerias } from "./canais.js";
+import { validarDestaque, normNome } from "../../supabase/functions/ml-canais/regras.mjs";
 
 const P = (id, extra = {}) => ({ id, nome: `Pessoa ${id}`, ativo: true, ...extra });
 
@@ -96,4 +97,32 @@ test("tempo relativo e período de férias na tela", () => {
   assert.equal(tempoRelativo("2026-10-21T10:00:00Z", agora), "há 5 h");
   assert.equal(tempoRelativo("2026-10-20T10:00:00Z", agora), "ontem");
   assert.equal(periodoFerias({ inicio: "2026-11-10", retorno: "2026-11-30" }), "10/11 a 29/11 · volta 30/11");
+});
+
+
+test("destaque do mês: valida e separa as qualidades", () => {
+  assert.equal(validarDestaque({ nome: "", mes: "2026-09" }).ok, false);
+  assert.equal(validarDestaque({ nome: "Pessoa A", mes: "2026-13" }).ok, false);
+  assert.deepEqual(validarDestaque({ limpar: true }), { ok: true, destaque: null });
+  const v = validarDestaque({ nome: " Pessoa A ", mes: "2026-09", itens: "Laboratório: excelência\n\nSem rótulo\na:b\nc:d\ne:f", fotoId: "x" });
+  assert.equal(v.destaque.nome, "Pessoa A");
+  assert.equal(v.destaque.itens.length, 4);
+  assert.deepEqual(v.destaque.itens[0], { rotulo: "Laboratório", texto: "excelência" });
+  assert.deepEqual(v.destaque.itens[1], { rotulo: "", texto: "Sem rótulo" });
+  assert.equal(normNome("José  Roberto"), "JOSE ROBERTO");
+});
+
+test("ficha duplicada no RH não vira dois parabéns", () => {
+  const pessoas = [P("a", { nome: "Pessoa Dup", dataNascimento: "1990-10-21" }), P("b", { nome: "PESSOA DUP", dataNascimento: "1990-10-21" })];
+  assert.equal(parabensRecentes(pessoas, "2026-10-21").length, 1);
+  assert.equal(aniversariantesDoMes(pessoas, 2026, 10).length, 1);
+});
+
+test("foto anexada: só imagem e caminho guardado válido", async () => {
+  const { lerFoto, ehFotoGuardada } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  assert.equal(lerFoto("data:image/png;base64,iVBORw0KGgo=").ext, "png");
+  assert.equal(lerFoto("data:text/html;base64,PGI+").ok, false);
+  assert.equal(ehFotoGuardada("canais/123e4567-e89b-12d3-a456-426614174000.jpg"), true);
+  assert.equal(ehFotoGuardada("../outros/x.jpg"), false);
+  assert.equal(validarPost({ titulo: "x", imagem: "canais/123e4567-e89b-12d3-a456-426614174000.jpg" }).ok, true);
 });
