@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Globe, Instagram, Search, MapPin, Megaphone, ArrowUpRight, RefreshCw, Link2, ExternalLink, BarChart3 } from 'lucide-react';
+import { ArrowUpRight, RefreshCw, Link2, ExternalLink, BarChart3 } from 'lucide-react';
 import { Card, Empty, StatCard, SectionTitle, Modal } from '../ui.jsx';
 import { CANAIS_MARKETING, ROTULOS_METRICAS as ROTULOS, TABELAS_MARKETING, STATUS_MARKETING, formatarMetrica, horaMarketing, periodoMarketing, periodoDaFonte, provedorDoCanal, dataMarketing } from '../../lib/marketing.mjs';
 
-const ICONES = { ga4: Globe, search: Search, perfil: MapPin, instagram: Instagram, google_ads: Megaphone, meta_ads: Megaphone };
+const LOGOS = { ga4: 'googleanalytics.svg', search: 'google.png', perfil: 'perfil.png', instagram: 'instagram.svg', google_ads: 'googleads.png', meta_ads: 'meta.svg' };
 const CENTRAL = 'https://leogpereira-afk.github.io/vida-leo/?mkt=minaslab#marketing';
 
 export function EstadoFonte({ fonte }) {
@@ -11,8 +11,8 @@ export function EstadoFonte({ fonte }) {
   return <span className={fonte?.estado === 'ok' && !fonte?.atrasado ? 'chip-ok' : 'chip'}>{texto}</span>;
 }
 function Identidade({ canal }) {
-  const Icone = ICONES[canal.id];
-  return <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icone size={21} /></span><div><h3 className="font-display font-semibold text-slate-900">{canal.nome}</h3><p className="text-xs text-slate-500">{canal.origem}</p></div></div>;
+
+  return <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white"><img src={`${import.meta.env.BASE_URL}marketing/logos/${LOGOS[canal.id]}`} alt="" className="h-8 w-8 object-contain" /></span><div><h3 className="font-display font-semibold text-slate-900">{canal.nome}</h3><p className="text-xs text-slate-500">{canal.origem}</p></div></div>;
 }
 export function ResumoMarketing({ dados, abrirCanal, abrirConexoes }) {
   const fontes = dados?.fontes || [];
@@ -26,7 +26,7 @@ export function ResumoMarketing({ dados, abrirCanal, abrirConexoes }) {
       {CANAIS_MARKETING.map(canal => {
         const fonte = fontes.find(f => f.id === canal.id), periodo = periodoDaFonte(fonte);
         return <Card key={canal.id} className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-2"><Identidade canal={canal} /><EstadoFonte fonte={fonte} /></div>
+          <div className="flex flex-wrap items-start justify-between gap-2"><button type="button" className="rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" onClick={() => abrirCanal(canal.id)} aria-label={`Abrir ${canal.nome}`}><Identidade canal={canal} /></button><EstadoFonte fonte={fonte} /></div>
           <div><p className="text-xs font-medium text-slate-500">{ROTULOS[canal.principal]}</p><p className="mt-1 font-display text-3xl font-semibold tnum text-slate-900">{formatarMetrica(canal.principal, periodo?.metricas?.[canal.principal], fonte?.moeda)}</p><p className="mt-1 text-xs text-slate-500">{periodoMarketing(periodo)}</p></div>
           <div className="mt-auto flex items-end justify-between gap-3 border-t pt-3"><p className="text-xs text-slate-500">Coleta<br />{horaMarketing(fonte?.coletadoEm)}</p><button className="btn-ghost shrink-0" onClick={() => abrirCanal(canal.id)} aria-label={`Ver detalhes de ${canal.nome}`}>Detalhes <ArrowUpRight size={16} /></button></div>
         </Card>;

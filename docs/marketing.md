@@ -1,6 +1,6 @@
 # Marketing no painel MinasLab
 
-A página reúne Visão geral, Canais, Conexões e Ações. As ações continuam na coleção `mkt`, com os mesmos formulários, permissões, exportação e histórico.
+A página reúne Canais digitais e Ações. Visão geral, detalhes e conexões ficam dentro de Canais digitais. As ações continuam na coleção `mkt`, com os mesmos formulários, permissões, exportação e histórico.
 
 ## Fontes e acesso
 
@@ -27,6 +27,9 @@ A autorização/reconexão OAuth permanece no fluxo existente da Central do Léo
 2. Publicar **somente** `supabase/functions/ml-marketing` em `heveemylixartyijxewh`, com `verify_jwt=false`: a autenticação própria é obrigatória no handler.
 3. Conferir rejeição sem sessão e leitura autenticada da direção; conferir sessão sem acesso.
 4. Publicar a interface via workflow Pages do repositório. Não substituir ou republicar `ml-sync` ou `leo-sync`.
-5. Validar as quatro abas em desktop e celular. Testes locais usam dados fictícios e não gravam registros reais.
+5. Validar as duas abas e a navegação interna em desktop e celular. Testes locais usam dados fictícios e não gravam registros reais.
 
 Os adaptadores `marketing-direto*`, `marketing-marcas.mjs` e `marketing-fortemais.mjs` foram reaproveitados da Central (`vida-leo`, referência consultada em 21/10/2026). Qualquer atualização posterior deve preservar as verificações de vínculo e os contratos dos relatórios.
+
+
+Navegação: Marketing possui somente as abas Canais digitais e Ações. Visão geral, detalhes de cada canal e conexões ficam dentro de Canais digitais. Os cards usam logomarcas coloridas locais; clicar na identidade ou em Detalhes abre o canal dentro do painel.
