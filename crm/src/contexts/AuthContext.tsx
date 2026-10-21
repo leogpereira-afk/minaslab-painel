@@ -1,6 +1,7 @@
 import { createContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../services/supabase'
+import { chamarSso, loginProprioAtivo, marcarLoginProprio, ssoAtivo, tokenDoPainel } from '../services/painelSso'
 
 export type AuthProfile = {
   id: string
@@ -34,8 +35,13 @@ const KNOWN_PERMISSION_SET = new Set<string>(KNOWN_PERMISSIONS)
 
 type SignInResult = { error: string | null }
 
+// Situação da entrada pelo painel: 'verificando' enquanto confere; 'sem_painel' quando não há login no painel;
+// 'bloqueado' quando há login no painel mas o servidor não liberou o CRM (mensagem explica).
+export type EstadoSso = { fase: 'verificando' | 'pronto' | 'sem_painel' | 'bloqueado'; mensagem?: string }
+
 type AuthContextValue = {
   session: Session | null
+  sso: EstadoSso
   profile: AuthProfile | null
   permissions: Set<PermissionCode>
   loading: boolean
@@ -53,6 +59,7 @@ export const AuthContext = createContext<AuthContextValue | undefined>(undefined
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [sso, setSso] = useState<EstadoSso>({ fase: 'verificando' })
   const [profile, setProfile] = useState<AuthProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -63,12 +70,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return
+       async function iniciar() {
+      const { data, error } = await supabase.auth.getSession()
       if (error) console.error('Falha ao recuperar sessão do Supabase:', error.message)
-      setSession(data.session)
+      let atual = data.session
+
+      // Entrada única: o login vale o do painel. Quem entrou pelo e-mail (porta de emergência) fica como está.
+      if (ssoAtivo() && !loginProprioAtivo()) {
+        const token = tokenDoPainel()
+        if (!token) {
+          // Sem login no painel não há CRM: encerra qualquer sessão antiga deste navegador.
+          if (atual) await supabase.auth.signOut({ scope: 'local' })
+          atual = null
+          if (mounted) setSso({ fase: 'sem_painel' })
+        } else {
+          const quem = await chamarSso('quem', token)
+          if (quem.ok) {
+            if (!atual || atual.user.id !== quem.crmUserId) {
+              const entrada = await chamarSso('entrar', token)
+              if (entrada.ok && entrada.tokenHash) {
+                const { data: aberta, error: erroOtp } = await supabase.auth.verifyOtp({ token_hash: entrada.tokenHash, type: 'magiclink' })
+                if (erroOtp || !aberta.session) {
+                  console.error('Falha ao abrir a sessão do CRM pelo painel:', erroOtp?.message)
+                  atual = null
+                  if (mounted) setSso({ fase: 'bloqueado', mensagem: 'Não foi possível abrir o CRM com o login do painel agora. Tente de novo em instantes.' })
+                } else {
+                  atual = aberta.session
+                  if (mounted) setSso({ fase: 'pronto' })
+                }
+              } else {
+                atual = null
+                if (mounted) setSso(entrada.semSessao ? { fase: 'sem_painel' } : { fase: 'bloqueado', mensagem: entrada.erro })
+              }
+            } else if (mounted) {
+              setSso({ fase: 'pronto' })
+            }
+          } else {
+            // Crachá do painel vencido: volta ao painel. Outros motivos (sem vínculo, sem acesso) são explicados na tela.
+            if (atual) await supabase.auth.signOut({ scope: 'local' })
+            atual = null
+            if (mounted) setSso(quem.semSessao ? { fase: 'sem_painel' } : { fase: 'bloqueado', mensagem: quem.erro })
+          }
+        }
+      } else if (mounted) {
+        setSso({ fase: 'pronto' })
+      }
+
+      if (!mounted) return
+      setSession(atual)
       setAuthLoading(false)
-    })
+    }
+    void iniciar()
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!mounted) return
@@ -158,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
+      sso,
       profile,
       permissions,
       loading: authLoading || profileLoading || permissionLoading,
@@ -188,15 +241,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        marcarLoginProprio(true)
         return { error: null }
       },
       signOut: async () => {
+        marcarLoginProprio(false)
         const { error } = await supabase.auth.signOut()
         if (error) throw new Error(error.message)
       },
     }),
     [
       session,
+      sso,
       profile,
       permissions,
       authLoading,

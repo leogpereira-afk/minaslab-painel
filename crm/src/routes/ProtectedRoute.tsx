@@ -1,11 +1,27 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { urlDoPainel } from '../services/painelSso'
+
+// Sem login no painel não há CRM: leva a pessoa de volta ao painel, onde ela entra.
+function VoltarAoPainel() {
+  useEffect(() => {
+    window.location.replace(urlDoPainel())
+  }, [])
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+      <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-center shadow-sm">
+        <p className="text-sm font-medium text-slate-700">Abrindo o painel para você entrar...</p>
+      </div>
+    </div>
+  )
+}
 
 export function ProtectedRoute() {
-  const { session, profile, loading, profileError, permissionError, signOut } = useAuth()
+  const { session, sso, profile, loading, profileError, permissionError, signOut } = useAuth()
   const location = useLocation()
 
-  if (loading) {
+  if (loading || sso.fase === 'verificando') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-center shadow-sm">
@@ -16,6 +32,25 @@ export function ProtectedRoute() {
   }
 
   if (!session) {
+    if (sso.fase === 'sem_painel') return <VoltarAoPainel />
+    if (sso.fase === 'bloqueado') {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+          <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+            <h1 className="text-lg font-semibold text-slate-900">Não foi possível abrir o CRM</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {sso.mensagem || 'Seu usuário do painel não consegue acessar o CRM agora.'}
+            </p>
+            <a
+              href={urlDoPainel()}
+              className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Voltar ao painel
+            </a>
+          </div>
+        </div>
+      )
+    }
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 
