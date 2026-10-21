@@ -32,3 +32,14 @@ export function periodoFerias({ inicio, retorno }) {
   const ultimo = `${x.getUTCFullYear()}-${pad(x.getUTCMonth() + 1)}-${pad(x.getUTCDate())}`;
   return `${ddmm(inicio)} a ${ddmm(ultimo)} · volta ${ddmm(retorno)}`;
 }
+
+/** Frase de cada aniversariante na lista do mês: hoje, já passou ou ainda vem. Mesma pessoa, mesma frase (sem sorteio a cada tela). */
+const FRASES_HOJE = ["Hoje é dia de parabéns! 🎉", "Dia de festa na MinasLab! 🎂", "Hoje o mural é só alegria! 🎈"];
+export function fraseAniversario(a, diaHoje) {
+  const dia = String(a.dia).padStart(2, "0");
+  if (a.dia === diaHoje) {
+    const n = [...String(a.pessoaId ?? a.nome)].reduce((t, ch) => (t + ch.charCodeAt(0)) % 997, 0);
+    return FRASES_HOJE[n % FRASES_HOJE.length];
+  }
+  return a.dia < diaHoje ? `Aniversariou no dia ${dia} 🎉` : `Faz aniversário no dia ${dia} 🎈`;
+}
