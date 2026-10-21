@@ -12,11 +12,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CalendarCheck, Gavel, Wrench, ShoppingCart } from "lucide-react";
+import { VolumeIcon, LabIllustration } from "../components/VolumeIcon.jsx";
 import { listar } from "../services/dados.js";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import { proximasPorAlvo } from "../lib/manutencaoRegra.js";
 import {
-  PageTitle, StatCard, Card, Empty, CarregandoModulo, ErroModulo, Aviso,
+  StatCard, Card, Empty, CarregandoModulo, ErroModulo, Aviso,
 } from "../components/ui.jsx";
 
 const COLECOES = [
@@ -32,12 +33,12 @@ const LICITACAO_EM_ANDAMENTO = new Set(["estudando", "proposta_enviada", "em_ses
 // Sem hora vai para o fim do dia, não para o começo.
 const horaDe = (x) => String(x.hora || "99:99");
 
-function CardModulo({ titulo, para, children }) {
+function CardModulo({ titulo, para, emoji, children }) {
   return (
-    <Card>
+    <Card className="ml-module-card">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
-          {titulo}
+        <h2 className="ml-module-title">
+          <span aria-hidden="true">{emoji}</span> {titulo}
         </h2>
         <Link to={para} className="shrink-0 font-display text-sm font-medium text-brand-700 hover:underline">
           Ver tudo →
@@ -243,11 +244,22 @@ export default function Home() {
   });
 
   return (
-    <div>
+    <div className="ml-home">
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
-      <PageTitle titulo="Visão geral" descricao={dataExtensa} acao={<Link to="/calendario" className="btn-outline"><CalendarCheck size={17} />Abrir calendário</Link>} />
+      <section className="ml-overview">
+        <div className="ml-overview-copy">
+          <p className="ml-eyebrow">SEU DIA NA MINASLAB</p>
+          <h1>Visão geral<span aria-hidden="true">.</span></h1>
+          <p className="ml-overview-description">Agenda, compras e prioridades em um só lugar.</p>
+          <div className="ml-overview-footer">
+            <span className="ml-overview-date">{dataExtensa}</span>
+            <Link to="/calendario" className="ml-calendar-link"><CalendarCheck size={16}/>Abrir calendário <span aria-hidden="true">↗</span></Link>
+          </div>
+        </div>
+        <LabIllustration />
+      </section>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="ml-home-stats grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           rotulo="Compromissos hoje"
           onClick={() => navigate("/compromissos")}
@@ -261,6 +273,7 @@ export default function Home() {
           }
           tom={comps && comps.atrasados > 0 ? "bad" : "neutral"}
           icone={CalendarCheck}
+          ilustracao={<VolumeIcon tipo="agenda"/>}
         />
         <StatCard
           rotulo="Sessões em 7 dias"
@@ -275,6 +288,7 @@ export default function Home() {
           }
           tom={lics && lics.sessoes.length > 0 ? "warn" : "neutral"}
           icone={Gavel}
+          ilustracao={<VolumeIcon tipo="licitacao"/>}
         />
         <StatCard
           rotulo="Manutenções em 30 dias"
@@ -283,6 +297,7 @@ export default function Home() {
           sub={mans ? "agendadas ou com próxima no prazo" : "sem dados agora"}
           tom={mans && mans.qtd > 0 ? "warn" : "neutral"}
           icone={Wrench}
+          ilustracao={<VolumeIcon tipo="manutencao"/>}
         />
         <StatCard
           rotulo="Compras para receber"
@@ -291,11 +306,13 @@ export default function Home() {
           sub={!cprs ? "sem dados agora" : `${cprs.cotando} em cotação`}
           tom={cprs && cprs.aReceber.length > 0 ? "warn" : "neutral"}
           icone={ShoppingCart}
+          ilustracao={<VolumeIcon tipo="compras"/>}
         />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
-        <CardModulo titulo="Compromissos de hoje" para="/compromissos">
+      <div className="ml-section-heading"><h2>O que vem a seguir</h2><span>Agenda e pendências</span></div>
+      <div className="ml-home-modules grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
+        <CardModulo emoji="📌" titulo="Compromissos de hoje" para="/compromissos">
           {!comps ? (
             <Empty>O módulo de compromissos não respondeu agora.</Empty>
           ) : comps.hoje.length === 0 ? (
@@ -309,7 +326,7 @@ export default function Home() {
           )}
         </CardModulo>
 
-        <CardModulo titulo="Próximas sessões de licitação" para="/licitacoes">
+        <CardModulo emoji="⚖️" titulo="Próximas sessões de licitação" para="/licitacoes">
           {!lics ? (
             <Empty>O módulo de licitações não respondeu agora.</Empty>
           ) : lics.sessoes.length === 0 ? (
@@ -324,7 +341,7 @@ export default function Home() {
         </CardModulo>
 
         <div className="lg:col-span-2">
-          <CardModulo titulo="Compras a receber" para="/compras">
+          <CardModulo emoji="📦" titulo="Compras a receber" para="/compras">
             {!cprs ? (
               <Empty>O módulo de compras não respondeu agora.</Empty>
             ) : cprs.aReceber.length === 0 ? (
