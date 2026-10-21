@@ -49,6 +49,23 @@ O CRM é um app à parte (React 19 + TypeScript + supabase-js), com
   `https://leogpereira-afk.github.io/minaslab-painel/crm/reset-password`
   precisa estar nas Redirect URLs para a redefinição de senha funcionar.
 
+## Gestão MinasLab (`gestao/`)
+
+A Gestão (Comercial e Laboratório: pessoas, avaliação, destaque do mês,
+reuniões e atas, treinamentos, agenda) é um app à parte (React 19 + Vite),
+com `package.json` próprio, publicado **junto** com o painel em
+`/minaslab-painel/gestao/`. O item "Gestão" do menu aponta para lá e só
+aparece para quem tem acesso liberado na tela Acessos da própria Gestão.
+
+- **Dados**: mesmo projeto Supabase, coleções `rh_comercial_*` e `rh_lab_*`
+  em `ml_registros`, sempre pela Edge Function `ml-comercial` (código em
+  `gestao/supabase/functions/ml-comercial`), que confere o crachá do painel.
+- **Login único**: a Gestão aproveita a sessão do painel (mesmo crachá).
+- **Build**: o `deploy.yml` roda `npm install` + `npm test` + `build` em
+  `gestao/` com `BASE_PATH=/minaslab-painel/gestao/` e copia `gestao/dist`
+  para `dist/gestao`. Rotas por `#`, sem 404 especial.
+- **Rodar local**: `cd gestao && npm install && npm run dev`.
+
 ## Segredos (Supabase → Edge Functions → Secrets)
 
 - `ML_JWT_SECRET` — assina os crachás.

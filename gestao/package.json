@@ -1,0 +1,24 @@
+{
+  "name": "gestao-comercial",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gestão Comercial MinasLab — painel da gestora do setor comercial. Lê o CRM e o painel (Supabase Projetos Léo) por portas que conferem o crachá de direção.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "TZ=UTC node --test src/lib/*.test.mjs supabase/functions/ml-comercial/*.test.mjs"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "jszip": "^3.10.1",
+    "pptxgenjs": "^4.0.1",
+    "html-to-image": "1.11.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

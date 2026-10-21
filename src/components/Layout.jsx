@@ -22,10 +22,12 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
+  Briefcase,
   LogOut,
   Menu,
 } from "lucide-react";
 import { getSessao, sair, podeAbrir } from "../lib/sessao.js";
+import { useAcessoGestao } from "../lib/acessoGestao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
@@ -52,6 +54,9 @@ const MODULOS = [
   /* O CRM é um app à parte (pasta crm/), publicado junto em <base>/crm/ — por
      isso é <a> e não NavLink: o Router do painel não conhece essas rotas. */
   { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, icone: ContactRound, externo: true },
+  /* Gestão (Comercial e Laboratório): app à parte (pasta gestao/), em <base>/gestao/.
+     Aparece só para quem tem acesso liberado na tela Acessos da própria Gestão. */
+  { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, icone: Briefcase, externo: true },
   { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3 },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
 ];
@@ -63,7 +68,7 @@ const CORES_MODULO = {
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
   laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
-  ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"],
+  ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"], gestao: ["#0e7c66", "#d1fae5"],
   "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
 };
 
@@ -86,9 +91,11 @@ function Marca() {
 }
 
 function ItensMenu({ sessao, aoNavegar }) {
+  const gestao = useAcessoGestao(sessao);
+  const pode = (id) => (id === "gestao" ? gestao : podeAbrir(id, sessao));
   return (
     <nav aria-label="Módulos do MinasLab" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
-      {MODULOS.filter((mo) => podeAbrir(mo.id, sessao)).map((mo) => {
+      {MODULOS.filter((mo) => pode(mo.id)).map((mo) => {
         const Icone = mo.icone;
         if (mo.externo) return (
           <a
