@@ -10,11 +10,11 @@
 // filtro salvo com a chave velha é ignorado ao ler (lerFiltros).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { clsx } from "clsx";
 import {
   CalendarCheck, CalendarDays, CalendarRange, Gavel, Wrench, Palmtree,
-  AlarmClock, AlertTriangle, Cake, CircleDot, Plus,
+  AlarmClock, AlertTriangle, Cake, CircleDot, Plus, Users, UserCheck,
 } from "lucide-react";
 import { listar, salvar } from "../services/dados.js";
 import { getSessao, ehDirecao, podeEditar } from "../lib/sessao.js";
@@ -32,10 +32,16 @@ import {
   Aviso, Modal, Segmented,
 } from "../components/ui.jsx";
 import CalendarioMes from "../components/CalendarioMes.jsx";
+import FormEventoEquipe from "../components/agenda/FormEventoEquipe.jsx";
+import DetalheEventoEquipe from "../components/agenda/DetalheEventoEquipe.jsx";
+import { agendaListar, agendaUsuarios } from "../services/agenda.js";
+import { expandirEventos, foraNoDia, tipoDaAgenda } from "../lib/agendaEquipe.js";
 
 // Cada origem com sua cor, seu ícone e sua porta: a bolinha do filtro, o ponto
 // na grade e o ícone do painel "O dia" contam a mesma história.
 const ORIGENS = {
+  // Agenda da equipe (função ml-agenda): treinamentos, reuniões, eventos e férias/ausências de quem participa. Sem link: abre o detalhe aqui mesmo.
+  equipe: { rotulo: "Agenda da equipe", cor: "brand", icone: Users, link: "" },
   empresa: { rotulo: "Aniversário de empresa", cor: "ok", icone: Cake, link: "/rh?aba=pessoas", soDirecao: true },
   compromissos: { rotulo: "Compromissos", cor: "brand", icone: CalendarCheck, link: "/compromissos" },
   licitacoes: { rotulo: "Licitações", cor: "warn", icone: Gavel, link: "/licitacoes" },
@@ -177,7 +183,7 @@ function FiltroOrigens({ filtros, aoAlternar, direcao }) {
   );
 }
 
-function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
+function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo, podeEquipe, aoEquipe, aoAbrirEquipe }) {
   const doDia = eventos.filter((e) => e.dia === diaISO);
   return (
     <Card id="calendario-dia" role="region" aria-label={`Eventos de ${dataLonga(diaISO)}`}>
@@ -185,10 +191,19 @@ function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
         titulo="O dia"
         sub={`${dataLonga(diaISO)}${diaISO === hojeISO ? " — hoje" : ""}`}
         acao={
-          podeCriar && (
-            <button type="button" className="btn-primary" onClick={aoNovo}>
-              <Plus size={16} strokeWidth={2.5} /> Novo
-            </button>
+          (podeCriar || podeEquipe) && (
+            <span className="flex flex-wrap justify-end gap-2">
+              {podeEquipe && (
+                <button type="button" className={podeCriar ? "btn-outline" : "btn-primary"} onClick={aoEquipe}>
+                  <Users size={16} strokeWidth={2.2} /> Equipe
+                </button>
+              )}
+              {podeCriar && (
+                <button type="button" className="btn-primary" onClick={aoNovo}>
+                  <Plus size={16} strokeWidth={2.5} /> Novo
+                </button>
+              )}
+            </span>
           )
         }
       />
@@ -199,6 +214,24 @@ function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo }) {
           {doDia.map((e, i) => {
             const o = ORIGENS[e.origem];
             const Icone = o.icone;
+            if (e.origem === "equipe") {
+              return (
+                <button
+                  key={`${e.origem}-${e.agendaId}-${i}`}
+                  type="button"
+                  onClick={() => aoAbrirEquipe(e.agendaId)}
+                  className="flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors hover:bg-slate-50"
+                  style={{ borderColor: "var(--hairline)" }}
+                >
+                  <Icone size={16} strokeWidth={2.2} className={clsx("mt-0.5 shrink-0", COR_TEXTO[e.cor] || COR_TEXTO.neutral)} />
+                  {e.hora && <span className="mt-0.5 shrink-0 font-display text-xs font-semibold tnum text-slate-500">{e.hora}</span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-sm text-slate-800">{e.texto}</span>
+                    <span className="mt-1 block text-xs font-medium text-brand-700">Ver detalhes →</span>
+                  </span>
+                </button>
+              );
+            }
             return (
               <Link
                 key={`${e.origem}-${i}`}
@@ -445,6 +478,12 @@ export default function Calendario() {
   const [atualizando, setAtualizando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [dia, setDia] = useState(null); // dia escolhido na grade; null = hoje
+  const [params, setParams] = useSearchParams();
+  // Agenda da equipe (ml-agenda). null = ainda não carregou ou falhou: o resto do calendário segue de pé.
+  const [agenda, setAgenda] = useState(null);
+  const [agendaUsers, setAgendaUsers] = useState({ usuarios: [], eu: "", direcao: false });
+  const [formEquipe, setFormEquipe] = useState(null); // { evento? , tipo? }
+  const [verEquipe, setVerEquipe] = useState(null); // id do evento aberto
 
   /* O ANO QUE A GRADE ESTÁ MOSTRANDO. Aniversário se repete todo ano, então a
      ocorrência de 2029 só existe quando alguém navega até 2029 — e é a grade
@@ -539,6 +578,29 @@ export default function Calendario() {
     recarregar();
   }, [recarregar]);
 
+  /* A AGENDA DA EQUIPE carrega à parte: se ela falhar, o resto do calendário continua inteiro.
+     Pede o ano de hoje e o que está na grade (aniversário e férias cruzam o virar do ano). */
+  const carregarAgenda = useCallback(async () => {
+    const anoHoje = Number(ymdLocal(new Date()).slice(0, 4));
+    const de = `${Math.min(anoHoje, anoVisivel)}-01-01`;
+    const ate = `${Math.max(anoHoje, anoVisivel)}-12-31`;
+    try { setAgenda(await agendaListar(de, ate)); } catch { /* sem a agenda da equipe a grade mostra o resto */ }
+  }, [anoVisivel]);
+  useEffect(() => { void carregarAgenda(); }, [carregarAgenda]);
+  useEffect(() => {
+    agendaUsuarios().then(setAgendaUsers).catch(() => {});
+  }, []);
+  useEffect(() => {
+    const aoVoltar = () => { if (document.visibilityState === "visible") void carregarAgenda(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [carregarAgenda]);
+  // Vindo do aviso do sino (/calendario?dia=AAAA-MM-DD): abre no dia do evento.
+  useEffect(() => {
+    const d = params.get("dia");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) { setDia(d); setAnoVisivel(Number(d.slice(0, 4))); const p = new URLSearchParams(params); p.delete("dia"); setParams(p, { replace: true }); }
+  }, [params, setParams]);
+
   // Voltou para a aba: refaz a conta do dia e busca o que chegou.
   useEffect(() => {
     const aoVoltar = () => {
@@ -579,7 +641,8 @@ export default function Calendario() {
        cartões "hoje" e "nesta semana" perderem aniversário quando alguém
        estivesse folheando outro ano — número da tela discordando da grade. */
     const anos = [...new Set([Number(hojeISO.slice(0, 4)), anoVisivel])].filter(Number.isInteger);
-    const eventos = montarEventos(dados, hojeISO, anos)
+    const daEquipe = agenda ? expandirEventos(agenda.eventos, agenda.nomes) : [];
+    const eventos = [...montarEventos(dados, hojeISO, anos), ...daEquipe]
       .filter((e) => filtros[e.origem])
       .sort((a, b) => a.dia.localeCompare(b.dia) || horaDe(a).localeCompare(horaDe(b)));
 
@@ -611,9 +674,12 @@ export default function Calendario() {
       atrasados: eventos.filter((e) => atrasaveis.includes(e.origem) && diasEntre(hojeISO, e.dia) < 0).length,
       semData: filtros.compromissos ? dados.compromissos.filter((c) => !c.feito && !c.data).length : 0,
     };
-  }, [dados, hojeISO, filtros, anoVisivel]);
+  }, [dados, hojeISO, filtros, anoVisivel, agenda]);
 
   const diaVisto = dia || hojeISO;
+  const foraNoDiaVisto = useMemo(() => (agenda && filtros.equipe ? foraNoDia(agenda.eventos, diaVisto, agenda.nomes) : []), [agenda, filtros.equipe, diaVisto]);
+  const eventoAberto = verEquipe && agenda ? agenda.eventos.find((e) => e.id === verEquipe) : null;
+  const aposAgenda = (texto) => { setFormEquipe(null); setVerEquipe(null); ligarFiltro("equipe"); setAviso({ tipo: "ok", texto }); void carregarAgenda(); };
 
   const gravarNovo = async () => {
     const f = formNovo;
@@ -714,6 +780,22 @@ export default function Calendario() {
         </Link>
       </div>
 
+      {foraNoDiaVisto.length > 0 && (
+        <section aria-label="Quem está fora" className="mb-4 rounded-xl border bg-white p-3" style={{ borderColor: "var(--hairline)" }}>
+          <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"><UserCheck size={14} aria-hidden="true" />{diaVisto === hojeISO ? "Fora hoje" : `Fora em ${dataLonga(diaVisto)}`}</h2>
+          <ul className="flex flex-wrap gap-2">
+            {foraNoDiaVisto.map((f) => (
+              <li key={`${f.agendaId}-${f.usuario}`}>
+                <button type="button" onClick={() => setVerEquipe(f.agendaId)} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700 hover:bg-slate-200">
+                  <strong className="font-semibold">{f.nome.split(" ")[0]}</strong>
+                  <span className="text-xs text-slate-500">{tipoDaAgenda(f.tipo).rotulo.toLowerCase()} até {f.ate.split("-").reverse().slice(0, 2).join("/")}{f.responsaveis.length ? ` · resp.: ${f.responsaveis.map((r) => r.split(" ")[0]).join(", ")}` : ""}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <Card className="min-w-0">
           <FiltroOrigens filtros={filtros} aoAlternar={alternarFiltro} direcao={direcao} />
@@ -764,8 +846,32 @@ export default function Calendario() {
           eventos={vm.eventos}
           podeCriar={editavel}
           aoNovo={() => setFormNovo({ ...VAZIO_NOVO })}
+          podeEquipe={!!agenda?.podeCriar}
+          aoEquipe={() => setFormEquipe({})}
+          aoAbrirEquipe={setVerEquipe}
         />
       </div>
+
+      {formEquipe && (
+        <FormEventoEquipe
+          dia={diaVisto}
+          usuarios={agendaUsers.usuarios}
+          eu={agendaUsers.eu}
+          direcao={agendaUsers.direcao}
+          evento={formEquipe.evento}
+          aoFechar={() => setFormEquipe(null)}
+          aoSalvo={aposAgenda}
+        />
+      )}
+      {eventoAberto && !formEquipe && (
+        <DetalheEventoEquipe
+          evento={eventoAberto}
+          nomes={agenda.nomes}
+          aoFechar={() => setVerEquipe(null)}
+          aoEditar={(ev) => { setVerEquipe(null); setFormEquipe({ evento: ev }); }}
+          aoMudou={aposAgenda}
+        />
+      )}
 
       {editavel && (
         <FormNovo
