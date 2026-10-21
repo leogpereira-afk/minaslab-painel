@@ -20,6 +20,7 @@ import { listar, salvar } from "../services/dados.js";
 import { getSessao, ehDirecao, podeEditar } from "../lib/sessao.js";
 import { montarEventos } from "../lib/calendarioEventos.js";
 import { escopoEquipe } from "../lib/rh/escopoEquipe.js";
+import { compromissosVisiveis } from "../lib/compromissosVisiveis.js";
 import { dataLonga, diasEntre, ymdLocal } from "../lib/format.js";
 import { aniversariosDoAno } from "../lib/rh/aniversarios.js";
 import {
@@ -554,7 +555,7 @@ export default function Calendario() {
       });
       setPessoas(r[5].status === "fulfilled" ? equipe.pessoas.filter(p => p.ativo !== false) : null);
       setDados({
-        compromissos: r[0].value,
+        compromissos: compromissosVisiveis(r[0].value, s),
         licitacoes: r[1].value,
         manutencoes: r[2].value,
         ferias: equipe.ferias,

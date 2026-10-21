@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { listar, salvar, apagar, elenco } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
+import { compromissosVisiveis, meuIdNoElenco } from "../lib/compromissosVisiveis.js";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
@@ -336,7 +337,8 @@ export default function Compromissos() {
 
   const vm = useMemo(() => {
     if (!itens) return null;
-    const todos = nomesAtuais(itens, equipe, "responsavelId", "responsavelNome").map((c) => {
+    // Quem não é da direção vê só o que foi delegado a si (a direção vê todos).
+    const todos = nomesAtuais(compromissosVisiveis(itens, sessao, equipe), equipe, "responsavelId", "responsavelNome").map((c) => {
       const dias = c.data ? diasEntre(hojeISO, c.data) : null;
       return { ...c, dias, pz: prazo(dias), t: TIPOS[c.tipo] || TIPOS.outro };
     });
@@ -374,7 +376,7 @@ export default function Compromissos() {
       hoje: abertos.filter((c) => c.pz.grupo === "Hoje").length,
       semData: abertos.filter((c) => c.pz.grupo === "Sem data marcada").length,
     };
-  }, [itens, hojeISO, equipe]);
+  }, [itens, hojeISO, equipe, sessao]);
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);
@@ -402,7 +404,7 @@ export default function Compromissos() {
   };
 
   const acoes = {
-    abrirForm: (c) => setForm(c ? { ...VAZIO, ...c } : { ...VAZIO }),
+    abrirForm: (c) => setForm(c ? { ...VAZIO, ...c } : { ...VAZIO, responsavelId: sessao?.papel === "direcao" ? "" : meuIdNoElenco(sessao, equipe) }),
     alternarFeito: (c) =>
       gravar(
         { ...c, feito: !c.feito, feitoEm: !c.feito ? new Date().toISOString() : "" },
