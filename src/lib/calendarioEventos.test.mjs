@@ -22,7 +22,7 @@ test('não inventa datas e repete aniversário no ano consultado, sem desligados
     {id:'p',nome:'Pessoa',ativo:true,dataNascimento:'1992-02-29'},
     {id:'s',nome:'Sem data',ativo:true},
     {id:'d',nome:'Desligado',ativo:false,dataNascimento:'1990-09-20'},
-    {id:'o',nome:'LIDYANE ALVES OLIVEIRA',ativo:true,dataNascimento:'1990-09-20'},
+    {id:'o',nome:'Proprietária de exemplo',ehDirecao:true,ativo:true,dataNascimento:'1990-09-20'},
   ],vencimentos:[{pessoaId:'o',vence:'2026-09-20'},{pessoaId:'p',tipo:'Sem data'}]});
   const eventos=montarEventos({...base(),quadro:equipe.pessoas,vencimentos:equipe.vencimentos},'2026-09-19',[2026,2027]);
   assert.deepEqual(eventos.map(e=>e.dia),['2026-02-28','2027-02-28']);
