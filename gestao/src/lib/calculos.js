@@ -187,14 +187,30 @@ const media = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : n
  * (metas automáticas, técnicos, comportamentais); nota final = base − desconto
  * por ocorrência (com teto). Bônus pela NOTA FINAL e só com tudo preenchido.
  */
-export function avaliar({ resumo, membro, mes, notas = {}, nOcorrencias = 0, config, criteriosTecnicos }) {
+/**
+ * Metas da função que entram na avaliação, com nota de 0 a 10 dada pela gestão.
+ * As que o CRM já mede sozinho (propostas e aprovação) ficam de fora quando a
+ * pessoa tem essa meta no CRM, para não contar duas vezes.
+ */
+export function metasAvaliadas(funcao, membro) {
+  const crm = metasDe(membro);
+  const vistos = new Set();
+  return metasDaFuncao(funcao)
+    .filter((k) => !(crm.propostas && /propostas/i.test(k.indicador)) && !(crm.aprovacao && /aprova/i.test(k.indicador)))
+    .map((k) => ({ id: `meta-${slugId(k.indicador)}`, nome: k.indicador, desc: [k.medida, k.meta && `meta: ${k.meta}`].filter(Boolean).join(" · ") }))
+    .filter((k) => !vistos.has(k.id) && vistos.add(k.id));
+}
+const slugId = (s) => String(s).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "x";
+
+export function avaliar({ resumo, membro, mes, notas = {}, nOcorrencias = 0, config, criteriosTecnicos, metasFuncao = [] }) {
   const cfg = configCompleta(config);
   const metas = metasDe(membro);
   const r = realizado(resumo, membro, mes);
 
-  // Meta em branco ou zero = não se aplica (o cadastro da equipe pede "deixe em
-  // branco o que não se aplica"; ex.: coletor não envia propostas). O que não
-  // se aplica não entra na nota nem trava a avaliação.
+  // Metas de cada pessoa = as da função dela. Propostas e aprovação vêm do CRM
+  // e só aparecem para quem tem essa meta (em branco ou zero = não se aplica;
+  // ex.: laboratório e coletor não enviam propostas). As demais metas da
+  // função recebem nota de 0 a 10 da gestão.
   const auto = [
     {
       id: "vol", nome: "Volume de propostas",
@@ -208,18 +224,19 @@ export function avaliar({ resumo, membro, mes, notas = {}, nOcorrencias = 0, con
       nota: metas.aprovacao && r.taxa != null ? Math.min(10, (r.taxa / metas.aprovacao) * 10) : null,
       naoAplica: !metas.aprovacao,
     },
-  ];
+  ].filter((c) => !c.naoAplica);
 
   const val = (id) => {
     const n = numero(notas[id]);
     return n == null ? null : Math.max(0, Math.min(10, n));
   };
+  const metasManuais = (metasFuncao || []).map((c) => ({ ...c, nota: val(c.id) }));
   const listaTec = criteriosTecnicos?.length ? criteriosTecnicos : CRITERIOS_TECNICOS;
   const tec = listaTec.map((c) => ({ ...c, nota: val(c.id) }));
   const comp = CRITERIOS_COMPORTAMENTAIS.map((c) => ({ ...c, nota: val(c.id) }));
 
   const grupos = [
-    { peso: cfg.pesos.metas, m: media(auto.map((c) => c.nota).filter((x) => x != null)) },
+    { peso: cfg.pesos.metas, m: media([...auto, ...metasManuais].map((c) => c.nota).filter((x) => x != null)) },
     { peso: cfg.pesos.tec, m: media(tec.map((c) => c.nota).filter((x) => x != null)) },
     { peso: cfg.pesos.comp, m: media(comp.map((c) => c.nota).filter((x) => x != null)) },
   ].filter((g) => g.m != null && g.peso > 0);
@@ -230,8 +247,9 @@ export function avaliar({ resumo, membro, mes, notas = {}, nOcorrencias = 0, con
   const final = base == null ? null : Math.max(0, base - desconto);
 
   const faltamManuais = [...tec, ...comp].filter((c) => c.nota == null).length;
-  const faltamMetas = auto.filter((c) => c.nota == null && !c.naoAplica).length;
-  const completa = faltamManuais === 0 && faltamMetas === 0;
+  const faltamMetas = auto.filter((c) => c.nota == null).length;
+  const faltamMetasFuncao = metasManuais.filter((c) => c.nota == null).length;
+  const completa = faltamManuais === 0 && faltamMetas === 0 && faltamMetasFuncao === 0;
 
   let faixa = { rotulo: "Preencha os critérios", tom: "neutro" };
   let bonus = null;
@@ -242,10 +260,11 @@ export function avaliar({ resumo, membro, mes, notas = {}, nOcorrencias = 0, con
   }
 
   const pendencias = [];
-  if (faltamMetas) pendencias.push(`${faltamMetas} meta${faltamMetas > 1 ? "s" : ""} sem resultado no mês`);
+  if (faltamMetas) pendencias.push(`${faltamMetas} meta${faltamMetas > 1 ? "s" : ""} do CRM sem resultado no mês`);
+  if (faltamMetasFuncao) pendencias.push(`${faltamMetasFuncao} meta${faltamMetasFuncao > 1 ? "s" : ""} da função sem nota`);
   if (faltamManuais) pendencias.push(`${faltamManuais} critério${faltamManuais > 1 ? "s" : ""} sem nota`);
 
-  return { auto, tec, comp, base, desconto, final, nOcorrencias, faixa, bonus, completa, pendencias };
+  return { auto, metas: metasManuais, tec, comp, base, desconto, final, nOcorrencias, faixa, bonus, completa, pendencias };
 }
 
 /** Série mensal (para gráficos) de uma pessoa ou da equipe ("equipe"). */

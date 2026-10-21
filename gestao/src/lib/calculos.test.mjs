@@ -129,7 +129,7 @@ test("avaliação: função sem propostas (metas zeradas) fecha só com técnico
   const a = avaliar({ resumo, membro: { crmProfileId: "pessoaA", metas: { propostas: 0, aprovacao: 0, ligacoes: 0 } }, mes: "2026-09", notas });
   assert.equal(a.completa, true);
   assert.equal(a.pendencias.length, 0);
-  assert.ok(a.auto.every((c) => c.naoAplica));
+  assert.equal(a.auto.length, 0); // propostas e aprovação nem aparecem para quem não tem a meta
   assert.notEqual(a.bonus, null);
 });
 
@@ -151,4 +151,33 @@ test("nome próprio para documentos", () => {
   assert.equal(nomeProprio("MARIA DA SILVA SOUZA"), "Maria da Silva Souza");
   assert.equal(nomeProprio("  joão  dos santos e souza "), "João dos Santos e Souza");
   assert.equal(nomeProprio("ÉRICA D'ÁVILA"), "Érica D'Ávila");
+});
+
+test("metas da função: cada pessoa é avaliada pelas metas do próprio cargo", async () => {
+  const { metasAvaliadas } = await import("./calculos.js");
+  const lab = { kpis: "Registro de resultados — no sistema — no mesmo dia\nNão conformidades — NCs no mês — zero" };
+  const m = metasAvaliadas(lab, { metas: { propostas: 0, aprovacao: 0 } });
+  assert.deepEqual(m.map((x) => x.id), ["meta-registro-de-resultados", "meta-nao-conformidades"]);
+  assert.match(m[0].desc, /meta: no mesmo dia/);
+  const notas = { org: 8, com: 8, atd: 8, iso: 8, pro: 8, eq: 8, resp: 8, qual: 8 };
+  const sem = avaliar({ resumo, membro: { metas: {} }, mes: "2026-09", notas, metasFuncao: m });
+  assert.equal(sem.completa, false);
+  assert.ok(sem.pendencias.some((p) => /2 metas da função sem nota/.test(p)));
+  const com = avaliar({ resumo, membro: { metas: {} }, mes: "2026-09", notas: { ...notas, "meta-registro-de-resultados": 10, "meta-nao-conformidades": 6 }, metasFuncao: m });
+  assert.equal(com.completa, true);
+  // metas 8 (média de 10 e 6) × 50 + 8 × 30 + 8 × 20 = 8
+  assert.equal(com.base.toFixed(2), "8.00");
+});
+
+test("metas da função: propostas e aprovação ficam com o CRM para quem tem essa meta", async () => {
+  const { metasAvaliadas } = await import("./calculos.js");
+  const comercial = { kpis: "Propostas enviadas por mês — CRM — meta mensal da pessoa\nTaxa de aprovação — CRM — meta da pessoa\nFollow-up em dia — contato em 7 dias — 100%" };
+  const vende = metasAvaliadas(comercial, { metas: { propostas: 5, aprovacao: 50 } });
+  assert.deepEqual(vende.map((x) => x.nome), ["Follow-up em dia"]);
+  const naoVende = metasAvaliadas(comercial, { metas: {} });
+  assert.equal(naoVende.length, 3);
+  const res = { porMes: { "2026-09": { porPessoa: { pessoaA: { enviadas: 5, aprovadas: 5 } } } } };
+  const a = avaliar({ resumo: res, membro: { crmProfileId: "pessoaA", metas: { propostas: 5, aprovacao: 50 } }, mes: "2026-09", notas: {}, metasFuncao: vende });
+  assert.deepEqual(a.auto.map((c) => c.id), ["vol", "aprov"]);
+  assert.deepEqual(a.metas.map((c) => c.nome), ["Follow-up em dia"]);
 });
