@@ -53,6 +53,7 @@ async function lerPorIds(tabela: string, coluna: string, ids: string[], cols = "
 
 const fmtDia = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric", month: "long", year: "numeric" });
 const fmtHora = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const rotuloLembrete = (min: number) => (min % 1440 === 0 ? `${min / 1440} dia${min > 1440 ? "s" : ""}` : min % 60 === 0 ? `${min / 60} hora${min > 60 ? "s" : ""}` : `${min} minutos`);
 const quando = (iso: string) => { const d = new Date(iso); return `${fmtDia.format(d)}, ${fmtHora.format(d)}`; };
 
 function lerPrazo(v: unknown): string | null {
@@ -60,6 +61,15 @@ function lerPrazo(v: unknown): string | null {
   const d = new Date(txt(v));
   if (Number.isNaN(d.getTime())) erro(400, "Prazo inválido.");
   return d.toISOString();
+}
+
+// Lembrete: minutos ANTES do prazo (0 = na hora). Vazio = sem lembrete.
+const LEMBRETES_MIN = [0, 15, 30, 60, 120, 1440, 2880];
+function lerLembrete(v: unknown): number | null {
+  if (v === null || v === undefined || txt(v) === "") return null;
+  const n = Number(v);
+  if (!LEMBRETES_MIN.includes(n)) erro(400, "Lembrete inválido.");
+  return n;
 }
 
 // ---------------------------------------------------------------- contexto da chamada
@@ -179,7 +189,7 @@ async function listar(c: Ctx, b: any) {
     const nuncaVista = !visto && t.proprietario !== c.eu;
     const papeis = [t.proprietario === c.eu && "proprietario", t.responsavel === c.eu && "responsavel", participantes.includes(c.eu) && "participante", observadores.includes(c.eu) && "observador"].filter(Boolean) as string[];
     return {
-      id: t.id, titulo: t.titulo, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status,
+      id: t.id, titulo: t.titulo, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status, lembrete: t.lembrete_min ?? null,
       criadoEm: t.criado_em, concluidaEm: t.concluida_em, marcadores: t.marcadores ?? [], participantes, observadores,
       checklist: { feitos: its.filter((i: any) => i.feito).length, total: its.length },
       naoLidas: novas + (nuncaVista ? 1 : 0), subtarefas: subs.get(t.id) ?? 0, meusPapeis: papeis, descricao: t.descricao,
@@ -221,7 +231,7 @@ async function obter(c: Ctx, b: any) {
   const t = a.t;
   return {
     tarefa: {
-      id: t.id, titulo: t.titulo, descricao: t.descricao, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status,
+      id: t.id, titulo: t.titulo, descricao: t.descricao, proprietario: t.proprietario, responsavel: t.responsavel, prazo: t.prazo, urgente: t.urgente, status: t.status, lembrete: t.lembrete_min ?? null,
       criadoEm: t.criado_em, iniciadaEm: t.iniciada_em, concluidaEm: t.concluida_em, concluidaPor: t.concluida_por, marcadores: t.marcadores ?? [],
       participantes: a.participantes, observadores: a.observadores,
     },
@@ -247,7 +257,7 @@ async function criar(c: Ctx, b: any) {
   if (txt(b.tarefa_pai_id)) { const pai = await carregarTarefa(c, b.tarefa_pai_id); paiId = pai.t.id; }
 
   const { data: nova, error } = await sb.from("ml_tarefas").insert({
-    titulo, descricao: txt(b.descricao).slice(0, 20000), proprietario: c.eu, responsavel, prazo: lerPrazo(b.prazo), urgente: b.urgente === true,
+    titulo, descricao: txt(b.descricao).slice(0, 20000), proprietario: c.eu, responsavel, prazo: lerPrazo(b.prazo), urgente: b.urgente === true, lembrete_min: lerLembrete(b.lembrete),
     marcadores: lerMarcadores(b.marcadores), tarefa_pai_id: paiId,
   }).select("*").single();
   if (error) throw error;
@@ -279,6 +289,12 @@ async function atualizar(c: Ctx, b: any) {
     const antes = a.t.prazo ? new Date(a.t.prazo).toISOString() : null;
     if (p !== antes) { mudou.prazo = p; avisos.push(p ? `${quem} alterou o prazo para ${quando(p)}.` : `${quem} removeu o prazo.`); }
   }
+  if ("lembrete" in b) {
+    const l = lerLembrete(b.lembrete);
+    if (l !== (a.t.lembrete_min ?? null)) { mudou.lembrete_min = l; avisos.push(l === null ? `${quem} removeu o lembrete.` : `${quem} definiu um lembrete ${l === 0 ? "para a hora do prazo" : `${rotuloLembrete(l)} antes do prazo`}.`); }
+  }
+  // Mudou o prazo ou o lembrete: o aviso volta a valer.
+  if ("prazo" in mudou || "lembrete_min" in mudou) mudou.lembrete_enviado_em = null;
   if ("urgente" in b && (b.urgente === true) !== a.t.urgente) { mudou.urgente = b.urgente === true; avisos.push(b.urgente === true ? `${quem} marcou a tarefa como urgente.` : `${quem} tirou a marca de urgente.`); }
   if ("marcadores" in b) { const m = lerMarcadores(b.marcadores); if (m.join("|") !== (a.t.marcadores ?? []).join("|")) mudou.marcadores = m; }
   if (!Object.keys(mudou).length) return { ok: true, semMudanca: true };

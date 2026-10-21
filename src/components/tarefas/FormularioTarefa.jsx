@@ -1,11 +1,11 @@
 // Criar tarefa: formulário rápido (nome, descrição, responsável, prazo, lista de verificação)
 // e "formulário detalhado" (participantes, observadores, marcadores) — como no Bitrix24.
 import { useMemo, useState } from "react";
-import { Flame, ListChecks, Plus, X } from "lucide-react";
+import { Bell, Flame, ListChecks, Plus, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Modal } from "../ui.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
-import { atalhosDePrazo, deInputLocal } from "../../lib/tarefas.js";
+import { LEMBRETES, atalhosDePrazo, deInputLocal, lembreteDoSelect } from "../../lib/tarefas.js";
 import { tarefaCriar } from "../../services/tarefas.js";
 
 export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada }) {
@@ -14,6 +14,7 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
   const [responsavel, setResponsavel] = useState(eu);
   const [prazo, setPrazo] = useState("");
   const [urgente, setUrgente] = useState(false);
+  const [lembrete, setLembrete] = useState("");
   const [checklist, setChecklist] = useState([]);
   const [novoItem, setNovoItem] = useState("");
   const [detalhado, setDetalhado] = useState(false);
@@ -38,7 +39,7 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
       const pendente = novoItem.trim();
       const itens = pendente ? [...checklist, pendente] : checklist;
       const r = await tarefaCriar({
-        titulo, descricao, responsavel, prazo: deInputLocal(prazo), urgente, participantes, observadores, marcadores,
+        titulo, descricao, responsavel, prazo: deInputLocal(prazo), lembrete: prazo ? lembreteDoSelect(lembrete) : null, urgente, participantes, observadores, marcadores,
         checklist: itens.map((texto) => ({ texto })), tarefa_pai_id: pai?.id || null,
       });
       aoCriada(r.id);
@@ -74,6 +75,14 @@ export default function FormularioTarefa({ usuarios, eu, pai, aoFechar, aoCriada
                 <button key={a.id} type="button" onClick={() => setPrazo(a.valor)} className={clsx("rounded-full border px-2.5 py-0.5 text-xs", prazo === a.valor ? "border-brand-400 bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50")} style={prazo === a.valor ? undefined : { borderColor: "var(--hairline)" }}>{a.rotulo}</button>
               ))}
             </div>
+            {prazo && (
+              <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <Bell size={14} aria-hidden="true" />Lembrete
+                <select className="input h-9 min-h-0 w-auto text-sm" aria-label="Lembrete" value={lembrete} onChange={(e) => setLembrete(e.target.value)}>
+                  {LEMBRETES.map((l) => <option key={String(l.valor)} value={l.valor ?? ""}>{l.rotulo}</option>)}
+                </select>
+              </label>
+            )}
           </div>
         </div>
 

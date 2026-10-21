@@ -181,3 +181,24 @@ export function tempoRelativo(iso, agora = new Date()) {
   if (d < 7) return `há ${d} ${d === 1 ? "dia" : "dias"}`;
   return diaLocal(iso).split("-").reverse().join("/");
 }
+
+/** Opções do lembrete: minutos ANTES do prazo (null = sem lembrete). Os mesmos valores que o servidor aceita. */
+export const LEMBRETES = [
+  { valor: null, rotulo: "Sem lembrete" },
+  { valor: 0, rotulo: "Na hora do prazo" },
+  { valor: 15, rotulo: "15 minutos antes" },
+  { valor: 30, rotulo: "30 minutos antes" },
+  { valor: 60, rotulo: "1 hora antes" },
+  { valor: 120, rotulo: "2 horas antes" },
+  { valor: 1440, rotulo: "1 dia antes" },
+  { valor: 2880, rotulo: "2 dias antes" },
+];
+export const rotuloLembrete = (min) => LEMBRETES.find((l) => l.valor === (min ?? null))?.rotulo ?? "Sem lembrete";
+/** Valor do <select> (texto) para o que vai ao servidor (número ou null). */
+export const lembreteDoSelect = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+/** Quando o aviso toca: prazo menos os minutos do lembrete. Null se faltar um dos dois. */
+export function quandoAvisa(prazo, lembrete) {
+  if (!prazo || lembrete === null || lembrete === undefined) return null;
+  const d = new Date(new Date(prazo).getTime() - Number(lembrete) * 60000);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
