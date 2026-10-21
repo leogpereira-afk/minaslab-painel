@@ -9,12 +9,13 @@
 // Do RH sai só o mínimo: nome/apelido, dia e mês do aniversário (sem ano) e o
 // período de férias. Nada mais da ficha.
 //
-// Ações: feed, publicar, apagarPost, comentar, apagarComentario, curtir, config, salvarConfig.
+// Ações: feed, publicar, apagarPost, comentar, apagarComentario, curtir, config, salvarConfig,
+// destaqueOpcoes, salvarDestaque (funcionário do mês na lateral; foto vem de Gestão › Destaque do mês › Fotos).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   hojeSP, aniversariantesDoMes, parabensRecentes, informativoFerias, ehRefAniversario,
-  validarPost, validarComentario, naCasa, nomeCurto,
+  validarPost, validarComentario, naCasa, nomeCurto, validarDestaque, normNome,
 } from "./regras.mjs";
 
 const U = Deno.env.get("SUPABASE_URL")!;
@@ -46,7 +47,7 @@ async function crachaDoPainel(req: Request) {
 }
 
 // ---------------------------------------------------------------- contexto
-type Config = { publicadores: string[]; ocultos: string[] };
+type Config = { publicadores: string[]; ocultos: string[]; destaque: any };
 type Ctx = { eu: string; nome: string; direcao: boolean; publica: boolean; nomes: Map<string, string>; cfg: Config };
 
 async function lerConfig(): Promise<Config> {
@@ -54,7 +55,28 @@ async function lerConfig(): Promise<Config> {
   if (error) throw error;
   const v = (data?.valor ?? {}) as any;
   const lista = (x: unknown) => Array.isArray(x) ? x.map(txt).filter(Boolean) : [];
-  return { publicadores: lista(v.publicadores), ocultos: lista(v.ocultos) };
+  return { publicadores: lista(v.publicadores), ocultos: lista(v.ocultos), destaque: v.destaque ?? null };
+}
+async function gravarConfig(parcial: Record<string, unknown>) {
+  const { data, error } = await sb.from("ml_meta").select("valor").eq("chave", "canais").maybeSingle();
+  if (error) throw error;
+  const valor = { ...((data?.valor ?? {}) as any), ...parcial };
+  const { error: e2 } = await sb.from("ml_meta").upsert({ chave: "canais", valor, atualizado_em: new Date().toISOString() });
+  if (e2) throw e2;
+  return valor;
+}
+
+// Fotos do Destaque do mês cadastradas na Gestão (com autorização da pessoa).
+async function lerFotos(comFoto: boolean) {
+  const { data, error } = await sb.from("ml_registros").select(comFoto ? "id,registro" : "id,nome:registro->>nome").eq("colecao", "rh_comercial_fotos").eq("apagado", false);
+  if (error) throw error;
+  return (data ?? []).map((l: any) => comFoto ? { id: l.id, nome: l.registro?.nome ?? "", foto: l.registro?.foto ?? "" } : { id: l.id, nome: l.nome ?? "" });
+}
+async function destaqueComFoto(d: any) {
+  if (!d?.nome) return null;
+  const fotos = await lerFotos(true);
+  const f = fotos.find((x) => d.fotoId && x.id === d.fotoId) || fotos.find((x) => normNome(x.nome) === normNome(d.nome));
+  return { nome: d.nome, mes: d.mes, itens: d.itens ?? [], foto: f?.foto && String(f.foto).startsWith("data:image/") ? f.foto : "" };
 }
 
 async function carregarCtx(cracha: any): Promise<Ctx> {
@@ -100,9 +122,10 @@ async function feed(c: Ctx, b: any) {
   const hoje = hojeSP();
   const ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
   const limite = Math.min(Math.max(Number(b.limite) || 40, 1), 100);
-  const [{ data: posts, error }, rh] = await Promise.all([
+  const [{ data: posts, error }, rh, destaque] = await Promise.all([
     sb.from("ml_canais_posts").select("*").eq("apagado", false).order("fixado", { ascending: false }).order("criado_em", { ascending: false }).limit(limite),
     lerRH(),
+    destaqueComFoto(c.cfg.destaque),
   ]);
   if (error) throw error;
   const parabens = parabensRecentes(rh.pessoas, hoje, { ocultos: c.cfg.ocultos });
@@ -133,6 +156,7 @@ async function feed(c: Ctx, b: any) {
     posts: saida,
     aniversariantes: aniversariantesDoMes(rh.pessoas, ano, mes, c.cfg.ocultos),
     ferias: informativoFerias(rh.ferias, rh.pessoas, hoje, 30),
+    destaque,
   };
 }
 
@@ -225,14 +249,31 @@ async function config(c: Ctx) {
 async function salvarConfig(c: Ctx, b: any) {
   if (!c.direcao) erro(403, "Só a direção ajusta o Canais.");
   const lista = (x: unknown) => Array.isArray(x) ? [...new Set(x.map(txt).filter(Boolean))].slice(0, 300) : [];
-  const valor = { publicadores: lista(b.publicadores), ocultos: lista(b.ocultos) };
-  const { error } = await sb.from("ml_meta").upsert({ chave: "canais", valor, atualizado_em: new Date().toISOString() });
-  if (error) throw error;
-  return { ok: true, ...valor };
+  const valor = await gravarConfig({ publicadores: lista(b.publicadores), ocultos: lista(b.ocultos) });
+  return { ok: true, publicadores: valor.publicadores, ocultos: valor.ocultos };
+}
+
+// Funcionário do mês: quem publica escolhe; a lista junta quem está na casa e quem tem foto na Gestão.
+async function destaqueOpcoes(c: Ctx) {
+  exigirPublicador(c);
+  const [{ pessoas }, fotos] = await Promise.all([lerRH(), lerFotos(false)]);
+  const porNome = new Map<string, { nome: string; fotoId: string }>();
+  for (const f of fotos) if (f.nome) porNome.set(normNome(f.nome), { nome: f.nome, fotoId: f.id });
+  for (const p of pessoas.filter(naCasa)) { const n = txt(p.nome); if (n && !porNome.has(normNome(n))) porNome.set(normNome(n), { nome: n, fotoId: "" }); }
+  return { atual: c.cfg.destaque, pessoas: [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")) };
+}
+
+async function salvarDestaque(c: Ctx, b: any) {
+  exigirPublicador(c);
+  const v = validarDestaque(b);
+  if (!v.ok) erro(400, v.erro);
+  await gravarConfig({ destaque: v.destaque });
+  return { ok: true };
 }
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   feed, publicar, apagarPost, comentar, apagarComentario, curtir, config: (c) => config(c), salvarConfig,
+  destaqueOpcoes: (c) => destaqueOpcoes(c), salvarDestaque,
 };
 
 Deno.serve(async (req) => {

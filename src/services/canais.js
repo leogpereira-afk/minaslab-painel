@@ -18,3 +18,5 @@ export const canaisApagarComentario = (id) => canais("apagarComentario", { id })
 export const canaisCurtir = (ref) => canais("curtir", { ref });
 export const canaisConfig = () => canais("config");
 export const canaisSalvarConfig = (cfg) => canais("salvarConfig", cfg);
+export const canaisDestaqueOpcoes = () => canais("destaqueOpcoes");
+export const canaisSalvarDestaque = (d) => canais("salvarDestaque", d);
