@@ -4,7 +4,7 @@ import {
   hojeSP, somarDias, aniversarioNoAno, aniversariantesDoMes, parabensRecentes, informativoFerias,
   ehRefAniversario, validarPost, validarComentario,
 } from "../../supabase/functions/ml-canais/regras.mjs";
-import { tempoRelativo, periodoFerias } from "./canais.js";
+import { tempoRelativo, periodoFerias, fraseAniversario } from "./canais.js";
 import { validarDestaque, normNome } from "../../supabase/functions/ml-canais/regras.mjs";
 
 const P = (id, extra = {}) => ({ id, nome: `Pessoa ${id}`, ativo: true, ...extra });
@@ -140,4 +140,12 @@ test("foto do aniversariante: só imagem embutida", async () => {
   const l = parabensRecentes([P("a", { dataNascimento: "1990-10-21", foto: f })], "2026-10-21");
   assert.equal(l[0].foto, f);
   assert.equal(aniversariantesDoMes([P("a", { dataNascimento: "1990-10-21", foto: "javascript:x" })], 2026, 10)[0].foto, "");
+});
+
+test("frase do aniversariante: hoje, já passou e ainda vem", () => {
+  const hoje = fraseAniversario({ pessoaId: "a", nome: "Ana", dia: 21 }, 21);
+  assert.match(hoje, /🎉|🎂|🎈/);
+  assert.equal(fraseAniversario({ pessoaId: "a", nome: "Ana", dia: 21 }, 21), hoje); // mesma pessoa, mesma frase
+  assert.equal(fraseAniversario({ pessoaId: "b", nome: "Bia", dia: 5 }, 21), "Aniversariou no dia 05 🎉");
+  assert.equal(fraseAniversario({ pessoaId: "c", nome: "Caio", dia: 28 }, 21), "Faz aniversário no dia 28 🎈");
 });

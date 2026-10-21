@@ -1,13 +1,13 @@
 // A tarefa aberta: dados e lista de verificação à esquerda, bate-papo da tarefa à direita (como no Bitrix24).
 // O servidor decide quem pode o quê (`pode`); aqui só se mostram os botões que a pessoa pode usar.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Eye, Flame, Hourglass, ListChecks, Lock, MoreHorizontal, Play, Plus, RotateCcw, Search, Send, Trash2, UserPlus, X } from "lucide-react";
+import { CheckCircle2, Eye, Flame, Hourglass, ListChecks, Lock, MoreHorizontal, Pencil, Play, Plus, RotateCcw, Search, Send, Trash2, UserPlus, X } from "lucide-react";
 import { clsx } from "clsx";
 import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
 import ArquivosTarefa from "./ArquivosTarefa.jsx";
-import { LEMBRETES, STATUS_TAREFA, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
+import { LEMBRETES, STATUS_TAREFA, atalhosDePrazo, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
 import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaPessoas, tarefaStatus } from "../../services/tarefas.js";
 
 const FUSO = "America/Sao_Paulo";
@@ -20,6 +20,55 @@ function Linha({ rotulo, children }) {
     <div className="grid grid-cols-[110px_minmax(0,1fr)] items-start gap-2 py-1.5 text-sm">
       <span className="pt-0.5 text-slate-500">{rotulo}</span>
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+// Prazo da tarefa: mostra o prazo e, para quem pode, abre um editor com data e hora separadas e o botão Salvar.
+// (Antes salvava a cada tecla do campo, e a tela recarregava no meio da digitação: não dava para editar.)
+function EditorPrazo({ prazo, agora, podeEditar, ocupado, aoSalvar, atraso }) {
+  const [editando, setEditando] = useState(false);
+  const [data, setData] = useState("");
+  const [hora, setHora] = useState("18:00");
+  const [aviso, setAviso] = useState("");
+  const atalhos = useMemo(() => atalhosDePrazo(new Date()), []);
+  const abrir = () => {
+    const [d, h] = paraInputLocal(prazo).split("T");
+    setData(d || ""); setHora(h || "18:00"); setAviso(""); setEditando(true);
+  };
+  const salvar = () => {
+    if (!data) { setAviso("Escolha a data."); return; }
+    const iso = deInputLocal(`${data}T${hora || "18:00"}`);
+    if (!iso) { setAviso("Data ou hora inválida."); return; }
+    setEditando(false);
+    void aoSalvar(iso);
+  };
+  if (!editando) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span>{prazo ? rotuloPrazo(prazo, agora) : "Sem prazo"}</span>
+        {podeEditar && <button type="button" className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-slate-50" style={{ borderColor: "var(--hairline)" }} onClick={abrir} disabled={ocupado}><Pencil size={12} aria-hidden="true" />{prazo ? "Alterar" : "Definir prazo"}</button>}
+        {podeEditar && prazo && <button type="button" className="text-xs text-slate-500 underline" onClick={() => void aoSalvar(null)} disabled={ocupado}>Sem prazo</button>}
+        {atraso > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasado {atraso} dia{atraso > 1 ? "s" : ""}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-xl border p-2.5" style={{ borderColor: "var(--hairline)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="date" className="input h-9 min-h-0 w-auto text-sm" aria-label="Data do prazo" value={data} onChange={(e) => setData(e.target.value)} />
+        <input type="time" className="input h-9 min-h-0 w-auto text-sm" aria-label="Hora do prazo" value={hora} onChange={(e) => setHora(e.target.value)} />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {atalhos.map((a) => (
+          <button key={a.id} type="button" className="rounded-full border px-2.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50" style={{ borderColor: "var(--hairline)" }} onClick={() => { const [d, h] = a.valor.split("T"); setData(d); setHora(h); }}>{a.rotulo}</button>
+        ))}
+      </div>
+      {aviso && <p role="alert" className="text-xs text-red-700">{aviso}</p>}
+      <div className="flex gap-2">
+        <button type="button" className="btn-primary h-9 min-h-0 px-4 text-sm" onClick={salvar}>Salvar prazo</button>
+        <button type="button" className="btn-outline h-9 min-h-0 px-4 text-sm" onClick={() => setEditando(false)}>Cancelar</button>
+      </div>
     </div>
   );
 }
@@ -208,13 +257,7 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                   : <Pessoa usuario={tarefa.responsavel} nomes={nomes} />}
               </Linha>
               <Linha rotulo="Prazo">
-                <div className="flex flex-wrap items-center gap-2">
-                  {pode.gerir ? (
-                    <input type="datetime-local" className="input h-9 min-h-0 w-auto text-sm" aria-label="Prazo" value={paraInputLocal(tarefa.prazo)} onChange={(e) => executar(() => tarefaAtualizar(id, { prazo: deInputLocal(e.target.value) }))} />
-                  ) : <span>{tarefa.prazo ? rotuloPrazo(tarefa.prazo, agora) : "Sem prazo"}</span>}
-                  {pode.gerir && tarefa.prazo && <button type="button" className="text-xs text-slate-500 underline" onClick={() => executar(() => tarefaAtualizar(id, { prazo: null }))}>Sem prazo</button>}
-                  {atraso > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasado {atraso} dia{atraso > 1 ? "s" : ""}</span>}
-                </div>
+                <EditorPrazo prazo={tarefa.prazo} agora={agora} podeEditar={!!pode.gerir} ocupado={ocupado} atraso={atraso} aoSalvar={(iso) => executar(() => tarefaAtualizar(id, { prazo: iso }))} />
               </Linha>
               {tarefa.prazo && tarefa.status !== "concluida" && (pode.gerir || tarefa.lembrete !== null) && (
                 <Linha rotulo="Lembrete">

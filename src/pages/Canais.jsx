@@ -9,7 +9,7 @@ import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Pl
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import { nomeCurto } from "../lib/nomes.js";
-import { TIPOS_POST, MESES, tempoRelativo, periodoFerias } from "../lib/canais.js";
+import { TIPOS_POST, MESES, tempoRelativo, periodoFerias, fraseAniversario } from "../lib/canais.js";
 import {
   canaisFeed, canaisPublicar, canaisApagarPost, canaisComentar, canaisApagarComentario, canaisCurtir, canaisConfig, canaisSalvarConfig,
   canaisDestaqueOpcoes, canaisSalvarDestaque,
@@ -244,6 +244,18 @@ function NovoComentario({ aoEnviar, placeholder }) {
   );
 }
 
+// Foto de quem faz aniversário na lista do mês; sem foto (ou foto quebrada), as iniciais. Hoje ganha um anel rosa.
+function FotoDaLista({ a, hoje, passou }) {
+  const [quebrada, setQuebrada] = useState(false);
+  useEffect(() => { setQuebrada(false); }, [a.foto]);
+  const comFoto = a.foto && !quebrada;
+  return (
+    <span className={clsx("grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full font-display text-sm font-bold", hoje ? "bg-pink-100 text-pink-700 ring-2 ring-pink-400 ring-offset-2" : passou ? "bg-slate-100 text-slate-400" : "bg-amber-100 text-amber-800")} aria-hidden="true">
+      {comFoto ? <img src={a.foto} alt="" width={44} height={44} loading="lazy" className={clsx("h-full w-full object-cover", passou && "opacity-80")} onError={() => setQuebrada(true)} /> : iniciaisNome(a.nome)}
+    </span>
+  );
+}
+
 function Aniversariantes({ lista, hoje, aoVerPrevia }) {
   const mes = Number(hoje.slice(5, 7)), dia = Number(hoje.slice(8, 10));
   return (
@@ -257,14 +269,11 @@ function Aniversariantes({ lista, hoje, aoVerPrevia }) {
         {lista.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">Nenhum aniversariante cadastrado neste mês.</li>}
         {lista.map((a) => (
           <li key={a.pessoaId} className={clsx("flex items-center gap-3 px-4 py-2.5", a.dia === dia && "bg-pink-50/60")}>
-            <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-xl text-center font-display text-sm font-bold leading-none", a.dia === dia ? "bg-pink-500 text-white" : a.dia < dia ? "bg-slate-100 text-slate-400" : "bg-amber-100 text-amber-800")}>
-              {String(a.dia).padStart(2, "0")}
-            </span>
-            {a.foto
-              ? <img src={a.foto} alt="" className={clsx("h-9 w-9 shrink-0 rounded-full object-cover", a.dia < dia && "opacity-60")} />
-              : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">{iniciaisNome(a.nome)}</span>}
-            <span className={clsx("min-w-0 flex-1 truncate text-sm font-medium", a.dia < dia ? "text-slate-500" : "text-slate-800")}>{a.nome}</span>
-            {a.dia === dia && <span className="text-xs font-semibold text-pink-600">hoje 🎉</span>}
+            <FotoDaLista a={a} hoje={a.dia === dia} passou={a.dia < dia} />
+            <div className="min-w-0 flex-1">
+              <p className={clsx("truncate text-sm font-semibold", a.dia < dia ? "text-slate-500" : "text-slate-800")}>{a.nome}</p>
+              <p className={clsx("text-xs", a.dia === dia ? "font-semibold text-pink-600" : "text-slate-500")}>{fraseAniversario(a, dia)}</p>
+            </div>
           </li>
         ))}
       </ul>
