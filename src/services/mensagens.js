@@ -1,0 +1,27 @@
+// Messenger: conversa com a função ml-messenger. Quem pode ler cada conversa é decidido no servidor.
+import { API } from "../lib/api.js";
+import { comCracha, mensagemDoStatus } from "../lib/sessao.js";
+
+async function chamar(corpo) {
+  const resp = await comCracha(`${API}/ml-messenger`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  const dados = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(dados?.erro || mensagemDoStatus(resp.status));
+  return dados || {};
+}
+const msg = (action, corpo = {}) => chamar({ action, ...corpo });
+
+export const mensagensUsuarios = () => msg("usuarios");
+export const conversasListar = () => msg("conversas");
+export const conversasContar = () => msg("contar");
+export const conversaAbrirDireta = (com) => msg("abrir_direta", { com });
+export const conversaCriarGrupo = (nome, membros) => msg("criar_grupo", { nome, membros });
+export const conversaObter = (id, extra = {}) => msg("obter", { id, ...extra });
+export const conversaEnviar = (id, texto) => msg("enviar", { id, texto });
+export const conversaMembros = (id, adicionar = [], remover = []) => msg("membros", { id, adicionar, remover });
+export const conversaSair = (id) => msg("sair", { id });
+export const conversaRenomear = (id, nome) => msg("renomear", { id, nome });
+export const conversaSilenciar = (id, silenciado) => msg("silenciar", { id, silenciado });
+export const conversaApagarMensagem = (id, mensagemId) => msg("apagar_mensagem", { id, mensagem_id: mensagemId });
+
+/** Avisa o contador do menu que algo mudou (aberta uma conversa, enviada uma mensagem). */
+export const avisarContador = () => { try { window.dispatchEvent(new Event("mensagens:atualizar")); } catch { /* sem window */ } };

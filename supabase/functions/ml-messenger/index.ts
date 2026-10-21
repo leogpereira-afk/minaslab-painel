@@ -1,0 +1,354 @@
+// ml-messenger — conversas individuais e grupos entre os usuários do painel.
+//
+// Quem entra: qualquer usuário ATIVO do painel (crachá conferido aqui + conta ativa conferida ao vivo).
+// Privacidade: só os membros leem uma conversa. Nem a direção lê conversa dos outros.
+// "Lida" é por posição: cada membro guarda a `seq` da última mensagem que já viu (lido_ate).
+//
+// Ações: usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const U = Deno.env.get("SUPABASE_URL")!;
+const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
+const J = Deno.env.get("ML_JWT_SECRET") ?? "";
+const sb = createClient(U, K, { auth: { persistSession: false, autoRefreshToken: false } });
+const enc = new TextEncoder(), dec = new TextDecoder();
+const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
+const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const txt = (v: unknown) => String(v ?? "").trim();
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class Falha extends Error { constructor(public status: number, msg: string) { super(msg); } }
+const erro = (status: number, msg: string): never => { throw new Falha(status, msg); };
+
+function b64u(s: string) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; }
+async function crachaDoPainel(req: Request) {
+  const t = txt(req.headers.get("authorization")).replace(/^Bearer\s+/i, "");
+  if (!t || !J) return null;
+  const p = t.split(".");
+  if (p.length !== 3) return null;
+  try {
+    const k = await crypto.subtle.importKey("raw", enc.encode(J), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    if (!await crypto.subtle.verify("HMAC", k, b64u(p[2]), enc.encode(`${p[0]}.${p[1]}`))) return null;
+    const x = JSON.parse(dec.decode(b64u(p[1])));
+    if (x.sis !== "minaslab" || (typeof x.exp === "number" && x.exp < Math.floor(Date.now() / 1000))) return null;
+    return x;
+  } catch { return null; }
+}
+
+// ---------------------------------------------------------------- utilidades
+const fatiar = <T,>(lista: T[], n = 150) => { const o: T[][] = []; for (let i = 0; i < lista.length; i += n) o.push(lista.slice(i, i + n)); return o; };
+const unicos = (l: unknown[]) => [...new Set(l.map(txt).filter(Boolean))];
+async function lerPorIds(tabela: string, coluna: string, ids: string[], cols = "*") {
+  const out: any[] = [];
+  for (const f of fatiar(ids)) {
+    const { data, error } = await sb.from(tabela).select(cols).in(coluna, f);
+    if (error) throw error;
+    out.push(...(data ?? []));
+  }
+  return out;
+}
+const resumoTexto = (t: string) => { const s = txt(t).replace(/\s+/g, " "); return s.length > 140 ? `${s.slice(0, 137)}...` : s; };
+
+type Ctx = { eu: string; nome: string; direcao: boolean; nomes: Map<string, string> };
+async function carregarCtx(cracha: any): Promise<Ctx> {
+  const { data: contas, error } = await sb.from("ml_contas").select("usuario,nome,papel,ativo");
+  if (error) throw error;
+  const nomes = new Map<string, string>();
+  let mim: any = null;
+  for (const c of contas ?? []) {
+    if (c.ativo) nomes.set(c.usuario, txt(c.nome) || c.usuario);
+    if (c.usuario === txt(cracha.sub)) mim = c;
+  }
+  if (!mim?.ativo) erro(401, "Sua conta do painel está inativa. Entre de novo.");
+  return { eu: mim.usuario, nome: txt(mim.nome) || mim.usuario, direcao: mim.papel === "direcao", nomes };
+}
+const nomeDe = (c: Ctx, u: string) => c.nomes.get(u) ?? u;
+function exigirUsuarios(c: Ctx, lista: string[]) {
+  for (const u of lista) if (!c.nomes.has(u)) erro(400, `O usuário "${u}" não existe ou está inativo.`);
+}
+
+// ---------------------------------------------------------------- acesso à conversa
+async function carregarConversa(c: Ctx, id: unknown) {
+  const cid = txt(id);
+  if (!UUID.test(cid)) erro(400, "Conversa inválida.");
+  const { data: conv, error } = await sb.from("ml_conversas").select("*").eq("id", cid).eq("apagada", false).maybeSingle();
+  if (error) throw error;
+  if (!conv) erro(404, "Não encontrei essa conversa.");
+  const { data: todos, error: e2 } = await sb.from("ml_conversa_membros").select("*").eq("conversa_id", cid);
+  if (e2) throw e2;
+  const ativos = (todos ?? []).filter((m: any) => !m.saiu_em);
+  const meu = ativos.find((m: any) => m.usuario === c.eu);
+  if (!meu) erro(403, "Você não participa desta conversa.");
+  return { conv, membros: ativos, meu, admin: meu.papel === "admin" };
+}
+async function ultimaSeq(conversaId: string): Promise<number> {
+  const { data, error } = await sb.from("ml_conversa_mensagens").select("seq").eq("conversa_id", conversaId).order("seq", { ascending: false }).limit(1);
+  if (error) throw error;
+  return Number(data?.[0]?.seq ?? 0);
+}
+async function mensagemSistema(conversaId: string, texto: string) {
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: conversaId, autor: null, tipo: "sistema", texto }).select("seq,criado_em").single();
+  if (error) throw error;
+  await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(texto), ultima_msg_autor: null }).eq("id", conversaId);
+  return Number(data.seq);
+}
+async function avisarNoSino(c: Ctx, para: string[], n: { titulo: string; corpo?: string; conversaId: string }) {
+  const rows = unicos(para).filter((u) => u !== c.eu && c.nomes.has(u)).map((usuario) => ({ usuario, tipo: "mensagens", titulo: n.titulo, corpo: n.corpo ?? "", link: `/mensagens?abrir=${n.conversaId}`, ref_tipo: "conversa", ref_id: n.conversaId }));
+  if (!rows.length) return;
+  const { error } = await sb.from("ml_notificacoes").insert(rows);
+  if (error) console.error("notificacoes", error);
+}
+
+// ---------------------------------------------------------------- listas
+async function minhasConversas(c: Ctx) {
+  const { data: meus, error } = await sb.from("ml_conversa_membros").select("*").eq("usuario", c.eu);
+  if (error) throw error;
+  const ativas = (meus ?? []).filter((m: any) => !m.saiu_em);
+  const ids = ativas.map((m: any) => m.conversa_id);
+  const convs = (await lerPorIds("ml_conversas", "id", ids)).filter((x: any) => !x.apagada);
+  const idsVivos = convs.map((x: any) => x.id);
+  const membros = (await lerPorIds("ml_conversa_membros", "conversa_id", idsVivos)).filter((m: any) => !m.saiu_em);
+  const meuPor = new Map<string, any>(ativas.map((m: any) => [m.conversa_id, m]));
+  const minLido = ativas.length ? Math.min(...ativas.map((m: any) => Number(m.lido_ate))) : 0;
+  // Mensagens de outros depois do ponto lido mais antigo; cada conversa confere o seu ponto.
+  const novas: any[] = [];
+  for (const f of fatiar(idsVivos)) {
+    const { data, error: e2 } = await sb.from("ml_conversa_mensagens").select("conversa_id,seq,autor").in("conversa_id", f).eq("tipo", "mensagem").eq("apagada", false).gt("seq", minLido).limit(1000);
+    if (e2) throw e2;
+    novas.push(...(data ?? []).filter((m: any) => Number(m.seq) > minLido && m.autor !== c.eu));
+  }
+  const naoLidasPor = new Map<string, number>();
+  for (const m of novas) if (Number(m.seq) > Number(meuPor.get(m.conversa_id)?.lido_ate ?? 0)) naoLidasPor.set(m.conversa_id, (naoLidasPor.get(m.conversa_id) ?? 0) + 1);
+  return { convs, membros, meuPor, naoLidasPor };
+}
+
+async function listarConversas(c: Ctx) {
+  const { convs, membros, meuPor, naoLidasPor } = await minhasConversas(c);
+  const membrosPor = new Map<string, any[]>();
+  for (const m of membros) membrosPor.set(m.conversa_id, [...(membrosPor.get(m.conversa_id) ?? []), m]);
+  const nomes: Record<string, string> = {};
+  const lista = convs.map((v: any) => {
+    const ms = membrosPor.get(v.id) ?? [];
+    const outro = v.tipo === "direta" ? v.chave_direta.split("|").find((u: string) => u !== c.eu) ?? c.eu : null;
+    for (const m of ms) nomes[m.usuario] = nomeDe(c, m.usuario);
+    if (outro) nomes[outro] = nomeDe(c, outro);
+    if (v.ultima_msg_autor) nomes[v.ultima_msg_autor] = nomeDe(c, v.ultima_msg_autor);
+    const meu = meuPor.get(v.id);
+    return {
+      id: v.id, tipo: v.tipo, titulo: v.tipo === "grupo" ? v.nome : nomeDe(c, outro), outro, membros: ms.map((m: any) => m.usuario),
+      ultima: v.ultima_msg_em ? { texto: v.ultima_msg_texto, autor: v.ultima_msg_autor, em: v.ultima_msg_em } : null,
+      naoLidas: naoLidasPor.get(v.id) ?? 0, silenciado: !!meu?.silenciado, criadoEm: v.criado_em,
+    };
+  });
+  lista.sort((a, b) => String(b.ultima?.em ?? b.criadoEm).localeCompare(String(a.ultima?.em ?? a.criadoEm)));
+  const total = lista.filter((x) => !x.silenciado).reduce((n, x) => n + x.naoLidas, 0);
+  return { conversas: lista, nomes, eu: c.eu, totalNaoLidas: total };
+}
+
+async function contar(c: Ctx) {
+  const { convs, meuPor, naoLidasPor } = await minhasConversas(c);
+  const total = convs.filter((v: any) => !meuPor.get(v.id)?.silenciado).reduce((n: number, v: any) => n + (naoLidasPor.get(v.id) ?? 0), 0);
+  return { totalNaoLidas: total };
+}
+
+// ---------------------------------------------------------------- ações
+async function usuarios(c: Ctx) {
+  return { usuarios: [...c.nomes.entries()].map(([usuario, nome]) => ({ usuario, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")), eu: c.eu };
+}
+
+async function abrirDireta(c: Ctx, b: any) {
+  const com = txt(b.com);
+  if (!com || com === c.eu) erro(400, "Escolha outra pessoa para conversar.");
+  exigirUsuarios(c, [com]);
+  const chave = [c.eu, com].sort().join("|");
+  const { data: existente, error } = await sb.from("ml_conversas").select("id,apagada").eq("chave_direta", chave).maybeSingle();
+  if (error) throw error;
+  if (existente) {
+    if (existente.apagada) await sb.from("ml_conversas").update({ apagada: false }).eq("id", existente.id);
+    for (const usuario of [c.eu, com]) {
+      const { error: e2 } = await sb.from("ml_conversa_membros").upsert({ conversa_id: existente.id, usuario, papel: "membro", saiu_em: null }, { onConflict: "conversa_id,usuario" });
+      if (e2) throw e2;
+    }
+    return { ok: true, id: existente.id };
+  }
+  const { data: nova, error: e3 } = await sb.from("ml_conversas").insert({ tipo: "direta", chave_direta: chave, criador: c.eu }).select("id").single();
+  if (e3) throw e3;
+  const { error: e4 } = await sb.from("ml_conversa_membros").insert([{ conversa_id: nova.id, usuario: c.eu }, { conversa_id: nova.id, usuario: com }]);
+  if (e4) throw e4;
+  return { ok: true, id: nova.id };
+}
+
+async function criarGrupo(c: Ctx, b: any) {
+  const nome = txt(b.nome).replace(/\s+/g, " ").slice(0, 80);
+  if (!nome) erro(400, "Dê um nome para o grupo.");
+  const outros = unicos(Array.isArray(b.membros) ? b.membros : []).filter((u) => u !== c.eu);
+  if (!outros.length) erro(400, "Escolha pelo menos uma pessoa para o grupo.");
+  exigirUsuarios(c, outros);
+  const { data: nova, error } = await sb.from("ml_conversas").insert({ tipo: "grupo", nome, criador: c.eu }).select("id").single();
+  if (error) throw error;
+  const { error: e2 } = await sb.from("ml_conversa_membros").insert([{ conversa_id: nova.id, usuario: c.eu, papel: "admin" }, ...outros.map((usuario) => ({ conversa_id: nova.id, usuario, papel: "membro" }))]);
+  if (e2) throw e2;
+  const seq = await mensagemSistema(nova.id, `${nomeDe(c, c.eu)} criou o grupo "${nome}".`);
+  await sb.from("ml_conversa_membros").update({ lido_ate: seq }).eq("conversa_id", nova.id); // o começo do grupo não conta como não lido
+  await avisarNoSino(c, outros, { titulo: `Você foi adicionado ao grupo "${nome}"`, corpo: `por ${nomeDe(c, c.eu)}`, conversaId: nova.id });
+  return { ok: true, id: nova.id };
+}
+
+async function obter(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const apos = Number(b.apos) || 0, antes = Number(b.antes) || 0;
+  const q = sb.from("ml_conversa_mensagens").select("*").eq("conversa_id", a.conv.id);
+  let mensagens: any[];
+  let maisAntigas = false;
+  if (apos > 0) {
+    const { data, error } = await q.gt("seq", apos).order("seq", { ascending: true }).limit(500);
+    if (error) throw error;
+    mensagens = (data ?? []).filter((m: any) => Number(m.seq) > apos);
+  } else {
+    const { data, error } = await (antes > 0 ? q.lt("seq", antes) : q).order("seq", { ascending: false }).limit(81);
+    if (error) throw error;
+    let lista = data ?? [];
+    if (lista.length > 80) { maisAntigas = true; lista = lista.slice(0, 80); }
+    mensagens = lista.reverse();
+  }
+  // Abrir a conversa (do fim, não ao paginar para trás) marca tudo como lido.
+  let lidoAte = Number(a.meu.lido_ate);
+  if (!antes) {
+    const ultima = await ultimaSeq(a.conv.id);
+    if (ultima > lidoAte) {
+      const { error } = await sb.from("ml_conversa_membros").update({ lido_ate: ultima }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+      if (error) throw error;
+      lidoAte = ultima;
+    }
+  }
+  const outro = a.conv.tipo === "direta" ? a.conv.chave_direta.split("|").find((u: string) => u !== c.eu) ?? c.eu : null;
+  const nomes: Record<string, string> = {};
+  for (const m of a.membros) nomes[m.usuario] = nomeDe(c, m.usuario);
+  for (const m of mensagens) if (m.autor) nomes[m.autor] = nomeDe(c, m.autor);
+  if (outro) nomes[outro] = nomeDe(c, outro);
+  return {
+    conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, silenciado: !!a.meu.silenciado },
+    membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
+    mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, apagada: m.apagada, criadoEm: m.criado_em })),
+    maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
+  };
+}
+
+async function enviar(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const texto = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, 5000);
+  if (!texto) erro(400, "Escreva a mensagem.");
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto }).select("*").single();
+  if (error) throw error;
+  await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(texto), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
+  await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, apagada: false, criadoEm: data.criado_em } };
+}
+
+async function mudarMembros(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  if (a.conv.tipo !== "grupo") erro(400, "Só dá para mudar as pessoas de um grupo.");
+  if (!a.admin) erro(403, "Só quem administra o grupo adiciona ou tira pessoas.");
+  const adicionar = unicos(Array.isArray(b.adicionar) ? b.adicionar : []).filter((u) => u !== c.eu);
+  const remover = unicos(Array.isArray(b.remover) ? b.remover : []).filter((u) => u !== c.eu);
+  exigirUsuarios(c, adicionar);
+  const quem = nomeDe(c, c.eu);
+  const jaDentro = new Set(a.membros.map((m: any) => m.usuario));
+  const novos = adicionar.filter((u) => !jaDentro.has(u));
+  if (novos.length) {
+    const seq = await ultimaSeq(a.conv.id);
+    for (const usuario of novos) {
+      const { error } = await sb.from("ml_conversa_membros").upsert({ conversa_id: a.conv.id, usuario, papel: "membro", entrou_em: new Date().toISOString(), lido_ate: seq, saiu_em: null }, { onConflict: "conversa_id,usuario" });
+      if (error) throw error;
+    }
+    const s = await mensagemSistema(a.conv.id, `${quem} adicionou ${novos.map((u) => nomeDe(c, u)).join(", ")}.`);
+    await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).in("usuario", [c.eu]);
+    await avisarNoSino(c, novos, { titulo: `Você foi adicionado ao grupo "${a.conv.nome}"`, corpo: `por ${quem}`, conversaId: a.conv.id });
+  }
+  const tirados = remover.filter((u) => jaDentro.has(u));
+  if (tirados.length) {
+    for (const usuario of tirados) {
+      const { error } = await sb.from("ml_conversa_membros").update({ saiu_em: new Date().toISOString() }).eq("conversa_id", a.conv.id).eq("usuario", usuario);
+      if (error) throw error;
+    }
+    const s = await mensagemSistema(a.conv.id, `${quem} retirou ${tirados.map((u) => nomeDe(c, u)).join(", ")} do grupo.`);
+    await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  }
+  return { ok: true, adicionados: novos.length, retirados: tirados.length };
+}
+
+async function sair(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  if (a.conv.tipo !== "grupo") erro(400, "Conversa individual não tem como sair.");
+  const { error } = await sb.from("ml_conversa_membros").update({ saiu_em: new Date().toISOString() }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  if (error) throw error;
+  const restantes = a.membros.filter((m: any) => m.usuario !== c.eu);
+  if (!restantes.length) { await sb.from("ml_conversas").update({ apagada: true }).eq("id", a.conv.id); return { ok: true, encerrado: true }; }
+  if (!restantes.some((m: any) => m.papel === "admin")) {
+    const prox = [...restantes].sort((x: any, y: any) => String(x.entrou_em).localeCompare(String(y.entrou_em)))[0];
+    await sb.from("ml_conversa_membros").update({ papel: "admin" }).eq("conversa_id", a.conv.id).eq("usuario", prox.usuario);
+  }
+  await mensagemSistema(a.conv.id, `${nomeDe(c, c.eu)} saiu do grupo.`);
+  return { ok: true };
+}
+
+async function renomear(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  if (a.conv.tipo !== "grupo") erro(400, "Só grupos têm nome.");
+  if (!a.admin) erro(403, "Só quem administra o grupo muda o nome.");
+  const nome = txt(b.nome).replace(/\s+/g, " ").slice(0, 80);
+  if (!nome) erro(400, "O nome não pode ficar vazio.");
+  if (nome === a.conv.nome) return { ok: true, semMudanca: true };
+  const { error } = await sb.from("ml_conversas").update({ nome }).eq("id", a.conv.id);
+  if (error) throw error;
+  const s = await mensagemSistema(a.conv.id, `${nomeDe(c, c.eu)} mudou o nome do grupo para "${nome}".`);
+  await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  return { ok: true };
+}
+
+async function silenciar(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const { error } = await sb.from("ml_conversa_membros").update({ silenciado: b.silenciado === true }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  if (error) throw error;
+  return { ok: true };
+}
+
+async function apagarMensagem(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const mid = txt(b.mensagem_id);
+  if (!UUID.test(mid)) erro(400, "Mensagem inválida.");
+  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("id,autor,conversa_id,tipo").eq("id", mid).maybeSingle();
+  if (error) throw error;
+  if (!m || m.conversa_id !== a.conv.id || m.tipo !== "mensagem") erro(404, "Não encontrei essa mensagem.");
+  if (m.autor !== c.eu) erro(403, "Você só apaga as suas próprias mensagens.");
+  const { error: e2 } = await sb.from("ml_conversa_mensagens").update({ apagada: true }).eq("id", mid);
+  if (e2) throw e2;
+  const { data: ult } = await sb.from("ml_conversa_mensagens").select("texto,autor,criado_em,apagada,tipo").eq("conversa_id", a.conv.id).order("seq", { ascending: false }).limit(20);
+  const vivo = (ult ?? []).find((x: any) => !x.apagada);
+  await sb.from("ml_conversas").update(vivo ? { ultima_msg_texto: resumoTexto(vivo.texto), ultima_msg_autor: vivo.autor, ultima_msg_em: vivo.criado_em } : { ultima_msg_texto: "", ultima_msg_autor: null }).eq("id", a.conv.id);
+  return { ok: true };
+}
+
+const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
+  usuarios: (c) => usuarios(c), conversas: (c) => listarConversas(c), contar: (c) => contar(c),
+  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem,
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json({ erro: "Use POST." }, 405);
+  const cracha = await crachaDoPainel(req);
+  if (!cracha) return json({ erro: "Sua sessão expirou. Entre de novo.", semSessao: true }, 401);
+  try {
+    const b = await req.json().catch(() => ({}));
+    const fn = ACOES[txt(b.action)];
+    if (!fn) return json({ erro: "Ação inválida." }, 400);
+    const c = await carregarCtx(cracha);
+    return json(await fn(c, b));
+  } catch (e) {
+    if (e instanceof Falha) return json({ erro: e.message, ...(e.status === 401 ? { semSessao: true } : {}) }, e.status);
+    console.error("ml-messenger", e);
+    return json({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
+  }
+});

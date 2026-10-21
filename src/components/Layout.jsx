@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { KeyRound, LogOut, Menu, Search, ArrowUpRight, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, MessageCircle, PackageSearch, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir } from "../lib/sessao.js";
@@ -13,40 +13,42 @@ import { trocarMinhaSenha } from "../services/dados.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
 import Notificacoes from "./Notificacoes.jsx";
+import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
 
 /* O MENU E UMA LISTA SO. A Impresilk pagou dois dias de procura porque a lista
    de modulos vivia copiada em tres arquivos e a copia envelhecia calada. Aqui:
    modulo novo entra NESTE array e na rota do App.jsx — e em nenhum outro
    lugar. */
 const MODULOS = [
-  { id: "inicio", rotulo: "Início", caminho: "/", emoji: "🏠", grupo: "Agenda" },
-  { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", emoji: "✅", grupo: "Agenda" },
-  { id: "calendario", rotulo: "Calendário", caminho: "/calendario", emoji: "🗓️", grupo: "Agenda" },
-  { id: "compromissos", rotulo: "Compromissos", caminho: "/compromissos", emoji: "📌", grupo: "Agenda" },
-  { id: "licitacoes", rotulo: "Licitações", caminho: "/licitacoes", emoji: "⚖️", grupo: "Negócios" },
-  { id: "marketing", rotulo: "Marketing", caminho: "/marketing", emoji: "📣", grupo: "Negócios" },
-  { id: "google-drive", rotulo: "Google Drive", caminho: "/google-drive", emoji: "📂", grupo: "Administração" },
-  { id: "compras", rotulo: "Compras", caminho: "/compras", emoji: "🛒", grupo: "Operação" },
-  { id: "gestao-estoque", rotulo: "Gestão de Estoque", caminho: "/gestao-estoque", emoji: "📦", grupo: "Operação" },
-  { id: "patrimonio", rotulo: "Patrimônio", caminho: "/patrimonio", emoji: "🏢", grupo: "Operação" },
-  { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", emoji: "🛠️", grupo: "Operação" },
-  { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", emoji: "🧪", grupo: "Operação" },
-  { id: "rh", rotulo: "RH", caminho: "/rh", emoji: "👥", grupo: "Administração" },
-  { id: "ponto", rotulo: "Ponto", caminho: "/ponto", emoji: "⏱️", grupo: "Administração" },
-  { id: "financas", rotulo: "Finanças", caminho: "/financas", emoji: "💰", grupo: "Negócios" },
+  { id: "inicio", rotulo: "Início", caminho: "/", icone: LayoutDashboard, grupo: "Agenda" },
+  { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", icone: ListChecks, grupo: "Agenda" },
+  { id: "mensagens", rotulo: "Mensagens", caminho: "/mensagens", icone: MessageCircle, grupo: "Agenda" },
+  { id: "calendario", rotulo: "Calendário", caminho: "/calendario", icone: CalendarDays, grupo: "Agenda" },
+  { id: "compromissos", rotulo: "Compromissos", caminho: "/compromissos", icone: CalendarCheck, grupo: "Agenda" },
+  { id: "licitacoes", rotulo: "Licitações", caminho: "/licitacoes", icone: Gavel, grupo: "Negócios" },
+  { id: "marketing", rotulo: "Marketing", caminho: "/marketing", icone: Megaphone, grupo: "Negócios" },
+  { id: "google-drive", rotulo: "Google Drive", caminho: "/google-drive", icone: FolderOpen, grupo: "Administração" },
+  { id: "compras", rotulo: "Compras", caminho: "/compras", icone: ShoppingCart, grupo: "Operação" },
+  { id: "gestao-estoque", rotulo: "Gestão de Estoque", caminho: "/gestao-estoque", icone: PackageSearch, grupo: "Operação" },
+  { id: "patrimonio", rotulo: "Patrimônio", caminho: "/patrimonio", icone: Boxes, grupo: "Operação" },
+  { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", icone: Wrench, grupo: "Operação" },
+  { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", icone: FlaskConical, grupo: "Operação" },
+  { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users, grupo: "Administração" },
+  { id: "ponto", rotulo: "Ponto", caminho: "/ponto", icone: Clock, grupo: "Administração" },
+  { id: "financas", rotulo: "Finanças", caminho: "/financas", icone: Wallet, grupo: "Negócios" },
   /* O CRM é um app à parte (pasta crm/), publicado junto em <base>/crm/ — por
      isso é <a> e não NavLink: o Router do painel não conhece essas rotas. */
-  { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, emoji: "🤝", grupo: "Negócios", externo: true },
+  { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, icone: ContactRound, grupo: "Negócios", externo: true },
   /* Gestão (Comercial e Laboratório): app à parte (pasta gestao/), em <base>/gestao/.
      Aparece só para quem tem acesso liberado na tela Acessos da própria Gestão. */
-  { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, emoji: "💼", grupo: "Negócios", externo: true },
-  { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", emoji: "📊", grupo: "Negócios" },
-  { id: "acessos", rotulo: "Acessos", caminho: "/acessos", emoji: "🔐", grupo: "Administração" },
+  { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, icone: Briefcase, grupo: "Negócios", externo: true },
+  { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3, grupo: "Negócios" },
+  { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound, grupo: "Administração" },
 ];
 
 const CORES_MODULO = {
   patrimonio: ["#0369a1", "#e0f2fe"],
-  inicio: ["#0f766e", "#d9f4ef"], tarefas: ["#0369a1", "#e0f2fe"], calendario: ["#2563eb", "#e5edff"],
+  inicio: ["#0f766e", "#d9f4ef"], tarefas: ["#0369a1", "#e0f2fe"], mensagens: ["#0e7490", "#cffafe"], calendario: ["#2563eb", "#e5edff"],
   compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
@@ -83,9 +85,11 @@ function ItensMenu({ sessao, aoNavegar }) {
         return <section key={grupo} className="ml-menu-group" aria-label={grupo}>
           <h2 className="ml-menu-label">{grupo}</h2>
           {itens.map(mo => {
+            const Icone = mo.icone;
             const conteudo = <>
-              <span className="ml-emoji-tile" aria-hidden="true" style={{ "--tile-color": CORES_MODULO[mo.id][0], "--tile-bg": CORES_MODULO[mo.id][1] }}>{mo.emoji}</span>
+              <span className="ml-emoji-tile" aria-hidden="true" style={{ "--tile-color": CORES_MODULO[mo.id][0], "--tile-bg": CORES_MODULO[mo.id][1] }}><Icone size={18} strokeWidth={2.2} /></span>
               <span className="ml-menu-text">{mo.rotulo}</span>
+              {mo.id === "mensagens" && <ContadorMensagens />}
               {mo.externo && <ArrowUpRight size={13} className="ml-external-icon" aria-hidden="true"/>}
             </>;
             return mo.externo ? <a key={mo.id} href={mo.caminho} target="_blank" rel="noopener noreferrer" onClick={aoNavegar} className="ml-menu-link" aria-label={`${mo.rotulo} (abre em nova aba)`}>{conteudo}</a> :
@@ -212,7 +216,7 @@ export default function Layout() {
 
       <div className="min-w-0 flex-1">
         <div className="ml-desktop-context sem-impressao">
-          <span>Painel de gestão <span aria-hidden="true">/</span> <strong><span aria-hidden="true">{atual.emoji}</span> {atual.rotulo}</strong></span>
+          <span>Painel de gestão <span aria-hidden="true">/</span> <strong className="inline-flex items-center gap-1.5"><atual.icone size={14} aria-hidden="true" /> {atual.rotulo}</strong></span>
           <span className="ml-context-label">MinasLab · Controle de qualidade</span>
         </div>
         {/* Barra do celular */}
@@ -221,7 +225,7 @@ export default function Layout() {
             <Menu size={18} />
           </button>
           <span className="font-display text-sm font-bold text-slate-900">
-            <span aria-hidden="true">{atual.emoji}</span> {atual.rotulo}
+            <span className="inline-flex items-center gap-1.5"><atual.icone size={15} aria-hidden="true" /> {atual.rotulo}</span>
           </span>
           <span className="ml-auto flex items-center gap-1"><Notificacoes /><span className="text-xs text-slate-500">MinasLab</span></span>
         </header>

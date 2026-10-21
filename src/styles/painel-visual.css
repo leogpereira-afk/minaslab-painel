@@ -25,7 +25,7 @@
 .ml-menu-link-active { background: #e8f5f0; color: #09594e; border-color: #c9e9dd; font-weight: 700; }
 .ml-menu-link-active::before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 4px; background: #13977b; }
 .ml-menu-text { min-width: 0; flex: 1; }
-.ml-emoji-tile { display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 27px; font-size: 18px; line-height: 1; border-radius: 8px; background: linear-gradient(145deg, #fff9, #fff0), var(--tile-bg); box-shadow: inset 0 1px 1px #fff, inset 0 -2px 1px #1633430c, 0 2px 3px #153c4510; transform: perspective(100px) rotateY(-7deg); transition: transform .18s; }
+.ml-emoji-tile { color: var(--tile-color); display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 27px; font-size: 18px; line-height: 1; border-radius: 8px; background: linear-gradient(145deg, #fff9, #fff0), var(--tile-bg); box-shadow: inset 0 1px 1px #fff, inset 0 -2px 1px #1633430c, 0 2px 3px #153c4510; transform: perspective(100px) rotateY(-7deg); transition: transform .18s; }
 .ml-menu-link:hover .ml-emoji-tile { transform: perspective(100px) rotateY(0) translateY(-1px); }
 .ml-external-icon { color: #84999c; }
 .ml-menu-empty { color: #60777b; font-size: 12px; padding: 16px 10px; }
