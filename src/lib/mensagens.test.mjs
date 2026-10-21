@@ -50,3 +50,27 @@ test("hora na lista e contador", () => {
   assert.equal(contadorTexto(120), "99+");
   assert.equal(contadorTexto(3), "3");
 });
+
+import { conversasNovas, fotografiaDasNovas, tituloComContagem } from "./mensagens.js";
+
+test("avisos: primeira consulta não avisa; depois só o que chegou e subiu", () => {
+  const c1 = [{ id: "a", naoLidas: 2, em: "t1" }, { id: "b", naoLidas: 1, em: "t1" }];
+  assert.deepEqual(conversasNovas(null, c1), []);
+  const antes = fotografiaDasNovas(c1);
+  const c2 = [{ id: "a", naoLidas: 3, em: "t2" }, { id: "b", naoLidas: 1, em: "t1" }, { id: "c", naoLidas: 1, em: "t2" }];
+  assert.deepEqual(conversasNovas(antes, c2).map((c) => c.id), ["a", "c"]);
+  assert.deepEqual(conversasNovas(antes, c1), []); // nada mudou
+  assert.deepEqual(conversasNovas(antes, [{ id: "a", naoLidas: 1, em: "t3" }]), []); // leu parte: contagem desceu, não é mensagem nova
+});
+test("avisos: não avisa a conversa aberta com a aba visível", () => {
+  const antes = fotografiaDasNovas([{ id: "a", naoLidas: 0, em: "t1" }]);
+  const atuais = [{ id: "a", naoLidas: 1, em: "t2" }];
+  assert.equal(conversasNovas(antes, atuais, { abertaId: "a", abaVisivel: true }).length, 0);
+  assert.equal(conversasNovas(antes, atuais, { abertaId: "a", abaVisivel: false }).length, 1); // aba em segundo plano avisa
+});
+test("título da aba com contagem", () => {
+  assert.equal(tituloComContagem("Mensagens · MinasLab", 3), "(3) Mensagens · MinasLab");
+  assert.equal(tituloComContagem("(3) Mensagens · MinasLab", 5), "(5) Mensagens · MinasLab");
+  assert.equal(tituloComContagem("(5) Mensagens · MinasLab", 0), "Mensagens · MinasLab");
+  assert.equal(tituloComContagem("X", 120), "(99+) X");
+});

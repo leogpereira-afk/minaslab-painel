@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BellOff, MessageSquarePlus, Search, Users } from "lucide-react";
 import FotoGrupo from "../components/mensagens/FotoGrupo.jsx";
+import AvisosDoMessenger from "../components/mensagens/AvisosDoMessenger.jsx";
 import { clsx } from "clsx";
 import { PageTitle } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
@@ -70,6 +71,7 @@ export default function Mensagens() {
                 <button key={String(v)} type="button" aria-pressed={soNaoLidas === v} onClick={() => setSoNaoLidas(v)} className={clsx("rounded-full border px-3 py-0.5 text-xs font-medium", soNaoLidas === v ? "border-brand-400 bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50")} style={soNaoLidas === v ? undefined : { borderColor: "var(--hairline)" }}>{rotulo}</button>
               ))}
             </div>
+            <AvisosDoMessenger />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {erro && !lista && <div role="alert" className="m-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}

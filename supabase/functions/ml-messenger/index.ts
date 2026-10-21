@@ -172,8 +172,14 @@ async function listarConversas(c: Ctx) {
 
 async function contar(c: Ctx) {
   const { convs, meuPor, naoLidasPor } = await minhasConversas(c);
-  const total = convs.filter((v: any) => !meuPor.get(v.id)?.silenciado).reduce((n: number, v: any) => n + (naoLidasPor.get(v.id) ?? 0), 0);
-  return { totalNaoLidas: total };
+  const comNovas = convs.filter((v: any) => !meuPor.get(v.id)?.silenciado && (naoLidasPor.get(v.id) ?? 0) > 0);
+  const total = comNovas.reduce((n: number, v: any) => n + (naoLidasPor.get(v.id) ?? 0), 0);
+  // As conversas com novidade (até 5, a mais recente primeiro): a tela compara com a consulta anterior para tocar o som e avisar no navegador.
+  const novas = comNovas.map((v: any) => {
+    const outro = v.tipo === "direta" ? v.chave_direta.split("|").find((u: string) => u !== c.eu) ?? c.eu : null;
+    return { id: v.id, tipo: v.tipo, titulo: v.tipo === "grupo" ? v.nome : nomeDe(c, outro as string), naoLidas: naoLidasPor.get(v.id) ?? 0, autor: v.ultima_msg_autor ? nomeDe(c, v.ultima_msg_autor) : "", texto: v.ultima_msg_texto ?? "", em: v.ultima_msg_em ?? "" };
+  }).sort((a: any, b: any) => String(b.em).localeCompare(String(a.em))).slice(0, 5);
+  return { totalNaoLidas: total, novas };
 }
 
 // ---------------------------------------------------------------- ações
