@@ -136,7 +136,7 @@ export function validarComentario(texto) {
 }
 
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
-export const normNome = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+export const normNome = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 
 /**
  * Destaque do mês (funcionário do mês) que a gestão escolhe para o Canais.
