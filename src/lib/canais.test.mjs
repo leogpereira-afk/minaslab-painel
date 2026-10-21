@@ -37,8 +37,8 @@ test("aniversariantes do mês: só quem está na casa, sem ano, ordenados", () =
   ];
   const l = aniversariantesDoMes(pessoas, 2026, 10, ["g"]);
   assert.deepEqual(l, [
-    { pessoaId: "b", nome: "Pessoa B", dia: 3, mes: 10 },
-    { pessoaId: "a", nome: "Pessoa A", dia: 21, mes: 10 },
+    { pessoaId: "b", nome: "Pessoa B", dia: 3, mes: 10, foto: "" },
+    { pessoaId: "a", nome: "Pessoa A", dia: 21, mes: 10, foto: "" },
   ]);
   assert.ok(!JSON.stringify(l).includes("1990"));
 });
@@ -130,4 +130,14 @@ test("foto anexada: só imagem e caminho guardado válido", async () => {
 test("mural mostra primeiro e último nome", async () => {
   const { nomeCurto } = await import("../../supabase/functions/ml-canais/regras.mjs");
   assert.equal(nomeCurto({ nome: "JOSE ROBERTO DOS SANTOS ALVES", apelido: "ZE" }), "Jose Alves");
+});
+
+test("foto do aniversariante: só imagem embutida", async () => {
+  const { fotoValida } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const f = "data:image/jpeg;base64,AAAA";
+  assert.equal(fotoValida(f), f);
+  assert.equal(fotoValida("https://x.com/a.jpg"), "");
+  const l = parabensRecentes([P("a", { dataNascimento: "1990-10-21", foto: f })], "2026-10-21");
+  assert.equal(l[0].foto, f);
+  assert.equal(aniversariantesDoMes([P("a", { dataNascimento: "1990-10-21", foto: "javascript:x" })], 2026, 10)[0].foto, "");
 });

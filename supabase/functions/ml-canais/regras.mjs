@@ -68,9 +68,12 @@ export function aniversariantesDoMes(pessoas, ano, mes, ocultos = []) {
   return semDuplicadas((pessoas || []).filter((p) => naCasa(p) && !ocultos.includes(p.id) && nomeCurto(p)))
     .map((p) => ({ p, a: aniversarioNoAno(p.dataNascimento, ano) }))
     .filter(({ a }) => a && a.mes === mes)
-    .map(({ p, a }) => ({ pessoaId: p.id, nome: nomeCurto(p), dia: a.dia, mes: a.mes }))
+    .map(({ p, a }) => ({ pessoaId: p.id, nome: nomeCurto(p), dia: a.dia, mes: a.mes, foto: fotoValida(p.foto) }))
     .sort((x, y) => x.dia - y.dia || x.nome.localeCompare(y.nome, "pt-BR"));
 }
+
+/* Foto do colaborador (ficha do RH ou Gestão › Fotos): só imagem embutida, nunca link externo. */
+export const fotoValida = (f) => (typeof f === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(f) && f.length < 400000 ? f : "");
 
 export const refAniversario = (ano, pessoaId) => `aniv-${ano}-${pessoaId}`;
 export const ehRefAniversario = (ref) => /^aniv-\d{4}-[\w.-]{1,80}$/.test(String(ref ?? ""));
@@ -95,6 +98,7 @@ export function parabensRecentes(pessoas, hoje, { dias = 7, ocultos = [] } = {})
         texto: `Hoje é dia de comemorar! A família MinasLab deseja a você, ${nome}, um novo ano cheio de saúde, alegria e conquistas. Deixe aqui o seu recado de parabéns 🎉`,
         pessoaId: p.id,
         nome,
+        foto: fotoValida(p.foto),
         dia: a.dia,
         mes: a.mes,
         hoje: i === 0,

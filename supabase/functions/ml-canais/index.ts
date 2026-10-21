@@ -98,12 +98,17 @@ const exigirPublicador = (c: Ctx) => { if (!c.publica) erro(403, "Só a gestão 
 
 // ---------------------------------------------------------------- RH (mínimo)
 async function lerRH() {
-  const { data, error } = await sb.from("ml_registros").select("colecao,id,registro").in("colecao", ["rh_pessoas", "rh_ferias"]).eq("apagado", false);
+  const [{ data, error }, fotos] = await Promise.all([
+    sb.from("ml_registros").select("colecao,id,registro").in("colecao", ["rh_pessoas", "rh_ferias"]).eq("apagado", false),
+    lerFotos(true),
+  ]);
   if (error) throw error;
+  // Foto: a da ficha do RH; sem ela, a de Gestão › Destaque do mês › Fotos (mesmo nome).
+  const fotoPorNome = new Map(fotos.filter((f) => f.foto).map((f) => [normNome(f.nome), f.foto]));
   const pessoas: any[] = [], ferias: any[] = [];
   for (const l of data ?? []) {
     const r = (l.registro ?? {}) as any;
-    if (l.colecao === "rh_pessoas") pessoas.push({ id: l.id, nome: r.nome, apelido: r.apelido, dataNascimento: r.dataNascimento, ativo: r.ativo, desligadoEm: r.desligadoEm });
+    if (l.colecao === "rh_pessoas") pessoas.push({ id: l.id, nome: r.nome, apelido: r.apelido, dataNascimento: r.dataNascimento, ativo: r.ativo, desligadoEm: r.desligadoEm, foto: r.foto || fotoPorNome.get(normNome(r.nome)) || "" });
     else ferias.push({ pessoaId: r.pessoaId, inicio: r.inicio, retorno: r.retorno, status: r.status });
   }
   return { pessoas, ferias };
