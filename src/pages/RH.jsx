@@ -1,3 +1,4 @@
+import { feedbacksDaGestao } from "../lib/rh/feedbacksGestao.js";
 import { criarControleConsulta } from "../lib/ultimaConsulta.js";
 // RH — a CASCA do módulo: carrega as 6 coleções, guarda o estado, calcula os
 // KPIs e orquestra as abas (Pessoas, Férias, Feedback, Exames, Vencimentos).
@@ -133,6 +134,9 @@ const pessoaParaPlanilha = (p) => ({
 // Texto que vai ao banco: aparado e nunca undefined.
 const txt = (v) => String(v ?? "").trim();
 
+
+// Feedbacks registrados na Gestão (só leitura) e as equipes que ligam cada pessoa à ficha do RH.
+const COLECOES_GESTAO = ["rh_comercial_feedbacks", "rh_comercial_equipe", "rh_lab_feedbacks", "rh_lab_equipe"];
 export default function RH() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
@@ -164,11 +168,16 @@ export default function RH() {
     const vigente = recarga.current.iniciar();
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
-    return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico"])
+    return carregarColecoes(["rh_pessoas", "rh_ferias", "rh_vencimentos", "rh_feedbacks", "rh_exames", "rh_historico", ...COLECOES_GESTAO])
       .then((r) => {
         if(!vigente())return;
-        if (r._recusadas?.length) throw new Error("Não foi possível consultar todas as informações do RH. Confira as permissões e tente novamente.");
-        setDados(escopoEquipe({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: r.rh_feedbacks, exames: r.rh_exames, historico: r.rh_historico }));
+        if (r._recusadas?.some((c) => !COLECOES_GESTAO.includes(c))) throw new Error("Não foi possível consultar todas as informações do RH. Confira as permissões e tente novamente.");
+        // Conversas de feedback da Gestão (Comercial e Laboratório) entram só para leitura.
+        const daGestao = feedbacksDaGestao({
+          comercial: { feedbacks: r.rh_comercial_feedbacks, equipe: r.rh_comercial_equipe },
+          lab: { feedbacks: r.rh_lab_feedbacks, equipe: r.rh_lab_equipe },
+        }, r.rh_pessoas);
+        setDados(escopoEquipe({ pessoas: r.rh_pessoas, ferias: r.rh_ferias, vencimentos: r.rh_vencimentos, feedbacks: [...(r.rh_feedbacks || []), ...daGestao], exames: r.rh_exames, historico: r.rh_historico }));
         setConsultadoEm(new Date());
         setErro(null);
       })
