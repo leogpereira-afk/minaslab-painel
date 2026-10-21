@@ -26,7 +26,7 @@ export const Card = forwardRef(function Card({ className, children, ...rest }, r
 
 // KPI. valor ja formatado (string). Com onClick vira botao de recorte;
 // `ativo` destaca o card quando o filtro dele esta ligado.
-export function StatCard({ rotulo, valor, sub, tom = "neutral", icone: Icone, tendencia, onClick, ativo }) {
+export function StatCard({ rotulo, valor, sub, tom = "neutral", icone: Icone, ilustracao, tendencia, onClick, ativo }) {
   const t = TOM[tom] || TOM.neutral;
   const clicavel = typeof onClick === "function";
   const Comp = clicavel ? "button" : "div";
@@ -43,11 +43,11 @@ export function StatCard({ rotulo, valor, sub, tom = "neutral", icone: Icone, te
     >
       <div className="flex items-start justify-between gap-3">
         <p className="label mb-0">{rotulo}</p>
-        {Icone && (
+        {ilustracao || (Icone && (
           <span className={clsx("grid h-8 w-8 shrink-0 place-items-center rounded-xl", t.bg, t.texto)}>
             <Icone size={18} strokeWidth={2.2} />
           </span>
-        )}
+        ))}
       </div>
       <div className="mt-1.5 flex flex-wrap items-end gap-2">
         <span className="stat-value font-display text-xl sm:text-2xl font-semibold tnum text-slate-900">{valor}</span>

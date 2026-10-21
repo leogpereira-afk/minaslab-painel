@@ -4,29 +4,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import {
-  BarChart3,
-  CalendarDays,
-  CalendarCheck,
-  Clock,
-  Gavel,
-  Megaphone,
-  FolderOpen,
-  ShoppingCart,
-  PackageSearch,
-  Wrench,
-  Boxes,
-  Users,
-  Wallet,
-  ContactRound,
-  FlaskConical,
-  KeyRound,
-  LayoutDashboard,
-  Briefcase,
-  ListChecks,
-  LogOut,
-  Menu,
-} from "lucide-react";
+import { KeyRound, LogOut, Menu, Search, ArrowUpRight, X } from "lucide-react";
+import logoMinasLab from "../assets/logo-minaslab.webp";
+import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir } from "../lib/sessao.js";
 import { useAcessoGestao } from "../lib/acessoGestao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
@@ -39,29 +19,29 @@ import Notificacoes from "./Notificacoes.jsx";
    modulo novo entra NESTE array e na rota do App.jsx — e em nenhum outro
    lugar. */
 const MODULOS = [
-  { id: "inicio", rotulo: "Início", caminho: "/", icone: LayoutDashboard },
-  { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", icone: ListChecks },
-  { id: "calendario", rotulo: "Calendário", caminho: "/calendario", icone: CalendarDays },
-  { id: "compromissos", rotulo: "Compromissos", caminho: "/compromissos", icone: CalendarCheck },
-  { id: "licitacoes", rotulo: "Licitações", caminho: "/licitacoes", icone: Gavel },
-  { id: "marketing", rotulo: "Marketing", caminho: "/marketing", icone: Megaphone },
-  { id: "google-drive", rotulo: "Google Drive", caminho: "/google-drive", icone: FolderOpen },
-  { id: "compras", rotulo: "Compras", caminho: "/compras", icone: ShoppingCart },
-  { id: "gestao-estoque", rotulo: "Gestão de Estoque", caminho: "/gestao-estoque", icone: PackageSearch },
-  { id: "patrimonio", rotulo: "Patrimônio", caminho: "/patrimonio", icone: Boxes },
-  { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", icone: Wrench },
-  { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", icone: FlaskConical },
-  { id: "rh", rotulo: "RH", caminho: "/rh", icone: Users },
-  { id: "ponto", rotulo: "Ponto", caminho: "/ponto", icone: Clock },
-  { id: "financas", rotulo: "Finanças", caminho: "/financas", icone: Wallet },
+  { id: "inicio", rotulo: "Início", caminho: "/", emoji: "🏠", grupo: "Agenda" },
+  { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", emoji: "✅", grupo: "Agenda" },
+  { id: "calendario", rotulo: "Calendário", caminho: "/calendario", emoji: "🗓️", grupo: "Agenda" },
+  { id: "compromissos", rotulo: "Compromissos", caminho: "/compromissos", emoji: "📌", grupo: "Agenda" },
+  { id: "licitacoes", rotulo: "Licitações", caminho: "/licitacoes", emoji: "⚖️", grupo: "Negócios" },
+  { id: "marketing", rotulo: "Marketing", caminho: "/marketing", emoji: "📣", grupo: "Negócios" },
+  { id: "google-drive", rotulo: "Google Drive", caminho: "/google-drive", emoji: "📂", grupo: "Administração" },
+  { id: "compras", rotulo: "Compras", caminho: "/compras", emoji: "🛒", grupo: "Operação" },
+  { id: "gestao-estoque", rotulo: "Gestão de Estoque", caminho: "/gestao-estoque", emoji: "📦", grupo: "Operação" },
+  { id: "patrimonio", rotulo: "Patrimônio", caminho: "/patrimonio", emoji: "🏢", grupo: "Operação" },
+  { id: "manutencoes", rotulo: "Manutenções", caminho: "/manutencoes", emoji: "🛠️", grupo: "Operação" },
+  { id: "laboratorio", rotulo: "Laboratório", caminho: "/laboratorio", emoji: "🧪", grupo: "Operação" },
+  { id: "rh", rotulo: "RH", caminho: "/rh", emoji: "👥", grupo: "Administração" },
+  { id: "ponto", rotulo: "Ponto", caminho: "/ponto", emoji: "⏱️", grupo: "Administração" },
+  { id: "financas", rotulo: "Finanças", caminho: "/financas", emoji: "💰", grupo: "Negócios" },
   /* O CRM é um app à parte (pasta crm/), publicado junto em <base>/crm/ — por
      isso é <a> e não NavLink: o Router do painel não conhece essas rotas. */
-  { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, icone: ContactRound, externo: true },
+  { id: "crm", rotulo: "CRM", caminho: `${import.meta.env.BASE_URL}crm/dashboard`, emoji: "🤝", grupo: "Negócios", externo: true },
   /* Gestão (Comercial e Laboratório): app à parte (pasta gestao/), em <base>/gestao/.
      Aparece só para quem tem acesso liberado na tela Acessos da própria Gestão. */
-  { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, icone: Briefcase, externo: true },
-  { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3 },
-  { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound },
+  { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, emoji: "💼", grupo: "Negócios", externo: true },
+  { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", emoji: "📊", grupo: "Negócios" },
+  { id: "acessos", rotulo: "Acessos", caminho: "/acessos", emoji: "🔐", grupo: "Administração" },
 ];
 
 const CORES_MODULO = {
@@ -78,68 +58,52 @@ const CORES_MODULO = {
 const PAPEL_ROTULO = { direcao: "Direção", equipe: "Equipe", leitura: "Leitura" };
 
 function Marca() {
-  return (
-    <div className="flex items-center gap-2.5 px-3 py-4">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-ink text-white">
-        <FlaskConical size={18} strokeWidth={2.2} />
-      </span>
-      <span className="min-w-0">
-        <span className="block font-display text-base font-bold leading-tight text-slate-900">
-          Minas<span className="text-brand-600">Lab</span>
-        </span>
-        <span className="block truncate text-[11px] text-slate-500">Painel de Gestão</span>
-      </span>
-    </div>
-  );
+  return <div className="ml-brand">
+    <img src={logoMinasLab} alt="MinasLab, Laboratório de Controle de Qualidade" width="190" height="56" />
+    <span className="ml-brand-caption">PAINEL DE GESTÃO</span>
+  </div>;
 }
 
 function ItensMenu({ sessao, aoNavegar }) {
   const gestao = useAcessoGestao(sessao);
+  const [busca, setBusca] = useState("");
   const pode = (id) => (id === "gestao" ? gestao : podeAbrir(id, sessao));
-  return (
-    <nav aria-label="Módulos do MinasLab" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
-      {MODULOS.filter((mo) => pode(mo.id)).map((mo) => {
-        const Icone = mo.icone;
-        if (mo.externo) return (
-          <a
-            key={mo.id}
-            href={mo.caminho}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={aoNavegar}
-            className="menu-item flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 font-display text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
-          >
-            <span className="menu-icone" style={{ color: CORES_MODULO[mo.id][0], backgroundColor: CORES_MODULO[mo.id][1] }}><Icone size={19} strokeWidth={2.2} aria-hidden="true" /></span>
-            {mo.rotulo}
-          </a>
-        );
-        return (
-          <NavLink
-            key={mo.id}
-            to={mo.caminho}
-            end={mo.caminho === "/"}
-            onClick={aoNavegar}
-            className={({ isActive }) =>
-              clsx(
-                "menu-item flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 font-display text-sm font-medium transition-colors",
-                isActive ? "bg-brand-50 text-brand-900 ring-1 ring-inset ring-brand-200" : "text-slate-600 hover:bg-brand-50 hover:text-brand-800"
-              )
-            }
-          >
-            <span className="menu-icone" style={{ color: CORES_MODULO[mo.id][0], backgroundColor: CORES_MODULO[mo.id][1] }}><Icone size={19} strokeWidth={2.2} aria-hidden="true" /></span>
-            {mo.rotulo}
-          </NavLink>
-        );
+  const normalizar = (valor) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/coes\b/g, "cao");
+  const modulos = MODULOS.filter(mo => pode(mo.id) && normalizar(mo.rotulo).includes(normalizar(busca.trim())));
+  return <div className="ml-navigation">
+    <div className="ml-menu-search">
+      <Search size={16} aria-hidden="true" />
+      <input aria-label="Buscar módulo" type="search" placeholder="Encontrar módulo..." value={busca} onChange={e => setBusca(e.target.value)} />
+      {busca && <button type="button" aria-label="Limpar busca" onClick={() => setBusca("")}><X size={14}/></button>}
+    </div>
+    <nav aria-label="Módulos do MinasLab" className="ml-menu-scroll">
+      {["Agenda", "Operação", "Negócios", "Administração"].map(grupo => {
+        const itens = modulos.filter(mo => mo.grupo === grupo);
+        if (!itens.length) return null;
+        return <section key={grupo} className="ml-menu-group" aria-label={grupo}>
+          <h2 className="ml-menu-label">{grupo}</h2>
+          {itens.map(mo => {
+            const conteudo = <>
+              <span className="ml-emoji-tile" aria-hidden="true" style={{ "--tile-color": CORES_MODULO[mo.id][0], "--tile-bg": CORES_MODULO[mo.id][1] }}>{mo.emoji}</span>
+              <span className="ml-menu-text">{mo.rotulo}</span>
+              {mo.externo && <ArrowUpRight size={13} className="ml-external-icon" aria-hidden="true"/>}
+            </>;
+            return mo.externo ? <a key={mo.id} href={mo.caminho} target="_blank" rel="noopener noreferrer" onClick={aoNavegar} className="ml-menu-link" aria-label={`${mo.rotulo} (abre em nova aba)`}>{conteudo}</a> :
+              <NavLink key={mo.id} to={mo.caminho} end={mo.caminho === "/"} onClick={aoNavegar} className={({ isActive }) => clsx("ml-menu-link", isActive && "ml-menu-link-active")}>{conteudo}</NavLink>;
+          })}
+        </section>;
       })}
+      {modulos.length === 0 && <p className="ml-menu-empty" role="status">Nenhum módulo encontrado.</p>}
     </nav>
-  );
+  </div>;
 }
 
 function RodapeSessao({ sessao, aoSair, aoTrocarSenha }) {
   return (
-    <div className="border-t px-3 py-3" style={{ borderColor: "var(--hairline)" }}>
+    <div className="ml-session">
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0">
+        <span className="ml-avatar" aria-hidden="true">{(sessao?.nome || sessao?.usuario || "ML").split(/\s+/).slice(0, 2).map(n => n[0]).join("").toUpperCase()}</span>
+        <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-sm font-semibold text-slate-800">{sessao?.nome || sessao?.usuario}</span>
           <span className="block text-xs text-slate-500">{PAPEL_ROTULO[sessao?.papel] || sessao?.papel}</span>
         </span>
@@ -230,10 +194,10 @@ export default function Layout() {
   };
 
   return (
-    <div className="app-shell flex min-h-screen">
+    <div className="app-shell ml-shell flex min-h-screen">
       <a className="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
       {/* Menu fixo no computador */}
-      <aside className="sem-impressao sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-white lg:flex" style={{ borderColor: "var(--hairline)" }}>
+      <aside className="ml-sidebar sem-impressao sticky top-0 hidden h-dvh shrink-0 flex-col lg:flex" style={{ borderColor: "var(--hairline)" }}>
         <Marca />
         <ItensMenu sessao={sessao} />
         <RodapeSessao sessao={sessao} aoSair={aoSair} aoTrocarSenha={aoTrocarSenha} />
@@ -247,18 +211,22 @@ export default function Layout() {
       <TrocaSenha aberto={trocandoSenha} aoFechar={() => setTrocandoSenha(false)} />
 
       <div className="min-w-0 flex-1">
+        <div className="ml-desktop-context sem-impressao">
+          <span>Painel de gestão <span aria-hidden="true">/</span> <strong><span aria-hidden="true">{atual.emoji}</span> {atual.rotulo}</strong></span>
+          <span className="ml-context-label">MinasLab · Controle de qualidade</span>
+        </div>
         {/* Barra do celular */}
         <header className="sem-impressao sticky top-0 z-20 flex items-center gap-2 border-b bg-white/90 px-3 py-2 backdrop-blur lg:hidden" style={{ borderColor: "var(--hairline)" }}>
           <button type="button" onClick={() => setMenuAberto(true)} className="btn-ghost h-9 w-9 p-0" title="Abrir menu" aria-label="Abrir menu" aria-expanded={menuAberto}>
             <Menu size={18} />
           </button>
           <span className="font-display text-sm font-bold text-slate-900">
-            {atual.rotulo}
+            <span aria-hidden="true">{atual.emoji}</span> {atual.rotulo}
           </span>
           <span className="ml-auto flex items-center gap-1"><Notificacoes /><span className="text-xs text-slate-500">MinasLab</span></span>
         </header>
 
-        <main id="conteudo-principal" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+        <main id="conteudo-principal" tabIndex={-1} className="ml-main mx-auto w-full px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <LimiteModulo key={location.pathname}>
             <Suspense fallback={<CarregandoModulo />}><Outlet /></Suspense>
           </LimiteModulo>
