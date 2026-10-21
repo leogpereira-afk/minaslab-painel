@@ -164,7 +164,12 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
         </div>
         {!aniv && <h2 className="font-display text-lg font-bold leading-snug text-slate-900">{p.titulo}</h2>}
         {p.texto && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-700">{p.texto}</p>}
-        {p.imagemUrl && <img src={p.imagemUrl} alt="" loading="lazy" className="max-h-[480px] w-full rounded-xl border border-slate-100 object-cover" referrerPolicy="no-referrer" />}
+        {p.imagemUrl && (
+          // A imagem aparece INTEIRA (cartaz A4 em pé, foto deitada ou quadrada), sem corte; clicar abre no tamanho real.
+          <a href={p.imagemUrl} target="_blank" rel="noopener noreferrer" className="block" aria-label="Abrir a imagem em tamanho real">
+            <img src={p.imagemUrl} alt="" loading="lazy" className="mx-auto max-h-[85vh] w-auto max-w-full rounded-xl border border-slate-100 object-contain" referrerPolicy="no-referrer" />
+          </a>
+        )}
 
         <div className="flex items-center gap-1 border-t border-slate-100 pt-2">
           <button type="button" onClick={aoCurtir} aria-pressed={p.curti}
@@ -443,7 +448,7 @@ function Compositor({ post, aoFechar, aoSalvar }) {
           <span className="label">Foto (opcional)</span>
           {previa
             ? <div className="relative inline-block">
-                <img src={previa} alt="Prévia da foto" className="max-h-56 rounded-xl border object-cover" referrerPolicy="no-referrer" />
+                <img src={previa} alt="Prévia da foto" className="max-h-56 rounded-xl border object-contain" referrerPolicy="no-referrer" />
                 <button type="button" className="absolute right-2 top-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-bad-700 shadow" onClick={() => { setFoto(null); setF((x) => ({ ...x, imagem: "" })); }}>Tirar foto</button>
               </div>
             : <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 hover:border-brand-300 hover:bg-brand-50/40">
