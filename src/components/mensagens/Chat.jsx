@@ -1,10 +1,11 @@
 // Uma conversa aberta: mensagens, envio, tique de "visualizado" e participantes do grupo.
 // Atualiza sozinha a cada poucos segundos (só as mensagens novas, pela posição `seq`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BellOff, Bell, Check, CheckCheck, Loader2, Send, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Loader2, PanelRight, Send, Trash2, UserPlus } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
-import ParticipantesGrupo from "./ParticipantesGrupo.jsx";
+import SobreConversa from "./SobreConversa.jsx";
+import FotoGrupo from "./FotoGrupo.jsx";
 import { corDoAvatar, horaLocal } from "../../lib/tarefas.js";
 import { comSeparadores, mesclarMensagens, quemViu, situacaoDaMensagem } from "../../lib/mensagens.js";
 import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaObter, conversaSilenciar } from "../../services/mensagens.js";
@@ -20,7 +21,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [carregandoAntigas, setCarregandoAntigas] = useState(false);
-  const [verGrupo, setVerGrupo] = useState(false);
+  const [painel, setPainel] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
   const rolagem = useRef(null);
   const campo = useRef(null);
@@ -121,16 +122,19 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
 
   const c = dados.conversa;
   return (
-    <section className="flex h-full min-h-0 flex-col" aria-label={`Conversa com ${c.titulo}`}>
+    <div className="relative flex h-full min-h-0">
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col" aria-label={`Conversa com ${c.titulo}`}>
       <header className="flex items-center gap-3 border-b px-3 py-2.5" style={{ borderColor: "var(--hairline)" }}>
         <button type="button" className="btn-ghost h-9 w-9 shrink-0 p-0 lg:hidden" onClick={aoVoltar} aria-label="Voltar para as conversas"><ArrowLeft size={18} /></button>
-        {grupo ? <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700"><Users size={18} aria-hidden="true" /></span> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={40} />}
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-display text-base font-semibold text-slate-900">{c.titulo}</h2>
-          {grupo && <p className="truncate text-xs text-slate-500">{dados.membros.map((m) => nomeDe(m.usuario).split(" ")[0]).join(", ")}</p>}
-        </div>
-        <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={alternarSilencio} aria-label={c.silenciado ? "Reativar avisos" : "Silenciar conversa"} title={c.silenciado ? "Reativar avisos" : "Silenciar conversa"}>{c.silenciado ? <BellOff size={17} /> : <Bell size={17} />}</button>
-        {grupo && <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={() => setVerGrupo(true)} aria-label="Participantes do grupo" title="Participantes"><Users size={17} /></button>}
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setPainel(true)} aria-label={grupo ? "Ver sobre o grupo" : "Ver sobre a conversa"}>
+          {grupo ? <FotoGrupo foto={c.foto} tamanho={40} /> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={40} />}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-base font-semibold text-slate-900">{c.titulo}</span>
+            {grupo && <span className="block truncate text-xs text-slate-500">{dados.membros.length} participantes</span>}
+          </span>
+        </button>
+        {grupo && dados.pode.gerir && <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={() => setPainel(true)} aria-label="Adicionar pessoas ao grupo" title="Adicionar pessoas"><UserPlus size={17} /></button>}
+        <button type="button" className={clsx("btn-ghost h-9 w-9 p-0", painel && "bg-sky-50 text-sky-700")} onClick={() => setPainel((v) => !v)} aria-pressed={painel} aria-label={grupo ? "Sobre o grupo" : "Sobre a conversa"} title={grupo ? "Sobre o grupo" : "Sobre a conversa"}><PanelRight size={17} /></button>
       </header>
 
       <div ref={rolagem} onScroll={aoRolar} className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-3" role="log" aria-live="polite" aria-label="Mensagens">
@@ -169,8 +173,13 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
         <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={!texto.trim() || enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
       </form>
 
-      {verGrupo && <ParticipantesGrupo dados={dados} usuarios={usuarios} eu={eu} aoFechar={() => setVerGrupo(false)} aoMudou={() => carregar({ inicial: true })} aoSair={() => { setVerGrupo(false); aoSairDoGrupo?.(); }} />}
     </section>
+    {painel && (
+      <div className="absolute inset-0 z-10 bg-white lg:static lg:inset-auto lg:w-80 lg:shrink-0 lg:border-l" style={{ borderColor: "var(--hairline)" }}>
+        <SobreConversa dados={dados} usuarios={usuarios} eu={eu} aoFechar={() => setPainel(false)} aoMudou={async () => { await carregar({ inicial: true }); aoMudou?.(); }} aoSair={() => { setPainel(false); aoSairDoGrupo?.(); }} aoSilenciar={alternarSilencio} />
+      </div>
+    )}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ const sb = createClient(URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth:
 const T_CONTAS = "ml_contas";
 const T_CFG = "ml_config_global";
 const T_META = "ml_meta";
+const BUCKET_FOTOS = "ml-fotos-perfil";
 const PAPEIS = ["direcao", "equipe", "leitura"];
 const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
 
@@ -30,6 +31,16 @@ async function lerConfig(): Promise<Record<string, unknown>> {
 }
 const flagMaiusculas = (cfg: Record<string, unknown>) =>
   ((cfg.contas ?? {}) as Record<string, unknown>).nomeMaiusculas === true;
+
+// Apaga o arquivo da foto anterior (se for do nosso bucket). Falha aqui não derruba a troca: sobra só um arquivo pequeno.
+async function apagarFotoAntiga(endereco: unknown) {
+  const marca = `/object/public/${BUCKET_FOTOS}/`;
+  const texto = String(endereco ?? "");
+  const i = texto.indexOf(marca);
+  if (i < 0) return;
+  const { error } = await sb.storage.from(BUCKET_FOTOS).remove([texto.slice(i + marca.length)]);
+  if (error) console.error("apagarFotoAntiga", error);
+}
 
 async function bump(colecao: string) {
   const agora = Date.now();
@@ -99,10 +110,43 @@ Deno.serve(async (req) => {
           if (!Array.isArray(paginas) || paginas.some((x: unknown) => !PAGINAS_VALIDAS.has(String(x)))) return out({ erro: "Selecione páginas válidas." }, 400);
           mudancas.paginas_consulta = [...new Set(paginas)];
         }
-        const { data, error } = await sb.from(T_CONTAS).update(mudancas).eq("usuario", u).select("usuario,nome,papel,ativo,criado_em,paginas_consulta").maybeSingle();
+        const { data, error } = await sb.from(T_CONTAS).update(mudancas).eq("usuario", u).select("usuario,nome,papel,ativo,criado_em,paginas_consulta,foto").maybeSingle();
         if (error) throw error;
         if (!data) return out({ erro: `Não achei a conta "${u}".` }, 404);
         return out({ ok: true, conta: data });
+      }
+
+      case "foto": {
+        // Foto de perfil: JPEG já reduzido pela tela (quadrado). Bucket público só de leitura; o endereço novo a cada troca evita cache velho.
+        const u = normalizarUsuario(body.usuario);
+        const b64 = String(body.base64 ?? "").replace(/^data:image\/jpeg;base64,/, "");
+        if (!u || !b64) return out({ erro: "Escolha a foto." }, 400);
+        let bytes: Uint8Array;
+        try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); } catch { return out({ erro: "Foto inválida." }, 400); }
+        if (bytes.length < 200 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return out({ erro: "A foto precisa ser JPEG." }, 400);
+        if (bytes.length > 450 * 1024) return out({ erro: "A foto ficou grande demais. Escolha uma menor." }, 400);
+        const { data: conta, error: eConta } = await sb.from(T_CONTAS).select("usuario,foto").eq("usuario", u).maybeSingle();
+        if (eConta) throw eConta;
+        if (!conta) return out({ erro: `Não achei a conta "${u}".` }, 404);
+        const caminho = `${u}-${Date.now()}.jpg`;
+        const { error: eUp } = await sb.storage.from(BUCKET_FOTOS).upload(caminho, bytes, { contentType: "image/jpeg", upsert: false });
+        if (eUp) throw eUp;
+        const endereco = `${URL}/storage/v1/object/public/${BUCKET_FOTOS}/${caminho}`;
+        const { error: eSalva } = await sb.from(T_CONTAS).update({ foto: endereco }).eq("usuario", u);
+        if (eSalva) throw eSalva;
+        await apagarFotoAntiga(conta.foto);
+        return out({ ok: true, usuario: u, foto: endereco });
+      }
+
+      case "fotoRemover": {
+        const u = normalizarUsuario(body.usuario);
+        const { data: conta, error: eConta } = await sb.from(T_CONTAS).select("usuario,foto").eq("usuario", u).maybeSingle();
+        if (eConta) throw eConta;
+        if (!conta) return out({ erro: `Não achei a conta "${u}".` }, 404);
+        const { error: eSalva } = await sb.from(T_CONTAS).update({ foto: null }).eq("usuario", u);
+        if (eSalva) throw eSalva;
+        await apagarFotoAntiga(conta.foto);
+        return out({ ok: true, usuario: u, foto: null });
       }
 
       case "padraoNome": {

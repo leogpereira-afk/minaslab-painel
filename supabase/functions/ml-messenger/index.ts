@@ -4,7 +4,7 @@
 // Privacidade: só os membros leem uma conversa. Nem a direção lê conversa dos outros.
 // "Lida" é por posição: cada membro guarda a `seq` da última mensagem que já viu (lido_ate).
 //
-// Ações: usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
+// Ações: foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -16,6 +16,7 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const txt = (v: unknown) => String(v ?? "").trim();
+const BUCKET_FOTOS = "ml-fotos-perfil";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class Falha extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -47,6 +48,15 @@ async function lerPorIds(tabela: string, coluna: string, ids: string[], cols = "
     out.push(...(data ?? []));
   }
   return out;
+}
+// Apaga o arquivo da foto anterior do grupo. Falha aqui não derruba a troca: sobra só um arquivo pequeno.
+async function apagarFotoAntiga(endereco: unknown) {
+  const marca = `/object/public/${BUCKET_FOTOS}/`;
+  const t = txt(endereco);
+  const i = t.indexOf(marca);
+  if (i < 0) return;
+  const { error } = await sb.storage.from(BUCKET_FOTOS).remove([t.slice(i + marca.length)]);
+  if (error) console.error("apagarFotoAntiga", error);
 }
 const resumoTexto = (t: string) => { const s = txt(t).replace(/\s+/g, " "); return s.length > 140 ? `${s.slice(0, 137)}...` : s; };
 
@@ -136,7 +146,7 @@ async function listarConversas(c: Ctx) {
     if (v.ultima_msg_autor) nomes[v.ultima_msg_autor] = nomeDe(c, v.ultima_msg_autor);
     const meu = meuPor.get(v.id);
     return {
-      id: v.id, tipo: v.tipo, titulo: v.tipo === "grupo" ? v.nome : nomeDe(c, outro), outro, membros: ms.map((m: any) => m.usuario),
+      id: v.id, tipo: v.tipo, titulo: v.tipo === "grupo" ? v.nome : nomeDe(c, outro), outro, foto: v.foto ?? null, membros: ms.map((m: any) => m.usuario),
       ultima: v.ultima_msg_em ? { texto: v.ultima_msg_texto, autor: v.ultima_msg_autor, em: v.ultima_msg_em } : null,
       naoLidas: naoLidasPor.get(v.id) ?? 0, silenciado: !!meu?.silenciado, criadoEm: v.criado_em,
     };
@@ -228,7 +238,7 @@ async function obter(c: Ctx, b: any) {
   for (const m of mensagens) if (m.autor) nomes[m.autor] = nomeDe(c, m.autor);
   if (outro) nomes[outro] = nomeDe(c, outro);
   return {
-    conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, silenciado: !!a.meu.silenciado },
+    conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, foto: a.conv.foto ?? null, descricao: a.conv.descricao ?? "", criadoEm: a.conv.criado_em, silenciado: !!a.meu.silenciado },
     membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
     mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, apagada: m.apagada, criadoEm: m.criado_em })),
     maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
@@ -307,6 +317,49 @@ async function renomear(c: Ctx, b: any) {
   return { ok: true };
 }
 
+async function fotoGrupo(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  if (a.conv.tipo !== "grupo") erro(400, "Só grupos têm foto.");
+  if (!a.admin) erro(403, "Só quem administra o grupo muda a foto.");
+  if (b.remover === true) {
+    const { error } = await sb.from("ml_conversas").update({ foto: null }).eq("id", a.conv.id);
+    if (error) throw error;
+    await apagarFotoAntiga(a.conv.foto);
+    const s = await mensagemSistema(a.conv.id, `${nomeDe(c, c.eu)} removeu a foto do grupo.`);
+    await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+    return { ok: true, foto: null };
+  }
+  const b64 = String(b.base64 ?? "").replace(/^data:image\/jpeg;base64,/, "");
+  if (!b64) erro(400, "Escolha a foto.");
+  let bytes: Uint8Array;
+  try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); } catch { return erro(400, "Foto inválida."); }
+  if (bytes.length < 200 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) erro(400, "A foto precisa ser JPEG.");
+  if (bytes.length > 450 * 1024) erro(400, "A foto ficou grande demais. Escolha uma menor.");
+  const caminho = `grupo-${a.conv.id}-${Date.now()}.jpg`;
+  const { error: eUp } = await sb.storage.from(BUCKET_FOTOS).upload(caminho, bytes, { contentType: "image/jpeg", upsert: false });
+  if (eUp) throw eUp;
+  const endereco = `${U}/storage/v1/object/public/${BUCKET_FOTOS}/${caminho}`;
+  const { error } = await sb.from("ml_conversas").update({ foto: endereco }).eq("id", a.conv.id);
+  if (error) throw error;
+  await apagarFotoAntiga(a.conv.foto);
+  const s = await mensagemSistema(a.conv.id, `${nomeDe(c, c.eu)} mudou a foto do grupo.`);
+  await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  return { ok: true, foto: endereco };
+}
+
+async function descricao(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  if (a.conv.tipo !== "grupo") erro(400, "Só grupos têm descrição.");
+  if (!a.admin) erro(403, "Só quem administra o grupo muda a descrição.");
+  const texto = String(b.descricao ?? "").replace(/\r\n/g, "\n").trim().slice(0, 500);
+  if (texto === txt(a.conv.descricao)) return { ok: true, semMudanca: true };
+  const { error } = await sb.from("ml_conversas").update({ descricao: texto }).eq("id", a.conv.id);
+  if (error) throw error;
+  const s = await mensagemSistema(a.conv.id, `${nomeDe(c, c.eu)} mudou a descrição do grupo.`);
+  await sb.from("ml_conversa_membros").update({ lido_ate: s }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
+  return { ok: true, descricao: texto };
+}
+
 async function silenciar(c: Ctx, b: any) {
   const a = await carregarConversa(c, b.id);
   const { error } = await sb.from("ml_conversa_membros").update({ silenciado: b.silenciado === true }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
@@ -332,7 +385,7 @@ async function apagarMensagem(c: Ctx, b: any) {
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   usuarios: (c) => usuarios(c), conversas: (c) => listarConversas(c), contar: (c) => contar(c),
-  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem,
+  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao,
 };
 
 Deno.serve(async (req) => {
