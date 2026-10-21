@@ -22,7 +22,6 @@ export const horaLocal = (valor) => { const d = new Date(valor); if (Number.isNa
 
 const somarDias = (iso, n) => { const [a, m, d] = iso.split("-").map(Number); const x = new Date(Date.UTC(a, m - 1, d + n)); return `${x.getUTCFullYear()}-${doisDigitos(x.getUTCMonth() + 1)}-${doisDigitos(x.getUTCDate())}`; };
 const diaDaSemana = (iso) => { const [a, m, d] = iso.split("-").map(Number); return new Date(Date.UTC(a, m - 1, d)).getUTCDay(); }; // 0 = domingo
-const diferencaDias = (de, ate) => { const f = (iso) => { const [a, m, d] = iso.split("-").map(Number); return Date.UTC(a, m - 1, d); }; return Math.round((f(ate) - f(de)) / 86400000); };
 
 /** Semana de segunda a domingo (como no Bitrix24): devolve [segunda, domingo] do dia informado. */
 export function semanaDe(iso) {

@@ -23,6 +23,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Briefcase,
+  ListChecks,
   LogOut,
   Menu,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { useAcessoGestao } from "../lib/acessoGestao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
+import Notificacoes from "./Notificacoes.jsx";
 
 /* O MENU E UMA LISTA SO. A Impresilk pagou dois dias de procura porque a lista
    de modulos vivia copiada em tres arquivos e a copia envelhecia calada. Aqui:
@@ -38,6 +40,7 @@ import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
    lugar. */
 const MODULOS = [
   { id: "inicio", rotulo: "Início", caminho: "/", icone: LayoutDashboard },
+  { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", icone: ListChecks },
   { id: "calendario", rotulo: "Calendário", caminho: "/calendario", icone: CalendarDays },
   { id: "compromissos", rotulo: "Compromissos", caminho: "/compromissos", icone: CalendarCheck },
   { id: "licitacoes", rotulo: "Licitações", caminho: "/licitacoes", icone: Gavel },
@@ -63,7 +66,7 @@ const MODULOS = [
 
 const CORES_MODULO = {
   patrimonio: ["#0369a1", "#e0f2fe"],
-  inicio: ["#0f766e", "#d9f4ef"], calendario: ["#2563eb", "#e5edff"],
+  inicio: ["#0f766e", "#d9f4ef"], tarefas: ["#0369a1", "#e0f2fe"], calendario: ["#2563eb", "#e5edff"],
   compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
@@ -141,6 +144,7 @@ function RodapeSessao({ sessao, aoSair, aoTrocarSenha }) {
           <span className="block text-xs text-slate-500">{PAPEL_ROTULO[sessao?.papel] || sessao?.papel}</span>
         </span>
         <span className="flex shrink-0 items-center">
+          <Notificacoes />
           <button type="button" onClick={aoTrocarSenha} className="btn-ghost h-9 w-9 p-0 text-slate-500 hover:text-brand-700" title="Trocar minha senha" aria-label="Trocar minha senha">
             <KeyRound size={15} />
           </button>
@@ -251,7 +255,7 @@ export default function Layout() {
           <span className="font-display text-sm font-bold text-slate-900">
             {atual.rotulo}
           </span>
-          <span className="ml-auto text-xs text-slate-500">MinasLab</span>
+          <span className="ml-auto flex items-center gap-1"><Notificacoes /><span className="text-xs text-slate-500">MinasLab</span></span>
         </header>
 
         <main id="conteudo-principal" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
