@@ -1,7 +1,9 @@
 import { nomesAtuais } from "./referenciasPessoa.js";
-// Classificação informada expressamente pela direção em 19/09/2026.
+// Quem a direção informou expressamente que fica FORA do quadro (nome normalizado, em maiúsculas).
 // Não inferir propriedade por cargo, salário ausente ou dispensa de ponto.
-const PROPRIETARIOS_CONFIRMADOS = new Set(['LIDYANE ALVES OLIVEIRA']);
+// Em 21/10/2026 a direção pediu que a Lidyane Alves Oliveira passasse a aparecer no RH (ela estava aqui desde 19/09/2026).
+// Uma ficha também sai do quadro se vier com `ehDirecao: true`.
+const PROPRIETARIOS_CONFIRMADOS = new Set([]);
 const nomeNormalizado = valor => String(valor || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toUpperCase();
 
 export function ehProprietario(pessoa) {
