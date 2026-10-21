@@ -6,14 +6,14 @@ import { Orientacao } from "../components/Orientacao.jsx";
 import { SeletorPessoa } from "./Pessoas.jsx";
 import { navegar } from "../lib/rota.js";
 import { brl, nota, mesLongo, mesNome } from "../lib/format.js";
-import { avaliar, criteriosDaFuncao } from "../lib/calculos.js";
+import { avaliar, criteriosDaFuncao, metasAvaliadas } from "../lib/calculos.js";
 
 export default function Avaliacao({ param }) {
   const { equipe, mes } = useBase();
   const membro = equipe.find((m) => m.id === param) || equipe[0];
   return (
     <>
-      <Cabecalho sobre="Avaliação e bônus" titulo={mesLongo(mes)} sub="Metas vêm do CRM; os demais critérios você dá de 0 a 10.">
+      <Cabecalho sobre="Avaliação e bônus" titulo={mesLongo(mes)} sub="Cada pessoa é avaliada pelas metas da própria função. Propostas e aprovação vêm do CRM; as demais você dá de 0 a 10.">
         <SeletorMes />
       </Cabecalho>
       <Orientacao tela="avaliacao" />
@@ -40,7 +40,7 @@ function Ficha({ membro }) {
   const [msg, setMsg] = useState("");
   const fechada = !!salva?.fechada;
   const nOc = ocorrenciasDe(membro.id).length;
-  const a = avaliar({ resumo, membro, mes, notas, nOcorrencias: nOc, config, criteriosTecnicos: criteriosDaFuncao(funcao) });
+  const a = avaliar({ resumo, membro, mes, notas, nOcorrencias: nOc, config, criteriosTecnicos: criteriosDaFuncao(funcao), metasFuncao: metasAvaliadas(funcao, membro) });
   const mudou = JSON.stringify(notas) !== JSON.stringify(salva?.notas || {});
 
   const guardar = async (fechar) => {
@@ -74,10 +74,14 @@ function Ficha({ membro }) {
         <div className="card-cab"><h2>Critérios de {membro.nome.split(" ")[0]}</h2>{fechada && <Chip tom="ok">Fechada</Chip>}</div>
         <table>
           <tbody>
-            <tr className="linha-grupo"><td colSpan={2}>Metas (automático · peso {config.pesos.metas}%)</td></tr>
+            <tr className="linha-grupo"><td colSpan={2}>Metas{funcao ? ` da função ${funcao.nome}` : ""} (peso {config.pesos.metas}%)</td></tr>
             {a.auto.map((c) => (
-              <tr key={c.id}><td><b style={{ fontWeight: 600 }}>{c.nome}</b><div className="suave peq">{c.desc}</div></td><td className="tnum" style={{ textAlign: "right", font: "600 18px Poppins, sans-serif" }}>{nota(c.nota)}</td></tr>
+              <tr key={c.id}><td><b style={{ fontWeight: 600 }}>{c.nome}</b> <span className="suave peq">· automático pelo CRM</span><div className="suave peq">{c.desc}</div></td><td className="tnum" style={{ textAlign: "right", font: "600 18px Poppins, sans-serif" }}>{nota(c.nota)}</td></tr>
             ))}
+            {a.metas.map(linha)}
+            {!a.auto.length && !a.metas.length && (
+              <tr><td colSpan={2} className="suave peq">{funcao ? `A função ${funcao.nome} não tem metas cadastradas.` : "Pessoa sem função."} Inclua em Funções e cargos › Editar › Metas da função; até lá, o peso vai para os outros grupos.</td></tr>
+            )}
             <tr className="linha-grupo"><td colSpan={2}>Técnicos{funcao ? ` da função ${funcao.nome}` : ""} (peso {config.pesos.tec}%)</td></tr>
             {a.tec.map(linha)}
             <tr className="linha-grupo"><td colSpan={2}>Comportamentais (peso {config.pesos.comp}%)</td></tr>
@@ -122,7 +126,7 @@ function ResumoEquipe() {
   const { equipe, resumo, mes, config, dados, ocorrenciasDe, funcaoDe } = useBase();
   const linhas = equipe.map((m) => {
     const salva = dados.avaliacoes.find((a) => a.id === `${m.id}_${mes}`);
-    const a = avaliar({ resumo, membro: m, mes, notas: salva?.notas || {}, nOcorrencias: ocorrenciasDe(m.id).length, config, criteriosTecnicos: criteriosDaFuncao(funcaoDe(m)) });
+    const a = avaliar({ resumo, membro: m, mes, notas: salva?.notas || {}, nOcorrencias: ocorrenciasDe(m.id).length, config, criteriosTecnicos: criteriosDaFuncao(funcaoDe(m)), metasFuncao: metasAvaliadas(funcaoDe(m), m) });
     return { m, a, fechada: !!salva?.fechada };
   });
   const total = linhas.reduce((s, l) => s + (l.fechada ? l.a.bonus || 0 : 0), 0);

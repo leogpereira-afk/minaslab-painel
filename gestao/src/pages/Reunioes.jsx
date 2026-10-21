@@ -11,7 +11,7 @@ import { Orientacao } from "../components/Orientacao.jsx";
 import { Slides, BarrasSlide } from "../components/Slides.jsx";
 import { cockpitCRM, carteiraCRM } from "../services/crm.js";
 import { brl, pct, mesLongo, mesNome, mesAtual, hojeBR, dataCurta, novoId, mesCurto, somarMeses, mesesAte } from "../lib/format.js";
-import { totaisMes, realizado, metasDe, pontos, roteiroFeedback, avaliar, criteriosDaFuncao, serie, situacao } from "../lib/calculos.js";
+import { totaisMes, realizado, metasDe, pontos, roteiroFeedback, avaliar, criteriosDaFuncao, metasAvaliadas, serie, situacao } from "../lib/calculos.js";
 import { TIPOS_OCORRENCIA } from "../lib/calculos.js";
 
 const TIPOS = [
@@ -158,7 +158,7 @@ function montar({ tipo, base, pessoa, anterior, ck, cart }) {
     s.push({ titulo: "Clientes para ligar no próximo mês", minutos: 6, roteiro: "Clientes A e B que passaram do próprio intervalo de compra e contratos vencendo. Distribua entre a equipe.", corpo: <div><ul>{risco.map((c) => <li key={c.cliente}>{c.cliente} — {c.diasSemAprovar} dias sem aprovar (costuma a cada {c.intervaloMedio})</li>)}</ul>{(cart?.contratosVencendo || []).length > 0 && <div className="suave peq" style={{ marginTop: 8 }}>{cart.contratosVencendo.length} contrato(s) vencendo nos próximos 90 dias.</div>}{!risco.length && !cart && <div className="suave">Carregando o CRM…</div>}</div>, fonte: "CRM · carteira" });
     const oc = dados.ocorrencias.filter((o) => o.mes === mes);
     s.push({ titulo: "Ocorrências do mês", minutos: 5, roteiro: "Fale do processo, não das pessoas. O que se repete vira ação no plano.", corpo: oc.length ? <BarrasSlide itens={TIPOS_OCORRENCIA.map((t2) => ({ nome: t2, valor: oc.filter((o) => o.tipo === t2).length })).filter((x) => x.valor)} /> : <div className="suave">Nenhuma ocorrência registrada.</div> });
-    const avs = equipe.map((p) => { const sv = dados.avaliacoes.find((a) => a.id === `${p.id}_${mes}`); return { p, a: avaliar({ resumo, membro: p, mes, notas: sv?.notas || {}, nOcorrencias: ocorrenciasDe(p.id, mes).length, config, criteriosTecnicos: criteriosDaFuncao(funcaoDe(p)) }), fechada: !!sv?.fechada }; });
+    const avs = equipe.map((p) => { const sv = dados.avaliacoes.find((a) => a.id === `${p.id}_${mes}`); return { p, a: avaliar({ resumo, membro: p, mes, notas: sv?.notas || {}, nOcorrencias: ocorrenciasDe(p.id, mes).length, config, criteriosTecnicos: criteriosDaFuncao(funcaoDe(p)), metasFuncao: metasAvaliadas(funcaoDe(p), p) }), fechada: !!sv?.fechada }; });
     s.push({ titulo: "Avaliações e bônus", minutos: 5, roteiro: "Só para a gestão/direção: não projete para a equipe. Confirme as avaliações abertas antes de fechar o mês.", corpo: <ul>{avs.map(({ p, a, fechada }) => <li key={p.id}>{p.nome}: nota {a.final == null ? "—" : a.final.toFixed(1).replace(".", ",")} · {a.bonus == null ? "pendente" : a.bonus ? brl(a.bonus) : "sem bônus"}{fechada ? " (fechada)" : ""}</li>)}</ul> });
     s.push({ titulo: `Metas e foco de ${mesNome(somarMeses(mes, 1))}`, minutos: 10, roteiro: "Defina a meta de valor, confirme as metas por pessoa e escolha UMA prioridade da equipe. Registre como decisão na ata.", corpo: <ul><li>Meta de valor aprovado: ____________</li><li>Prioridade da equipe: ____________</li><li>Treinamento do mês: ____________</li></ul> });
   }
