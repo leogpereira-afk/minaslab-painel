@@ -4,6 +4,10 @@
 export const LIMITE_ANEXO_BYTES = 8 * 1024 * 1024;
 export const EXTENSOES_ACEITAS = ["pdf", "png", "jpg", "jpeg", "webp", "gif", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "xml", "zip"];
 export const ACEITAR_NO_INPUT = EXTENSOES_ACEITAS.map((e) => `.${e}`).join(",");
+// No Messenger também vale áudio (mensagem de voz gravada na tela ou arquivo de áudio).
+export const EXTENSOES_AUDIO = ["webm", "ogg", "m4a", "mp3", "wav"];
+export const EXTENSOES_MENSAGEM = [...EXTENSOES_ACEITAS, ...EXTENSOES_AUDIO];
+export const ACEITAR_NO_INPUT_MENSAGEM = EXTENSOES_MENSAGEM.map((e) => `.${e}`).join(",");
 const IMAGENS = ["png", "jpg", "jpeg", "webp", "gif"];
 
 export const extensaoDo = (nome) => { const p = String(nome || "").split("."); return p.length > 1 ? p.pop().toLowerCase() : ""; };
@@ -18,10 +22,10 @@ export function formatarTamanho(bytes) {
 }
 
 /** Texto do problema com o arquivo, ou "" se pode enviar. */
-export function problemaDoArquivo(arquivo) {
+export function problemaDoArquivo(arquivo, extensoes = EXTENSOES_ACEITAS) {
   if (!arquivo) return "Escolha o arquivo.";
   const ext = extensaoDo(arquivo.name);
-  if (!EXTENSOES_ACEITAS.includes(ext)) return `Não aceito arquivo .${ext || "sem extensão"} (${arquivo.name}). Aceitos: PDF, imagens, Word, Excel, PowerPoint, CSV, TXT, XML e ZIP.`;
+  if (!extensoes.includes(ext)) return `Não aceito arquivo .${ext || "sem extensão"} (${arquivo.name}). Aceitos: PDF, imagens, Word, Excel, PowerPoint, CSV, TXT, XML e ZIP.`;
   if (!arquivo.size) return `O arquivo "${arquivo.name}" está vazio.`;
   // Foto grande de celular é reduzida antes de enviar; os demais tipos não têm como reduzir.
   if (arquivo.size > LIMITE_ANEXO_BYTES && !ehImagem(arquivo.name)) return `"${arquivo.name}" passa de 8 MB. Reduza ou divida o arquivo.`;
@@ -37,6 +41,7 @@ export function familiaDoArquivo(nomeOuTipo) {
   if (["doc", "docx", "txt"].includes(ext)) return "documento";
   if (["ppt", "pptx"].includes(ext)) return "apresentacao";
   if (ext === "zip") return "compactado";
+  if (EXTENSOES_AUDIO.includes(ext) || String(nomeOuTipo || "").startsWith("audio/")) return "audio";
   return "arquivo";
 }
 

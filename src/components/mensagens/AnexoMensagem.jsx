@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Download, ImageOff } from "lucide-react";
 import IconeArquivo from "../anexos/IconeArquivo.jsx";
+import AudioMensagem from "./AudioMensagem.jsx";
 import { ehImagem, formatarTamanho } from "../../lib/anexos.js";
 import { conversaArquivoUrl } from "../../services/mensagens.js";
 
@@ -15,7 +16,12 @@ async function linkDaImagem(conversaId, mensagemId) {
   return r.url;
 }
 
-export default function AnexoMensagem({ conversaId, mensagem: m, minha }) {
+export default function AnexoMensagem(props) {
+  // Mensagem de voz tem o seu próprio player; imagem e arquivo seguem abaixo.
+  return String(props.mensagem.anexo.tipo || "").startsWith("audio/") ? <AudioMensagem conversaId={props.conversaId} mensagem={props.mensagem} /> : <ArquivoOuImagem {...props} />;
+}
+
+function ArquivoOuImagem({ conversaId, mensagem: m, minha }) {
   const [url, setUrl] = useState("");
   const [falhou, setFalhou] = useState(false);
   const [baixando, setBaixando] = useState(false);

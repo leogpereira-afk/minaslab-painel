@@ -51,7 +51,7 @@ test("hora na lista e contador", () => {
   assert.equal(contadorTexto(3), "3");
 });
 
-import { conversasNovas, fotografiaDasNovas, tituloComContagem } from "./mensagens.js";
+import { alternarReacaoLocal, conversasNovas, fotografiaDasNovas, tituloComContagem } from "./mensagens.js";
 
 test("avisos: primeira consulta não avisa; depois só o que chegou e subiu", () => {
   const c1 = [{ id: "a", naoLidas: 2, em: "t1" }, { id: "b", naoLidas: 1, em: "t1" }];
@@ -73,4 +73,14 @@ test("título da aba com contagem", () => {
   assert.equal(tituloComContagem("(3) Mensagens · MinasLab", 5), "(5) Mensagens · MinasLab");
   assert.equal(tituloComContagem("(5) Mensagens · MinasLab", 0), "Mensagens · MinasLab");
   assert.equal(tituloComContagem("X", 120), "(99+) X");
+});
+
+test("reação local: põe, soma, tira e limpa", () => {
+  let r = alternarReacaoLocal({}, "m1", "👍", "ana");
+  assert.deepEqual(r, { m1: [{ emoji: "👍", usuarios: ["ana"] }] });
+  r = alternarReacaoLocal(r, "m1", "👍", "ruth"); assert.deepEqual(r.m1[0].usuarios, ["ana", "ruth"]);
+  r = alternarReacaoLocal(r, "m1", "❤️", "ana"); assert.equal(r.m1.length, 2);
+  r = alternarReacaoLocal(r, "m1", "👍", "ana"); assert.deepEqual(r.m1.find((g) => g.emoji === "👍").usuarios, ["ruth"]);
+  r = alternarReacaoLocal(r, "m1", "👍", "ruth"); r = alternarReacaoLocal(r, "m1", "❤️", "ana"); assert.deepEqual(r, {}); // sem reação: some a mensagem do mapa
+  const antes = { m1: [{ emoji: "👍", usuarios: ["ana"] }] }; alternarReacaoLocal(antes, "m1", "👍", "ana"); assert.deepEqual(antes.m1[0].usuarios, ["ana"]); // não mexe no original
 });
