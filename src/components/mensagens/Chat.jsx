@@ -212,13 +212,13 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
         <button type="button" className={clsx("btn-ghost h-9 w-9 p-0", painel && "bg-sky-50 text-sky-700")} onClick={() => setPainel((v) => !v)} aria-pressed={painel} aria-label={grupo ? "Sobre o grupo" : "Sobre a conversa"} title={grupo ? "Sobre o grupo" : "Sobre a conversa"}><PanelRight size={17} /></button>
       </header>
 
-      <div ref={rolagem} onScroll={aoRolar} className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-3" role="log" aria-live="polite" aria-label="Mensagens">
-        {maisAntigas && <div className="pb-2 text-center"><button type="button" className="text-xs font-medium text-sky-700 underline" onClick={maisAntigasPedir} disabled={carregandoAntigas}>{carregandoAntigas ? "Carregando..." : "Ver mensagens mais antigas"}</button></div>}
-        {itens.length === 0 && <p className="py-10 text-center text-sm text-slate-500">Nenhuma mensagem ainda. Diga um oi!</p>}
+      <div ref={rolagem} onScroll={aoRolar} className="fundo-laboratorio min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3" role="log" aria-live="polite" aria-label="Mensagens">
+        {maisAntigas && <div className="pb-2 text-center"><button type="button" className="rounded-full bg-white/85 px-3 py-0.5 text-xs font-medium text-sky-700 underline shadow-sm" onClick={maisAntigasPedir} disabled={carregandoAntigas}>{carregandoAntigas ? "Carregando..." : "Ver mensagens mais antigas"}</button></div>}
+        {itens.length === 0 && <p className="py-10 text-center"><span className="rounded-full bg-white/85 px-3 py-1 text-sm text-slate-600 shadow-sm">Nenhuma mensagem ainda. Diga um oi!</span></p>}
         {itens.map((it, i) => {
           if (it.tipo === "dia") return <div key={it.chave} className="py-2 text-center"><span className="rounded-full bg-white px-3 py-0.5 text-xs font-medium text-slate-500 shadow-sm">{it.rotulo}</span></div>;
           const m = it.mensagem;
-          if (m.tipo === "sistema") return <p key={it.chave} className="py-1 text-center text-xs text-slate-500">{m.texto}</p>;
+          if (m.tipo === "sistema") return <p key={it.chave} className="py-1 text-center"><span className="inline-block rounded-full bg-white/85 px-3 py-0.5 text-xs text-slate-600 shadow-sm">{m.texto}</span></p>;
           const minha = m.autor === eu;
           const anterior = itens[i - 1]?.mensagem;
           const mesmoAutor = anterior && anterior.tipo === "mensagem" && anterior.autor === m.autor && itens[i - 1].tipo === "msg";

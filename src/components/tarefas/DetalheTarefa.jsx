@@ -99,10 +99,10 @@ function BatePapo({ dados, aoEnviar }) {
   return (
     <div className="flex h-full min-h-[22rem] flex-col rounded-xl border bg-slate-50" style={{ borderColor: "var(--hairline)" }}>
       <header className="border-b bg-white px-4 py-2.5 font-display text-sm font-semibold text-slate-800" style={{ borderColor: "var(--hairline)" }}>Bate-papo da tarefa</header>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3" role="log" aria-live="polite" aria-label="Mensagens da tarefa">
+      <div className="fundo-laboratorio min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3" role="log" aria-live="polite" aria-label="Mensagens da tarefa">
         {mensagens.map((m) => {
           const dia = chaveDia(m.criado_em);
-          const separador = dia !== diaAnterior ? <p key={`d-${dia}`} className="py-1 text-center text-xs text-slate-400 first-letter:uppercase">{diaMsg(m.criado_em)}</p> : null;
+          const separador = dia !== diaAnterior ? <p key={`d-${dia}`} className="py-1 text-center"><span className="inline-block rounded-full bg-white/85 px-3 py-0.5 text-xs font-medium text-slate-600 shadow-sm first-letter:uppercase">{diaMsg(m.criado_em)}</span></p> : null;
           diaAnterior = dia;
           if (m.tipo === "sistema") {
             return (<div key={m.id}>{separador}<p className="mx-auto w-fit max-w-[92%] rounded-xl bg-white px-3 py-1.5 text-center text-xs text-slate-600 shadow-sm [overflow-wrap:anywhere]">{m.texto}<span className="ml-1.5 text-slate-400">{horaMsg(m.criado_em)}</span></p></div>);
@@ -122,7 +122,7 @@ function BatePapo({ dados, aoEnviar }) {
             </div>
           );
         })}
-        {viram.length > 0 && <p className="text-right text-[11px] text-slate-400">Visualizado por {viram.join(", ")}</p>}
+        {viram.length > 0 && <p className="text-right"><span className="inline-block rounded-full bg-white/85 px-2 py-0.5 text-[11px] text-slate-600 shadow-sm">Visualizado por {viram.join(", ")}</span></p>}
         <div ref={fim} />
       </div>
       <div className="border-t bg-white p-2" style={{ borderColor: "var(--hairline)" }}>

@@ -439,3 +439,13 @@ textarea {
 
 /* Tarefas: chip de prazo dos cartões */
 .chip-prazo{display:inline-flex;align-items:center;border-radius:9999px;padding:2px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+
+/* Fundo das conversas (Mensagens e bate-papo da tarefa): azul suave com
+   desenhos de laboratório em traço branco, no espírito do Bitrix. As bolhas
+   continuam brancas/azul-claro, então a leitura não muda. */
+.fundo-laboratorio {
+  background-color: #93c9e4;
+  background-image: url("./assets/fundo-laboratorio.svg"), linear-gradient(160deg, #bfe3f2 0%, #93c9e4 55%, #74b4d9 100%);
+  background-size: 280px 280px, cover;
+  background-attachment: local, scroll;
+}
