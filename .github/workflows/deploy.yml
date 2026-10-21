@@ -70,6 +70,23 @@ jobs:
           VITE_APP_URL: https://leogpereira-afk.github.io/minaslab-painel/crm
       - run: cp -r crm/dist dist/crm
 
+      # Gestão (pasta gestao/): Comercial e Laboratório — app próprio (React 19 +
+      # Vite), publicado dentro do painel em /minaslab-painel/gestao/. Fala só com
+      # a Edge Function ml-comercial (mesmo crachá do painel). Rotas por # (hash),
+      # então não precisa de 404. Testes da Gestão também travam o deploy.
+      - name: Gestão · instalar
+        working-directory: gestao
+        run: npm install --no-audit --no-fund
+      - name: Gestão · testes
+        working-directory: gestao
+        run: npm test
+      - name: Gestão · build
+        working-directory: gestao
+        run: npm run build
+        env:
+          BASE_PATH: /minaslab-painel/gestao/
+      - run: cp -r gestao/dist dist/gestao
+
       # SPA no Pages: não há rewrite de servidor. O 404.html é o index do
       # painel (refresh/bookmark de subpágina funciona; o Router com basename
       # assume dali) com um desvio no topo: caminho /crm/... vai para o index

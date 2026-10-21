@@ -40,4 +40,18 @@ jobs:
           VITE_SUPABASE_ANON_KEY: sb_publishable_YG38KEPCwoKfiQ7PZM2EBg_8cY1vIH7
           VITE_APP_URL: https://leogpereira-afk.github.io/minaslab-painel/crm
       - run: cp -r crm/dist dist/crm
+
+      # Gestão (gestao/) — mesmos testes e build do deploy.
+      - name: Gestão · instalar
+        working-directory: gestao
+        run: npm install --no-audit --no-fund
+      - name: Gestão · testes
+        working-directory: gestao
+        run: npm test
+      - name: Gestão · build
+        working-directory: gestao
+        run: npm run build
+        env:
+          BASE_PATH: /minaslab-painel/gestao/
+      - run: cp -r gestao/dist dist/gestao
       - run: node scripts/crm-404.mjs dist /minaslab-painel/
