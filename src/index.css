@@ -436,3 +436,6 @@ textarea {
  body.imprimir-folha-mensal .folha-impressao-wrapper th,
  body.imprimir-folha-mensal .folha-impressao-wrapper td{padding:2px 3px!important}
 }
+
+/* Tarefas: chip de prazo dos cartões */
+.chip-prazo{display:inline-flex;align-items:center;border-radius:9999px;padding:2px 8px;font-size:12px;font-weight:600;white-space:nowrap}
