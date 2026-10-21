@@ -64,7 +64,7 @@ test("pontos do mês: meta, aprovação, queda e ligações", () => {
 });
 
 test("pessoa sem vínculo com o CRM recebe um aviso só", () => {
-  const p = pontos(resumo, { nome: "X" }, "2026-09");
+  const p = pontos(resumo, { nome: "X", metas: { propostas: 10 } }, "2026-09");
   assert.equal(p.length, 1);
   assert.equal(p[0].tipo, "vinculo");
 });
@@ -180,4 +180,13 @@ test("metas da função: propostas e aprovação ficam com o CRM para quem tem e
   const a = avaliar({ resumo: res, membro: { crmProfileId: "pessoaA", metas: { propostas: 5, aprovacao: 50 } }, mes: "2026-09", notas: {}, metasFuncao: vende });
   assert.deepEqual(a.auto.map((c) => c.id), ["vol", "aprov"]);
   assert.deepEqual(a.metas.map((c) => c.nome), ["Follow-up em dia"]);
+});
+
+test("sem meta no CRM (laboratório, coleta): pontos não falam de propostas nem de vínculo", async () => {
+  const { usaCRM } = await import("./calculos.js");
+  const lab = { nome: "Y", metas: { propostas: 0, aprovacao: 0, ligacoes: 0 } };
+  assert.equal(usaCRM(lab), false);
+  assert.deepEqual(pontos(resumo, lab, "2026-09"), []);
+  const p = pontos(resumo, lab, "2026-09", 2);
+  assert.deepEqual(p.map((x) => x.tipo), ["ocorrencias"]);
 });
