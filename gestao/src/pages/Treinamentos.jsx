@@ -1,6 +1,8 @@
 // Treinamentos: apresentações, trilhas agrupadas por tema (com editar,
 // arquivar, excluir e obrigatório), registro de quem participou com nota de
 // 0 a 10 e certificado, plano (cargos, reciclagem, novos) e calendário.
+import SeletorParticipantes, { NomesParticipantes } from "../components/SeletorParticipantes.jsx";
+import { sincronizarNoPainel, cancelarNoPainel } from "../services/agendaPainel.js";
 import { useState } from "react";
 import { useBase, useCRM } from "../hooks/base.jsx";
 import { Card, Chip, Cabecalho, Abas, Modal } from "../components/ui.jsx";
@@ -559,6 +561,7 @@ export function Calendario({ trilhas }) {
   const hoje = hojeBR();
   const vazio = { trilhaId: trilhas[0]?.id || "", data: "", hora: "", local: "", responsavel: "", obs: "" };
   const [f, setF] = useState(vazio);
+  const [convite, setConvite] = useState({ participantes: [], paraTodos: false });
   const [msg, setMsg] = useState("");
   const [passadas, setPassadas] = useState(false);
   const [baixa, setBaixa] = useState(null);
@@ -572,11 +575,17 @@ export function Calendario({ trilhas }) {
     if (!f.data) { setMsg("Escolha a data."); return; }
     setMsg("");
     try {
-      await gravar("treinamentos", { id: `ag-${Date.now().toString(36)}`, tipo: "agenda", status: "agendado", ...f, titulo: nomeT(f.trilhaId) });
-      setF({ ...vazio, trilhaId: f.trilhaId }); setMsg("Aplicação agendada.");
+      const reg = { id: `ag-${Date.now().toString(36)}`, tipo: "agenda", status: "agendado", ...f, titulo: nomeT(f.trilhaId) };
+      const r = await sincronizarNoPainel(reg, { tipo: "treinamento", titulo: reg.titulo, ...convite });
+      await gravar("treinamentos", { ...reg, painel: r.painel });
+      setF({ ...vazio, trilhaId: f.trilhaId }); setConvite({ participantes: [], paraTodos: false });
+      setMsg(r.erro ? `Agendado na Gestão, mas não foi para a Agenda do painel: ${r.erro}` : r.painel ? "Aplicação agendada e enviada para a Agenda dos participantes." : "Aplicação agendada.");
     } catch (e2) { setMsg(e2.message); }
   };
-  const cancelar = async (a) => { if (window.confirm("Marcar esta data como cancelada?")) { try { await gravar("treinamentos", { ...a, status: "cancelado" }); } catch (e) { setMsg(e.message); } } };
+  const cancelar = async (a) => {
+    if (!window.confirm(a.painel?.id ? "Marcar esta data como cancelada? Quem foi convidado recebe o aviso de cancelamento no painel." : "Marcar esta data como cancelada?")) return;
+    try { await cancelarNoPainel(a.painel); await gravar("treinamentos", { ...a, status: "cancelado", painel: a.painel ? { ...a.painel, id: null } : a.painel }); } catch (e) { setMsg(e.message); }
+  };
   const campo = (k, rot, props = {}) => <label className="campo" style={{ flex: props.flex || "1 1 140px" }}><span>{rot}</span><input className="entrada" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...props} /></label>;
   const trilhaBaixa = baixa ? trilhaEmQualquerLugar(cat, baixa.trilhaId) || { id: baixa.trilhaId, nome: baixa.titulo, minutos: 30 } : null;
   return (
@@ -589,6 +598,7 @@ export function Calendario({ trilhas }) {
         {campo("local", "Local")}
         {campo("responsavel", "Quem aplica")}
         {campo("obs", "Observação", { flex: "2 1 200px" })}
+        <div style={{ flex: "1 1 100%" }}><SeletorParticipantes valor={convite} aoMudar={setConvite} /></div>
         <button type="submit" className="btn">Agendar</button>
         {msg && <span className="peq suave">{msg}</span>}
       </form>
@@ -605,13 +615,13 @@ export function Calendario({ trilhas }) {
               return (
                 <tr key={a.id}>
                   <td className="tnum">{dataCurta(a.data)}{a.hora ? ` · ${a.hora}` : ""}</td>
-                  <td>{nomeT(a.trilhaId, a)}{a.obs && <div className="suave peq">{a.obs}</div>}</td>
+                  <td>{nomeT(a.trilhaId, a)}{a.obs && <div className="suave peq">{a.obs}</div>}{a.painel?.id && <div className="suave peq">👥 <NomesParticipantes painel={a.painel} /></div>}</td>
                   <td className="peq">{a.local || "—"}</td>
                   <td className="peq">{a.responsavel || "—"}</td>
                   <td><Chip tom={tom}>{rot}</Chip></td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {st === "agendado" && <><button type="button" className="btn mini" onClick={() => setBaixa(a)}>Dar baixa</button> <button type="button" className="btn claro mini" onClick={() => cancelar(a)}>Cancelar</button> </>}
-                    <button type="button" className="btn perigo mini" onClick={() => window.confirm("Tirar esta data do calendário?") && remover("treinamentos", a.id)}>Apagar</button>
+                    <button type="button" className="btn perigo mini" onClick={async () => { if (!window.confirm(a.painel?.id ? "Tirar esta data do calendário? Ela sai também da Agenda do painel dos participantes." : "Tirar esta data do calendário?")) return; try { await cancelarNoPainel(a.painel); await remover("treinamentos", a.id); } catch (e) { setMsg(e.message); } }}>Apagar</button>
                   </td>
                 </tr>
               );

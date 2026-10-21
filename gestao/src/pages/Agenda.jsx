@@ -7,6 +7,8 @@ import { Card, Chip, Cabecalho, Modal } from "../components/ui.jsx";
 import { Registro, useCatalogo } from "./Treinamentos.jsx";
 import { trilhaEmQualquerLugar } from "../lib/catalogo.js";
 import { hojeBR, dataCurta, mesNome } from "../lib/format.js";
+import SeletorParticipantes, { NomesParticipantes } from "../components/SeletorParticipantes.jsx";
+import { sincronizarNoPainel, cancelarNoPainel } from "../services/agendaPainel.js";
 
 const TIPOS = {
   reuniao: { nome: "Reunião", cor: "reuniao" },
@@ -143,6 +145,7 @@ function FormEvento({ ev, aoFechar }) {
     tipoReuniao: ev.tipoReuniao || "Equipe geral", data: ev.data || hojeBR(), hora: ev.hora || "", horaFim: ev.horaFim || "",
     local: ev.local || "", responsavel: ev.responsavel || "", participantes: ev.participantes || "", obs: ev.obs || "",
   });
+  const [convite, setConvite] = useState({ participantes: ev.painel?.participantes || [], paraTodos: !!ev.painel?.paraTodos });
   const [repetir, setRepetir] = useState("nao");
   const [vezes, setVezes] = useState(4);
   const [msg, setMsg] = useState("");
@@ -153,17 +156,26 @@ function FormEvento({ ev, aoFechar }) {
     const datas = [f.data];
     if (novo && repetir !== "nao") for (let k = 1; k < Math.min(Math.max(Number(vezes) || 1, 1), 12); k++) datas.push(repetir === "semana" ? somarDias(f.data, 7 * k) : somarMesesDia(f.data, k));
     const base = Date.now().toString(36);
+    const falhas = [];
     try {
       for (const [k, d] of datas.entries()) {
         const id = novo ? `ag-${base}${datas.length > 1 ? `-${k + 1}` : ""}` : ev.id;
         const comum = { id, data: d, hora: f.hora, horaFim: f.horaFim, local: f.local, responsavel: f.responsavel, obs: f.obs, status: ev.status || "agendado" };
+        const titulo = f.tipo === "treinamento" ? trilhaEmQualquerLugar(cat, f.trilhaId)?.nome || "Treinamento" : f.titulo.trim();
+        // Participantes escolhidos: o compromisso vai para a Agenda do painel de cada um.
+        let painel = novo ? null : ev.painel || null;
+        if ((ev.status || "agendado") !== "cancelado") {
+          const r = await sincronizarNoPainel({ ...comum, tipoReuniao: f.tipo === "reuniao" ? f.tipoReuniao : "", painel }, { tipo: f.tipo, titulo, ...convite });
+          painel = r.painel;
+          if (r.erro) falhas.push(r.erro);
+        }
         if (f.tipo === "treinamento") {
-          const t = trilhaEmQualquerLugar(cat, f.trilhaId);
-          await gravar("treinamentos", { ...(ev.origem === "treinamentos" ? ev : {}), ...comum, tipo: "agenda", trilhaId: f.trilhaId, titulo: t?.nome || "", participantes: undefined, origem: undefined });
+          await gravar("treinamentos", { ...(ev.origem === "treinamentos" ? ev : {}), ...comum, tipo: "agenda", trilhaId: f.trilhaId, titulo, participantes: undefined, origem: undefined, painel });
         } else {
-          await gravar("agenda", { ...(ev.origem === "agenda" ? ev : {}), ...comum, tipo: f.tipo, titulo: f.titulo.trim(), tipoReuniao: f.tipo === "reuniao" ? f.tipoReuniao : "", participantes: f.participantes, origem: undefined });
+          await gravar("agenda", { ...(ev.origem === "agenda" ? ev : {}), ...comum, tipo: f.tipo, titulo, tipoReuniao: f.tipo === "reuniao" ? f.tipoReuniao : "", participantes: ev.participantes || "", origem: undefined, painel });
         }
       }
+      if (falhas.length) window.alert(`Salvo na Gestão, mas não consegui mandar para a Agenda do painel: ${falhas[0]}`);
       aoFechar();
     } catch (e) { setMsg(e.message); }
   };
@@ -188,7 +200,7 @@ function FormEvento({ ev, aoFechar }) {
           {campo("local", "Local")}
           {campo("responsavel", f.tipo === "treinamento" ? "Quem aplica" : "Responsável")}
         </div>
-        {f.tipo !== "treinamento" && <div className="campo"><label htmlFor="ag-part">Participantes</label><input id="ag-part" className="entrada" value={f.participantes} onChange={(e) => setF({ ...f, participantes: e.target.value })} placeholder="Ex.: toda a equipe, ou os nomes" /></div>}
+        <SeletorParticipantes valor={convite} aoMudar={setConvite} />
         <div className="campo"><label htmlFor="ag-obs">Pauta ou observação</label><textarea id="ag-obs" className="entrada" rows={3} value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} /></div>
         {novo && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -223,8 +235,24 @@ function VerEvento({ ev, aoFechar, aoEditar, aoAbrir }) {
   const limpo = (() => { const { origem: _o, ...r } = ev; return ev.origem === "treinamentos" ? { ...r, tipo: "agenda", titulo: ev.titulo } : r; })();
   const st = ev.status || "agendado";
   const [tom, rot] = ST[st] || ST.agendado;
-  const marcar = async (status) => { try { await gravar(colecao, { ...limpo, status }); aoFechar(); } catch (e) { setMsg(e.message); } };
-  const apagar = async () => { if (!window.confirm("Apagar este compromisso da agenda?")) return; try { await remover(colecao, ev.id); aoFechar(); } catch (e) { setMsg(e.message); } };
+  // Cancelar tira da Agenda do painel (com aviso); voltar para agendado manda de novo.
+  const marcar = async (status) => {
+    try {
+      let painel = ev.painel || null;
+      if (status === "cancelado" && painel?.id) { await cancelarNoPainel(painel); painel = { ...painel, id: null }; }
+      if (status === "agendado" && painel && !painel.id) {
+        const r = await sincronizarNoPainel({ ...limpo, painel }, { tipo: ev.tipo, titulo: ev.titulo, participantes: painel.participantes, paraTodos: painel.paraTodos });
+        painel = r.painel;
+        if (r.erro) window.alert(`Não consegui mandar de novo para a Agenda do painel: ${r.erro}`);
+      }
+      await gravar(colecao, { ...limpo, status, painel });
+      aoFechar();
+    } catch (e) { setMsg(e.message); }
+  };
+  const apagar = async () => {
+    if (!window.confirm(ev.painel?.id ? "Apagar este compromisso? Ele sai também da Agenda do painel de quem foi convidado." : "Apagar este compromisso da agenda?")) return;
+    try { await cancelarNoPainel(ev.painel); await remover(colecao, ev.id); aoFechar(); } catch (e) { setMsg(e.message); }
+  };
   const trilha = ev.tipo === "treinamento" ? trilhaEmQualquerLugar(cat, ev.trilhaId) || { id: ev.trilhaId, nome: ev.titulo, minutos: 30 } : null;
   return (
     <Modal titulo={ev.titulo} aoFechar={aoFechar} largo={baixa}>
@@ -237,7 +265,8 @@ function VerEvento({ ev, aoFechar, aoEditar, aoAbrir }) {
             <tr><td className="suave">Quando</td><td>{dataCurta(ev.data)}{ev.hora ? ` · ${ev.hora}` : ""}{ev.horaFim ? ` às ${ev.horaFim}` : ""}</td></tr>
             {ev.local && <tr><td className="suave">Local</td><td>{ev.local}</td></tr>}
             {ev.responsavel && <tr><td className="suave">{ev.tipo === "treinamento" ? "Quem aplica" : "Responsável"}</td><td>{ev.responsavel}</td></tr>}
-            {ev.tipo !== "treinamento" && ev.participantes && <tr><td className="suave">Participantes</td><td>{ev.participantes}</td></tr>}
+            {ev.painel && (ev.painel.paraTodos || ev.painel.participantes?.length > 0) && <tr><td className="suave">Participantes</td><td><NomesParticipantes painel={ev.painel} />{ev.painel.id ? <div className="suave peq">Na Agenda do painel de cada um.</div> : null}</td></tr>}
+            {ev.tipo !== "treinamento" && typeof ev.participantes === "string" && ev.participantes && <tr><td className="suave">Anotação</td><td>{ev.participantes}</td></tr>}
             {ev.obs && <tr><td className="suave">Pauta ou observação</td><td style={{ whiteSpace: "pre-wrap" }}>{ev.obs}</td></tr>}
           </tbody></table>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
