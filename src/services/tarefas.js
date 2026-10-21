@@ -28,3 +28,7 @@ export const avisosContar = () => avisos("contar");
 export const avisosListar = (limite = 40) => avisos("listar", { limite });
 export const avisoLido = (id) => avisos("lida", { id });
 export const avisosTodosLidos = () => avisos("todas");
+
+export const tarefaAnexoEnviar = (id, nome, base64) => tarefas("anexo_enviar", { id, nome, base64 });
+export const tarefaAnexoUrl = (id, anexoId) => tarefas("anexo_url", { id, anexo_id: anexoId });
+export const tarefaAnexoApagar = (id, anexoId) => tarefas("anexo_apagar", { id, anexo_id: anexoId });
