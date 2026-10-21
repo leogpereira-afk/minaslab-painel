@@ -13,6 +13,7 @@ import { trocarMinhaSenha } from "../services/dados.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
 import Notificacoes from "./Notificacoes.jsx";
+import Avatar from "./tarefas/Avatar.jsx";
 import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
 
 /* O MENU E UMA LISTA SO. A Impresilk pagou dois dias de procura porque a lista
@@ -106,7 +107,7 @@ function RodapeSessao({ sessao, aoSair, aoTrocarSenha }) {
   return (
     <div className="ml-session">
       <div className="flex items-center justify-between gap-2">
-        <span className="ml-avatar" aria-hidden="true">{(sessao?.nome || sessao?.usuario || "ML").split(/\s+/).slice(0, 2).map(n => n[0]).join("").toUpperCase()}</span>
+        <Avatar usuario={sessao?.usuario} nome={sessao?.nome || sessao?.usuario} tamanho={34} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-sm font-semibold text-slate-800">{sessao?.nome || sessao?.usuario}</span>
           <span className="block text-xs text-slate-500">{PAPEL_ROTULO[sessao?.papel] || sessao?.papel}</span>

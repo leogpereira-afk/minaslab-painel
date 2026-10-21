@@ -25,3 +25,6 @@ export const conversaApagarMensagem = (id, mensagemId) => msg("apagar_mensagem",
 
 /** Avisa o contador do menu que algo mudou (aberta uma conversa, enviada uma mensagem). */
 export const avisarContador = () => { try { window.dispatchEvent(new Event("mensagens:atualizar")); } catch { /* sem window */ } };
+export const conversaFotoGrupo = (id, base64) => msg("foto_grupo", { id, base64 });
+export const conversaFotoGrupoRemover = (id) => msg("foto_grupo", { id, remover: true });
+export const conversaDescricao = (id, descricao) => msg("descricao", { id, descricao });

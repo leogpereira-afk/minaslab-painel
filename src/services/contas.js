@@ -19,3 +19,7 @@ export const contasPadraoLer = () => chamarContas("padrao").then((r) => r.nomeMa
 export const contaEditar = (dados) => chamarContas("editar", dados);
 export const contasPadraoNome = (maiusculas, converterExistentes = false) =>
   chamarContas("padraoNome", { maiusculas, converterExistentes });
+
+// Foto de perfil (aparece no sistema inteiro). `base64` é o JPEG já reduzido por prepararFotoPerfil.
+export const contaFoto = (usuario, base64) => chamarContas("foto", { usuario, base64 });
+export const contaFotoRemover = (usuario) => chamarContas("fotoRemover", { usuario });

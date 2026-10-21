@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BellOff, MessageSquarePlus, Search, Users } from "lucide-react";
+import FotoGrupo from "../components/mensagens/FotoGrupo.jsx";
 import { clsx } from "clsx";
 import { PageTitle } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
@@ -82,7 +83,7 @@ export default function Mensagens() {
               {conversas.map((c) => (
                 <li key={c.id}>
                   <button type="button" onClick={() => abrir(c.id)} aria-current={aberta === c.id ? "true" : undefined} className={clsx("flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50", aberta === c.id && "bg-sky-50")}>
-                    {c.tipo === "grupo" ? <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700"><Users size={19} aria-hidden="true" /></span> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={44} />}
+                    {c.tipo === "grupo" ? <FotoGrupo foto={c.foto} tamanho={44} /> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={44} />}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
                         <span className={clsx("truncate text-sm", c.naoLidas ? "font-bold text-slate-900" : "font-medium text-slate-800")}>{c.titulo}</span>

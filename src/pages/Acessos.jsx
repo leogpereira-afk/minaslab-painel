@@ -7,11 +7,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Plus, KeyRound, Copy, Check, Shield, Power, Dices, UserRound, Pencil, CaseUpper,
+  Plus, KeyRound, Copy, Check, Shield, Power, Dices, Camera, Pencil, CaseUpper,
 } from "lucide-react";
 import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
 import { contaEditar, contasPadraoLer, contasPadraoNome } from "../services/contas.js";
 import { getSessao } from "../lib/sessao.js";
+import Avatar from "../components/tarefas/Avatar.jsx";
+import FotoConta from "../components/acessos/FotoConta.jsx";
 import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
 import {
@@ -93,7 +95,7 @@ function normalizarUsuario(v) {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
-function LinhaConta({ conta, minha, aoEditar, aoRedefinir, aoAlternarAtiva, aoPaginas }) {
+function LinhaConta({ conta, minha, aoEditar, aoRedefinir, aoAlternarAtiva, aoPaginas, aoFoto }) {
   const ativa = conta.ativo !== false;
   const papel = papelDe(conta.papel);
   return (
@@ -101,9 +103,10 @@ function LinhaConta({ conta, minha, aoEditar, aoRedefinir, aoAlternarAtiva, aoPa
       className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 ${ativa ? "" : "opacity-60"}`}
       style={{ borderColor: "var(--hairline)" }}
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">
-        <UserRound size={17} strokeWidth={2.2} />
-      </span>
+      <button type="button" onClick={() => aoFoto(conta)} className="group relative shrink-0 rounded-full" title="Foto de perfil" aria-label={`Foto de ${conta.usuario}`}>
+        <Avatar usuario={conta.usuario} nome={conta.nome || conta.usuario} tamanho={40} />
+        <span className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full border bg-white text-slate-500 group-hover:text-brand-700" style={{ borderColor: "var(--hairline)" }}><Camera size={11} aria-hidden="true" /></span>
+      </button>
 
       <span className="min-w-0 flex-1 basis-48">
         <span className="flex items-center gap-2">
@@ -406,6 +409,7 @@ export default function Acessos() {
   const [formNova, setFormNova] = useState(null); // { usuario, nome, papel, senha }
   const [alvoSenha, setAlvoSenha] = useState(null); // { usuario, senha }
   const [alvoPaginas, setAlvoPaginas] = useState(null);
+  const [alvoFoto, setAlvoFoto] = useState(null); // conta que está trocando a foto
   const [alvoEditar, setAlvoEditar] = useState(null); // { usuario, nome, papel, papelOriginal, paginas_consulta }
   const [nomeMaiusculas, setNomeMaiusculas] = useState(false);
   const [salvandoPadrao, setSalvandoPadrao] = useState(false);
@@ -635,6 +639,7 @@ export default function Acessos() {
                 minha={c.usuario === sessao?.usuario}
                 aoRedefinir={(conta) => { setErroFormulario(null); setAlvoSenha({ usuario: conta.usuario, senha: "" }); }}
                 aoEditar={abrirEditar}
+                aoFoto={setAlvoFoto}
                 aoAlternarAtiva={alternarAtiva}
                 aoPaginas={conta => { setErroFormulario(null); setAlvoPaginas({ usuario: conta.usuario, papel: conta.papel, paginas_consulta: paginasDaConta(conta) }); }}
               />
@@ -712,6 +717,7 @@ export default function Acessos() {
         minha={alvoEditar?.usuario === sessao?.usuario}
         maiusculas={nomeMaiusculas}
       />
+      {alvoFoto && <FotoConta conta={alvoFoto} aoFechar={() => setAlvoFoto(null)} />}
       {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Ao salvar, somente as páginas marcadas ficarão disponíveis para consulta. A direção tem acesso a todas. Em Serviços Gerados, a equipe também pode conferir pagamentos.</p>
