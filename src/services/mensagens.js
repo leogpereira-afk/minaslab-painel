@@ -30,3 +30,5 @@ export const conversaFotoGrupoRemover = (id) => msg("foto_grupo", { id, remover:
 export const conversaDescricao = (id, descricao) => msg("descricao", { id, descricao });
 export const conversaEnviarArquivo = (id, nome, base64, texto = "") => msg("enviar_arquivo", { id, nome, base64, texto });
 export const conversaArquivoUrl = (id, mensagemId, baixar = false) => msg("arquivo_url", { id, mensagem_id: mensagemId, baixar });
+export const conversaEnviarAudio = (id, nome, base64, duracao) => msg("enviar_arquivo", { id, nome, base64, duracao });
+export const conversaReagir = (id, mensagemId, emoji) => msg("reagir", { id, mensagem_id: mensagemId, emoji });

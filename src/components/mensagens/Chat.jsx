@@ -1,16 +1,20 @@
 // Uma conversa aberta: mensagens, envio, tique de "visualizado" e participantes do grupo.
 // Atualiza sozinha a cada poucos segundos (só as mensagens novas, pela posição `seq`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, Loader2, PanelRight, Paperclip, Send, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Loader2, Mic, PanelRight, Paperclip, Send, Smile, Trash2, UserPlus } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
 import SobreConversa from "./SobreConversa.jsx";
 import FotoGrupo from "./FotoGrupo.jsx";
 import AnexoMensagem from "./AnexoMensagem.jsx";
-import { ACEITAR_NO_INPUT, lerArquivoParaEnvio, problemaDoArquivo } from "../../lib/anexos.js";
+import GravadorAudio from "./GravadorAudio.jsx";
+import SeletorEmoji from "./SeletorEmoji.jsx";
+import ReacoesMensagem, { BotaoReagir } from "./ReacoesMensagem.jsx";
+import { inserirNoTexto } from "../../lib/emojis.js";
+import { ACEITAR_NO_INPUT_MENSAGEM, EXTENSOES_MENSAGEM, lerArquivoParaEnvio, problemaDoArquivo } from "../../lib/anexos.js";
 import { corDoAvatar, horaLocal } from "../../lib/tarefas.js";
-import { comSeparadores, mesclarMensagens, quemViu, situacaoDaMensagem } from "../../lib/mensagens.js";
-import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaEnviarArquivo, conversaObter, conversaSilenciar } from "../../services/mensagens.js";
+import { alternarReacaoLocal, comSeparadores, mesclarMensagens, quemViu, situacaoDaMensagem } from "../../lib/mensagens.js";
+import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaEnviarArquivo, conversaEnviarAudio, conversaObter, conversaReagir, conversaSilenciar } from "../../services/mensagens.js";
 
 const INTERVALO = 4000;
 let contadorLocal = 0;
@@ -29,6 +33,8 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const campo = useRef(null);
   const entradaArquivo = useRef(null);
   const [arrastando, setArrastando] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [emojiAberto, setEmojiAberto] = useState(false);
   const colarNoFim = useRef(true);
   const ultimaSeq = useRef(0);
 
@@ -102,8 +108,8 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const enviarArquivos = async (lista) => {
     const arquivos = [...lista];
     if (!arquivos.length || !dados) return;
-    const recusados = arquivos.map(problemaDoArquivo).filter(Boolean);
-    const validos = arquivos.filter((a) => !problemaDoArquivo(a));
+    const recusados = arquivos.map((a) => problemaDoArquivo(a, EXTENSOES_MENSAGEM)).filter(Boolean);
+    const validos = arquivos.filter((a) => !problemaDoArquivo(a, EXTENSOES_MENSAGEM));
     setErro(recusados.join(" "));
     let legenda = texto.trim();
     setEnviando(true);
@@ -126,6 +132,41 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
     }
     setEnviando(false);
     campo.current?.focus();
+  };
+
+  // Mensagem de voz gravada na tela: vai como arquivo de áudio com a duração.
+  const enviarAudio = async (blob, ext, duracao) => {
+    setGravando(false);
+    if (!dados) return;
+    const nome = `audio-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}.${ext}`;
+    const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: "", anexo: { nome, tipo: blob.type || "audio/webm", tamanho: blob.size, duracao }, apagada: false, criadoEm: new Date().toISOString() };
+    colarNoFim.current = true;
+    setMensagens((l) => [...l, provisoria]);
+    setEnviando(true);
+    try {
+      const { base64 } = await lerArquivoParaEnvio(new File([blob], nome, { type: blob.type }));
+      const r = await conversaEnviarAudio(id, nome, base64, duracao);
+      setMensagens((l) => mesclarMensagens(l.filter((m) => m.id !== provisoria.id), [r.mensagem]));
+      ultimaSeq.current = Math.max(ultimaSeq.current, r.mensagem.seq);
+      aoMudou?.();
+    } catch (ex) {
+      setMensagens((l) => l.filter((m) => m.id !== provisoria.id));
+      setErro(ex.message);
+    } finally { setEnviando(false); }
+  };
+
+  // Reação: aparece na hora; o servidor confirma e devolve o conjunto certo.
+  const reagir = async (m, emoji) => {
+    if (m.seq == null) return;
+    setDados((d) => (d ? { ...d, reacoes: alternarReacaoLocal(d.reacoes, m.id, emoji, d.eu) } : d));
+    try { const r = await conversaReagir(id, m.id, emoji); setDados((d) => (d ? { ...d, reacoes: r.reacoes } : d)); }
+    catch (ex) { setErro(ex.message); await carregar(); }
+  };
+  const poremEmoji = (emoji) => {
+    const el = campo.current;
+    const r = inserirNoTexto(texto, el?.selectionStart, el?.selectionEnd, emoji);
+    setTexto(r.texto);
+    requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(r.cursor, r.cursor); } });
   };
 
   const maisAntigasPedir = async () => {
@@ -186,27 +227,40 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
           return (
             <div key={it.chave} className={clsx("group flex items-end gap-1.5", minha ? "justify-end" : "justify-start", !mesmoAutor && "pt-1.5")}>
               {!minha && grupo && (mesmoAutor ? <span className="w-7 shrink-0" /> : <Avatar usuario={m.autor} nome={nomeDe(m.autor)} tamanho={28} />)}
+              {minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="esquerda" />}
               {minha && !m.apagada && m.seq != null && <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 group-hover:block group-focus-within:block" onClick={() => apagar(m)} aria-label="Apagar mensagem" title="Apagar mensagem"><Trash2 size={13} /></button>}
               <div className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900")}>
                 {!minha && grupo && !mesmoAutor && <p className="text-xs font-semibold" style={{ color: corDoAvatar(m.autor) }}>{nomeDe(m.autor)}</p>}
                 {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <p className={clsx("whitespace-pre-wrap [overflow-wrap:anywhere]", m.anexo && "mt-1.5")}>{m.texto}</p>}</>}
+                {!m.apagada && <ReacoesMensagem reacoes={dados.reacoes?.[m.id]} eu={eu} nomes={dados.nomes || {}} aoAlternar={(e) => reagir(m, e)} minha={minha} />}
                 <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
                   {horaLocal(m.criadoEm)}
                   {minha && !m.apagada && (situacao === "enviando" ? <Loader2 size={12} className="animate-spin" aria-label="Enviando" /> : situacao === "visualizada" ? <CheckCheck size={14} className="text-sky-600" aria-label="Visualizada" /> : <Check size={14} aria-label="Enviada" />)}
                 </p>
                 {viram.length > 0 && !grupoTodosViram(viram, dados.membros, eu) && <p className="text-right text-[10px] text-slate-400">Visto por {viram.map((u) => nomeDe(u).split(" ")[0]).join(", ")}</p>}
               </div>
+              {!minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="direita" />}
             </div>
           );
         })}
       </div>
 
       {erro && <div role="alert" className="border-t bg-red-50 px-3 py-2 text-sm text-red-700" style={{ borderColor: "var(--hairline)" }}>{erro}</div>}
-      <form className="flex items-end gap-2 border-t bg-white p-2.5" style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-        <input ref={entradaArquivo} type="file" multiple accept={ACEITAR_NO_INPUT} className="sr-only" aria-label="Escolher arquivos para enviar" onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; void enviarArquivos(l); }} />
-        <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
-        <textarea ref={campo} className="input max-h-32 min-h-[44px] flex-1 resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem" aria-label="Escreva uma mensagem" value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); void enviarArquivos(f); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
-        <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={!texto.trim() || enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
+      <form className="relative flex items-end gap-2 border-t bg-white p-2.5" style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+        {gravando ? <GravadorAudio aoEnviar={enviarAudio} aoCancelar={() => setGravando(false)} aoErro={setErro} /> : (
+          <>
+            <input ref={entradaArquivo} type="file" multiple accept={ACEITAR_NO_INPUT_MENSAGEM} className="sr-only" aria-label="Escolher arquivos para enviar" onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; void enviarArquivos(l); }} />
+            <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
+            <span className="relative">
+              <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => setEmojiAberto((v) => !v)} aria-expanded={emojiAberto} aria-label="Escolher emoji" title="Emojis"><Smile size={19} /></button>
+              {emojiAberto && <SeletorEmoji aoEscolher={poremEmoji} aoFechar={() => setEmojiAberto(false)} className="absolute bottom-full left-0 mb-2" />}
+            </span>
+            <textarea ref={campo} className="input max-h-32 min-h-[44px] flex-1 resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem" aria-label="Escreva uma mensagem" value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); void enviarArquivos(f); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
+            {texto.trim()
+              ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
+              : <button type="button" className="btn-primary h-11 w-11 shrink-0 p-0" onClick={() => { setErro(""); setGravando(true); }} disabled={enviando} aria-label="Gravar mensagem de voz" title="Gravar mensagem de voz"><Mic size={18} /></button>}
+          </>
+        )}
       </form>
 
     </section>

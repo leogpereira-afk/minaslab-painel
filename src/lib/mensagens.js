@@ -82,3 +82,16 @@ export const fotografiaDasNovas = (atuais) => new Map((atuais || []).map((c) => 
 
 /** Título da aba com a contagem: "(3) Mensagens · MinasLab". Tira um prefixo antigo antes de pôr o novo. */
 export const tituloComContagem = (titulo, total) => { const limpo = String(titulo || "").replace(/^\(\d+\+?\)\s*/, ""); return total > 0 ? `(${total > 99 ? "99+" : total}) ${limpo}` : limpo; };
+
+/** Liga/desliga a reação de `eu` numa mensagem, na hora (antes de o servidor responder). `reacoes` = { [mensagemId]: [{ emoji, usuarios }] }. */
+export function alternarReacaoLocal(reacoes, mensagemId, emoji, eu) {
+  const todas = { ...(reacoes || {}) };
+  const lista = (todas[mensagemId] || []).map((g) => ({ ...g, usuarios: [...g.usuarios] }));
+  const g = lista.find((x) => x.emoji === emoji);
+  if (!g) lista.push({ emoji, usuarios: [eu] });
+  else if (g.usuarios.includes(eu)) g.usuarios = g.usuarios.filter((u) => u !== eu);
+  else g.usuarios.push(eu);
+  const resto = lista.filter((x) => x.usuarios.length);
+  if (resto.length) todas[mensagemId] = resto; else delete todas[mensagemId];
+  return todas;
+}

@@ -4,7 +4,7 @@
 // Privacidade: só os membros leem uma conversa. Nem a direção lê conversa dos outros.
 // "Lida" é por posição: cada membro guarda a `seq` da última mensagem que já viu (lido_ate).
 //
-// Ações: enviar_arquivo, arquivo_url, foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
+// Ações: reagir, enviar_arquivo, arquivo_url, foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -26,11 +26,15 @@ const TIPOS_ANEXO: Record<string, string> = {
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   csv: "text/csv", txt: "text/plain", xml: "application/xml", zip: "application/zip",
+  // mensagens de voz (gravadas na tela; o navegador gera webm/ogg, o Safari gera m4a)
+  webm: "audio/webm", ogg: "audio/ogg", m4a: "audio/mp4", mp3: "audio/mpeg", wav: "audio/wav",
 };
+const MAX_AUDIO_SEG = 600;
 const extensaoDe = (nome: string) => (nome.split(".").length > 1 ? nome.split(".").pop()!.toLowerCase() : "");
 const nomeSeguro = (nome: string) => nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(-80) || "arquivo";
-const anexoDe = (m: any) => (m.anexo_caminho ? { nome: m.anexo_nome, tipo: m.anexo_tipo, tamanho: m.anexo_tamanho } : null);
-const dizDe = (m: any) => (m.anexo_caminho ? `📎 ${m.anexo_nome}${txt(m.texto) ? ` — ${txt(m.texto)}` : ""}` : m.texto);
+const anexoDe = (m: any) => (m.anexo_caminho ? { nome: m.anexo_nome, tipo: m.anexo_tipo, tamanho: m.anexo_tamanho, duracao: m.anexo_duracao ?? null } : null);
+const ehAudio = (tipo: unknown) => String(tipo ?? "").startsWith("audio/");
+const dizDe = (m: any) => (m.anexo_caminho && ehAudio(m.anexo_tipo) ? `🎤 Mensagem de voz${m.anexo_duracao ? ` (${Math.floor(m.anexo_duracao / 60)}:${String(m.anexo_duracao % 60).padStart(2, "0")})` : ""}` : m.anexo_caminho ? `📎 ${m.anexo_nome}${txt(m.texto) ? ` — ${txt(m.texto)}` : ""}` : m.texto);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class Falha extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -225,6 +229,19 @@ async function criarGrupo(c: Ctx, b: any) {
   return { ok: true, id: nova.id };
 }
 
+// Reações da conversa agrupadas por mensagem: { [mensagem_id]: [{ emoji, usuarios: [...] }] }. Vai em toda consulta, para quem já tem as mensagens na tela ver as reações novas.
+async function reacoesDaConversa(conversaId: string) {
+  const { data, error } = await sb.from("ml_conversa_reacoes").select("mensagem_id,usuario,emoji,criado_em").eq("conversa_id", conversaId).order("criado_em", { ascending: true }).limit(2000);
+  if (error) throw error;
+  const out: Record<string, { emoji: string; usuarios: string[] }[]> = {};
+  for (const r of data ?? []) {
+    const lista = (out[r.mensagem_id] ??= []);
+    const g = lista.find((x) => x.emoji === r.emoji);
+    if (g) g.usuarios.push(r.usuario); else lista.push({ emoji: r.emoji, usuarios: [r.usuario] });
+  }
+  return out;
+}
+
 async function obter(c: Ctx, b: any) {
   const a = await carregarConversa(c, b.id);
   const apos = Number(b.apos) || 0, antes = Number(b.antes) || 0;
@@ -261,6 +278,7 @@ async function obter(c: Ctx, b: any) {
     conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, foto: a.conv.foto ?? null, descricao: a.conv.descricao ?? "", criadoEm: a.conv.criado_em, silenciado: !!a.meu.silenciado },
     membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
     mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em })),
+    reacoes: await reacoesDaConversa(a.conv.id),
     maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
   };
 }
@@ -290,10 +308,13 @@ async function enviarArquivo(c: Ctx, b: any) {
   if (!bytes.length) erro(400, "O arquivo está vazio.");
   if (bytes.length > MAX_ANEXO_BYTES) erro(400, "O arquivo passa de 8 MB. Reduza ou divida.");
   const legenda = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, 1000);
+  const duracaoBruta = Math.round(Number(b.duracao));
+  const duracao = ehAudio(tipo) && Number.isFinite(duracaoBruta) && duracaoBruta > 0 ? Math.min(duracaoBruta, MAX_AUDIO_SEG) : null;
+  if (ehAudio(tipo) && duracaoBruta > MAX_AUDIO_SEG) erro(400, "A mensagem de voz passa de 10 minutos.");
   const caminho = `conversas/${a.conv.id}/${crypto.randomUUID()}-${nomeSeguro(nome)}`;
   const { error: eUp } = await sb.storage.from(BUCKET_ARQUIVOS).upload(caminho, bytes, { contentType: tipo, upsert: false });
   if (eUp) throw eUp;
-  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto: legenda, anexo_nome: nome, anexo_tipo: tipo, anexo_tamanho: bytes.length, anexo_caminho: caminho }).select("*").single();
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto: legenda, anexo_nome: nome, anexo_tipo: tipo, anexo_tamanho: bytes.length, anexo_duracao: duracao, anexo_caminho: caminho }).select("*").single();
   if (error) { await sb.storage.from(BUCKET_ARQUIVOS).remove([caminho]); throw error; }
   await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(dizDe(data)), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
   await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
@@ -310,6 +331,31 @@ async function arquivoUrl(c: Ctx, b: any) {
   const { data, error: eUrl } = await sb.storage.from(BUCKET_ARQUIVOS).createSignedUrl(m.anexo_caminho, 300, b.baixar === true ? { download: m.anexo_nome } : undefined);
   if (eUrl || !data?.signedUrl) throw eUrl ?? new Error("Não consegui gerar o link do arquivo.");
   return { ok: true, url: data.signedUrl, nome: m.anexo_nome };
+}
+
+// Reagir com um emoji: clicar de novo tira. Uma pessoa pode usar vários emojis diferentes na mesma mensagem.
+async function reagir(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const mid = txt(b.mensagem_id);
+  if (!UUID.test(mid)) erro(400, "Mensagem inválida.");
+  const emoji = String(b.emoji ?? "").trim();
+  if (!emoji || emoji.length > 16 || !/\p{Extended_Pictographic}/u.test(emoji) || /[A-Za-z0-9]{2,}/.test(emoji)) erro(400, "Escolha um emoji.");
+  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("id,conversa_id,tipo,apagada").eq("id", mid).maybeSingle();
+  if (error) throw error;
+  if (!m || m.conversa_id !== a.conv.id || m.tipo !== "mensagem" || m.apagada) erro(404, "Não encontrei essa mensagem.");
+  const { data: ja, error: e2 } = await sb.from("ml_conversa_reacoes").select("mensagem_id").eq("mensagem_id", mid).eq("usuario", c.eu).eq("emoji", emoji).maybeSingle();
+  if (e2) throw e2;
+  if (ja) {
+    const { error: e3 } = await sb.from("ml_conversa_reacoes").delete().eq("mensagem_id", mid).eq("usuario", c.eu).eq("emoji", emoji);
+    if (e3) throw e3;
+  } else {
+    const { count, error: e4 } = await sb.from("ml_conversa_reacoes").select("emoji", { count: "exact", head: true }).eq("mensagem_id", mid).eq("usuario", c.eu);
+    if (e4) throw e4;
+    if ((count ?? 0) >= 10) erro(400, "Você já usou 10 reações nesta mensagem.");
+    const { error: e5 } = await sb.from("ml_conversa_reacoes").insert({ mensagem_id: mid, conversa_id: a.conv.id, usuario: c.eu, emoji });
+    if (e5) throw e5;
+  }
+  return { ok: true, reacoes: await reacoesDaConversa(a.conv.id) };
 }
 
 async function mudarMembros(c: Ctx, b: any) {
@@ -442,7 +488,7 @@ async function apagarMensagem(c: Ctx, b: any) {
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   usuarios: (c) => usuarios(c), conversas: (c) => listarConversas(c), contar: (c) => contar(c),
-  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao, enviar_arquivo: enviarArquivo, arquivo_url: arquivoUrl,
+  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao, enviar_arquivo: enviarArquivo, arquivo_url: arquivoUrl, reagir,
 };
 
 Deno.serve(async (req) => {
