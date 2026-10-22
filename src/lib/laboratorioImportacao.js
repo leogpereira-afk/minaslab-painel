@@ -9,7 +9,7 @@
 // fica em `pendencias` com o texto original para a equipe revisar na tela.
 
 import { unzipSync, strFromU8 } from "fflate";
-import { contarAmostras, casarPessoa } from "./laboratorioEntradas.js";
+import { contarAmostras, casarPessoa, formatarOS } from "./laboratorioEntradas.js";
 
 const ANO_MIN = 2024, ANO_MAX = 2027;
 const TIPOS = { AGUA: "ÁGUA", ALIMENTO: "ALIMENTO", EFLUENTE: "EFLUENTE", SOLO: "SOLO", AR: "AR", CQ: "CQ", "CONTROLE DE QUALIDADE": "CQ" };
@@ -233,7 +233,7 @@ export function converterPlanilha(linhas, { arquivo = "planilha.xlsx", contas = 
     });
     if (!Object.keys(original).length) continue;
     const pend = [];
-    const os = texto(c.os);
+    const osPlanilha = texto(c.os);
     const amostras = texto(c.amostras);
     let obs = texto(c.observacao);
     if (["NA", "N/A", "-"].includes(obs.toUpperCase())) obs = "";
@@ -251,10 +251,13 @@ export function converterPlanilha(linhas, { arquivo = "planilha.xlsx", contas = 
     let finalizado = simNao(c.finalizadoLab);
     if (texto(fq).toUpperCase() === "SIM") { finalizado = true; fq = null; }
     const libTxt = semAcento(texto(c.liberadoCliente).toLowerCase());
+    const recebidoEm = lerData(c.recebidoEm, "Data de recebimento", pend);
+    const { os, aviso: avisoOS } = formatarOS(osPlanilha, recebidoEm ? Number(recebidoEm.slice(0, 4)) : new Date().getFullYear());
+    if (avisoOS) pend.push(avisoOS);
     const reg = {
       id: `labent-imp-${String(linha).padStart(5, "0")}`,
       os, amostras, qtdAmostras: contarAmostras(amostras),
-      recebidoEm: lerData(c.recebidoEm, "Data de recebimento", pend),
+      recebidoEm,
       recebidoPor: pessoas(c.recebidoPor),
       tipos: lista(c.tipos, TIPOS),
       parametroImediato: simNao(c.imediato),
