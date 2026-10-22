@@ -85,7 +85,8 @@ const ROTULOS: Record<string, string> = {
 };
 function oQueMudou(antes: Record<string, unknown> | null, depois: Record<string, unknown>) {
   if (!antes) return "Entrada criada";
-  const m = Object.keys(ROTULOS).filter((c) => JSON.stringify(antes[c] ?? null) !== JSON.stringify(depois[c] ?? null)).map((c) => ROTULOS[c]);
+  // Mesma régua dos setores: campo ausente, vazio, null e false contam como "nada" (não poluir o histórico).
+  const m = Object.keys(ROTULOS).filter((c) => comparavel(antes[c]) !== comparavel(depois[c])).map((c) => ROTULOS[c]);
   return m.length ? `Alterou: ${m.join(", ")}` : "Gravou sem mudanças";
 }
 function conferir(r: Record<string, unknown>) {
