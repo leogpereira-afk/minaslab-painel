@@ -9,13 +9,11 @@
 // fica em `pendencias` com o texto original para a equipe revisar na tela.
 
 import { unzipSync, strFromU8 } from "fflate";
-import { contarAmostras } from "./laboratorioEntradas.js";
+import { contarAmostras, casarPessoa } from "./laboratorioEntradas.js";
 
 const ANO_MIN = 2024, ANO_MAX = 2027;
 const TIPOS = { AGUA: "ÁGUA", ALIMENTO: "ALIMENTO", EFLUENTE: "EFLUENTE", SOLO: "SOLO", AR: "AR", CQ: "CQ", "CONTROLE DE QUALIDADE": "CQ" };
 const NOMES = { "ANA CLAUDIA": "ANA CLÁUDIA", THAYNA: "THAYNÁ", VITORIA: "VICTORIA" };
-// Colunas (A=0) que guardam data na planilha.
-const COLS_DATA = new Set([2, 8, 9, 12, 13, 15]);
 
 const semAcento = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "");
 const dois = (n) => String(n).padStart(2, "0");
@@ -150,56 +148,131 @@ export function lerData(v, campo, pend) {
   return "";
 }
 
-/** Linhas cruas da planilha → registros de lab_entradas. Pula cabeçalho (linhas 1–2) e linhas vazias. */
-export function converterPlanilha(linhas, { arquivo = "planilha.xlsx" } = {}) {
+/* ------------------------------------------------------------- colunas
+   A planilha nova pode vir com colunas em outra ordem: cada coluna é achada
+   pelo TÍTULO. Coluna sem título conhecido não se perde: vai para "extras".
+   E toda célula preenchida fica guardada como estava em "original". */
+const CAMPOS_TITULO = [
+  ["recebidoPor", /RESPONSAVEL PELO RECEB|RECEBIDO POR|QUEM RECEBEU/],
+  ["retiradoPor", /RESPONSAVEL PELA RETIRADA|RETIRADO POR|QUEM RETIROU/],
+  ["retiradaComercialEm", /COMERCIAL/],
+  ["retiradaLabEm", /RETIRADA.*LAB/],
+  ["finalizadoMbEm", /FINALIZA.*\bMB\b|\bMB\b.*FINALIZA|MICROBIO/],
+  ["finalizadoFqEm", /FINALIZA.*\bFQ\b|\bFQ\b.*FINALIZA|FISICO/],
+  ["finalizadoLab", /FINALIZADO/],
+  ["liberadoEm", /DATA.*LIBERA/],
+  ["liberadoCliente", /L[IE]B[ER]*RADO|LIBERAD/],
+  ["descartado", /DESCART/],
+  ["recebidoEm", /DATA.*RECEB/],
+  ["imediato", /IMEDIATO/],
+  ["origem", /INTERNO|PROVEDOR/],
+  ["tipos", /TIPO/],
+  ["observacao", /OB[SE]/],
+  ["amostras", /AMOSTRA/],
+  ["os", /^(N[ºO°.]?\s*(DA\s*)?)?O\.?\s*S\.?$|ORDEM DE SERV|^\s*OS\b/],
+];
+const POSICAO_PADRAO = ["os", "amostras", "recebidoEm", "recebidoPor", "tipos", "imediato", "origem", "retiradoPor", "retiradaLabEm",
+  "retiradaComercialEm", "observacao", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado"];
+const CAMPOS_DATA_IMP = new Set(["recebidoEm", "retiradaLabEm", "retiradaComercialEm", "finalizadoMbEm", "finalizadoFqEm", "liberadoEm"]);
+
+// Acha a linha de títulos (entre as 10 primeiras) e diz qual campo é cada coluna.
+export function mapearColunas(linhas) {
+  let melhor = null;
+  for (const { linha, valores } of linhas.slice(0, 10)) {
+    const mapa = {}, titulos = {};
+    let achou = 0;
+    valores.forEach((v, col) => {
+      if (typeof v !== "string" || !v.trim()) return;
+      const t = semAcento(v).toUpperCase().replace(/\s+/g, " ").trim();
+      titulos[col] = v.trim();
+      const campo = CAMPOS_TITULO.find(([c, re]) => re.test(t) && !Object.values(mapa).includes(c))?.[0];
+      if (campo) { mapa[col] = campo; achou += 1; }
+    });
+    if (achou >= 4 && (!melhor || achou > melhor.achou)) melhor = { linha, mapa, titulos, achou };
+  }
+  if (!melhor) {
+    // Sem títulos reconhecíveis: ordem da planilha original (A = OS … Q = descarte), dados a partir da linha 3.
+    return { linhaTitulo: 2, mapa: Object.fromEntries(POSICAO_PADRAO.map((c, i) => [i, c])), titulos: {} };
+  }
+  // Planilha antiga: a coluna A (OS) vem com título "lixo". Se OS não foi achada e a coluna antes de "amostras" está livre, é ela.
+  if (!Object.values(melhor.mapa).includes("os")) {
+    const colAm = Number(Object.keys(melhor.mapa).find((k) => melhor.mapa[k] === "amostras"));
+    if (Number.isFinite(colAm) && colAm > 0 && !melhor.mapa[colAm - 1]) melhor.mapa[colAm - 1] = "os";
+  }
+  return { linhaTitulo: melhor.linha, mapa: melhor.mapa, titulos: melhor.titulos };
+}
+
+const letra = (i) => { let s = ""; let n = i; do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0); return s; };
+// Texto do jeito que a pessoa via na planilha (número de série de data vira dd/mm/aaaa hh:mm).
+function comoNaPlanilha(v, ehData) {
+  if (v == null) return "";
+  if (typeof v === "number" && ehData && v > 20000 && v < 2958466) {
+    const iso = deSerie(v);
+    const h = iso.slice(11, 16);
+    return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}${h !== "00:00" ? ` ${h}` : ""}`;
+  }
+  return texto(v);
+}
+
+/** Linhas cruas da planilha → registros de lab_entradas.
+ *  contas: [{usuario, nome}] do sistema — nomes da planilha viram o nome da conta; sem conta, fica o nome da planilha. */
+export function converterPlanilha(linhas, { arquivo = "planilha.xlsx", contas = [] } = {}) {
+  const { linhaTitulo, mapa, titulos } = mapearColunas(linhas);
+  const pessoas = (v) => lista(v).map((n) => casarPessoa(n, contas)?.nome || n).filter((n, i, a) => a.indexOf(n) === i);
   const regs = [];
   for (const { linha, valores, comentario = "" } of linhas) {
-    if (linha < 3) continue;
-    const r = Array.from({ length: 17 }, (_, i) => {
-      const v = valores[i];
-      return COLS_DATA.has(i) || i === 14 ? v ?? null : v == null ? null : texto(v);
+    if (linha <= linhaTitulo) continue;
+    const c = {}; // campo → valor cru
+    const original = {}, extras = {};
+    valores.forEach((v, col) => {
+      if (v == null || texto(v) === "") return;
+      const campo = mapa[col];
+      const titulo = titulos[col] || (campo === "os" ? "OS" : `Coluna ${letra(col)}`);
+      original[titulo] = comoNaPlanilha(v, campo ? CAMPOS_DATA_IMP.has(campo) || campo === "liberadoCliente" : typeof v === "number" && v > 20000);
+      if (campo) c[campo] = v; else extras[titulo] = original[titulo];
     });
-    if (!r.some((v) => texto(v))) continue;
+    if (!Object.keys(original).length) continue;
     const pend = [];
-    const os = texto(r[0]);
-    const amostras = texto(r[1]);
-    let obs = texto(r[10]);
-    if (["NA", "N/A"].includes(obs.toUpperCase())) obs = "";
-    const cancelada = texto(r[15]).toUpperCase().includes("CANCEL") || /\bcancelad/i.test(obs);
-    let lib15 = r[15];
-    if (typeof lib15 === "string" && !/\d/.test(lib15)) {
-      if (texto(lib15).toUpperCase() !== "CANCELADA") obs = obs ? `${obs} · ${texto(lib15)}` : texto(lib15);
-      lib15 = null;
+    const os = texto(c.os);
+    const amostras = texto(c.amostras);
+    let obs = texto(c.observacao);
+    if (["NA", "N/A", "-"].includes(obs.toUpperCase())) obs = "";
+    const cancelada = texto(c.liberadoEm).toUpperCase().includes("CANCEL") || /\bcancelad/i.test(obs);
+    let lib = c.liberadoEm;
+    if (typeof lib === "string" && !/\d/.test(lib)) {
+      if (texto(lib).toUpperCase() !== "CANCELADA") obs = obs ? `${obs} · ${texto(lib)}` : texto(lib);
+      lib = null;
     }
     if (comentario) obs = obs ? `${obs} · Comentário na planilha: ${comentario}` : `Comentário na planilha: ${comentario}`;
-    const libNum = typeof r[14] === "number";
-    let liberadoEm = lerData(lib15, "Data de liberação", pend);
-    if (libNum && !liberadoEm) liberadoEm = lerData(r[14], "Data de liberação", pend);
-    let fq = r[13];
-    let finalizado = simNao(r[11]);
+    const libNum = typeof c.liberadoCliente === "number";
+    let liberadoEm = lerData(lib, "Data de liberação", pend);
+    if (libNum && !liberadoEm) liberadoEm = lerData(c.liberadoCliente, "Data de liberação", pend);
+    let fq = c.finalizadoFqEm;
+    let finalizado = simNao(c.finalizadoLab);
     if (texto(fq).toUpperCase() === "SIM") { finalizado = true; fq = null; }
+    const libTxt = semAcento(texto(c.liberadoCliente).toLowerCase());
     const reg = {
       id: `labent-imp-${String(linha).padStart(5, "0")}`,
       os, amostras, qtdAmostras: contarAmostras(amostras),
-      recebidoEm: lerData(r[2], "Data de recebimento", pend),
-      recebidoPor: lista(r[3]),
-      tipos: lista(r[4], TIPOS),
-      parametroImediato: simNao(r[5]),
-      origem: lista(r[6]),
-      retiradoPor: lista(r[7]),
-      retiradaLabEm: lerData(r[8], "Retirada laboratório", pend),
-      retiradaComercialEm: lerData(r[9], "Retirada comercial", pend),
+      recebidoEm: lerData(c.recebidoEm, "Data de recebimento", pend),
+      recebidoPor: pessoas(c.recebidoPor),
+      tipos: lista(c.tipos, TIPOS),
+      parametroImediato: simNao(c.imediato),
+      origem: lista(c.origem),
+      retiradoPor: pessoas(c.retiradoPor),
+      retiradaLabEm: lerData(c.retiradaLabEm, "Retirada laboratório", pend),
+      retiradaComercialEm: lerData(c.retiradaComercialEm, "Retirada comercial", pend),
       observacao: obs,
       finalizadoLab: finalizado,
-      finalizadoMbEm: lerData(r[12], "Finalização MB", pend),
+      finalizadoMbEm: lerData(c.finalizadoMbEm, "Finalização MB", pend),
       finalizadoFqEm: lerData(fq, "Finalização FQ", pend),
-      liberadoCliente: libNum ? true : simNao(r[14]),
+      liberadoCliente: libNum || libTxt.startsWith("desc") ? true : simNao(c.liberadoCliente),
       liberadoEm,
-      descartado: semAcento(texto(r[16]).toLowerCase()).startsWith("desc"),
+      descartado: semAcento(texto(c.descartado).toLowerCase()).startsWith("desc") || simNao(c.descartado) === true,
       descartadoEm: "",
       cancelada,
       pendencias: pend,
-      importacao: { planilha: arquivo, linha },
+      importacao: { planilha: arquivo, linha, original, ...(Object.keys(extras).length ? { extras } : {}) },
     };
     if (!os) pend.push("OS em branco na planilha");
     if (!reg.recebidoEm && !pend.some((p) => p.startsWith("Data de recebimento"))) pend.push("Data de recebimento em branco");

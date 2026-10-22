@@ -22,7 +22,7 @@ import SetoresLaboratorio from "./SetoresLaboratorio.jsx";
 import { COLUNAS, GRUPOS } from "./colunasEntradas.jsx";
 import {
   ETAPAS, ENTRADA_VAZIA, FILTROS_VAZIOS, PRAZO_ALERTA_DIAS, DIAS_DESCARTE, SETORES,
-  RESPONSAVEIS_RECEBIMENTO, RESPONSAVEIS_RETIRADA, agoraLocal, contagens,
+  agoraLocal, contagens, montarPessoas,
   etapa, filtrar, linhaPlanilha, COLUNAS_PLANILHA, normalizarParaSalvar, opcoesDe, ordenar, tempoMedio,
 } from "../../lib/laboratorioEntradas.js";
 
@@ -91,6 +91,8 @@ function EscolherColunas({ ocultas, setOcultas }) {
 export default function EntradasAmostras() {
   const [podeServidor, setPodeServidor] = useState(true);
   const [meusSetores, setMeusSetores] = useState([]);
+  const [contas, setContas] = useState([]);
+  const [setoresConfig, setSetoresConfig] = useState({ administrativo: [], laboratorio: [] });
   const direcao = ehDirecao();
   const pode = podeEditar(undefined, "laboratorio") && podeServidor;
   const podeAdm = direcao || (pode && meusSetores.includes("administrativo"));
@@ -116,7 +118,7 @@ export default function EntradasAmostras() {
 
   const carregar = useCallback(async () => {
     setCarregando(true); setErro("");
-    try { const r = await listarEntradas(); setLista(ordenar(r.itens)); setPodeServidor(r.podeEditar); setMeusSetores(r.setores); }
+    try { const r = await listarEntradas(); setLista(ordenar(r.itens)); setPodeServidor(r.podeEditar); setMeusSetores(r.setores); setContas(r.pessoas); setSetoresConfig(r.setoresConfig); }
     catch (e) { setErro(e.message); }
     finally { setCarregando(false); }
   }, []);
@@ -131,9 +133,20 @@ export default function EntradasAmostras() {
   const todos = useMemo(() => lista || [], [lista]);
   const cont = useMemo(() => contagens(todos, hoje), [todos, hoje]);
   const medio = useMemo(() => tempoMedio(todos, hoje), [todos, hoje]);
-  const itens = useMemo(() => filtrar(todos, { filtros, busca, aba, hoje }), [todos, filtros, busca, aba, hoje]);
-  const optReceb = useMemo(() => opcoesDe(todos, "recebidoPor", RESPONSAVEIS_RECEBIMENTO), [todos]);
-  const optRetir = useMemo(() => opcoesDe(todos, "retiradoPor", RESPONSAVEIS_RETIRADA), [todos]);
+  // Procurando uma OS/amostra/texto: procura em TODAS as abas (senão a OS já liberada "some" da aba Em aberto).
+  const procurando = !!(busca.trim() || filtros.os.trim() || filtros.amostras.trim());
+  const abaEfetiva = procurando ? "TODAS" : aba;
+  const itens = useMemo(() => filtrar(todos, { filtros, busca, aba: abaEfetiva, hoje }), [todos, filtros, busca, abaEfetiva, hoje]);
+  const pessoas = useMemo(() => montarPessoas(contas, todos), [contas, todos]);
+  // Para lançar: só usuários ativos do sistema; quem é do setor aparece primeiro (setor vazio = todos).
+  const ativos = pessoas.ativas.map((p) => p.nome);
+  const doSetor = (s) => { const us = setoresConfig[s] || []; const m = pessoas.ativas.filter((p) => us.includes(p.usuario)).map((p) => p.nome); return m.length ? m : ativos; };
+  const optRecebForm = doSetor("administrativo");
+  const optRetirForm = doSetor("laboratorio");
+  // Para filtrar: todo mundo que aparece nos registros (inclui quem já saiu).
+  const opcoesFiltro = (campo) => opcoesDe(todos, campo, []).map((n) => [n, `${pessoas.curto(n)}${pessoas.desligado(n) ? " (desligado)" : ""}`]);
+  const optReceb = useMemo(() => opcoesFiltro("recebidoPor"), [todos, pessoas]); // eslint-disable-line react-hooks/exhaustive-deps
+  const optRetir = useMemo(() => opcoesFiltro("retiradoPor"), [todos, pessoas]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalPaginas = Math.max(1, Math.ceil(itens.length / porPagina));
   const pag = Math.min(pagina, totalPaginas);
   const itensPagina = itens.slice((pag - 1) * porPagina, pag * porPagina);
@@ -141,7 +154,7 @@ export default function EntradasAmostras() {
   const filtrosAtivos = busca || Object.values(filtros).some(Boolean);
   const limpar = () => { setFiltros(FILTROS_VAZIOS); setBusca(""); };
   const ctx = {
-    filtros, hoje, optReceb, optRetir,
+    filtros, hoje, optReceb, optRetir, pessoas,
     setF: (campo) => (v) => setFiltros((x) => ({ ...x, [campo]: v })),
     periodo: (de, ate) => ({ de: filtros[de], ate: filtros[ate], onApply: (a, b) => setFiltros((x) => ({ ...x, [de]: a, [ate]: b })) }),
   };
@@ -200,7 +213,7 @@ export default function EntradasAmostras() {
     if (!arq) return;
     try {
       setImportando("Lendo a planilha…");
-      const regs = converterPlanilha(lerXlsx(new Uint8Array(await arq.arrayBuffer())), { arquivo: arq.name });
+      const regs = converterPlanilha(lerXlsx(new Uint8Array(await arq.arrayBuffer())), { arquivo: arq.name, contas });
       if (!regs.length) throw new Error("Nenhuma linha de amostra encontrada (os dados começam na linha 3, como na planilha original).");
       const pend = regs.filter((r) => r.pendencias.length).length;
       if (!window.confirm(`${regs.length} linhas lidas${pend ? `, ${pend} com datas/campos para revisar` : ""}. Importar? Só entram as que ainda não estão no sistema.`)) return;
@@ -273,7 +286,8 @@ export default function EntradasAmostras() {
           </div>
         )}
         <div className="flex gap-2 overflow-x-auto border-b px-3 py-2">
-          {ABAS.map(([k, n]) => <button key={k} onClick={() => setAba(k)} className={`whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${aba === k ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{n} ({k === "TODAS" ? cont.TODAS : cont[k] || 0})</button>)}
+          {procurando && <span className="whitespace-nowrap rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">Procurando em todas as abas</span>}
+          {ABAS.map(([k, n]) => <button key={k} onClick={() => setAba(k)} className={`whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${abaEfetiva === k ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{n} ({k === "TODAS" ? cont.TODAS : cont[k] || 0})</button>)}
         </div>
         <div className="max-h-[calc(100vh-240px)] min-h-[360px] overflow-auto">
           <table className="w-full border-separate border-spacing-0 text-[11px]">
@@ -325,7 +339,7 @@ export default function EntradasAmostras() {
       </section>
 
       {editando && (
-        <FormEntrada key={editando.id || "nova"} aberto entrada={editando} lista={todos} opcoesRecebimento={optReceb} opcoesRetirada={optRetir}
+        <FormEntrada key={editando.id || "nova"} aberto entrada={editando} lista={todos} opcoesRecebimento={optRecebForm} opcoesRetirada={optRetirForm} pessoas={pessoas}
           podeAdm={podeAdm} podeLab={podeLab} salvando={salvando} aoFechar={() => setEditando(null)} aoSalvar={gravar} aoExcluir={excluir} />
       )}
       {setoresAberto && <SetoresLaboratorio aberto aoFechar={() => setSetoresAberto(false)} aoSalvo={() => { setAviso({ tipo: "ok", texto: "Setores gravados." }); carregar(); }} />}

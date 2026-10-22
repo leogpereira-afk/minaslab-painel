@@ -110,3 +110,23 @@ test("cores fixas por pessoa e por tipo", () => {
   assert.ok(PALETA.includes(corPessoa("FULANO NOVO")));
   assert.match(corTipo("ÁGUA"), /sky/);
 });
+
+test("pessoas: nome da planilha casa com a conta; quem não tem conta é desligado; nome curto sem repetir", async () => {
+  const { casarPessoa, montarPessoas } = await import("./laboratorioEntradas.js");
+  const contas = [
+    { usuario: "ana", nome: "ANA CLAUDIA GONÇALVES PESSOA", ativo: true }, { usuario: "joseroberto", nome: "JOSE ROBERTO DOS SANTOS", ativo: true },
+    { usuario: "thayna", nome: "THAYNA LOPES CARDOSO", ativo: true }, { usuario: "ruth", nome: "RUTH DIAS", ativo: true }, { usuario: "rute", nome: "RUTE SOUZA", ativo: true },
+    { usuario: "caroline", nome: "CAROLINE DE SOUZA", ativo: false },
+  ];
+  assert.equal(casarPessoa("JOSE ROBERTO", contas).usuario, "joseroberto");
+  assert.equal(casarPessoa("THAYNÁ", contas).usuario, "thayna");
+  assert.equal(casarPessoa("ANA CLÁUDIA", contas).usuario, "ana");
+  assert.equal(casarPessoa("VERA LUCIA", contas), null);
+  const p = montarPessoas(contas, [{ recebidoPor: ["VERA LUCIA"], retiradoPor: [] }]);
+  assert.equal(p.curto("ANA CLAUDIA GONÇALVES PESSOA"), "ANA");
+  assert.equal(p.desligado("VERA LUCIA"), true);
+  assert.equal(p.desligado("CAROLINE DE SOUZA"), true);
+  assert.equal(p.desligado("RUTH DIAS"), false);
+  assert.deepEqual(p.ativas.map((x) => x.usuario).sort(), ["ana", "joseroberto", "rute", "ruth", "thayna"]);
+  assert.notEqual(p.cor("RUTH DIAS"), p.cor("RUTE SOUZA"));
+});
