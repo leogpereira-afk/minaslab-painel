@@ -28,13 +28,17 @@ const MAX_HISTORICO = 60;
 const DATA_OK = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})?$/;
 const CAMPOS_SETOR: Record<string, string[]> = {
   administrativo: ["os", "amostras", "recebidoEm", "recebidoPor", "tipos", "parametroImediato", "origem", "retiradoPor", "cancelada"],
-  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
+  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMb", "finalizadoMbEm", "finalizadoFq", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
   ambos: ["observacao"],
+  // Etapa fixada à mão: exige os DOIS setores (a direção tem os dois).
+  todos: ["etapaManual"],
 };
+const ETAPAS_OK = ["", "RECEBIDA", "EM_ANALISE", "FINALIZADA", "LIBERADA", "DESCARTE_PENDENTE", "DESCARTADA", "CANCELADA"];
 const comparavel = (v: unknown) => Array.isArray(v) ? JSON.stringify(v) : (v === null || v === undefined || v === false || v === "") ? "" : String(v).trim();
 function camposBloqueados(antes: Record<string, unknown> | null, depois: Record<string, unknown>, setores: string[]) {
-  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos];
+  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos, ...CAMPOS_SETOR.todos];
   return todos.filter((c) => comparavel(antes?.[c]) !== comparavel(depois?.[c])).filter((c) => {
+    if (CAMPOS_SETOR.todos.includes(c)) return !(setores.includes("administrativo") && setores.includes("laboratorio"));
     // Amostra de PROVEDOR: a retirada é do Administrativo (o Laboratório também pode lançar).
     const provedor = Array.isArray(depois?.origem) && (depois.origem as unknown[]).some((o) => String(o).toUpperCase() === "PROVEDOR");
     const s = provedor && ["retiradaLabEm", "retiradaComercialEm"].includes(c) ? "ambos"
@@ -75,8 +79,9 @@ const CAMPOS_DATA = ["recebidoEm", "retiradaLabEm", "retiradaComercialEm", "fina
 const ROTULOS: Record<string, string> = {
   os: "OS", amostras: "amostras", recebidoEm: "recebimento", recebidoPor: "recebido por", tipos: "tipo", parametroImediato: "parâmetro imediato",
   origem: "interno/provedor", retiradoPor: "retirado por", retiradaLabEm: "retirada lab.", retiradaComercialEm: "retirada comercial",
-  finalizadoLab: "finalizado", finalizadoMbEm: "final. MB", finalizadoFqEm: "final. FQ", liberadoCliente: "liberado", liberadoEm: "liberação",
+  finalizadoLab: "finalizado", finalizadoMb: "finalizado MB", finalizadoMbEm: "final. MB", finalizadoFq: "finalizado FQ", finalizadoFqEm: "final. FQ", liberadoCliente: "liberado", liberadoEm: "liberação",
   descartado: "descartado", descartadoEm: "data descarte", cancelada: "cancelada", observacao: "observação",
+  etapaManual: "etapa (ajuste manual)",
 };
 function oQueMudou(antes: Record<string, unknown> | null, depois: Record<string, unknown>) {
   if (!antes) return "Entrada criada";
@@ -87,6 +92,8 @@ function conferir(r: Record<string, unknown>) {
   if (!txt(r.os)) return "Informe o número da OS.";
   if (!txt(r.recebidoEm)) return "Informe a data de recebimento.";
   for (const c of CAMPOS_DATA) if (!DATA_OK.test(txt(r[c]))) return `Data inválida em ${ROTULOS[c] ?? c}.`;
+  if (!ETAPAS_OK.includes(txt(r.etapaManual))) return "Etapa inválida.";
+  for (const c of ["finalizadoMb", "finalizadoFq"]) if (!["", "SIM", "NAO", "NA"].includes(txt(r[c]))) return `Valor inválido em ${ROTULOS[c]}.`;
   for (const c of ["recebidoPor", "tipos", "origem", "retiradoPor"]) if (r[c] != null && !Array.isArray(r[c])) return `Campo ${ROTULOS[c]} inválido.`;
   if (JSON.stringify(r).length > 20000) return "Registro grande demais.";
   return "";

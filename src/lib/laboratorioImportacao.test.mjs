@@ -87,3 +87,13 @@ test("colunas achadas pelo título, em qualquer ordem; coluna desconhecida e cé
   assert.equal(r.importacao.original["DATA RECEBIMENTO"], "03/06/2026 10;00");
   assert.equal(r.importacao.linha, 2);
 });
+
+test("data colada no formulário (Ctrl+V)", async () => {
+  const { lerDataColada } = await import("./laboratorioImportacao.js");
+  assert.equal(lerDataColada("13/10/2026 17:00").valor, "2026-10-13T17:00");
+  assert.equal(lerDataColada("13/10/2026").valor, "2026-10-13T00:00");
+  assert.equal(lerDataColada("2026-10-13 08:05").valor, "2026-10-13T08:05");
+  assert.equal(lerDataColada("13-10-2026 17h30").valor, "2026-10-13T17:30");
+  assert.ok(lerDataColada("amanhã").erro);
+  assert.ok(lerDataColada("31/02/2026").erro);
+});
