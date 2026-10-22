@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { Clock, Plus, AlertTriangle, Lock } from "lucide-react";
 import { Modal } from "../ui.jsx";
-import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corTipo, corOrigem } from "../../lib/laboratorioEntradas.js";
+import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corTipo, corOrigem, formatarOS } from "../../lib/laboratorioEntradas.js";
 
 function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor, rotulo = (x) => x, dica }) {
   const [novo, setNovo] = useState("");
@@ -114,7 +114,7 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
         )}
         <Secao titulo="Recebimento" setor="administrativo" bloqueado={dl}>
           <label className="block"><span className="label">Nº da OS *</span>
-            <input className="input h-10 py-1.5 disabled:bg-slate-100 disabled:text-slate-500" value={f.os} disabled={dl} placeholder="Ex.: 1541/2026" onChange={(e) => set("os")(e.target.value)} autoFocus={!entrada.id} /></label>
+            <input className="input h-10 py-1.5 disabled:bg-slate-100 disabled:text-slate-500" value={f.os} disabled={dl} placeholder="Ex.: 1541 → OS001541/2026" onChange={(e) => set("os")(e.target.value)} onBlur={(e) => { const r = formatarOS(e.target.value, f.recebidoEm ? Number(f.recebidoEm.slice(0, 4)) : new Date().getFullYear()); if (r.os) set("os")(r.os); }} autoFocus={!entrada.id} /></label>
           <label className="block"><span className="label">Nº da(s) amostra(s) {f.amostras ? <span className="font-normal text-slate-400">· {contarAmostras(f.amostras)} amostra(s)</span> : null}</span>
             <input className="input h-10 py-1.5 disabled:bg-slate-100 disabled:text-slate-500" value={f.amostras} disabled={dl} placeholder="Ex.: 4426/4427-2026" onChange={(e) => set("amostras")(e.target.value)} /></label>
           <CampoData rotulo="Data e hora do recebimento *" valor={f.recebidoEm} onChange={set("recebidoEm")} desabilitado={dl} />

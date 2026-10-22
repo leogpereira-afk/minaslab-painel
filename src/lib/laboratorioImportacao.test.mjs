@@ -79,7 +79,7 @@ test("colunas achadas pelo título, em qualquer ordem; coluna desconhecida e cé
   const linhas = [{ a: "03/06/2026 10;00", b: "900/2026", c: "1/2-2026", d: "Ana Claudia", e: "ÁGUA", f: "22 ºC", g: "PROVEDOR" }];
   const contas = [{ usuario: "ana", nome: "ANA CLAUDIA GONÇALVES PESSOA" }, { usuario: "anderson", nome: "ANDERSON DE SOUSA" }];
   const [r] = converterPlanilha(lerXlsx(planilhaBytes({ colunas, linhas })), { contas });
-  assert.equal(r.os, "900/2026");
+  assert.equal(r.os, "OS000900/2026");
   assert.equal(r.recebidoEm, "2026-06-03T10:00");
   assert.deepEqual(r.recebidoPor, ["ANA CLAUDIA GONÇALVES PESSOA"]);
   assert.deepEqual(r.origem, ["PROVEDOR"]);

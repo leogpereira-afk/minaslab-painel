@@ -7,7 +7,7 @@ import {
 } from "./laboratorioEntradas.js";
 
 const HOJE = "2026-10-22";
-const base = { id: "a", os: "100/2026", amostras: "1/2-2026", recebidoEm: "2026-10-01T10:00", tipos: ["ÁGUA"], recebidoPor: ["RUTH"], retiradoPor: [], origem: ["INTERNO"] };
+const base = { id: "a", os: "OS000100/2026", amostras: "1/2-2026", recebidoEm: "2026-10-01T10:00", tipos: ["ÁGUA"], recebidoPor: ["RUTH"], retiradoPor: [], origem: ["INTERNO"] };
 
 test("etapa sai das datas, na ordem do fluxo", () => {
   assert.equal(etapa(base, HOJE), "RECEBIDA");
@@ -137,4 +137,18 @@ test("provedor: Administrativo lança as datas de retirada; interno continua só
   const interno = { ...base, origem: ["INTERNO"], retiradaLabEm: "" };
   assert.deepEqual(camposBloqueados(interno, { ...interno, retiradaLabEm: "2026-10-02T09:00" }, ["administrativo"]), ["retiradaLabEm"]);
   assert.deepEqual(camposBloqueados(antes, { ...antes, liberadoEm: "2026-10-05T09:00" }, ["administrativo"]), ["liberadoEm"]);
+});
+
+test("OS no padrão OS000000/ano", async () => {
+  const { formatarOS } = await import("./laboratorioEntradas.js");
+  assert.equal(formatarOS("1430/2026").os, "OS001430/2026");
+  assert.equal(formatarOS("1430", 2026).os, "OS001430/2026");
+  assert.equal(formatarOS("057/2026").os, "OS000057/2026");
+  assert.equal(formatarOS("OS001430/2026").os, "OS001430/2026");
+  assert.equal(formatarOS("os 1430-2026").os, "OS001430/2026");
+  assert.equal(formatarOS("1091/2026/ 1143/2026").os, "OS001091/2026 / OS001143/2026");
+  const r = formatarOS("473/20226", 2026);
+  assert.equal(r.os, "OS000473/2026");
+  assert.match(r.aviso, /trocado/);
+  assert.equal(formatarOS("").os, "");
 });

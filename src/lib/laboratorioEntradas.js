@@ -196,6 +196,7 @@ export function validar(e, lista = []) {
   for (const [c, nome] of ordem) {
     if (e[c] && e.recebidoEm && e[c] < e.recebidoEm) avisos.push(`A data de ${nome} está antes do recebimento.`);
   }
+  if (e.os && !OS_PADRAO.test(String(e.os).trim())) avisos.push("A OS não está no padrão OS000000/ano (ex.: OS001430/2026).");
   const os = String(e.os || "").trim().toUpperCase();
   if (os && lista.some((x) => x.id !== e.id && String(x.os || "").trim().toUpperCase() === os && !x.cancelada)) {
     avisos.push(`Já existe outra entrada com a OS ${e.os}.`);
@@ -348,3 +349,24 @@ const CORES_TIPO = {
   SOLO: "bg-orange-100 text-orange-800", AR: "bg-slate-100 text-slate-700", CQ: "bg-violet-100 text-violet-800",
 };
 export const corTipo = (t) => CORES_TIPO[String(t || "").toUpperCase()] || "bg-slate-100 text-slate-700";
+
+/* ------------------------------------------------------------ OS
+   Padrão da casa: OS + número com 6 dígitos + /ano  →  OS001430/2026.
+   Aceita "1430", "1430/2026", "1430-2026", "OS1430/2026", "os 001430/2026".
+   Sem ano (ou ano impossível) usa o ano de referência (o do recebimento).
+   Mais de uma OS na mesma célula vira "OS001091/2026 / OS001143/2026". */
+const ANO_OS_MIN = 2020;
+export function formatarOS(texto, anoRef = new Date().getFullYear()) {
+  const t = String(texto ?? "").trim();
+  if (!t) return { os: "", aviso: "" };
+  const partes = [...t.matchAll(/(\d+)(?:\s*[/\\-]\s*(\d{2,5}))?/g)];
+  if (!partes.length) return { os: t, aviso: `OS “${t}” sem número` };
+  let aviso = "";
+  const oss = partes.map(([, num, ano]) => {
+    let a = ano ? Number(ano.length === 2 ? `20${ano}` : ano) : null;
+    if (a !== null && (a < ANO_OS_MIN || a > new Date().getFullYear() + 1)) { aviso = `OS “${t}”: ano ${ano} trocado por ${anoRef}`; a = null; }
+    return `OS${String(Number(num)).padStart(6, "0")}/${a ?? anoRef}`;
+  });
+  return { os: [...new Set(oss)].join(" / "), aviso };
+}
+export const OS_PADRAO = /^OS\d{6}\/\d{4}( \/ OS\d{6}\/\d{4})*$/;
