@@ -46,6 +46,15 @@ const chaveColunas = () => `lab-entradas:colunas-ocultas:${getSessao()?.usuario 
 function lerOcultas() {
   try { const v = JSON.parse(localStorage.getItem(chaveColunas()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
 }
+// Linhas por página: cada pessoa escolhe a sua (fica neste navegador).
+const POR_PAGINA = [50, 100, 200, { valor: 100000, rotulo: "Todas" }];
+const chavePorPagina = () => `lab-entradas:por-pagina:${getSessao()?.usuario || "anon"}`;
+function lerPorPagina() {
+  try { const n = Number(localStorage.getItem(chavePorPagina())); return POR_PAGINA.some((o) => (o.valor ?? o) === n) ? n : 100; } catch { return 100; }
+}
+function gravarPorPagina(n) {
+  try { localStorage.setItem(chavePorPagina(), String(n)); } catch { /* sem armazenamento: vale só nesta visita */ }
+}
 function gravarOcultas(v) {
   try { localStorage.setItem(chaveColunas(), JSON.stringify(v)); } catch { /* sem armazenamento: vale só nesta visita */ }
 }
@@ -88,7 +97,7 @@ function EscolherColunas({ ocultas, setOcultas }) {
   );
 }
 
-export default function EntradasAmostras() {
+export default function EntradasAmostras({ abaInicial } = {}) {
   const [podeServidor, setPodeServidor] = useState(true);
   const [meusSetores, setMeusSetores] = useState([]);
   const [contas, setContas] = useState([]);
@@ -102,11 +111,13 @@ export default function EntradasAmostras() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [aviso, setAviso] = useState(null);
-  const [aba, setAba] = useState("ABERTAS");
+  const [aba, setAba] = useState(() => (ABAS.some(([k]) => k === abaInicial) ? abaInicial : "ABERTAS"));
   const [busca, setBusca] = useState("");
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
   const [pagina, setPagina] = useState(1);
-  const [porPagina, setPorPagina] = useState(50);
+  const [porPagina, setPorPaginaEstado] = useState(lerPorPagina);
+  const setPorPagina = (n) => { setPorPaginaEstado(n); gravarPorPagina(n); };
+  const tabelaRef = useRef(null);
   const [selecionados, setSelecionados] = useState([]);
   const [editando, setEditando] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -151,6 +162,9 @@ export default function EntradasAmostras() {
   const pag = Math.min(pagina, totalPaginas);
   const itensPagina = itens.slice((pag - 1) * porPagina, pag * porPagina);
   useEffect(() => { setPagina(1); }, [filtros, busca, aba, porPagina]);
+  // Página nova começa do topo da tabela (antes ficava rolada lá embaixo e parecia que não tinha mudado).
+  useEffect(() => { tabelaRef.current?.scrollTo?.({ top: 0 }); }, [pag]);
+  const irPagina = (n) => setPagina(Math.min(Math.max(1, n), totalPaginas));
   const filtrosAtivos = busca || Object.values(filtros).some(Boolean);
   const limpar = () => { setFiltros(FILTROS_VAZIOS); setBusca(""); };
   const ctx = {
@@ -285,11 +299,20 @@ export default function EntradasAmostras() {
             </span>
           </div>
         )}
-        <div className="flex gap-2 overflow-x-auto border-b px-3 py-2">
-          {procurando && <span className="whitespace-nowrap rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">Procurando em todas as abas</span>}
-          {ABAS.map(([k, n]) => <button key={k} onClick={() => setAba(k)} className={`whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${abaEfetiva === k ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{n} ({k === "TODAS" ? cont.TODAS : cont[k] || 0})</button>)}
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
+            {procurando && <span className="whitespace-nowrap rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">Procurando em todas as abas</span>}
+            {ABAS.map(([k, n]) => <button key={k} onClick={() => setAba(k)} className={`whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${abaEfetiva === k ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{n} ({k === "TODAS" ? cont.TODAS : cont[k] || 0})</button>)}
+          </div>
+          {totalPaginas > 1 && (
+            <div className="flex shrink-0 items-center gap-1 border-l pl-2 text-[11px] text-slate-600" aria-label="Páginas (topo)">
+              <button type="button" className="rounded-md border border-slate-200 bg-white px-2 py-0.5 disabled:opacity-40" disabled={pag <= 1} onClick={() => irPagina(pag - 1)} aria-label="Página anterior (topo)">‹</button>
+              <span className="whitespace-nowrap">Página <b>{pag}</b> de {totalPaginas}</span>
+              <button type="button" className="rounded-md border border-slate-200 bg-white px-2 py-0.5 disabled:opacity-40" disabled={pag >= totalPaginas} onClick={() => irPagina(pag + 1)} aria-label="Próxima página (topo)">›</button>
+            </div>
+          )}
         </div>
-        <div className="max-h-[calc(100vh-240px)] min-h-[360px] overflow-auto">
+        <div ref={tabelaRef} className="max-h-[calc(100vh-240px)] min-h-[360px] overflow-auto">
           <table className="w-full border-separate border-spacing-0 text-[11px]">
             <thead className="sticky top-0 z-20 text-left text-[10px] text-slate-500">
               <tr>
@@ -334,7 +357,7 @@ export default function EntradasAmostras() {
             </tbody>
           </table>
         </div>
-        <PaginacaoFinanceiro total={itens.length} pagina={pag} paginas={totalPaginas} porPagina={porPagina} itensNaPagina={itensPagina.length} onPorPagina={setPorPagina} onPagina={setPagina}
+        <PaginacaoFinanceiro total={itens.length} pagina={pag} paginas={totalPaginas} porPagina={porPagina} itensNaPagina={itensPagina.length} onPorPagina={setPorPagina} onPagina={irPagina} opcoes={POR_PAGINA}
           extra={itens.length !== todos.length ? <span className="ml-2 text-[10px] text-slate-400">({todos.length} entradas no total)</span> : null} />
       </section>
 

@@ -9,6 +9,8 @@ export default function PaginacaoFinanceiro({
   onPagina,
   onPorPagina,
   extra = null,
+  // Tamanhos oferecidos: números ou { valor, rotulo } (ex.: { valor: 100000, rotulo: "Todas" }).
+  opcoes = [25, 50, 100],
 }) {
   const totalPaginas = Math.max(1, Number(paginas) || 1);
   const paginaAtual = Math.min(Math.max(1, Number(pagina) || 1), totalPaginas);
@@ -30,7 +32,10 @@ export default function PaginacaoFinanceiro({
           onChange={(e) => onPorPagina?.(Number(e.target.value))}
           disabled={!onPorPagina}
         >
-          {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+          {opcoes.map((o) => {
+            const v = typeof o === "object" ? o.valor : o;
+            return <option key={v} value={v}>{typeof o === "object" ? o.rotulo : v}</option>;
+          })}
         </select>
         <button
           type="button"
