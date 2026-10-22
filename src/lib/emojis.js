@@ -1,6 +1,6 @@
 // Emojis do Messenger: categorias, busca por palavra (em português), recentes e inserção no texto. Sem tela, sem rede.
 
-export const RAPIDAS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+export const RAPIDAS = ["👍", "❤️", "✅", "😂", "😮", "😢", "🙏"];
 
 // [emoji, "palavras de busca"]
 export const CATEGORIAS = [

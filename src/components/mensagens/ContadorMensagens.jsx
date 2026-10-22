@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { contadorTexto, conversasNovas, fotografiaDasNovas, tituloComContagem } from "../../lib/mensagens.js";
 import { somLigado, tocarAviso } from "../../lib/somAviso.js";
+import { textoSimples } from "../../lib/textoRico.js";
 import { conversasContar } from "../../services/mensagens.js";
 
 const PODE_AVISAR = typeof window !== "undefined" && "Notification" in window;
@@ -27,7 +28,7 @@ export default function ContadorMensagens() {
         if (somLigado()) tocarAviso();
         if (PODE_AVISAR && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
           for (const c of novas.slice(0, 3)) {
-            const aviso = new Notification(c.tipo === "grupo" && c.autor ? `${c.titulo} — ${c.autor}` : c.titulo, { body: c.texto, tag: `msg-${c.id}`, renotify: true });
+            const aviso = new Notification(c.tipo === "grupo" && c.autor ? `${c.titulo} — ${c.autor}` : c.titulo, { body: textoSimples(c.texto), tag: `msg-${c.id}`, renotify: true });
             aviso.onclick = () => { window.focus(); navigate(`/mensagens?abrir=${c.id}`); aviso.close(); };
           }
         }

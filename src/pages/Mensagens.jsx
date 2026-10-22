@@ -12,6 +12,7 @@ import Chat from "../components/mensagens/Chat.jsx";
 import NovaConversa from "../components/mensagens/NovaConversa.jsx";
 import { horaLocal } from "../lib/tarefas.js";
 import { contadorTexto, filtrarConversas, horaNaLista } from "../lib/mensagens.js";
+import { mencionaUsuario, textoSimples } from "../lib/textoRico.js";
 import { avisarContador, conversasListar, mensagensUsuarios } from "../services/mensagens.js";
 
 export default function Mensagens() {
@@ -93,9 +94,10 @@ export default function Mensagens() {
                       </span>
                       <span className="flex items-center justify-between gap-2">
                         <span className={clsx("truncate text-xs", c.naoLidas ? "font-medium text-slate-700" : "text-slate-500")}>
-                          {c.ultima ? <>{c.ultima.autor === eu ? "Você: " : c.tipo === "grupo" && c.ultima.autor ? `${(lista.nomes[c.ultima.autor] || c.ultima.autor).split(" ")[0]}: ` : ""}{c.ultima.texto || "Mensagem apagada"}</> : <i>Sem mensagens</i>}
+                          {c.ultima ? <>{c.ultima.autor === eu ? "Você: " : c.tipo === "grupo" && c.ultima.autor ? `${(lista.nomes[c.ultima.autor] || c.ultima.autor).split(" ")[0]}: ` : ""}{c.ultima.texto ? textoSimples(c.ultima.texto, (u) => lista.nomes[u] || u) : "Mensagem apagada"}</> : <i>Sem mensagens</i>}
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
+                          {c.naoLidas > 0 && mencionaUsuario(c.ultima?.texto, eu) && <span className="grid h-5 w-5 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-white" title="Você foi marcado(a)" aria-label="Você foi marcado(a)">@</span>}
                           {c.silenciado && <BellOff size={12} className="text-slate-400" aria-label="Silenciada" />}
                           {c.naoLidas > 0 && <span className="grid min-w-[20px] place-items-center rounded-full bg-sky-600 px-1.5 text-[11px] font-bold leading-5 text-white" aria-label={`${c.naoLidas} não lidas`}>{contadorTexto(c.naoLidas)}</span>}
                         </span>

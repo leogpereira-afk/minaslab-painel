@@ -12,7 +12,7 @@ export function BotaoReagir({ aoReagir, lado = "esquerda" }) {
   const escolher = (e) => { fechar(); aoReagir(e); };
   return (
     <span className="relative">
-      <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600 group-hover:block group-focus-within:block" onClick={() => setAberto((v) => !v)} aria-label="Reagir à mensagem" aria-expanded={aberto} title="Reagir"><SmilePlus size={14} /></button>
+      <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600 group-hover:block group-focus-within:block [@media(hover:none)]:block" onClick={() => setAberto((v) => !v)} aria-label="Reagir à mensagem" aria-expanded={aberto} title="Reagir"><SmilePlus size={14} /></button>
       {aberto && !completo && (
         <div className={clsx("absolute bottom-full z-40 mb-1 flex items-center gap-0.5 rounded-full border bg-white px-1.5 py-1 shadow-lg", lado === "esquerda" ? "right-0" : "left-0")} style={{ borderColor: "var(--hairline)" }} role="menu" aria-label="Reações rápidas">
           {RAPIDAS.map((e) => <button key={e} type="button" role="menuitem" className="grid h-8 w-8 place-items-center rounded-full text-xl hover:bg-slate-100" onClick={() => escolher(e)} aria-label={`Reagir com ${e}`}>{e}</button>)}
