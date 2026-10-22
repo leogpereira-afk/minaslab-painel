@@ -17,6 +17,7 @@ export const SUBPAGINAS_PERMISSOES = {
   rh: [["gestao", "Visão geral"], ["pessoas", "Pessoas"], ["ferias", "Férias"], ["feedback", "Feedback"], ["exames", "Exames"], ["vencimentos", "Vencimentos"], ["relatorios", "Relatórios"]],
   ponto: [["relatorios", "Conferência"], ["ponto", "Ajustes e fechamento"], ["faltas", "Faltas e abonos"], ["analises", "Relatórios"], ["folha", "Folha mensal"]],
   "curva-abc": [["clientes", "Clientes"], ["produtos", "Serviços"], ["vendedores", "Vendedores"]],
+  laboratorio: [["inicio", "Início"], ["entradas", "Entradas de amostras"], ["qualidade", "Qualidade"], ["microbiologia", "Microbiologia"], ["fisicoquimico", "Físico-Químico"]],
   "financas/notas": [["emitir", "Emitir NFS-e"], ["cancelar", "Cancelar NFS-e"], ["importar-historico", "Importar histórico"]],
   "financas/configuracoes": [["categorias", "Categorias"], ["contas", "Contas bancárias"], ["centros", "Centros de custo"], ["formas", "Formas de pagamento"], ["plano-contas", "Plano de contas"], ["omie", "Integração Omie"]],
 };
@@ -29,6 +30,6 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "compras/ordens", "compras/retiradas", "patrimonio",
   "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias",
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
-  "manutencoes", "laboratorio",
+  "manutencoes", "laboratorio", "laboratorio/inicio", "laboratorio/entradas", "laboratorio/qualidade", "laboratorio/microbiologia", "laboratorio/fisicoquimico",
   "financas/servicos-gerados",
 ]);

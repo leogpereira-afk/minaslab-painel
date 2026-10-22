@@ -10,7 +10,7 @@ const T_CFG = "ml_config_global";
 const T_META = "ml_meta";
 const BUCKET_FOTOS = "ml-fotos-perfil";
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "laboratorio/inicio", "laboratorio/entradas", "laboratorio/qualidade", "laboratorio/microbiologia", "laboratorio/fisicoquimico", "financas/servicos-gerados"]);
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -111,6 +111,18 @@ Deno.serve(async (req) => {
           mudancas.paginas_consulta = [...new Set(paginas)];
         }
         const { data, error } = await sb.from(T_CONTAS).update(mudancas).eq("usuario", u).select("usuario,nome,papel,ativo,criado_em,paginas_consulta,foto").maybeSingle();
+        if (error) throw error;
+        if (!data) return out({ erro: `Não achei a conta "${u}".` }, 404);
+        return out({ ok: true, conta: data });
+      }
+
+      case "paginas": {
+        // Só as páginas liberadas da conta (a tela de Acessos usa esta porta; as seções do Laboratório só existem aqui).
+        const u = normalizarUsuario(body.usuario);
+        const paginas = body.paginas_consulta;
+        if (!u) return out({ erro: "Informe a conta." }, 400);
+        if (!Array.isArray(paginas) || paginas.some((x: unknown) => !PAGINAS_VALIDAS.has(String(x)))) return out({ erro: "Selecione páginas válidas." }, 400);
+        const { data, error } = await sb.from(T_CONTAS).update({ paginas_consulta: [...new Set(paginas)] }).eq("usuario", u).select("usuario,nome,papel,ativo,criado_em,paginas_consulta,foto").maybeSingle();
         if (error) throw error;
         if (!data) return out({ erro: `Não achei a conta "${u}".` }, 404);
         return out({ ok: true, conta: data });

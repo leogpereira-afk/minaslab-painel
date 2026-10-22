@@ -17,6 +17,8 @@ async function chamarContas(action, campos = {}) {
 
 export const contasPadraoLer = () => chamarContas("padrao").then((r) => r.nomeMaiusculas === true);
 export const contaEditar = (dados) => chamarContas("editar", dados);
+// Páginas (e seções, como as do Laboratório) liberadas para a conta. Esta porta conhece as seções; a antiga do ml-sync não.
+export const contaPaginas = (usuario, paginas_consulta) => chamarContas("paginas", { usuario, paginas_consulta });
 export const contasPadraoNome = (maiusculas, converterExistentes = false) =>
   chamarContas("padraoNome", { maiusculas, converterExistentes });
 

@@ -79,6 +79,21 @@ export function gravarSessao({ token, usuario, nome, papel, paginas_consulta }) 
   avisar();
 }
 
+/** Troca só a lista de páginas da sessão (a direção liberou ou tirou algo): vale sem sair e entrar de novo. */
+export function atualizarPaginasDaSessao(paginas) {
+  try {
+    const raw = localStorage.getItem(K_SESSAO);
+    if (!raw || !Array.isArray(paginas)) return false;
+    const s = JSON.parse(raw);
+    if (JSON.stringify(s.paginas_consulta || []) === JSON.stringify(paginas)) return false;
+    localStorage.setItem(K_SESSAO, JSON.stringify({ ...s, paginas_consulta: paginas }));
+    avisar();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sair(motivo = "") {
   try {
     localStorage.removeItem(K_TOKEN);
@@ -149,7 +164,7 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
     if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
     return modulo === "inicio" || modulo === "canais" || modulo === "guia" || modulo === "tarefas" || modulo === "mensagens" || sessao.paginas_consulta.includes(modulo) ||
-      (["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
+      (["compras", "gestao-estoque", "patrimonio", "curva-abc", "laboratorio"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }
   if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;
   if (SO_DIRECAO.includes(modulo)) return ehDirecao(sessao);
