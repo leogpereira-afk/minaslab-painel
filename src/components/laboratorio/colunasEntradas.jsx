@@ -55,16 +55,17 @@ function SituacaoArea({ e, area, c }) {
 }
 
 // Etapa: calculada pelas datas; quem está nos DOIS setores (ou a direção) pode fixar à mão.
+// O seletor mostra só a etapa. Escolher a mesma etapa que as datas dariam desfaz o ajuste manual.
 function CelulaEtapa({ e, c }) {
   const et = etapa(e, c.hoje);
   const auto = etapaAutomatica(e, c.hoje);
   if (!c.podeEtapa) return <span className="inline-flex items-center gap-1"><Pill et={et} />{e.etapaManual && <span className="text-[9px] text-slate-400" title="Etapa definida à mão">manual</span>}</span>;
+  const mudar = (k) => { if (k !== et) c.mudarEtapa(e, k === auto ? "" : k); };
   return (
     <span className="inline-flex items-center gap-1" onClick={parar}>
-      <select value={e.etapaManual || ""} disabled={c.gravando} onChange={(ev) => c.mudarEtapa(e, ev.target.value)} aria-label={`Etapa da OS ${e.os}`}
-        title={e.etapaManual ? `Definida à mão. Pelas datas seria: ${ETAPAS[auto].rotulo}` : "Calculada pelas datas. Escolha para fixar à mão."}
+      <select value={et} disabled={c.gravando} onChange={(ev) => mudar(ev.target.value)} aria-label={`Etapa da OS ${e.os}`}
+        title={e.etapaManual ? `Definida à mão. Pelas datas seria: ${ETAPAS[auto].rotulo} (escolha essa para desfazer).` : "Calculada pelas datas. Escolha outra para fixar à mão."}
         className={`h-6 rounded-full border-0 px-2 text-[10px] font-semibold outline-none ${ETAPAS[et].classe} ${e.etapaManual ? "ring-2 ring-amber-400" : "ring-1 ring-slate-200"}`}>
-        <option value="">{`Automática: ${ETAPAS[auto].rotulo}`}</option>
         {Object.entries(ETAPAS).map(([k, v]) => <option key={k} value={k}>{v.rotulo}</option>)}
       </select>
       {e.etapaManual && <span className="text-[9px] font-semibold text-amber-700" title="Etapa definida à mão">manual</span>}
