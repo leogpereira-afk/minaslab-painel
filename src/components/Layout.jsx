@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
@@ -63,10 +63,16 @@ const CORES_MODULO = {
 
 const PAPEL_ROTULO = { direcao: "Direção", equipe: "Equipe", leitura: "Leitura" };
 
-function Marca() {
+function Marca({ recolhido, aoAlternar }) {
+  const Icone = recolhido ? PanelLeftOpen : PanelLeftClose;
   return <div className="ml-brand">
     <img src={logoMinasLab} alt="MinasLab, Laboratório de Controle de Qualidade" width="190" height="56" />
     <span className="ml-brand-caption">PAINEL DE GESTÃO</span>
+    {aoAlternar && (
+      <button type="button" className="ml-menu-toggle" onClick={aoAlternar} aria-pressed={!!recolhido} aria-label={recolhido ? "Expandir o menu" : "Recolher o menu (só os ícones)"} title={recolhido ? "Expandir o menu" : "Recolher o menu (só os ícones)"}>
+        <Icone size={17} aria-hidden="true" />
+      </button>
+    )}
   </div>;
 }
 
@@ -96,8 +102,8 @@ function ItensMenu({ sessao, aoNavegar }) {
               {mo.id === "mensagens" && <ContadorMensagens />}
               {mo.externo && <ArrowUpRight size={13} className="ml-external-icon" aria-hidden="true"/>}
             </>;
-            return mo.externo ? <a key={mo.id} href={mo.caminho} target="_blank" rel="noopener noreferrer" onClick={aoNavegar} className="ml-menu-link" aria-label={`${mo.rotulo} (abre em nova aba)`}>{conteudo}</a> :
-              <NavLink key={mo.id} to={mo.caminho} end={mo.caminho === "/"} onClick={aoNavegar} className={({ isActive }) => clsx("ml-menu-link", isActive && "ml-menu-link-active")}>{conteudo}</NavLink>;
+            return mo.externo ? <a key={mo.id} href={mo.caminho} target="_blank" rel="noopener noreferrer" onClick={aoNavegar} className="ml-menu-link" title={mo.rotulo} aria-label={`${mo.rotulo} (abre em nova aba)`}>{conteudo}</a> :
+              <NavLink key={mo.id} to={mo.caminho} end={mo.caminho === "/"} onClick={aoNavegar} title={mo.rotulo} className={({ isActive }) => clsx("ml-menu-link", isActive && "ml-menu-link-active")}>{conteudo}</NavLink>;
           })}
         </section>;
       })}
@@ -191,6 +197,9 @@ export default function Layout() {
   }, [location.pathname, atual.rotulo]);
   const [menuAberto, setMenuAberto] = useState(false);
   const [trocandoSenha, setTrocandoSenha] = useState(false);
+  // Menu lateral só com os ícones (mais espaço para a tela); a escolha fica guardada neste computador.
+  const [recolhido, setRecolhido] = useState(() => { try { return localStorage.getItem("ml_menu_recolhido") === "1"; } catch { return false; } });
+  const alternarMenu = () => setRecolhido((v) => { const novo = !v; try { localStorage.setItem("ml_menu_recolhido", novo ? "1" : "0"); } catch { /* sem armazenamento local não lembra */ } return novo; });
   // A direção pode liberar ou tirar páginas com a pessoa já logada: confere ao abrir, ao voltar para a aba e a cada minuto.
   useEffect(() => {
     const rodar = () => { if (document.visibilityState === "visible") void atualizarMinhasPaginas(); };
@@ -213,8 +222,8 @@ export default function Layout() {
     <div className="app-shell ml-shell flex min-h-screen">
       <a className="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
       {/* Menu fixo no computador */}
-      <aside className="ml-sidebar sem-impressao sticky top-0 hidden h-dvh shrink-0 flex-col lg:flex" style={{ borderColor: "var(--hairline)" }}>
-        <Marca />
+      <aside className={clsx("ml-sidebar sem-impressao sticky top-0 hidden h-dvh shrink-0 flex-col lg:flex", recolhido && "ml-sidebar-recolhido")} style={{ borderColor: "var(--hairline)" }}>
+        <Marca recolhido={recolhido} aoAlternar={alternarMenu} />
         <ItensMenu sessao={sessao} />
         <RodapeSessao sessao={sessao} aoSair={aoSair} aoTrocarSenha={aoTrocarSenha} />
       </aside>
