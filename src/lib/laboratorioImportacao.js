@@ -45,6 +45,20 @@ export function lerXlsx(bytes) {
   const caminho = alvo ? `xl/${alvo.replace(/^\/?xl\//, "").replace(/^\//, "")}` : "xl/worksheets/sheet1.xml";
   const folha = ler(caminho) || ler("xl/worksheets/sheet1.xml");
   if (!folha) throw new Error("Não encontrei a aba da planilha dentro do arquivo.");
+  // Comentários de célula (notas do Excel/Google): viram observação na importação.
+  const pasta = caminho.slice(0, caminho.lastIndexOf("/") + 1), arqFolha = caminho.slice(caminho.lastIndexOf("/") + 1);
+  const relsFolha = ler(`${pasta}_rels/${arqFolha}.rels`);
+  const alvoCom = (relsFolha.match(/Target="([^"]*comments\d*\.xml)"/) || [])[1];
+  const comentarios = {};
+  if (alvoCom) {
+    const cam = alvoCom.startsWith("/") ? alvoCom.slice(1) : new URL(alvoCom, `http://x/${pasta}`).pathname.slice(1);
+    for (const m of ler(cam).matchAll(/<comment\b[^>]*\bref="[A-Z]+(\d+)"[^>]*>([\s\S]*?)<\/comment>/g)) {
+      let t = textos(m[2]);
+      if (t.includes("Comment:")) t = t.slice(t.indexOf("Comment:") + 8);
+      t = t.replace(/Reply:/g, "·").replace(/\s+/g, " ").trim();
+      if (t) comentarios[m[1]] = comentarios[m[1]] ? `${comentarios[m[1]]} · ${t}` : t;
+    }
+  }
   const linhas = [];
   for (const m of folha.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
     const valores = [];
@@ -62,7 +76,7 @@ export function lerXlsx(bytes) {
       else if (v != null && v !== "") valor = Number(v);
       valores[colunaDe(ref)] = valor;
     }
-    linhas.push({ linha: Number(m[1]), valores });
+    linhas.push({ linha: Number(m[1]), valores, comentario: comentarios[m[1]] || "" });
   }
   return linhas;
 }
@@ -139,7 +153,7 @@ export function lerData(v, campo, pend) {
 /** Linhas cruas da planilha → registros de lab_entradas. Pula cabeçalho (linhas 1–2) e linhas vazias. */
 export function converterPlanilha(linhas, { arquivo = "planilha.xlsx" } = {}) {
   const regs = [];
-  for (const { linha, valores } of linhas) {
+  for (const { linha, valores, comentario = "" } of linhas) {
     if (linha < 3) continue;
     const r = Array.from({ length: 17 }, (_, i) => {
       const v = valores[i];
@@ -157,6 +171,7 @@ export function converterPlanilha(linhas, { arquivo = "planilha.xlsx" } = {}) {
       if (texto(lib15).toUpperCase() !== "CANCELADA") obs = obs ? `${obs} · ${texto(lib15)}` : texto(lib15);
       lib15 = null;
     }
+    if (comentario) obs = obs ? `${obs} · Comentário na planilha: ${comentario}` : `Comentário na planilha: ${comentario}`;
     const libNum = typeof r[14] === "number";
     let liberadoEm = lerData(lib15, "Data de liberação", pend);
     if (libNum && !liberadoEm) liberadoEm = lerData(r[14], "Data de liberação", pend);
