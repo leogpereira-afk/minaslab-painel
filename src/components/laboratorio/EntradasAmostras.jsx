@@ -66,7 +66,7 @@ function EscolherColunas({ ocultas, setOcultas }) {
         <Columns3 size={14} aria-hidden="true" />Colunas{ocultas.length ? ` (${ocultas.length} ocultas)` : ""}
       </button>
       {aberto && (
-        <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-xl">
+        <div className="absolute right-0 top-11 z-50 max-h-[min(70vh,520px)] w-72 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <b className="text-slate-700">Mostrar colunas</b>
             <button type="button" className="text-blue-700 underline disabled:opacity-40" disabled={!ocultas.length} onClick={() => setOcultas([])}>Mostrar todas</button>
