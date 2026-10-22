@@ -1,7 +1,7 @@
 // Uma conversa aberta: mensagens, envio, tique de "visualizado" e participantes do grupo.
 // Atualiza sozinha a cada poucos segundos (só as mensagens novas, pela posição `seq`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, Loader2, Mic, PanelRight, Paperclip, Send, Smile, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Loader2, Mic, PanelRight, Paperclip, Pencil, Send, Smile, Trash2, UserPlus, X } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
 import SobreConversa from "./SobreConversa.jsx";
@@ -16,8 +16,8 @@ import { mencionaUsuario } from "../../lib/textoRico.js";
 import { inserirNoTexto } from "../../lib/emojis.js";
 import { ACEITAR_NO_INPUT_MENSAGEM, EXTENSOES_MENSAGEM, lerArquivoParaEnvio, problemaDoArquivo } from "../../lib/anexos.js";
 import { corDoAvatar, horaLocal } from "../../lib/tarefas.js";
-import { alternarReacaoLocal, comSeparadores, mesclarMensagens, quemViu, situacaoDaMensagem } from "../../lib/mensagens.js";
-import { avisarContador, conversaApagarMensagem, conversaEnviar, conversaEnviarArquivo, conversaEnviarAudio, conversaObter, conversaReagir, conversaSilenciar } from "../../services/mensagens.js";
+import { alternarReacaoLocal, aplicarAlteradas, comSeparadores, ehAudioMensagem, mesclarMensagens, quemViu, situacaoDaMensagem, ultimaEditavel } from "../../lib/mensagens.js";
+import { avisarContador, conversaApagarMensagem, conversaEditarMensagem, conversaEnviar, conversaEnviarArquivo, conversaEnviarAudio, conversaObter, conversaReagir, conversaSilenciar } from "../../services/mensagens.js";
 
 const INTERVALO = 4000;
 let contadorLocal = 0;
@@ -40,12 +40,15 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const [emojiAberto, setEmojiAberto] = useState(false);
   const colarNoFim = useRef(true);
   const ultimaSeq = useRef(0);
+  const ultimaSync = useRef(""); // hora do servidor na última consulta: traz as editadas/apagadas desde então
+  const [editando, setEditando] = useState(null); // mensagem minha sendo editada
 
   const aplicar = useCallback((r, { substituir }) => {
-    setDados((d) => ({ ...(d || {}), ...r, mensagens: undefined }));
+    if (r.agora) ultimaSync.current = r.agora;
+    setDados((d) => ({ ...(d || {}), ...r, mensagens: undefined, alteradas: undefined }));
     setMensagens((atuais) => {
       const novas = r.mensagens.map((m) => ({ ...m }));
-      const lista = substituir ? novas : mesclarMensagens(atuais, novas);
+      const lista = aplicarAlteradas(substituir ? novas : mesclarMensagens(atuais, novas), (r.alteradas || []).map((m) => ({ ...m })));
       ultimaSeq.current = lista.reduce((n, m) => Math.max(n, m.seq || 0), 0);
       return lista;
     });
@@ -53,18 +56,18 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
 
   const carregar = useCallback(async ({ inicial = false } = {}) => {
     try {
-      const r = await conversaObter(id, inicial || !ultimaSeq.current ? {} : { apos: ultimaSeq.current });
+      const r = await conversaObter(id, inicial || !ultimaSeq.current ? {} : { apos: ultimaSeq.current, desde: ultimaSync.current });
       if (inicial) setMaisAntigas(r.maisAntigas);
       aplicar(r, { substituir: inicial });
       setAgora(new Date());
       setErro("");
       if (inicial || r.mensagens.length) avisarContador();
-      if (r.mensagens.length) aoMudou?.();
+      if (r.mensagens.length || r.alteradas?.length) aoMudou?.();
     } catch (ex) { if (inicial) setErro(ex.message); }
   }, [id, aplicar, aoMudou]);
 
   useEffect(() => {
-    setDados(null); setMensagens([]); setTexto(""); setErro(""); ultimaSeq.current = 0; colarNoFim.current = true;
+    setDados(null); setMensagens([]); setTexto(""); setErro(""); setEditando(null); ultimaSeq.current = 0; ultimaSync.current = ""; colarNoFim.current = true;
     void carregar({ inicial: true });
     const t = setInterval(() => { if (!document.hidden) void carregar(); }, INTERVALO);
     const volta = () => { if (!document.hidden) void carregar(); };
@@ -91,7 +94,34 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const ehUsuario = useCallback((u) => logins.has(u), [logins]);
   const pessoas = useMemo(() => (dados?.membros || []).filter((m) => m.usuario !== eu).map((m) => ({ usuario: m.usuario, nome: dados?.nomes?.[m.usuario] || usuarios.find((x) => x.usuario === m.usuario)?.nome || m.usuario })), [dados?.membros, dados?.nomes, usuarios, eu]);
 
+  const comecarEdicao = (m) => {
+    if (!m) return;
+    setEditando(m);
+    setTexto(m.texto || "");
+    requestAnimationFrame(() => { const el = campo.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  };
+  const cancelarEdicao = () => { setEditando(null); setTexto(""); campo.current?.focus(); };
+  const salvarEdicao = async () => {
+    const m = editando;
+    const t = texto.trim();
+    if (!m || enviando || (!t && !m.anexo)) return;
+    if (t === (m.texto || "").trim()) { cancelarEdicao(); return; }
+    const antes = m;
+    setMensagens((l) => l.map((x) => (x.id === m.id ? { ...x, texto: t, editadaEm: new Date().toISOString() } : x)));
+    setEditando(null); setTexto(""); setEnviando(true);
+    try {
+      const r = await conversaEditarMensagem(id, m.id, t);
+      setMensagens((l) => l.map((x) => (x.id === m.id ? { ...x, ...r.mensagem } : x)));
+      aoMudou?.();
+    } catch (ex) {
+      setMensagens((l) => l.map((x) => (x.id === antes.id ? antes : x)));
+      setEditando(antes); setTexto(t);
+      setErro(ex.message);
+    } finally { setEnviando(false); campo.current?.focus(); }
+  };
+
   const enviar = async () => {
+    if (editando) { await salvarEdicao(); return; }
     const t = texto.trim();
     if (!t || enviando || !dados) return;
     const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: t, apagada: false, criadoEm: new Date().toISOString() };
@@ -235,13 +265,15 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
             <div key={it.chave} className={clsx("group flex items-end gap-1.5", minha ? "justify-end" : "justify-start", !mesmoAutor && "pt-1.5")}>
               {!minha && grupo && (mesmoAutor ? <span className="w-7 shrink-0" /> : <Avatar usuario={m.autor} nome={nomeDe(m.autor)} tamanho={28} />)}
               {minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="esquerda" />}
+              {minha && !m.apagada && m.seq != null && !ehAudioMensagem(m) && <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600 group-hover:block group-focus-within:block [@media(hover:none)]:block" onClick={() => comecarEdicao(m)} aria-label="Editar mensagem" title="Editar mensagem"><Pencil size={13} /></button>}
               {minha && !m.apagada && m.seq != null && <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 group-hover:block group-focus-within:block" onClick={() => apagar(m)} aria-label="Apagar mensagem" title="Apagar mensagem"><Trash2 size={13} /></button>}
               <div onDoubleClick={() => { if (!m.apagada && m.seq != null) { window.getSelection?.()?.removeAllRanges?.(); void reagir(m, "👍"); } }} title={!m.apagada && m.seq != null ? "Dois cliques para curtir 👍" : undefined}
-                className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900", !minha && !m.apagada && mencionaUsuario(m.texto, eu, ehUsuario) && "bg-amber-50 ring-2 ring-amber-300")}>
+                className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900", !minha && !m.apagada && mencionaUsuario(m.texto, eu, ehUsuario) && "bg-amber-50 ring-2 ring-amber-300", editando?.id === m.id && "ring-2 ring-sky-400")}>
                 {!minha && grupo && !mesmoAutor && <p className="text-xs font-semibold" style={{ color: corDoAvatar(m.autor) }}>{nomeDe(m.autor)}</p>}
                 {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <TextoRico texto={m.texto} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} className={m.anexo ? "mt-1.5" : undefined} />}</>}
                 {!m.apagada && <ReacoesMensagem reacoes={dados.reacoes?.[m.id]} eu={eu} nomes={dados.nomes || {}} aoAlternar={(e) => reagir(m, e)} minha={minha} />}
                 <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
+                  {m.editadaEm && !m.apagada && <span className="italic" title={`Editada às ${horaLocal(m.editadaEm)}`}>editada</span>}
                   {horaLocal(m.criadoEm)}
                   {minha && !m.apagada && (situacao === "enviando" ? <Loader2 size={12} className="animate-spin" aria-label="Enviando" /> : situacao === "visualizada" ? <CheckCheck size={14} className="text-sky-600" aria-label="Visualizada" /> : <Check size={14} aria-label="Enviada" />)}
                 </p>
@@ -254,18 +286,28 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
       </div>
 
       {erro && <div role="alert" className="border-t bg-red-50 px-3 py-2 text-sm text-red-700" style={{ borderColor: "var(--hairline)" }}>{erro}</div>}
+      {editando && (
+        <div className="flex items-center gap-2 border-t bg-sky-50 px-3 py-1.5 text-xs text-sky-900" style={{ borderColor: "var(--hairline)" }} role="status">
+          <Pencil size={13} aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate"><b>Editando mensagem</b> · Enter salva, Esc cancela</span>
+          <button type="button" className="rounded p-1 hover:bg-sky-100" onClick={cancelarEdicao} aria-label="Cancelar edição" title="Cancelar edição"><X size={14} /></button>
+        </div>
+      )}
       <form className="relative flex items-end gap-2 border-t bg-white p-2.5" style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
         {gravando ? <GravadorAudio aoEnviar={enviarAudio} aoCancelar={() => setGravando(false)} aoErro={setErro} /> : (
           <>
             <input ref={entradaArquivo} type="file" multiple accept={ACEITAR_NO_INPUT_MENSAGEM} className="sr-only" aria-label="Escolher arquivos para enviar" onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; void enviarArquivos(l); }} />
-            <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
+            <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando || !!editando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
             <span className="relative">
               <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => setEmojiAberto((v) => !v)} aria-expanded={emojiAberto} aria-label="Escolher emoji" title="Emojis"><Smile size={19} /></button>
               {emojiAberto && <SeletorEmoji aoEscolher={poremEmoji} aoFechar={() => setEmojiAberto(false)} className="absolute bottom-full left-0 mb-2" />}
             </span>
             <EditorMensagem campo={campo} texto={texto} setTexto={setTexto} aoEnviar={() => void enviar()} aoColarArquivos={(f) => void enviarArquivos(f)}
-              pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando} />
-            {texto.trim()
+              pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando}
+              aoCancelar={editando ? cancelarEdicao : null} aoSetaCima={() => comecarEdicao(ultimaEditavel(mensagens, eu))} />
+            {editando
+              ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando || (!texto.trim() && !editando.anexo)} aria-label="Salvar edição" title="Salvar edição (Enter)"><Check size={18} /></button>
+              : texto.trim()
               ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
               : <button type="button" className="btn-primary h-11 w-11 shrink-0 p-0" onClick={() => { setErro(""); setGravando(true); }} disabled={enviando} aria-label="Gravar mensagem de voz" title="Gravar mensagem de voz"><Mic size={18} /></button>}
           </>
