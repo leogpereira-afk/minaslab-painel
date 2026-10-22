@@ -15,7 +15,11 @@ async function chamar(acao, corpo = {}) {
   return body;
 }
 
-export const listarEntradas = () => chamar("listar").then((r) => ({ itens: r.itens || [], podeEditar: r.podeEditar === true }));
+export const listarEntradas = () => chamar("listar").then((r) => ({ itens: r.itens || [], podeEditar: r.podeEditar === true, setores: Array.isArray(r.setores) ? r.setores : [] }));
+
+// Setores (só direção): quem é Administrativo e quem é Laboratório.
+export const setoresLer = () => chamar("setores");
+export const setoresSalvar = (administrativo, laboratorio) => chamar("setoresSalvar", { administrativo, laboratorio });
 
 // Confere o efeito: o servidor devolve o registro como ficou.
 export async function salvarEntrada(registro) {

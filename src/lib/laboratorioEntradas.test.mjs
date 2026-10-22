@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   etapa, prazoDescarte, diasAtendimento, atrasada, contarAmostras, filtrar, contagens, validar,
   normalizarParaSalvar, dataHora, ordenar, tempoMedio, linhaPlanilha, COLUNAS_PLANILHA,
+  camposAlterados, camposBloqueados, corPessoa, corTipo, PALETA,
 } from "./laboratorioEntradas.js";
 
 const HOJE = "2026-10-22";
@@ -67,11 +68,11 @@ test("validação bloqueia o essencial e avisa OS repetida e data fora de ordem"
   assert.equal(r.avisos.length, 2);
 });
 
-test("ao gravar: liberação implica liberado e finalizado, pendência de importação sai", () => {
-  const r = normalizarParaSalvar({ ...base, os: " 100/2026 ", liberadoEm: "2026-10-05T00:00", pendencias: ["x"] });
+test("ao gravar: texto aparado, pendência de importação sai e campo do outro setor não é mexido", () => {
+  const r = normalizarParaSalvar({ ...base, os: " 100/2026 ", liberadoEm: "2026-10-05T00:00", liberadoCliente: null, finalizadoLab: null, pendencias: ["x"] });
   assert.equal(r.os, "100/2026");
-  assert.equal(r.liberadoCliente, true);
-  assert.equal(r.finalizadoLab, true);
+  assert.equal(r.liberadoCliente, null);
+  assert.equal(r.finalizadoLab, null);
   assert.equal(r.qtdAmostras, 2);
   assert.deepEqual(r.pendencias, []);
 });
@@ -87,4 +88,25 @@ test("tempo médio considera liberadas nos últimos 30 dias; planilha tem uma c�
   const lista = [{ ...base, liberadoEm: "2026-10-05T00:00" }, { ...base, recebidoEm: "2026-10-10T00:00", liberadoEm: "2026-10-20T00:00" }, { ...base, recebidoEm: "2026-01-01T00:00", liberadoEm: "2026-01-10T00:00" }];
   assert.equal(tempoMedio(lista, HOJE), 7);
   assert.equal(Object.keys(linhaPlanilha(base, HOJE)).length, COLUNAS_PLANILHA.length);
+});
+
+test("setores: cada um só altera os seus campos; observação é dos dois", () => {
+  const antes = { ...base, liberadoCliente: null, finalizadoLab: false, observacao: "" };
+  assert.deepEqual(camposAlterados(antes, { ...antes, finalizadoLab: null }), []); // null e false são o mesmo "não"
+  const adm = { ...antes, os: "101/2026", observacao: "ok" };
+  assert.deepEqual(camposBloqueados(antes, adm, ["administrativo"]), []);
+  assert.deepEqual(camposBloqueados(antes, adm, ["laboratorio"]), ["os"]);
+  const lab = { ...antes, liberadoEm: "2026-10-05T10:00", liberadoCliente: true };
+  assert.deepEqual(camposBloqueados(antes, lab, ["administrativo"]), ["liberadoCliente", "liberadoEm"]);
+  assert.deepEqual(camposBloqueados(antes, lab, ["laboratorio"]), []);
+  assert.deepEqual(camposBloqueados(antes, { ...antes, observacao: "x" }, []), ["observacao"]);
+  // entrada nova: campos do laboratório vazios não contam como alteração
+  assert.deepEqual(camposBloqueados(null, { ...base, tipos: ["ÁGUA"] }, ["administrativo"]), []);
+});
+
+test("cores fixas por pessoa e por tipo", () => {
+  assert.notEqual(corPessoa("ANDERSON"), corPessoa("VICTORIA"));
+  assert.equal(corPessoa("anderson"), corPessoa("ANDERSON"));
+  assert.ok(PALETA.includes(corPessoa("FULANO NOVO")));
+  assert.match(corTipo("ÁGUA"), /sky/);
 });

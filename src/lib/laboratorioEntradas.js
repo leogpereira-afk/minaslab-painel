@@ -210,9 +210,8 @@ export function normalizarParaSalvar(e) {
   r.amostras = String(r.amostras || "").trim();
   r.observacao = String(r.observacao || "").trim();
   r.qtdAmostras = contarAmostras(r.amostras);
-  if (r.liberadoEm) r.liberadoCliente = true;
-  if (r.finalizadoMbEm || r.finalizadoFqEm || r.liberadoCliente) r.finalizadoLab = r.finalizadoLab || !!r.liberadoCliente;
-  if (r.descartadoEm) r.descartado = true;
+  // Nada de "acertar" campos do outro setor aqui: gravar uma correção do
+  // Administrativo não pode mexer em campo do Laboratório (o servidor recusaria).
   // Pendência de importação some quando a pessoa revisa e grava.
   r.pendencias = [];
   return r;
@@ -239,3 +238,62 @@ export function linhaPlanilha(e, hoje) {
   ];
   return Object.fromEntries(v.map((x, i) => [`c${i}`, x === "" || x === undefined ? null : x]));
 }
+
+/* ------------------------------------------------------------ setores
+   Quem lança o quê. O servidor (ml-laboratorio) confere a mesma lista — esta
+   cópia só decide o que a tela deixa editar. Observação: os dois setores. */
+export const SETORES = {
+  administrativo: { rotulo: "Administrativo", classe: "bg-sky-50 text-sky-800", borda: "border-sky-300" },
+  laboratorio: { rotulo: "Laboratório", classe: "bg-teal-50 text-teal-800", borda: "border-teal-300" },
+};
+export const CAMPOS_SETOR = {
+  administrativo: ["os", "amostras", "recebidoEm", "recebidoPor", "tipos", "parametroImediato", "origem", "retiradoPor", "cancelada"],
+  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
+  ambos: ["observacao"],
+};
+export const setorDoCampo = (campo) =>
+  CAMPOS_SETOR.administrativo.includes(campo) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(campo) ? "laboratorio" : CAMPOS_SETOR.ambos.includes(campo) ? "ambos" : null;
+
+// Valor para comparar: null e false são o mesmo "não", texto aparado, lista como texto.
+const comparavel = (v) => {
+  if (Array.isArray(v)) return JSON.stringify(v);
+  if (v === null || v === undefined || v === false || v === "") return "";
+  return String(v).trim();
+};
+export function camposAlterados(antes, depois) {
+  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos];
+  return todos.filter((c) => comparavel(antes?.[c]) !== comparavel(depois?.[c]));
+}
+// Campos que este usuário mudou mas não pode (lista vazia = pode gravar).
+export function camposBloqueados(antes, depois, setores = []) {
+  return camposAlterados(antes, depois).filter((c) => {
+    const s = setorDoCampo(c);
+    return s === "ambos" ? !setores.length : !setores.includes(s);
+  });
+}
+
+/* ------------------------------------------------------------ cores
+   Cada pessoa e cada tipo de análise com uma cor fixa (a mesma em toda a tela
+   e para todo mundo). Nomes conhecidos têm cor reservada para não repetir;
+   nome novo cai numa cor pela soma das letras. */
+export const PALETA = [
+  "bg-rose-100 text-rose-800", "bg-sky-100 text-sky-800", "bg-amber-100 text-amber-800", "bg-emerald-100 text-emerald-800",
+  "bg-violet-100 text-violet-800", "bg-orange-100 text-orange-800", "bg-cyan-100 text-cyan-800", "bg-lime-100 text-lime-800",
+  "bg-fuchsia-100 text-fuchsia-800", "bg-indigo-100 text-indigo-800", "bg-teal-100 text-teal-800", "bg-pink-100 text-pink-800",
+  "bg-yellow-100 text-yellow-800", "bg-blue-100 text-blue-800", "bg-red-100 text-red-800", "bg-green-100 text-green-800",
+  "bg-purple-100 text-purple-800", "bg-stone-200 text-stone-800",
+];
+const PESSOAS_FIXAS = [...new Set([...RESPONSAVEIS_RECEBIMENTO, ...RESPONSAVEIS_RETIRADA])];
+export function corPessoa(nome) {
+  const n = String(nome || "").toUpperCase();
+  const i = PESSOAS_FIXAS.indexOf(n);
+  if (i >= 0) return PALETA[i % PALETA.length];
+  let h = 0;
+  for (const ch of n) h = (h * 31 + ch.codePointAt(0)) % 9973;
+  return PALETA[h % PALETA.length];
+}
+const CORES_TIPO = {
+  "ÁGUA": "bg-sky-100 text-sky-800", ALIMENTO: "bg-amber-100 text-amber-800", EFLUENTE: "bg-stone-200 text-stone-800",
+  SOLO: "bg-orange-100 text-orange-800", AR: "bg-slate-100 text-slate-700", CQ: "bg-violet-100 text-violet-800",
+};
+export const corTipo = (t) => CORES_TIPO[String(t || "").toUpperCase()] || "bg-slate-100 text-slate-700";

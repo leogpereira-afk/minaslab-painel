@@ -4,7 +4,13 @@
 // AO VIVO a cada chamada (mesma régua do ml-sync), e cada gravação deixa rastro
 // (quem, quando, o quê) no próprio registro — exigência de rastreabilidade de laboratório.
 //
-// Ações: listar · salvar (um registro) · lote (liberar | descartar vários de uma vez) · apagar (lápide).
+// Ações: listar · salvar (um registro) · lote (liberar | descartar vários de uma vez) · apagar (lápide)
+//        · importar (direção) · setores / setoresSalvar (direção define quem é Administrativo e quem é Laboratório).
+//
+// SETORES: cada campo pertence a um setor (mesma lista de src/lib/laboratorioEntradas.js).
+// Administrativo lança OS, amostras, recebimento, responsáveis, tipo, imediato e origem;
+// Laboratório lança retirada, finalizações, liberação e descarte. Observação: os dois.
+// A direção edita tudo. Quem não está em setor nenhum só consulta.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -20,6 +26,24 @@ const COLECAO = "lab_entradas";
 const PAGINA = "laboratorio";
 const MAX_HISTORICO = 60;
 const DATA_OK = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})?$/;
+const CAMPOS_SETOR: Record<string, string[]> = {
+  administrativo: ["os", "amostras", "recebidoEm", "recebidoPor", "tipos", "parametroImediato", "origem", "retiradoPor", "cancelada"],
+  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
+  ambos: ["observacao"],
+};
+const comparavel = (v: unknown) => Array.isArray(v) ? JSON.stringify(v) : (v === null || v === undefined || v === false || v === "") ? "" : String(v).trim();
+function camposBloqueados(antes: Record<string, unknown> | null, depois: Record<string, unknown>, setores: string[]) {
+  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos];
+  return todos.filter((c) => comparavel(antes?.[c]) !== comparavel(depois?.[c])).filter((c) => {
+    const s = CAMPOS_SETOR.administrativo.includes(c) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(c) ? "laboratorio" : "ambos";
+    return s === "ambos" ? !setores.length : !setores.includes(s);
+  });
+}
+async function lerSetores(): Promise<{ administrativo: string[]; laboratorio: string[] }> {
+  const { data } = await sb.from("ml_registros").select("registro").eq("colecao", "lab_config").eq("id", "setores").maybeSingle();
+  const r = (data?.registro ?? {}) as { administrativo?: string[]; laboratorio?: string[] };
+  return { administrativo: Array.isArray(r.administrativo) ? r.administrativo : [], laboratorio: Array.isArray(r.laboratorio) ? r.laboratorio : [] };
+}
 
 function b64u(s: string) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; }
 async function crachaDoPainel(req: Request) {
@@ -81,8 +105,12 @@ Deno.serve(async (req) => {
     const perms: string[] = Array.isArray(conta?.paginas_consulta) ? conta!.paginas_consulta : [];
     const matriz = perms.includes("__matriz_v1");
     const podeLer = direcao || !matriz || perms.includes(PAGINA);
-    const podeEscrever = direcao || (papel === "equipe" && (!matriz || perms.includes(PAGINA)));
+    const podeEscreverPagina = direcao || (papel === "equipe" && (!matriz || perms.includes(PAGINA)));
     if (!podeLer) return json({ erro: "Seu acesso não inclui o Laboratório.", semPermissao: true }, 403);
+    const cfgSetores = await lerSetores();
+    const meusSetores = direcao ? ["administrativo", "laboratorio"]
+      : !podeEscreverPagina ? [] : ["administrativo", "laboratorio"].filter((s) => (cfgSetores as Record<string, string[]>)[s].includes(usuario));
+    const podeEscrever = meusSetores.length > 0;
 
     const body = await req.json().catch(() => ({}));
     const acao = txt(body.acao);
@@ -95,10 +123,25 @@ Deno.serve(async (req) => {
         for (const l of data ?? []) itens.push(l.registro);
         if (!data || data.length < 1000) break;
       }
-      return json({ ok: true, itens, podeEditar: podeEscrever });
+      return json({ ok: true, itens, podeEditar: podeEscrever, setores: meusSetores });
     }
 
-    if (!podeEscrever) return json({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
+    if (acao === "setores" || acao === "setoresSalvar") {
+      if (!direcao) return json({ erro: "Só a direção define os setores.", semPermissao: true }, 403);
+      if (acao === "setoresSalvar") {
+        const limpa = (v: unknown) => Array.isArray(v) ? [...new Set(v.map(txt).filter(Boolean))].slice(0, 200) : [];
+        const reg = { id: "setores", administrativo: limpa(body.administrativo), laboratorio: limpa(body.laboratorio), atualizadoPor: usuario, atualizadoEm: new Date().toISOString() };
+        const { error } = await sb.from("ml_registros").upsert({ colecao: "lab_config", id: "setores", registro: reg, apagado: false, atualizado_em: reg.atualizadoEm });
+        if (error) throw error;
+        return json({ ok: true, ...reg });
+      }
+      const { data: contas, error } = await sb.from("ml_contas").select("usuario,nome,papel,ativo").order("nome");
+      if (error) throw error;
+      return json({ ok: true, ...cfgSetores, contas: (contas ?? []).filter((c: { ativo: boolean }) => c.ativo) });
+    }
+
+    if (!podeEscrever) return json({ erro: "Seu usuário não está em nenhum setor do Laboratório (Administrativo ou Laboratório). Peça à direção para incluir.", semPermissao: true }, 403);
+    const recusa = (campos: string[]) => json({ erro: `Seu setor não edita: ${campos.map((c) => ROTULOS[c] ?? c).join(", ")}.`, semPermissao: true, campos }, 403);
     const agora = new Date().toISOString();
 
     const gravar = async (reg: Record<string, unknown>, acaoTexto?: string) => {
@@ -126,6 +169,12 @@ Deno.serve(async (req) => {
       delete reg.historico;
       const problema = conferir(reg);
       if (problema) return json({ erro: problema }, 400);
+      const { data: atualReg } = await sb.from("ml_registros").select("registro,apagado").eq("colecao", COLECAO).eq("id", txt(reg.id)).maybeSingle();
+      const antesReg = atualReg && !atualReg.apagado ? atualReg.registro as Record<string, unknown> : null;
+      if (!antesReg && !meusSetores.includes("administrativo")) return json({ erro: "Só o Administrativo lança entrada nova.", semPermissao: true }, 403);
+      const bloqueados = camposBloqueados(antesReg, reg, meusSetores);
+      if (bloqueados.length) return recusa(bloqueados);
+      if (antesReg?.importacao) reg.importacao = antesReg.importacao; else delete reg.importacao;
       const registro = await gravar(reg);
       await bump();
       return json({ ok: true, registro });
@@ -136,6 +185,7 @@ Deno.serve(async (req) => {
       const ids: string[] = Array.isArray(body.ids) ? body.ids.map(txt).filter(Boolean) : [];
       const quando = txt(body.quando);
       if (!["liberar", "descartar"].includes(tipo)) return json({ erro: "Ação em lote desconhecida." }, 400);
+      if (!meusSetores.includes("laboratorio")) return recusa(tipo === "liberar" ? ["liberadoEm"] : ["descartado"]);
       if (!ids.length || ids.length > 500) return json({ erro: "Selecione de 1 a 500 entradas." }, 400);
       if (!quando || !DATA_OK.test(quando)) return json({ erro: "Data/hora inválida." }, 400);
       const { data, error } = await sb.from("ml_registros").select("id,registro").eq("colecao", COLECAO).eq("apagado", false).in("id", ids);
@@ -194,6 +244,7 @@ Deno.serve(async (req) => {
     if (acao === "apagar") {
       const id = txt(body.id);
       if (!id) return json({ erro: "Informe a entrada." }, 400);
+      if (!meusSetores.includes("administrativo")) return json({ erro: "Só o Administrativo exclui entradas.", semPermissao: true }, 403);
       // Lápide, nunca DELETE: quem estava com a tela aberta precisa saber que sumiu.
       const { error } = await sb.from("ml_registros").update({ apagado: true, atualizado_em: agora }).eq("colecao", COLECAO).eq("id", id);
       if (error) throw error;
