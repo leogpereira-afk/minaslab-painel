@@ -1,0 +1,155 @@
+// Formulário da entrada de amostra. Fica FORA da página (componente dentro de
+// componente remonta a cada letra e o campo perde o foco).
+//
+// O que mudou em relação à planilha: data e hora vêm de um seletor (nada de
+// "03/06/2026 10;00"), nomes e tipos são botões de marcar (nada de
+// "LUCAS, JOSE ROBERTO" vs "JOSE ROBERTO, LUCAS") e "Agora" carimba o
+// instante numa batida só.
+
+import { useState } from "react";
+import { Clock, Plus, AlertTriangle } from "lucide-react";
+import { Modal } from "../ui.jsx";
+import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar } from "../../lib/laboratorioEntradas.js";
+
+function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado }) {
+  const [novo, setNovo] = useState("");
+  const alternar = (o) => onChange(valor.includes(o) ? valor.filter((v) => v !== o) : [...valor, o]);
+  const extras = valor.filter((v) => !opcoes.includes(v));
+  const adicionar = () => {
+    const n = novo.trim().toUpperCase();
+    if (n && !valor.includes(n)) onChange([...valor, n]);
+    setNovo("");
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {[...opcoes, ...extras].map((o) => (
+        <button key={o} type="button" disabled={desabilitado} aria-pressed={valor.includes(o)} onClick={() => alternar(o)}
+          className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${valor.includes(o) ? "border-brand bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+          {o}
+        </button>
+      ))}
+      {permitirNovo && !desabilitado && (
+        <span className="inline-flex items-center gap-1">
+          <input className="h-7 w-28 rounded-full border border-slate-200 px-2.5 text-xs" placeholder="Outro nome" value={novo}
+            onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionar(); } }} />
+          <button type="button" className="rounded-full border border-slate-200 p-1 text-slate-500 hover:bg-slate-50" onClick={adicionar} aria-label="Adicionar nome"><Plus size={13} /></button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CampoData({ rotulo, valor, onChange, desabilitado }) {
+  return (
+    <label className="block">
+      <span className="label">{rotulo}</span>
+      <span className="flex gap-1.5">
+        <input type="datetime-local" className="input h-10 py-1.5 text-sm" value={valor || ""} disabled={desabilitado} onChange={(e) => onChange(e.target.value)} />
+        {!desabilitado && (
+          <button type="button" className="btn-outline shrink-0 px-2.5 py-1.5 text-xs" title="Preencher com agora" onClick={() => onChange(agoraLocal())}>
+            <Clock size={13} aria-hidden="true" />Agora
+          </button>
+        )}
+      </span>
+    </label>
+  );
+}
+
+function SimNao({ rotulo, valor, onChange, desabilitado }) {
+  return (
+    <div>
+      <span className="label">{rotulo}</span>
+      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5">
+        {[[true, "Sim"], [false, "Não"]].map(([v, t]) => (
+          <button key={t} type="button" disabled={desabilitado} aria-pressed={valor === v} onClick={() => onChange(v)}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold ${valor === v ? (v ? "bg-brand text-white" : "bg-slate-600 text-white") : "text-slate-600"}`}>{t}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const Secao = ({ titulo, children }) => (
+  <fieldset className="rounded-xl border border-slate-200 p-3">
+    <legend className="px-1 font-display text-xs font-bold uppercase tracking-wide text-slate-500">{titulo}</legend>
+    <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+  </fieldset>
+);
+
+export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento, opcoesRetirada, somenteLeitura, salvando, aoFechar, aoSalvar, aoExcluir }) {
+  const [f, setF] = useState(entrada);
+  const [tentou, setTentou] = useState(false);
+  const set = (campo) => (v) => setF((x) => ({ ...x, [campo]: v }));
+  const { erros, avisos } = validar(f, lista);
+  const prazo = prazoDescarte(f);
+  const enviar = (e) => {
+    e.preventDefault();
+    setTentou(true);
+    if (!erros.length) aoSalvar(f);
+  };
+  const dl = somenteLeitura;
+  return (
+    <Modal titulo={entrada.id ? `Entrada · OS ${entrada.os || "—"}` : "Nova entrada de amostra"} aberto={aberto} aoFechar={aoFechar} largura="max-w-3xl">
+      <form onSubmit={enviar} className="space-y-3">
+        {!!entrada.pendencias?.length && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-semibold">Veio da planilha com pontos para revisar:</p>
+            <ul className="mt-1 list-disc pl-4">{entrada.pendencias.map((p) => <li key={p}>{p}</li>)}</ul>
+            <p className="mt-1">Corrija os campos e grave: o aviso sai sozinho.</p>
+          </div>
+        )}
+        <Secao titulo="Recebimento">
+          <label className="block"><span className="label">Nº da OS *</span>
+            <input className="input h-10 py-1.5" value={f.os} disabled={dl} placeholder="Ex.: 1541/2026" onChange={(e) => set("os")(e.target.value)} autoFocus={!entrada.id} /></label>
+          <label className="block"><span className="label">Nº da(s) amostra(s) {f.amostras ? <span className="font-normal text-slate-400">· {contarAmostras(f.amostras)} amostra(s)</span> : null}</span>
+            <input className="input h-10 py-1.5" value={f.amostras} disabled={dl} placeholder="Ex.: 4426/4427-2026" onChange={(e) => set("amostras")(e.target.value)} /></label>
+          <CampoData rotulo="Data e hora do recebimento *" valor={f.recebidoEm} onChange={set("recebidoEm")} desabilitado={dl} />
+          <SimNao rotulo="Possui parâmetro imediato?" valor={!!f.parametroImediato} onChange={set("parametroImediato")} desabilitado={dl} />
+          <div className="sm:col-span-2"><span className="label">Tipo de análise *</span><Marcar opcoes={TIPOS_ANALISE} valor={f.tipos} onChange={set("tipos")} desabilitado={dl} /></div>
+          <div><span className="label">Interno ou provedor</span><Marcar opcoes={ORIGENS} valor={f.origem} onChange={set("origem")} desabilitado={dl} /></div>
+          <div className="sm:col-span-2"><span className="label">Responsável pelo recebimento</span><Marcar opcoes={opcoesRecebimento} valor={f.recebidoPor} onChange={set("recebidoPor")} permitirNovo desabilitado={dl} /></div>
+        </Secao>
+        <Secao titulo="Análise">
+          <div className="sm:col-span-2"><span className="label">Responsável pela retirada</span><Marcar opcoes={opcoesRetirada} valor={f.retiradoPor} onChange={set("retiradoPor")} permitirNovo desabilitado={dl} /></div>
+          <CampoData rotulo="Retirada pelo laboratório" valor={f.retiradaLabEm} onChange={set("retiradaLabEm")} desabilitado={dl} />
+          <CampoData rotulo="Retirado do comercial" valor={f.retiradaComercialEm} onChange={set("retiradaComercialEm")} desabilitado={dl} />
+          <CampoData rotulo="Finalização Microbiologia (MB)" valor={f.finalizadoMbEm} onChange={set("finalizadoMbEm")} desabilitado={dl} />
+          <CampoData rotulo="Finalização Físico-Química (FQ)" valor={f.finalizadoFqEm} onChange={set("finalizadoFqEm")} desabilitado={dl} />
+          <SimNao rotulo="Finalizado pelo laboratório?" valor={!!f.finalizadoLab} onChange={set("finalizadoLab")} desabilitado={dl} />
+        </Secao>
+        <Secao titulo="Liberação e descarte">
+          <SimNao rotulo="Liberado para o cliente?" valor={!!(f.liberadoCliente || f.liberadoEm)} onChange={(v) => setF((x) => ({ ...x, liberadoCliente: v, liberadoEm: v ? x.liberadoEm || agoraLocal() : "" }))} desabilitado={dl} />
+          <CampoData rotulo="Data da liberação" valor={f.liberadoEm} onChange={(v) => setF((x) => ({ ...x, liberadoEm: v, liberadoCliente: !!v || x.liberadoCliente }))} desabilitado={dl} />
+          <div className="sm:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {prazo ? <>Descarte previsto para <b>{dataHora(prazo)}</b> (5 dias após a liberação).</> : "O prazo de descarte (5 dias) começa a contar na liberação."}
+          </div>
+          <SimNao rotulo="Amostra descartada?" valor={!!f.descartado} onChange={(v) => setF((x) => ({ ...x, descartado: v, descartadoEm: v ? x.descartadoEm || agoraLocal() : "" }))} desabilitado={dl} />
+          <SimNao rotulo="OS cancelada?" valor={!!f.cancelada} onChange={set("cancelada")} desabilitado={dl} />
+        </Secao>
+        <label className="block"><span className="label">Observação</span>
+          <textarea className="input min-h-[70px] py-2" value={f.observacao} disabled={dl} onChange={(e) => set("observacao")(e.target.value)} /></label>
+        {(tentou && erros.length > 0) && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{erros.join(" ")}</div>}
+        {avisos.length > 0 && <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /><span>{avisos.join(" ")}</span></div>}
+        {entrada.historico?.length > 0 ? (
+          <details className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600">
+            <summary className="cursor-pointer font-semibold">Histórico ({entrada.historico.length})</summary>
+            <ul className="mt-2 space-y-1">
+              {[...entrada.historico].reverse().map((h, i) => (
+                <li key={`${h.em}-${i}`}><span className="text-slate-400">{new Date(h.em).toLocaleString("pt-BR")}</span> · <b>{h.por}</b> · {h.acao}</li>
+              ))}
+            </ul>
+          </details>
+        ) : entrada.importacao ? (
+          <p className="text-[11px] text-slate-400">Importada da planilha (linha {entrada.importacao.linha}).</p>
+        ) : null}
+        <div className="flex flex-wrap justify-between gap-2 border-t pt-3">
+          <div>{entrada.id && !dl && <button type="button" className="btn-ghost text-red-700 hover:bg-red-50" disabled={salvando} onClick={() => aoExcluir(entrada)}>Excluir entrada</button>}</div>
+          <div className="flex gap-2">
+            <button type="button" className="btn-outline" onClick={aoFechar}>{dl ? "Fechar" : "Cancelar"}</button>
+            {!dl && <button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Gravando…" : "Gravar entrada"}</button>}
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+}
