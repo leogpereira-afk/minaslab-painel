@@ -10,6 +10,9 @@ import AnexoMensagem from "./AnexoMensagem.jsx";
 import GravadorAudio from "./GravadorAudio.jsx";
 import SeletorEmoji from "./SeletorEmoji.jsx";
 import ReacoesMensagem, { BotaoReagir } from "./ReacoesMensagem.jsx";
+import EditorMensagem from "./EditorMensagem.jsx";
+import TextoRico from "./TextoRico.jsx";
+import { mencionaUsuario } from "../../lib/textoRico.js";
 import { inserirNoTexto } from "../../lib/emojis.js";
 import { ACEITAR_NO_INPUT_MENSAGEM, EXTENSOES_MENSAGEM, lerArquivoParaEnvio, problemaDoArquivo } from "../../lib/anexos.js";
 import { corDoAvatar, horaLocal } from "../../lib/tarefas.js";
@@ -83,6 +86,10 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   const grupo = dados?.conversa?.tipo === "grupo";
   const nomeDe = (u) => dados?.nomes?.[u] || usuarios.find((x) => x.usuario === u)?.nome || u;
   const itens = useMemo(() => comSeparadores(mensagens, agora), [mensagens, agora]);
+  // Quem existe (para o @ virar marcação) e quem dá para marcar nesta conversa.
+  const logins = useMemo(() => new Set([...usuarios.map((u) => String(u.usuario).toLowerCase()), ...Object.keys(dados?.nomes || {}).map((u) => u.toLowerCase())]), [usuarios, dados?.nomes]);
+  const ehUsuario = useCallback((u) => logins.has(u), [logins]);
+  const pessoas = useMemo(() => (dados?.membros || []).filter((m) => m.usuario !== eu).map((m) => ({ usuario: m.usuario, nome: dados?.nomes?.[m.usuario] || usuarios.find((x) => x.usuario === m.usuario)?.nome || m.usuario })), [dados?.membros, dados?.nomes, usuarios, eu]);
 
   const enviar = async () => {
     const t = texto.trim();
@@ -229,9 +236,10 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
               {!minha && grupo && (mesmoAutor ? <span className="w-7 shrink-0" /> : <Avatar usuario={m.autor} nome={nomeDe(m.autor)} tamanho={28} />)}
               {minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="esquerda" />}
               {minha && !m.apagada && m.seq != null && <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 group-hover:block group-focus-within:block" onClick={() => apagar(m)} aria-label="Apagar mensagem" title="Apagar mensagem"><Trash2 size={13} /></button>}
-              <div className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900")}>
+              <div onDoubleClick={() => { if (!m.apagada && m.seq != null) { window.getSelection?.()?.removeAllRanges?.(); void reagir(m, "👍"); } }} title={!m.apagada && m.seq != null ? "Dois cliques para curtir 👍" : undefined}
+                className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900", !minha && !m.apagada && mencionaUsuario(m.texto, eu, ehUsuario) && "bg-amber-50 ring-2 ring-amber-300")}>
                 {!minha && grupo && !mesmoAutor && <p className="text-xs font-semibold" style={{ color: corDoAvatar(m.autor) }}>{nomeDe(m.autor)}</p>}
-                {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <p className={clsx("whitespace-pre-wrap [overflow-wrap:anywhere]", m.anexo && "mt-1.5")}>{m.texto}</p>}</>}
+                {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <TextoRico texto={m.texto} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} className={m.anexo ? "mt-1.5" : undefined} />}</>}
                 {!m.apagada && <ReacoesMensagem reacoes={dados.reacoes?.[m.id]} eu={eu} nomes={dados.nomes || {}} aoAlternar={(e) => reagir(m, e)} minha={minha} />}
                 <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
                   {horaLocal(m.criadoEm)}
@@ -255,7 +263,8 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
               <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => setEmojiAberto((v) => !v)} aria-expanded={emojiAberto} aria-label="Escolher emoji" title="Emojis"><Smile size={19} /></button>
               {emojiAberto && <SeletorEmoji aoEscolher={poremEmoji} aoFechar={() => setEmojiAberto(false)} className="absolute bottom-full left-0 mb-2" />}
             </span>
-            <textarea ref={campo} className="input max-h-32 min-h-[44px] flex-1 resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem" aria-label="Escreva uma mensagem" value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); void enviarArquivos(f); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
+            <EditorMensagem campo={campo} texto={texto} setTexto={setTexto} aoEnviar={() => void enviar()} aoColarArquivos={(f) => void enviarArquivos(f)}
+              pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando} />
             {texto.trim()
               ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
               : <button type="button" className="btn-primary h-11 w-11 shrink-0 p-0" onClick={() => { setErro(""); setGravando(true); }} disabled={enviando} aria-label="Gravar mensagem de voz" title="Gravar mensagem de voz"><Mic size={18} /></button>}
