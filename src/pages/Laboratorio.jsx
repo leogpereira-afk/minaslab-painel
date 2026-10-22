@@ -1,29 +1,26 @@
-// LABORATÓRIO DE ANÁLISES AMBIENTAIS — espaço reservado de propósito.
-// O Léo decidiu (27/08/2026) desenhar este módulo depois, junto: é o coração
-// do negócio e merece a conversa. Não construir nada aqui antes dela.
+// LABORATÓRIO DE ANÁLISES AMBIENTAIS.
+// O módulo cresce por seções (botões no topo). A primeira é "Entradas de
+// amostras", que substitui a planilha PROTOCOLO DE ENTRADAS DE AMOSTRAS.
+// Seções novas entram em SECOES e ganham o seu componente em
+// components/laboratorio/.
 
-import { FlaskConical } from "lucide-react";
-import { Link } from "react-router-dom";
-import { PageTitle, Empty } from "../components/ui.jsx";
+import { useSearchParams } from "react-router-dom";
+import { PageTitle, Segmented } from "../components/ui.jsx";
+import EntradasAmostras from "../components/laboratorio/EntradasAmostras.jsx";
+
+const SECOES = [
+  { valor: "entradas", rotulo: "Entradas de amostras", descricao: "Protocolo de recebimento, análise, liberação e descarte das amostras." },
+];
 
 export default function Laboratorio() {
+  const [params, setParams] = useSearchParams();
+  const secao = SECOES.find((s) => s.valor === params.get("secao")) || SECOES[0];
+  const ir = (valor) => { const p = new URLSearchParams(params); p.set("secao", valor); setParams(p, { replace: true }); };
   return (
-    <div>
-      <PageTitle
-        titulo="Laboratório"
-        descricao="Análises ambientais: amostras, ensaios e laudos."
-      />
-      <Empty className="px-4 py-6">
-        <span className="flex flex-col items-center gap-3">
-          <FlaskConical size={32} aria-hidden="true" className="text-slate-500" />
-          <span className="font-display text-base font-semibold text-slate-700">Módulo em planejamento</span>
-          <span className="max-w-sm">
-            O acompanhamento de amostras e laudos vai ser desenhado junto com a
-            direção. O lugar dele já está garantido aqui no painel.
-          </span>
-          <Link to="/calendario" className="btn-outline mt-2 min-h-11">Abrir calendário</Link>
-        </span>
-      </Empty>
+    <div className="space-y-4">
+      <PageTitle titulo="Laboratório" descricao={secao.descricao} />
+      <Segmented opcoes={SECOES} valor={secao.valor} onChange={ir} className="w-full sm:w-fit" />
+      {secao.valor === "entradas" && <EntradasAmostras />}
     </div>
   );
 }

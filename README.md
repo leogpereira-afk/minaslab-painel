@@ -15,6 +15,16 @@ Ele complementa o que o ERP (Omie) não faz.
 - **Login**: usuário + senha (PBKDF2, 120 mil iterações), com freio atômico de
   tentativas no banco (`ml_freio`).
 
+## Laboratório
+
+Seções por botão no topo da tela (`src/pages/Laboratorio.jsx`). A primeira é
+**Entradas de amostras**, que substitui a planilha *Protocolo de entradas de
+amostras*: coleção `lab_entradas` em `ml_registros`, sempre pela Edge Function
+`ml-laboratorio` (crachá, permissão `laboratorio` e histórico de quem alterou
+cada entrada). Regras em `src/lib/laboratorioEntradas.js`; leitura da planilha
+antiga em `src/lib/laboratorioImportacao.js` (botão "Importar planilha", só
+direção, só insere o que ainda não existe).
+
 ## Rodar local
 
 ```
