@@ -130,3 +130,11 @@ test("pessoas: nome da planilha casa com a conta; quem não tem conta é desliga
   assert.deepEqual(p.ativas.map((x) => x.usuario).sort(), ["ana", "joseroberto", "rute", "ruth", "thayna"]);
   assert.notEqual(p.cor("RUTH DIAS"), p.cor("RUTE SOUZA"));
 });
+
+test("provedor: Administrativo lança as datas de retirada; interno continua só Laboratório", () => {
+  const antes = { ...base, origem: ["PROVEDOR"], retiradaLabEm: "" };
+  assert.deepEqual(camposBloqueados(antes, { ...antes, retiradaLabEm: "2026-10-02T09:00" }, ["administrativo"]), []);
+  const interno = { ...base, origem: ["INTERNO"], retiradaLabEm: "" };
+  assert.deepEqual(camposBloqueados(interno, { ...interno, retiradaLabEm: "2026-10-02T09:00" }, ["administrativo"]), ["retiradaLabEm"]);
+  assert.deepEqual(camposBloqueados(antes, { ...antes, liberadoEm: "2026-10-05T09:00" }, ["administrativo"]), ["liberadoEm"]);
+});

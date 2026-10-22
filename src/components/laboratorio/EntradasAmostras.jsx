@@ -339,7 +339,7 @@ export default function EntradasAmostras() {
       </section>
 
       {editando && (
-        <FormEntrada key={editando.id || "nova"} aberto entrada={editando} lista={todos} opcoesRecebimento={optRecebForm} opcoesRetirada={optRetirForm} pessoas={pessoas}
+        <FormEntrada key={editando.id || "nova"} aberto entrada={editando} lista={todos} opcoesRecebimento={optRecebForm} opcoesRetirada={optRetirForm} opcoesRetiradaProvedor={optRecebForm} pessoas={pessoas}
           podeAdm={podeAdm} podeLab={podeLab} salvando={salvando} aoFechar={() => setEditando(null)} aoSalvar={gravar} aoExcluir={excluir} />
       )}
       {setoresAberto && <SetoresLaboratorio aberto aoFechar={() => setSetoresAberto(false)} aoSalvo={() => { setAviso({ tipo: "ok", texto: "Setores gravados." }); carregar(); }} />}

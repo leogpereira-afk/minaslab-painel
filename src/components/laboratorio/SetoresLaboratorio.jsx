@@ -34,7 +34,7 @@ export default function SetoresLaboratorio({ aberto, aoFechar, aoSalvo }) {
       <div className="space-y-3 text-sm">
         <p className="text-slate-600">
           <b className="text-sky-800">Administrativo</b> lança OS, nº das amostras, recebimento, quem recebeu, tipo, imediato, interno/provedor, quem retirou e cancelamento.{" "}
-          <b className="text-teal-800">Laboratório</b> lança retiradas, finalizações MB/FQ, liberação e descarte. Observação: os dois.
+          <b className="text-teal-800">Laboratório</b> lança retiradas, finalizações MB/FQ, liberação e descarte. Amostra de <b>provedor</b>: a retirada é do Administrativo. Observação: os dois.
           A direção edita tudo. Quem não estiver marcado só consulta.
         </p>
         {erro && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{erro}</div>}

@@ -9,7 +9,7 @@
 //
 // SETORES: cada campo pertence a um setor (mesma lista de src/lib/laboratorioEntradas.js).
 // Administrativo lança OS, amostras, recebimento, responsáveis, tipo, imediato e origem;
-// Laboratório lança retirada, finalizações, liberação e descarte. Observação: os dois.
+// Laboratório lança retirada, finalizações, liberação e descarte (provedor: retirada também pelo Administrativo). Observação: os dois.
 // A direção edita tudo. Quem não está em setor nenhum só consulta.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -35,7 +35,10 @@ const comparavel = (v: unknown) => Array.isArray(v) ? JSON.stringify(v) : (v ===
 function camposBloqueados(antes: Record<string, unknown> | null, depois: Record<string, unknown>, setores: string[]) {
   const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos];
   return todos.filter((c) => comparavel(antes?.[c]) !== comparavel(depois?.[c])).filter((c) => {
-    const s = CAMPOS_SETOR.administrativo.includes(c) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(c) ? "laboratorio" : "ambos";
+    // Amostra de PROVEDOR: a retirada é do Administrativo (o Laboratório também pode lançar).
+    const provedor = Array.isArray(depois?.origem) && (depois.origem as unknown[]).some((o) => String(o).toUpperCase() === "PROVEDOR");
+    const s = provedor && ["retiradaLabEm", "retiradaComercialEm"].includes(c) ? "ambos"
+      : CAMPOS_SETOR.administrativo.includes(c) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(c) ? "laboratorio" : "ambos";
     return s === "ambos" ? !setores.length : !setores.includes(s);
   });
 }
