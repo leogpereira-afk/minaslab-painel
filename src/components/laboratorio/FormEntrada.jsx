@@ -9,9 +9,9 @@
 import { useState } from "react";
 import { Clock, Plus, AlertTriangle, Lock } from "lucide-react";
 import { Modal } from "../ui.jsx";
-import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corPessoa, corTipo } from "../../lib/laboratorioEntradas.js";
+import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corTipo, corOrigem } from "../../lib/laboratorioEntradas.js";
 
-function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor }) {
+function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor, rotulo = (x) => x, dica }) {
   const [novo, setNovo] = useState("");
   const alternar = (o) => onChange(valor.includes(o) ? valor.filter((v) => v !== o) : [...valor, o]);
   const extras = valor.filter((v) => !opcoes.includes(v));
@@ -23,9 +23,9 @@ function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {[...opcoes, ...extras].map((o) => (
-        <button key={o} type="button" disabled={desabilitado} aria-pressed={valor.includes(o)} onClick={() => alternar(o)}
+        <button key={o} type="button" title={dica ? dica(o) : undefined} disabled={desabilitado} aria-pressed={valor.includes(o)} onClick={() => alternar(o)}
           className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${valor.includes(o) ? (cor ? `border-slate-400 ring-1 ring-slate-400 ${cor(o)}` : "border-brand bg-brand text-white") : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>
-          {o}
+          {rotulo(o)}
         </button>
       ))}
       {permitirNovo && !desabilitado && (
@@ -82,12 +82,14 @@ const Secao = ({ titulo, setor, bloqueado, children }) => (
   </fieldset>
 );
 
-export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento, opcoesRetirada, podeAdm, podeLab, salvando, aoFechar, aoSalvar, aoExcluir }) {
+export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento, opcoesRetirada, pessoas, podeAdm, podeLab, salvando, aoFechar, aoSalvar, aoExcluir }) {
   const [f, setF] = useState(entrada);
   const [tentou, setTentou] = useState(false);
   const set = (campo) => (v) => setF((x) => ({ ...x, [campo]: v }));
   const { erros, avisos } = validar(f, lista);
   const prazo = prazoDescarte(f);
+  const dicaPessoa = (n) => `${n}${pessoas.desligado(n) ? " — sem conta ativa no sistema (já desligado)" : ""}`;
+  const original = entrada.importacao?.original;
   const enviar = (e) => {
     e.preventDefault();
     setTentou(true);
@@ -115,9 +117,9 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
           <CampoData rotulo="Data e hora do recebimento *" valor={f.recebidoEm} onChange={set("recebidoEm")} desabilitado={dl} />
           <SimNao rotulo="Possui parâmetro imediato?" valor={!!f.parametroImediato} onChange={set("parametroImediato")} desabilitado={dl} />
           <div className="sm:col-span-2"><span className="label">Tipo de análise *</span><Marcar opcoes={TIPOS_ANALISE} valor={f.tipos} onChange={set("tipos")} desabilitado={dl} cor={corTipo} /></div>
-          <div><span className="label">Interno ou provedor</span><Marcar opcoes={ORIGENS} valor={f.origem} onChange={set("origem")} desabilitado={dl} /></div>
-          <div className="sm:col-span-2"><span className="label">Responsável pelo recebimento</span><Marcar opcoes={opcoesRecebimento} valor={f.recebidoPor} onChange={set("recebidoPor")} permitirNovo desabilitado={dl} cor={corPessoa} /></div>
-          <div className="sm:col-span-2"><span className="label">Responsável pela retirada</span><Marcar opcoes={opcoesRetirada} valor={f.retiradoPor} onChange={set("retiradoPor")} permitirNovo desabilitado={dl} cor={corPessoa} /></div>
+          <div><span className="label">Interno ou provedor</span><Marcar opcoes={ORIGENS} valor={f.origem} onChange={set("origem")} desabilitado={dl} cor={corOrigem} /></div>
+          <div className="sm:col-span-2"><span className="label">Responsável pelo recebimento</span><Marcar opcoes={opcoesRecebimento} valor={f.recebidoPor} onChange={set("recebidoPor")} desabilitado={dl} cor={pessoas.cor} rotulo={pessoas.curto} dica={dicaPessoa} /></div>
+          <div className="sm:col-span-2"><span className="label">Responsável pela retirada</span><Marcar opcoes={opcoesRetirada} valor={f.retiradoPor} onChange={set("retiradoPor")} desabilitado={dl} cor={pessoas.cor} rotulo={pessoas.curto} dica={dicaPessoa} /></div>
           <SimNao rotulo="OS cancelada?" valor={!!f.cancelada} onChange={set("cancelada")} desabilitado={dl} />
         </Secao>
         <Secao titulo="Análise" setor="laboratorio" bloqueado={ll}>
@@ -139,6 +141,14 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
           <textarea className="input min-h-[70px] py-2 disabled:bg-slate-100" value={f.observacao} disabled={leitura} onChange={(e) => set("observacao")(e.target.value)} /></label>
         {(tentou && erros.length > 0) && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{erros.join(" ")}</div>}
         {avisos.length > 0 && <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /><span>{avisos.join(" ")}</span></div>}
+        {original && Object.keys(original).length > 0 && (
+          <details className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600">
+            <summary className="cursor-pointer font-semibold">Como estava na planilha (linha {entrada.importacao.linha})</summary>
+            <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+              {Object.entries(original).map(([k, v]) => <div key={k} className="min-w-0"><dt className="text-[10px] uppercase text-slate-400">{k}</dt><dd className="break-words">{v}</dd></div>)}
+            </dl>
+          </details>
+        )}
         {entrada.historico?.length > 0 ? (
           <details className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600">
             <summary className="cursor-pointer font-semibold">Histórico ({entrada.historico.length})</summary>

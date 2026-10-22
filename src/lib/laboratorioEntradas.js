@@ -281,17 +281,63 @@ export const PALETA = [
   "bg-violet-100 text-violet-800", "bg-orange-100 text-orange-800", "bg-cyan-100 text-cyan-800", "bg-lime-100 text-lime-800",
   "bg-fuchsia-100 text-fuchsia-800", "bg-indigo-100 text-indigo-800", "bg-teal-100 text-teal-800", "bg-pink-100 text-pink-800",
   "bg-yellow-100 text-yellow-800", "bg-blue-100 text-blue-800", "bg-red-100 text-red-800", "bg-green-100 text-green-800",
-  "bg-purple-100 text-purple-800", "bg-stone-200 text-stone-800",
+  "bg-purple-100 text-purple-800", "bg-stone-200 text-stone-800", "bg-emerald-200 text-emerald-900", "bg-sky-200 text-sky-900",
+  "bg-rose-200 text-rose-900", "bg-amber-200 text-amber-900", "bg-violet-200 text-violet-900", "bg-cyan-200 text-cyan-900",
 ];
-const PESSOAS_FIXAS = [...new Set([...RESPONSAVEIS_RECEBIMENTO, ...RESPONSAVEIS_RETIRADA])];
+/* ------------------------------------------------------------ pessoas
+   "Recebido por" e "Retirado por" são usuários do sistema (ml_contas). Nome
+   que não tem conta = colaborador já desligado: continua aparecendo nos
+   registros antigos, mas não é oferecido para lançamento novo. */
+const CONECTORES = new Set(["DA", "DE", "DO", "DAS", "DOS", "E"]);
+const palavras = (n) => semAcento(n).toUpperCase().split(/\s+/).filter(Boolean);
+
+// Nome da planilha ("JOSE ROBERTO", "THAYNÁ") → conta cujo nome começa por essas palavras. Só casa se for uma conta só.
+export function casarPessoa(nomePlanilha, contas = []) {
+  const alvo = palavras(nomePlanilha).filter((w) => !CONECTORES.has(w));
+  if (!alvo.length) return null;
+  const achadas = contas.filter((c) => {
+    const ws = palavras(c.nome).filter((w) => !CONECTORES.has(w));
+    return alvo.every((w, k) => ws[k] === w);
+  });
+  return achadas.length === 1 ? achadas[0] : null;
+}
+
+// Todas as pessoas que aparecem na tela: contas (ativas e inativas) + nomes antigos sem conta.
+export function montarPessoas(contas = [], entradas = []) {
+  const porNome = new Map();
+  for (const c of contas) porNome.set(c.nome, { nome: c.nome, usuario: c.usuario, ativo: c.ativo !== false, conta: true });
+  for (const e of entradas) for (const n of [...(e.recebidoPor || []), ...(e.retiradoPor || [])]) {
+    if (n && !porNome.has(n)) porNome.set(n, { nome: n, usuario: "", ativo: false, conta: false });
+  }
+  const lista = [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  // Nome curto: o menor começo do nome (em palavras) que não repete entre as pessoas.
+  const todas = lista.map((p) => palavras(p.nome).filter((w) => !CONECTORES.has(w)));
+  for (const [i, p] of lista.entries()) {
+    const ws = todas[i];
+    let k = 1;
+    while (k < ws.length && todas.some((o, j) => j !== i && o.slice(0, k).join(" ") === ws.slice(0, k).join(" "))) k += 1;
+    const original = String(p.nome).split(/\s+/).filter((w) => !CONECTORES.has(semAcento(w).toUpperCase()));
+    p.curto = original.slice(0, k).join(" ") || p.nome;
+    p.cor = PALETA[i % PALETA.length];
+  }
+  const mapa = new Map(lista.map((p) => [p.nome, p]));
+  return {
+    lista,
+    ativas: lista.filter((p) => p.conta && p.ativo),
+    curto: (n) => mapa.get(n)?.curto || n,
+    cor: (n) => mapa.get(n)?.cor || PALETA[0],
+    desligado: (n) => !!n && !mapa.get(n)?.ativo,
+  };
+}
+
+// Cor por nome sem lista (usada onde a lista de pessoas não está à mão).
 export function corPessoa(nome) {
-  const n = String(nome || "").toUpperCase();
-  const i = PESSOAS_FIXAS.indexOf(n);
-  if (i >= 0) return PALETA[i % PALETA.length];
   let h = 0;
-  for (const ch of n) h = (h * 31 + ch.codePointAt(0)) % 9973;
+  for (const ch of String(nome || "").toUpperCase()) h = (h * 31 + ch.codePointAt(0)) % 9973;
   return PALETA[h % PALETA.length];
 }
+const CORES_ORIGEM = { INTERNO: "bg-teal-100 text-teal-800", PROVEDOR: "bg-orange-100 text-orange-800" };
+export const corOrigem = (o) => CORES_ORIGEM[String(o || "").toUpperCase()] || "bg-slate-100 text-slate-700";
 const CORES_TIPO = {
   "ÁGUA": "bg-sky-100 text-sky-800", ALIMENTO: "bg-amber-100 text-amber-800", EFLUENTE: "bg-stone-200 text-stone-800",
   SOLO: "bg-orange-100 text-orange-800", AR: "bg-slate-100 text-slate-700", CQ: "bg-violet-100 text-violet-800",

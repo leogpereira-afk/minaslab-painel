@@ -69,3 +69,21 @@ test("lê um .xlsx e converte as linhas a partir da 3ª", () => {
   assert.equal(b.cancelada, true);
   assert.equal(b.liberadoEm, "");
 });
+
+test("colunas achadas pelo título, em qualquer ordem; coluna desconhecida e célula original não se perdem", () => {
+  const colunas = [
+    { chave: "a", rotulo: "DATA RECEBIMENTO", tipo: "texto" }, { chave: "b", rotulo: "OS", tipo: "texto" }, { chave: "c", rotulo: "Nº AMOSTRA", tipo: "texto" },
+    { chave: "d", rotulo: "RESPONSAVEL PELO RECEBIMENTO", tipo: "texto" }, { chave: "e", rotulo: "TIPO DE ANALISE", tipo: "texto" },
+    { chave: "f", rotulo: "TEMPERATURA", tipo: "texto" }, { chave: "g", rotulo: "INTERNO OU PROVEDOR", tipo: "texto" },
+  ];
+  const linhas = [{ a: "03/06/2026 10;00", b: "900/2026", c: "1/2-2026", d: "Ana Claudia", e: "ÁGUA", f: "22 ºC", g: "PROVEDOR" }];
+  const contas = [{ usuario: "ana", nome: "ANA CLAUDIA GONÇALVES PESSOA" }, { usuario: "anderson", nome: "ANDERSON DE SOUSA" }];
+  const [r] = converterPlanilha(lerXlsx(planilhaBytes({ colunas, linhas })), { contas });
+  assert.equal(r.os, "900/2026");
+  assert.equal(r.recebidoEm, "2026-06-03T10:00");
+  assert.deepEqual(r.recebidoPor, ["ANA CLAUDIA GONÇALVES PESSOA"]);
+  assert.deepEqual(r.origem, ["PROVEDOR"]);
+  assert.deepEqual(r.importacao.extras, { TEMPERATURA: "22 ºC" });
+  assert.equal(r.importacao.original["DATA RECEBIMENTO"], "03/06/2026 10;00");
+  assert.equal(r.importacao.linha, 2);
+});

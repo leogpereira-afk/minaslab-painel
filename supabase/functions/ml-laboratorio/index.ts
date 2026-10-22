@@ -123,7 +123,9 @@ Deno.serve(async (req) => {
         for (const l of data ?? []) itens.push(l.registro);
         if (!data || data.length < 1000) break;
       }
-      return json({ ok: true, itens, podeEditar: podeEscrever, setores: meusSetores });
+      // Pessoas do sistema (Recebido por / Retirado por) e quem está em cada setor (para sugerir no formulário).
+      const { data: contas } = await sb.from("ml_contas").select("usuario,nome,ativo").order("nome");
+      return json({ ok: true, itens, podeEditar: podeEscrever, setores: meusSetores, pessoas: contas ?? [], setoresConfig: cfgSetores });
     }
 
     if (acao === "setores" || acao === "setoresSalvar") {

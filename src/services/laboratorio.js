@@ -15,7 +15,10 @@ async function chamar(acao, corpo = {}) {
   return body;
 }
 
-export const listarEntradas = () => chamar("listar").then((r) => ({ itens: r.itens || [], podeEditar: r.podeEditar === true, setores: Array.isArray(r.setores) ? r.setores : [] }));
+export const listarEntradas = () => chamar("listar").then((r) => ({
+  itens: r.itens || [], podeEditar: r.podeEditar === true, setores: Array.isArray(r.setores) ? r.setores : [],
+  pessoas: Array.isArray(r.pessoas) ? r.pessoas : [], setoresConfig: r.setoresConfig || { administrativo: [], laboratorio: [] },
+}));
 
 // Setores (só direção): quem é Administrativo e quem é Laboratório.
 export const setoresLer = () => chamar("setores");

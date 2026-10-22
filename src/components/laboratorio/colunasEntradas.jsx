@@ -5,20 +5,23 @@
 import { Filter } from "lucide-react";
 import PeriodoFiltro from "../PeriodoFiltro.jsx";
 import {
-  ETAPAS, TIPOS_ANALISE, ORIGENS, atrasada, dataHora, diasAtendimento, etapa, prazoDescarte, corPessoa, corTipo,
+  ETAPAS, TIPOS_ANALISE, ORIGENS, atrasada, dataHora, diasAtendimento, etapa, prazoDescarte, corTipo, corOrigem,
 } from "../../lib/laboratorioEntradas.js";
 
 export const filtroInput = "h-7 w-full min-w-[78px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-normal text-slate-700 outline-none focus:border-blue-400";
 const sn = (v) => (v === true ? "SIM" : v === false ? "NÃO" : "—");
 
-export function Chips({ v, cor }) {
+export function Chips({ v, cor, rotulo = (x) => x, dica = (x) => x }) {
   if (!v?.length) return <span className="text-slate-400">—</span>;
   return (
     <span className="flex flex-wrap gap-1">
-      {v.map((x) => <span key={x} className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cor(x)}`}>{x}</span>)}
+      {v.map((x) => <span key={x} title={dica(x)} className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cor(x)}`}>{rotulo(x)}</span>)}
     </span>
   );
 }
+const ChipsPessoas = ({ v, pessoas }) => (
+  <Chips v={v} cor={pessoas.cor} rotulo={pessoas.curto} dica={(n) => `${n}${pessoas.desligado(n) ? " (sem conta ativa no sistema)" : ""}`} />
+);
 export const Pill = ({ et }) => <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${ETAPAS[et].classe}`}>{ETAPAS[et].rotulo}</span>;
 
 function FiltroTexto({ valor, onChange, placeholder }) {
@@ -50,7 +53,7 @@ export const COLUNAS = [
     celula: (e) => data(e.recebidoEm) },
   { id: "recebidoPor", rotulo: "Recebido por", setor: "administrativo", classe: "min-w-[110px]",
     filtro: (c) => <FiltroSelect rotulo="recebido por" valor={c.filtros.recebidoPor} onChange={c.setF("recebidoPor")} opcoes={c.optReceb} />,
-    celula: (e) => <Chips v={e.recebidoPor} cor={corPessoa} /> },
+    celula: (e, c) => <ChipsPessoas v={e.recebidoPor} pessoas={c.pessoas} /> },
   { id: "tipos", rotulo: "Tipo", setor: "administrativo",
     filtro: (c) => <FiltroSelect rotulo="tipo" valor={c.filtros.tipo} onChange={c.setF("tipo")} opcoes={TIPOS_ANALISE} />,
     celula: (e) => <Chips v={e.tipos} cor={corTipo} /> },
@@ -59,10 +62,10 @@ export const COLUNAS = [
     celula: (e) => <span className={e.parametroImediato ? "font-semibold text-amber-700" : ""}>{sn(e.parametroImediato)}</span> },
   { id: "origem", rotulo: "Interno / provedor", setor: "administrativo", classe: "whitespace-nowrap",
     filtro: (c) => <FiltroSelect rotulo="interno ou provedor" valor={c.filtros.origem} onChange={c.setF("origem")} opcoes={ORIGENS} />,
-    celula: (e) => (e.origem?.length ? e.origem.join(", ") : "—") },
+    celula: (e) => <Chips v={e.origem} cor={corOrigem} /> },
   { id: "retiradoPor", rotulo: "Retirado por", setor: "administrativo", classe: "min-w-[110px]",
     filtro: (c) => <FiltroSelect rotulo="retirado por" valor={c.filtros.retiradoPor} onChange={c.setF("retiradoPor")} opcoes={c.optRetir} />,
-    celula: (e) => <Chips v={e.retiradoPor} cor={corPessoa} /> },
+    celula: (e, c) => <ChipsPessoas v={e.retiradoPor} pessoas={c.pessoas} /> },
   { id: "retiradaLabEm", rotulo: "Retirada lab.", setor: "laboratorio", classe: "whitespace-nowrap",
     filtro: (c) => <PeriodoFiltro label="Retirada lab." {...c.periodo("retiradaDe", "retiradaAte")} />,
     celula: (e) => data(e.retiradaLabEm) },
