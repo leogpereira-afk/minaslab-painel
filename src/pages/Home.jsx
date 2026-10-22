@@ -14,6 +14,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { CalendarCheck, Gavel, Wrench, ShoppingCart } from "lucide-react";
 import { VolumeIcon, LabIllustration } from "../components/VolumeIcon.jsx";
 import { listar } from "../services/dados.js";
+import { getSessao } from "../lib/sessao.js";
+import { compromissosVisiveis } from "../lib/compromissosVisiveis.js";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import { proximasPorAlvo } from "../lib/manutencaoRegra.js";
 import {
@@ -140,6 +142,8 @@ export default function Home() {
         return;
       }
       setErro(null);
+      // Compromissos: quem não é da direção vê só o que foi delegado a si.
+      if (Array.isArray(porNome.compromissos)) porNome.compromissos = compromissosVisiveis(porNome.compromissos, getSessao());
       setDados(porNome);
       if (falhas.length > 0) {
         setAviso({
