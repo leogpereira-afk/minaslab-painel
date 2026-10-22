@@ -26,7 +26,8 @@ export default function SetoresLaboratorio({ aberto, aoFechar, aoSalvo }) {
     catch (e) { setErro(e.message); }
     finally { setSalvando(false); }
   }
-  const contas = (dados?.contas || []).filter((c) => c.papel !== "direcao");
+  // Todos os usuários ativos (a direção também aparece: marcá-la só registra o setor; ela já edita tudo).
+  const contas = dados?.contas || [];
 
   return (
     <Modal titulo="Setores do laboratório" aberto={aberto} aoFechar={aoFechar} largura="max-w-2xl">
@@ -47,12 +48,12 @@ export default function SetoresLaboratorio({ aberto, aoFechar, aoSalvo }) {
               <tbody>
                 {contas.map((c) => (
                   <tr key={c.usuario} className="border-t">
-                    <td className="px-3 py-2"><b>{c.nome}</b> <span className="text-slate-400">({c.usuario})</span></td>
+                    <td className="px-3 py-2"><b>{c.nome}</b> <span className="text-slate-400">({c.usuario})</span>{c.papel === "direcao" && <span className="ml-1 rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-white">direção</span>}</td>
                     <td className="px-3 py-2 text-center"><input type="checkbox" className="h-4 w-4 accent-sky-600" checked={adm.includes(c.usuario)} onChange={() => alternar(adm, setAdm, c.usuario)} aria-label={`${c.nome} no Administrativo`} /></td>
                     <td className="px-3 py-2 text-center"><input type="checkbox" className="h-4 w-4 accent-teal-600" checked={lab.includes(c.usuario)} onChange={() => alternar(lab, setLab, c.usuario)} aria-label={`${c.nome} no Laboratório`} /></td>
                   </tr>
                 ))}
-                {!contas.length && <tr><td colSpan="3" className="p-4 text-center text-slate-500">Nenhuma conta de equipe ativa.</td></tr>}
+                {!contas.length && <tr><td colSpan="3" className="p-4 text-center text-slate-500">Nenhum usuário ativo.</td></tr>}
               </tbody>
             </table>
           </div>
