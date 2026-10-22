@@ -24,6 +24,7 @@ import {
   ETAPAS, ENTRADA_VAZIA, FILTROS_VAZIOS, PRAZO_ALERTA_DIAS, DIAS_DESCARTE, SETORES,
   agoraLocal, contagens, montarPessoas,
   etapa, filtrar, linhaPlanilha, COLUNAS_PLANILHA, normalizarParaSalvar, opcoesDe, ordenar, tempoMedio,
+  AREAS_FINAL, finalizacaoGeral, ETAPAS as ROTULOS_ETAPA,
 } from "../../lib/laboratorioEntradas.js";
 
 const ABAS = [
@@ -167,7 +168,22 @@ export default function EntradasAmostras({ abaInicial } = {}) {
   const irPagina = (n) => setPagina(Math.min(Math.max(1, n), totalPaginas));
   const filtrosAtivos = busca || Object.values(filtros).some(Boolean);
   const limpar = () => { setFiltros(FILTROS_VAZIOS); setBusca(""); };
+  // Ajuste rápido direto na tabela (Finalizado MB/FQ e etapa): grava a linha inteira; o servidor confere o setor.
+  async function gravarRapido(novo, texto) {
+    setSalvando(true);
+    try { await salvarEntrada(normalizarParaSalvar(novo)); setAviso({ tipo: "ok", texto }); await carregar(); }
+    catch (err) { setAviso({ tipo: "erro", texto: err.message }); }
+    finally { setSalvando(false); }
+  }
+  const mudarArea = (e, area, v) => {
+    const a = AREAS_FINAL[area];
+    const n = { ...e, [a.campo]: v };
+    n.finalizadoLab = finalizacaoGeral({ ...n, finalizadoLab: !!e.finalizadoLab });
+    gravarRapido(n, `${e.os}: finalizado ${a.curto} = ${v === "SIM" ? "Sim" : v === "NAO" ? "Não" : v === "NA" ? "Não se aplica" : "não informado"}.`);
+  };
+  const mudarEtapa = (e, v) => gravarRapido({ ...e, etapaManual: v }, v ? `${e.os}: etapa fixada em “${ROTULOS_ETAPA[v].rotulo}”.` : `${e.os}: etapa volta a ser calculada pelas datas.`);
   const ctx = {
+    podeLab, podeEtapa: podeAdm && podeLab, gravando: salvando, mudarArea, mudarEtapa,
     filtros, hoje, optReceb, optRetir, pessoas,
     setF: (campo) => (v) => setFiltros((x) => ({ ...x, [campo]: v })),
     periodo: (de, ate) => ({ de: filtros[de], ate: filtros[ate], onApply: (a, b) => setFiltros((x) => ({ ...x, [de]: a, [ate]: b })) }),
@@ -195,7 +211,7 @@ export default function EntradasAmostras({ abaInicial } = {}) {
       if (!reg.id) delete reg.id;
       await salvarEntrada(reg);
       setEditando(null);
-      setAviso({ tipo: "ok", texto: `Entrada da OS ${reg.os} gravada.` });
+      setAviso({ tipo: "ok", texto: `Entrada ${reg.os} gravada.` });
       await carregar();
     } catch (e) { setAviso({ tipo: "erro", texto: e.message }); }
     finally { setSalvando(false); }
@@ -203,7 +219,7 @@ export default function EntradasAmostras({ abaInicial } = {}) {
   async function excluir(e) {
     if (!window.confirm(`Excluir a entrada da OS ${e.os}? Essa ação não pode ser desfeita pela tela.`)) return;
     setSalvando(true);
-    try { await apagarEntrada(e.id); setEditando(null); setAviso({ tipo: "ok", texto: `Entrada da OS ${e.os} excluída.` }); await carregar(); }
+    try { await apagarEntrada(e.id); setEditando(null); setAviso({ tipo: "ok", texto: `Entrada ${e.os} excluída.` }); await carregar(); }
     catch (err) { setAviso({ tipo: "erro", texto: err.message }); }
     finally { setSalvando(false); }
   }
@@ -244,7 +260,7 @@ export default function EntradasAmostras({ abaInicial } = {}) {
     } catch (e) { setAviso({ tipo: "erro", texto: e.message }); }
   }
   const nova = () => setEditando({ ...ENTRADA_VAZIA, recebidoEm: agoraLocal(), tipos: [], origem: ["INTERNO"] });
-  const abrirLinha = (ev, e) => { if (ev.target.closest("input,button,a,label")) return; setEditando(e); };
+  const abrirLinha = (ev, e) => { if (ev.target.closest("input,button,a,label,select")) return; setEditando(e); };
 
   if (carregando && !lista) return <CarregandoModulo />;
   if (!lista) return <ErroModulo mensagem={erro || "Não foi possível carregar as entradas."} aoTentar={carregar} />;
@@ -282,7 +298,7 @@ export default function EntradasAmostras({ abaInicial } = {}) {
           <details className="ml-auto">
             <summary className="flex cursor-pointer list-none items-center gap-1 text-blue-700"><HelpCircle size={13} aria-hidden="true" />Como a etapa é calculada</summary>
             <div className="absolute right-4 z-40 mt-1 w-[min(92vw,460px)] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-xl">
-              <p className="mb-2">Ninguém digita a etapa: o sistema olha as datas da linha, na ordem abaixo.</p>
+              <p className="mb-2">A etapa sai das datas da linha, na ordem abaixo. Quem está nos dois setores (Administrativo e Laboratório) pode fixar a etapa à mão na própria coluna — aparece “manual”; escolher “Automática” volta ao cálculo.</p>
               <ul className="space-y-1">{EXPLICA_ETAPA.map(([k, t]) => <li key={k}><span className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ETAPAS[k].classe}`}>{ETAPAS[k].rotulo}</span>{t}</li>)}</ul>
               <p className="mt-2">“Dias” = dias corridos do recebimento até a liberação (ou até hoje, se ainda aberta). Em vermelho quando passa de {PRAZO_ALERTA_DIAS}.</p>
             </div>

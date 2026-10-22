@@ -152,3 +152,17 @@ test("OS no padrão OS000000/ano", async () => {
   assert.match(r.aviso, /trocado/);
   assert.equal(formatarOS("").os, "");
 });
+
+test("etapa fixada à mão vale por cima da calculada e só quem tem os dois setores pode mudar", async () => {
+  const { etapaAutomatica, podeAjustarEtapa } = await import("./laboratorioEntradas.js");
+  assert.equal(etapa({ ...base, etapaManual: "LIBERADA" }, HOJE), "LIBERADA");
+  assert.equal(etapaAutomatica({ ...base, etapaManual: "LIBERADA" }, HOJE), "RECEBIDA");
+  assert.equal(etapa({ ...base, etapaManual: "XYZ" }, HOJE), "RECEBIDA");
+  const novo = { ...base, etapaManual: "FINALIZADA" };
+  assert.deepEqual(camposBloqueados(base, novo, ["administrativo"]), ["etapaManual"]);
+  assert.deepEqual(camposBloqueados(base, novo, ["laboratorio"]), ["etapaManual"]);
+  assert.deepEqual(camposBloqueados(base, novo, ["administrativo", "laboratorio"]), []);
+  assert.equal(podeAjustarEtapa(["laboratorio"]), false);
+  // quem só tem um setor continua gravando o resto sem tocar na etapa manual
+  assert.deepEqual(camposBloqueados(novo, { ...novo, observacao: "ok" }, ["laboratorio"]), []);
+});

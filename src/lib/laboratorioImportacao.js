@@ -148,6 +148,22 @@ export function lerData(v, campo, pend) {
   return "";
 }
 
+/* Data colada (Ctrl+V) num campo de data/hora do formulário: aceita o que vem
+   do Excel ou de outro sistema — "13/10/2026 17:00", "13/10/2026", "13-10-2026 17h",
+   "2026-10-13 17:00", número de série do Excel… Devolve { valor } ou { erro }. */
+export function lerDataColada(texto) {
+  const t = String(texto ?? "").trim().replace(/\s+/g, " ").replace(/(\d)\s*h\s*(\d{2})?/i, (_, h, m) => `${h}:${m || "00"}`);
+  if (!t) return { erro: "Nada para colar." };
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2}))?/);
+  if (iso) {
+    const v = montar(Number(iso[1]), Number(iso[2]), Number(iso[3]), Number(iso[4] || 0), Number(iso[5] || 0));
+    if (v) return { valor: v };
+  }
+  const pend = [];
+  const v = /^\d{5}([.,]\d+)?$/.test(t) ? lerData(Number(t.replace(",", ".")), "data", pend) : lerData(t, "data", pend);
+  return v ? { valor: v } : { erro: `Não entendi “${t}”. Exemplo que funciona: 13/10/2026 17:00.` };
+}
+
 /* ------------------------------------------------------------- colunas
    A planilha nova pode vir com colunas em outra ordem: cada coluna é achada
    pelo TÍTULO. Coluna sem título conhecido não se perde: vai para "extras".
@@ -249,7 +265,10 @@ export function converterPlanilha(linhas, { arquivo = "planilha.xlsx", contas = 
     if (libNum && !liberadoEm) liberadoEm = lerData(c.liberadoCliente, "Data de liberação", pend);
     let fq = c.finalizadoFqEm;
     let finalizado = simNao(c.finalizadoLab);
-    if (texto(fq).toUpperCase() === "SIM") { finalizado = true; fq = null; }
+    let fqSim = false;
+    if (texto(fq).toUpperCase() === "SIM") { finalizado = true; fq = null; fqSim = true; }
+    const mbEm = lerData(c.finalizadoMbEm, "Finalização MB", pend);
+    const fqEm = lerData(fq, "Finalização FQ", pend);
     const libTxt = semAcento(texto(c.liberadoCliente).toLowerCase());
     const recebidoEm = lerData(c.recebidoEm, "Data de recebimento", pend);
     const { os, aviso: avisoOS } = formatarOS(osPlanilha, recebidoEm ? Number(recebidoEm.slice(0, 4)) : new Date().getFullYear());
@@ -267,8 +286,10 @@ export function converterPlanilha(linhas, { arquivo = "planilha.xlsx", contas = 
       retiradaComercialEm: lerData(c.retiradaComercialEm, "Retirada comercial", pend),
       observacao: obs,
       finalizadoLab: finalizado,
-      finalizadoMbEm: lerData(c.finalizadoMbEm, "Finalização MB", pend),
-      finalizadoFqEm: lerData(fq, "Finalização FQ", pend),
+      finalizadoMbEm: mbEm,
+      finalizadoFqEm: fqEm,
+      // Data de finalização (ou "SIM" na coluna FQ) = área finalizada.
+      finalizadoMb: mbEm ? "SIM" : "", finalizadoFq: fqEm || fqSim ? "SIM" : "",
       liberadoCliente: libNum || libTxt.startsWith("desc") ? true : simNao(c.liberadoCliente),
       liberadoEm,
       descartado: semAcento(texto(c.descartado).toLowerCase()).startsWith("desc") || simNao(c.descartado) === true,

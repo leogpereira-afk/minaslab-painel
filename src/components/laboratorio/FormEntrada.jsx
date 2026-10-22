@@ -9,7 +9,8 @@
 import { useState } from "react";
 import { Clock, Plus, AlertTriangle, Lock } from "lucide-react";
 import { Modal } from "../ui.jsx";
-import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corTipo, corOrigem, formatarOS } from "../../lib/laboratorioEntradas.js";
+import { lerDataColada } from "../../lib/laboratorioImportacao.js";
+import { agoraLocal, contarAmostras, prazoDescarte, dataHora, TIPOS_ANALISE, ORIGENS, validar, corTipo, corOrigem, formatarOS, FINALIZACAO, AREAS_FINAL, situacaoArea, finalizacaoGeral } from "../../lib/laboratorioEntradas.js";
 
 function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor, rotulo = (x) => x, dica }) {
   const [novo, setNovo] = useState("");
@@ -39,19 +40,52 @@ function Marcar({ opcoes, valor = [], onChange, permitirNovo, desabilitado, cor,
   );
 }
 
+// Campo de data/hora. Aceita Ctrl+V com a data em texto (do Excel, e-mail,
+// outro sistema): "13/10/2026 17:00", "13/10/2026", "2026-10-13 17:00"…
 function CampoData({ rotulo, valor, onChange, desabilitado }) {
+  const [msg, setMsg] = useState(null);
+  const colar = (ev) => {
+    if (desabilitado) return;
+    const texto = ev.clipboardData?.getData("text") ?? "";
+    ev.preventDefault();
+    const r = lerDataColada(texto);
+    if (r.valor) { onChange(r.valor); setMsg({ ok: true, t: `Colado: ${dataHora(r.valor) || r.valor}` }); }
+    else setMsg({ ok: false, t: r.erro });
+  };
   return (
-    <label className="block">
+    <label className="block" onPaste={colar}>
       <span className="label">{rotulo}</span>
       <span className="flex gap-1.5">
-        <input type="datetime-local" className="input h-10 py-1.5 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" value={valor || ""} disabled={desabilitado} onChange={(e) => onChange(e.target.value)} />
+        <input type="datetime-local" className="input h-10 py-1.5 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" value={valor || ""} disabled={desabilitado}
+          title={desabilitado ? undefined : "Dá para colar (Ctrl+V) uma data em texto, ex.: 13/10/2026 17:00"} onChange={(e) => { setMsg(null); onChange(e.target.value); }} />
         {!desabilitado && (
-          <button type="button" className="btn-outline shrink-0 px-2.5 py-1.5 text-xs" title="Preencher com agora" onClick={() => onChange(agoraLocal())}>
+          <button type="button" className="btn-outline shrink-0 px-2.5 py-1.5 text-xs" title="Preencher com agora" onClick={() => { setMsg(null); onChange(agoraLocal()); }}>
             <Clock size={13} aria-hidden="true" />Agora
           </button>
         )}
       </span>
+      {msg ? <span role="status" className={`mt-1 block text-[11px] ${msg.ok ? "text-ok-700" : "text-bad-700"}`}>{msg.t}</span>
+        : !desabilitado && <span className="mt-1 block text-[11px] text-slate-400">Aceita colar (Ctrl+V): 13/10/2026 17:00</span>}
     </label>
+  );
+}
+
+// Finalização de uma área (MB ou FQ): Sim / Não / Não se aplica + data.
+function AreaFinal({ area, f, onSituacao, onData, desabilitado }) {
+  const a = AREAS_FINAL[area];
+  const v = situacaoArea(f, area);
+  const cores = { SIM: "bg-brand text-white", NAO: "bg-slate-600 text-white", NA: "bg-slate-300 text-slate-800" };
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <span className="label">Finalizado — {a.rotulo}</span>
+      <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-0.5">
+        {FINALIZACAO.map(([k, t]) => (
+          <button key={k} type="button" disabled={desabilitado} aria-pressed={v === k} onClick={() => onSituacao(v === k ? "" : k)}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-70 ${v === k ? cores[k] : "text-slate-600"}`}>{t}</button>
+        ))}
+      </div>
+      {v !== "NA" && <div className="mt-2"><CampoData rotulo={`Data da finalização ${a.curto}`} valor={f[a.data]} onChange={onData} desabilitado={desabilitado} /></div>}
+    </div>
   );
 }
 
@@ -86,6 +120,18 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
   const [f, setF] = useState(entrada);
   const [tentou, setTentou] = useState(false);
   const set = (campo) => (v) => setF((x) => ({ ...x, [campo]: v }));
+  // MB / FQ: a situação e a data andam juntas, e o "Finalizado pelo laboratório" sai das duas áreas.
+  // Enquanto alguma área não foi informada, vale o "Finalizado" que a entrada já tinha.
+  const comGeral = (n) => ({ ...n, finalizadoLab: finalizacaoGeral({ ...n, finalizadoLab: !!entrada.finalizadoLab }) });
+  const situacao = (k) => (v) => setF((x) => {
+    const a = AREAS_FINAL[k];
+    return comGeral({ ...x, [a.campo]: v, [a.data]: v === "SIM" ? x[a.data] || agoraLocal() : "" });
+  });
+  const dataFinal = (k) => (v) => setF((x) => {
+    const a = AREAS_FINAL[k];
+    const atual = situacaoArea(x, k);
+    return comGeral({ ...x, [a.data]: v, [a.campo]: v ? "SIM" : atual === "SIM" ? "" : atual });
+  });
   const { erros, avisos } = validar(f, lista);
   const prazo = prazoDescarte(f);
   const dicaPessoa = (n) => `${n}${pessoas.desligado(n) ? " — sem conta ativa no sistema (já desligado)" : ""}`;
@@ -129,9 +175,14 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
           {provedor && <p className="sm:col-span-2 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Amostra de <b>provedor</b>: a retirada é feita pelo Administrativo, que também lança as datas de retirada.</p>}
           <CampoData rotulo="Retirada pelo laboratório" valor={f.retiradaLabEm} onChange={set("retiradaLabEm")} desabilitado={rl} />
           <CampoData rotulo="Retirado do comercial" valor={f.retiradaComercialEm} onChange={set("retiradaComercialEm")} desabilitado={rl} />
-          <CampoData rotulo="Finalização Microbiologia (MB)" valor={f.finalizadoMbEm} onChange={set("finalizadoMbEm")} desabilitado={ll} />
-          <CampoData rotulo="Finalização Físico-Química (FQ)" valor={f.finalizadoFqEm} onChange={set("finalizadoFqEm")} desabilitado={ll} />
-          <SimNao rotulo="Finalizado pelo laboratório?" valor={!!f.finalizadoLab} onChange={set("finalizadoLab")} desabilitado={ll} />
+          {["mb", "fq"].map((k) => (
+            <AreaFinal key={k} area={k} f={f} desabilitado={ll} onSituacao={situacao(k)} onData={dataFinal(k)} />
+          ))}
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span>Finalizado pelo laboratório:</span>
+            <b className={f.finalizadoLab ? "text-ok-700" : "text-slate-700"}>{f.finalizadoLab ? "Sim" : "Não"}</b>
+            <span className="text-slate-500">— fecha sozinho quando MB e FQ estão em “Sim” (ou “Não se aplica”).</span>
+          </div>
         </Secao>
         <Secao titulo="Liberação e descarte" setor="laboratorio" bloqueado={ll}>
           <SimNao rotulo="Liberado para o cliente?" valor={!!(f.liberadoCliente || f.liberadoEm)} onChange={(v) => setF((x) => ({ ...x, liberadoCliente: v, liberadoEm: v ? x.liberadoEm || agoraLocal() : "" }))} desabilitado={ll} />

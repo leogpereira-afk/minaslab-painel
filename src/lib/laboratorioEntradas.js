@@ -37,7 +37,7 @@ export const ETAPAS = {
 export const ENTRADA_VAZIA = {
   id: "", os: "", amostras: "", recebidoEm: "", recebidoPor: [], tipos: [], parametroImediato: false,
   origem: ["INTERNO"], retiradoPor: [], retiradaLabEm: "", retiradaComercialEm: "", observacao: "",
-  finalizadoLab: false, finalizadoMbEm: "", finalizadoFqEm: "", liberadoCliente: false, liberadoEm: "",
+  etapaManual: "", finalizadoLab: false, finalizadoMb: "", finalizadoMbEm: "", finalizadoFq: "", finalizadoFqEm: "", liberadoCliente: false, liberadoEm: "",
   descartado: false, descartadoEm: "", cancelada: false, pendencias: [],
 };
 
@@ -71,7 +71,8 @@ export function dataHora(v) {
 
 export const prazoDescarte = (e) => (e?.liberadoEm ? somarDias(diaDe(e.liberadoEm), DIAS_DESCARTE) : "");
 
-export function etapa(e, hoje) {
+// Etapa calculada a partir das datas (o fluxo normal).
+export function etapaAutomatica(e, hoje) {
   if (e.cancelada) return "CANCELADA";
   if (e.descartado) return "DESCARTADA";
   if (e.liberadoCliente || e.liberadoEm) {
@@ -79,8 +80,36 @@ export function etapa(e, hoje) {
     return prazo && hoje >= prazo ? "DESCARTE_PENDENTE" : "LIBERADA";
   }
   if (e.finalizadoLab) return "FINALIZADA";
-  if (e.retiradaLabEm || e.retiradoPor?.length || e.finalizadoMbEm || e.finalizadoFqEm) return "EM_ANALISE";
+  if (e.retiradaLabEm || e.retiradoPor?.length || e.finalizadoMbEm || e.finalizadoFqEm ||
+    ["SIM", "NAO"].includes(e.finalizadoMb) || ["SIM", "NAO"].includes(e.finalizadoFq)) return "EM_ANALISE";
   return "RECEBIDA";
+}
+// Etapa ajustada à mão (só quem está nos dois setores ou a direção) vale por
+// cima da calculada; "" volta para a automática.
+export function etapa(e, hoje) {
+  return e?.etapaManual && ETAPAS[e.etapaManual] ? e.etapaManual : etapaAutomatica(e, hoje);
+}
+
+/* Finalização por área: Microbiologia (MB) e Físico-Química (FQ).
+   Cada uma é Sim, Não ou Não se aplica. "Finalizado pelo laboratório" sai
+   delas: fecha quando todas as que se aplicam estão em Sim. Enquanto alguma
+   não foi informada, vale o que já estava (registros antigos da planilha só
+   tinham o "Finalizado" geral). */
+export const FINALIZACAO = [["SIM", "Sim"], ["NAO", "Não"], ["NA", "Não se aplica"]];
+export const AREAS_FINAL = {
+  mb: { campo: "finalizadoMb", data: "finalizadoMbEm", rotulo: "Microbiologia (MB)", curto: "MB" },
+  fq: { campo: "finalizadoFq", data: "finalizadoFqEm", rotulo: "Físico-Química (FQ)", curto: "FQ" },
+};
+// Situação da área; data lançada sem a situação conta como Sim.
+export function situacaoArea(e, area) {
+  const a = AREAS_FINAL[area];
+  const v = e?.[a.campo];
+  return FINALIZACAO.some(([k]) => k === v) ? v : e?.[a.data] ? "SIM" : "";
+}
+export function finalizacaoGeral(e) {
+  const v = [situacaoArea(e, "mb"), situacaoArea(e, "fq")].filter((x) => x !== "NA");
+  if (!v.length || v.some((x) => !x)) return v.includes("NAO") ? false : !!e?.finalizadoLab;
+  return v.every((x) => x === "SIM");
 }
 
 export const emAberto = (et) => ["RECEBIDA", "EM_ANALISE", "FINALIZADA"].includes(et);
@@ -118,7 +147,7 @@ const simNao = (v, f) => !f || (f === "SIM" ? v === true : v !== true);
 
 export const FILTROS_VAZIOS = {
   os: "", amostras: "", recebidoDe: "", recebidoAte: "", recebidoPor: "", tipo: "", imediato: "", origem: "",
-  retiradoPor: "", retiradaDe: "", retiradaAte: "", comercialDe: "", comercialAte: "", finalizado: "",
+  retiradoPor: "", retiradaDe: "", retiradaAte: "", comercialDe: "", comercialAte: "", finalizado: "", mb: "", fq: "",
   mbDe: "", mbAte: "", fqDe: "", fqAte: "", liberado: "", liberadoDe: "", liberadoAte: "", etapa: "", observacao: "",
 };
 
@@ -145,6 +174,8 @@ export function filtrar(lista, { filtros = FILTROS_VAZIOS, busca = "", aba = "TO
       naFaixa(e.retiradaLabEm, f.retiradaDe, f.retiradaAte) &&
       naFaixa(e.retiradaComercialEm, f.comercialDe, f.comercialAte) &&
       simNao(e.finalizadoLab, f.finalizado) &&
+      (!f.mb || (situacaoArea(e, "mb") || "VAZIO") === f.mb) &&
+      (!f.fq || (situacaoArea(e, "fq") || "VAZIO") === f.fq) &&
       naFaixa(e.finalizadoMbEm, f.mbDe, f.mbAte) &&
       naFaixa(e.finalizadoFqEm, f.fqDe, f.fqAte) &&
       simNao(e.liberadoCliente || !!e.liberadoEm, f.liberado) &&
@@ -196,6 +227,10 @@ export function validar(e, lista = []) {
   for (const [c, nome] of ordem) {
     if (e[c] && e.recebidoEm && e[c] < e.recebidoEm) avisos.push(`A data de ${nome} está antes do recebimento.`);
   }
+  for (const k of ["mb", "fq"]) {
+    const a = AREAS_FINAL[k];
+    if (["NAO", "NA"].includes(e[a.campo]) && e[a.data]) avisos.push(`${a.rotulo}: tem data de finalização mas está como "${e[a.campo] === "NA" ? "Não se aplica" : "Não"}".`);
+  }
   if (e.os && !OS_PADRAO.test(String(e.os).trim())) avisos.push("A OS não está no padrão OS000000/ano (ex.: OS001430/2026).");
   const os = String(e.os || "").trim().toUpperCase();
   if (os && lista.some((x) => x.id !== e.id && String(x.os || "").trim().toUpperCase() === os && !x.cancelada)) {
@@ -218,23 +253,23 @@ export function normalizarParaSalvar(e) {
   return r;
 }
 
-export const COLUNAS_PLANILHA = [
-  { chave: "c0", rotulo: "OS", tipo: "texto" }, { chave: "c1", rotulo: "Nº amostra(s)", tipo: "texto" }, { chave: "c2", rotulo: "Qtd. amostras", tipo: "numero" },
-  { chave: "c3", rotulo: "Data recebimento", tipo: "texto" }, { chave: "c4", rotulo: "Responsável recebimento", tipo: "texto" }, { chave: "c5", rotulo: "Tipo de análise", tipo: "texto" },
-  { chave: "c6", rotulo: "Parâmetro imediato", tipo: "texto" }, { chave: "c7", rotulo: "Interno / provedor", tipo: "texto" }, { chave: "c8", rotulo: "Responsável retirada", tipo: "texto" },
-  { chave: "c9", rotulo: "Retirada laboratório", tipo: "texto" }, { chave: "c10", rotulo: "Retirada comercial", tipo: "texto" }, { chave: "c11", rotulo: "Finalizado lab.", tipo: "texto" },
-  { chave: "c12", rotulo: "Finalização MB", tipo: "texto" }, { chave: "c13", rotulo: "Finalização FQ", tipo: "texto" }, { chave: "c14", rotulo: "Liberado cliente", tipo: "texto" },
-  { chave: "c15", rotulo: "Data liberação", tipo: "texto" }, { chave: "c16", rotulo: "Prazo descarte", tipo: "texto" }, { chave: "c17", rotulo: "Etapa", tipo: "texto" },
-  { chave: "c18", rotulo: "Dias atendimento", tipo: "numero" }, { chave: "c19", rotulo: "Observação", tipo: "texto" },
+const ROTULOS_PLANILHA = [
+  ["OS", "texto"], ["Nº amostra(s)", "texto"], ["Qtd. amostras", "numero"], ["Data recebimento", "texto"], ["Responsável recebimento", "texto"],
+  ["Tipo de análise", "texto"], ["Parâmetro imediato", "texto"], ["Interno / provedor", "texto"], ["Responsável retirada", "texto"],
+  ["Retirada laboratório", "texto"], ["Retirada comercial", "texto"], ["Finalizado lab.", "texto"], ["Finalizado MB", "texto"], ["Finalização MB", "texto"],
+  ["Finalizado FQ", "texto"], ["Finalização FQ", "texto"], ["Liberado cliente", "texto"], ["Data liberação", "texto"], ["Prazo descarte", "texto"],
+  ["Etapa", "texto"], ["Dias atendimento", "numero"], ["Observação", "texto"],
 ];
+export const COLUNAS_PLANILHA = ROTULOS_PLANILHA.map(([rotulo, tipo], i) => ({ chave: `c${i}`, rotulo, tipo }));
 
+export const rotuloFinal = (v) => (FINALIZACAO.find(([k]) => k === v)?.[1] ?? "");
 export function linhaPlanilha(e, hoje) {
   const sn = (v) => (v === true ? "SIM" : v === false ? "NÃO" : "");
   const v = [
     e.os, e.amostras, e.qtdAmostras ?? contarAmostras(e.amostras), dataHora(e.recebidoEm), (e.recebidoPor || []).join(", "),
     (e.tipos || []).join(", "), sn(e.parametroImediato), (e.origem || []).join(", "), (e.retiradoPor || []).join(", "),
-    dataHora(e.retiradaLabEm), dataHora(e.retiradaComercialEm), sn(e.finalizadoLab), dataHora(e.finalizadoMbEm),
-    dataHora(e.finalizadoFqEm), sn(e.liberadoCliente || !!e.liberadoEm), dataHora(e.liberadoEm), dataHora(prazoDescarte(e)),
+    dataHora(e.retiradaLabEm), dataHora(e.retiradaComercialEm), sn(e.finalizadoLab), rotuloFinal(situacaoArea(e, "mb")), dataHora(e.finalizadoMbEm),
+    rotuloFinal(situacaoArea(e, "fq")), dataHora(e.finalizadoFqEm), sn(e.liberadoCliente || !!e.liberadoEm), dataHora(e.liberadoEm), dataHora(prazoDescarte(e)),
     ETAPAS[etapa(e, hoje)].rotulo, diasAtendimento(e, hoje), e.observacao,
   ];
   return Object.fromEntries(v.map((x, i) => [`c${i}`, x === "" || x === undefined ? null : x]));
@@ -249,15 +284,18 @@ export const SETORES = {
 };
 export const CAMPOS_SETOR = {
   administrativo: ["os", "amostras", "recebidoEm", "recebidoPor", "tipos", "parametroImediato", "origem", "retiradoPor", "cancelada"],
-  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
+  laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMb", "finalizadoMbEm", "finalizadoFq", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
   ambos: ["observacao"],
+  // Exige os DOIS setores (Administrativo e Laboratório) — ou a direção.
+  todos: ["etapaManual"],
 };
 // Amostra de PROVEDOR: quem faz a retirada é o Administrativo — as datas de
 // retirada passam a poder ser lançadas por ele (o Laboratório continua podendo).
 export const CAMPOS_RETIRADA = ["retiradaLabEm", "retiradaComercialEm"];
 export const ehProvedor = (e) => (e?.origem || []).some((o) => String(o).toUpperCase() === "PROVEDOR");
 export const setorDoCampo = (campo, registro) =>
-  CAMPOS_RETIRADA.includes(campo) && ehProvedor(registro) ? "ambos"
+  CAMPOS_SETOR.todos.includes(campo) ? "todos"
+    : CAMPOS_RETIRADA.includes(campo) && ehProvedor(registro) ? "ambos"
     : CAMPOS_SETOR.administrativo.includes(campo) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(campo) ? "laboratorio" : CAMPOS_SETOR.ambos.includes(campo) ? "ambos" : null;
 
 // Valor para comparar: null e false são o mesmo "não", texto aparado, lista como texto.
@@ -267,16 +305,18 @@ const comparavel = (v) => {
   return String(v).trim();
 };
 export function camposAlterados(antes, depois) {
-  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos];
+  const todos = [...CAMPOS_SETOR.administrativo, ...CAMPOS_SETOR.laboratorio, ...CAMPOS_SETOR.ambos, ...CAMPOS_SETOR.todos];
   return todos.filter((c) => comparavel(antes?.[c]) !== comparavel(depois?.[c]));
 }
 // Campos que este usuário mudou mas não pode (lista vazia = pode gravar).
 export function camposBloqueados(antes, depois, setores = []) {
   return camposAlterados(antes, depois).filter((c) => {
     const s = setorDoCampo(c, depois);
+    if (s === "todos") return !podeAjustarEtapa(setores);
     return s === "ambos" ? !setores.length : !setores.includes(s);
   });
 }
+export const podeAjustarEtapa = (setores = []) => setores.includes("administrativo") && setores.includes("laboratorio");
 
 /* ------------------------------------------------------------ cores
    Cada pessoa e cada tipo de análise com uma cor fixa (a mesma em toda a tela
