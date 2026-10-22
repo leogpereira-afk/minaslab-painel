@@ -298,7 +298,7 @@ export default function EntradasAmostras({ abaInicial } = {}) {
           <details className="ml-auto">
             <summary className="flex cursor-pointer list-none items-center gap-1 text-blue-700"><HelpCircle size={13} aria-hidden="true" />Como a etapa é calculada</summary>
             <div className="absolute right-4 z-40 mt-1 w-[min(92vw,460px)] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-xl">
-              <p className="mb-2">A etapa sai das datas da linha, na ordem abaixo. Quem está nos dois setores (Administrativo e Laboratório) pode fixar a etapa à mão na própria coluna — aparece “manual”; escolher “Automática” volta ao cálculo.</p>
+              <p className="mb-2">A etapa sai das datas da linha, na ordem abaixo. Quem está nos dois setores (Administrativo e Laboratório) pode fixar a etapa à mão na própria coluna — aparece “manual”; para desfazer, escolha a etapa que as datas dariam.</p>
               <ul className="space-y-1">{EXPLICA_ETAPA.map(([k, t]) => <li key={k}><span className={`mr-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ETAPAS[k].classe}`}>{ETAPAS[k].rotulo}</span>{t}</li>)}</ul>
               <p className="mt-2">“Dias” = dias corridos do recebimento até a liberação (ou até hoje, se ainda aberta). Em vermelho quando passa de {PRAZO_ALERTA_DIAS}.</p>
             </div>
