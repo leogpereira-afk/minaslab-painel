@@ -6,7 +6,6 @@ import { BellOff, MessageSquarePlus, Search, Users } from "lucide-react";
 import FotoGrupo from "../components/mensagens/FotoGrupo.jsx";
 import AvisosDoMessenger from "../components/mensagens/AvisosDoMessenger.jsx";
 import { clsx } from "clsx";
-import { PageTitle } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import Chat from "../components/mensagens/Chat.jsx";
 import NovaConversa from "../components/mensagens/NovaConversa.jsx";
@@ -55,8 +54,8 @@ export default function Mensagens() {
 
   return (
     <div className="space-y-4">
-      <PageTitle titulo="Mensagens" descricao="Converse com a equipe do painel, uma pessoa por vez ou em grupo. Só quem participa lê a conversa." />
-      <div className="flex h-[calc(100dvh-13rem)] min-h-[420px] overflow-hidden rounded-2xl border bg-white" style={{ borderColor: "var(--hairline)" }}>
+      <h1 className="sr-only">Mensagens</h1>
+      <div className="flex h-[calc(100dvh-8rem)] min-h-[420px] lg:h-[calc(100dvh-6.5rem)] overflow-hidden rounded-2xl border bg-white" style={{ borderColor: "var(--hairline)" }}>
         <aside className={clsx("flex min-h-0 w-full flex-col border-r lg:w-80 lg:shrink-0", aberta && "hidden lg:flex")} style={{ borderColor: "var(--hairline)" }} aria-label="Conversas">
           <div className="space-y-2 border-b p-3" style={{ borderColor: "var(--hairline)" }}>
             <div className="flex gap-2">
