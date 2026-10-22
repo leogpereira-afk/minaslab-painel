@@ -29,6 +29,25 @@
 .ml-menu-link:hover .ml-emoji-tile { transform: perspective(100px) rotateY(0) translateY(-1px); }
 .ml-external-icon { color: #84999c; }
 .ml-menu-empty { color: #60777b; font-size: 12px; padding: 16px 10px; }
+/* Menu recolhido: só os ícones. O botão no topo recolhe e expande; o nome do módulo aparece como dica ao passar o mouse. */
+.ml-brand { position: relative; }
+.ml-menu-toggle { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: #5d7478; background: transparent; transition: background .18s, color .18s; }
+.ml-menu-toggle:hover { background: #eaf4f1; color: #0c615a; }
+.ml-sidebar { transition: width .18s ease; }
+.ml-sidebar-recolhido { width: 68px; }
+.ml-sidebar-recolhido .ml-brand { padding: 14px 0 6px; display: grid; place-items: center; min-height: 56px; }
+.ml-sidebar-recolhido .ml-brand img, .ml-sidebar-recolhido .ml-brand-caption { display: none; }
+.ml-sidebar-recolhido .ml-menu-toggle { position: static; width: 38px; height: 38px; }
+.ml-sidebar-recolhido .ml-menu-search { display: none; }
+.ml-sidebar-recolhido .ml-menu-scroll { padding: 0 8px 10px; }
+.ml-sidebar-recolhido .ml-menu-label { font-size: 0; height: 1px; background: #e4ecea; margin: 8px 6px; padding: 0; }
+.ml-sidebar-recolhido .ml-menu-link { justify-content: center; padding: 4px 0; min-height: 40px; }
+.ml-sidebar-recolhido .ml-menu-link .ml-menu-text, .ml-sidebar-recolhido .ml-menu-link .ml-external-icon { display: none; }
+.ml-sidebar-recolhido .ml-menu-link > span.ml-auto { position: absolute; top: 0; right: 2px; margin: 0; }
+.ml-sidebar-recolhido .ml-session { padding: 10px 4px; }
+.ml-sidebar-recolhido .ml-session > div { flex-direction: column; gap: 6px; }
+.ml-sidebar-recolhido .ml-session > div > span.min-w-0 { display: none; }
+.ml-sidebar-recolhido .ml-session > div > span.shrink-0 { flex-direction: column; }
 .ml-session { border-top: 1px solid var(--ml-line); padding: 12px; background: #fafdfe; }
 .ml-session .font-display { font-size: 12px; }
 .ml-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px; color: #1b7164; background: #e0f1ec; font-size: 11px; font-weight: 700; }
