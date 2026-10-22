@@ -4,7 +4,7 @@
 // Privacidade: só os membros leem uma conversa. Nem a direção lê conversa dos outros.
 // "Lida" é por posição: cada membro guarda a `seq` da última mensagem que já viu (lido_ate).
 //
-// Ações: reagir, enviar_arquivo, arquivo_url, foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem.
+// Ações: reagir, enviar_arquivo, arquivo_url, foto_grupo, descricao, usuarios, conversas, contar, abrir_direta, criar_grupo, obter, enviar, membros, sair, renomear, silenciar, apagar_mensagem, editar_mensagem.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -259,6 +259,16 @@ async function obter(c: Ctx, b: any) {
     if (lista.length > 80) { maisAntigas = true; lista = lista.slice(0, 80); }
     mensagens = lista.reverse();
   }
+  const agoraServidor = new Date().toISOString();
+  let alteradas: any[] = [];
+  const desde = txt(b.desde);
+  if (apos > 0 && desde && !Number.isNaN(Date.parse(desde))) {
+    // Folga de 10 s para diferença de relógio; repetir uma alteração não faz mal (a tela troca pelo id).
+    const de = new Date(Date.parse(desde) - 10000).toISOString();
+    const { data, error } = await sb.from("ml_conversa_mensagens").select("*").eq("conversa_id", a.conv.id).gt("alterado_em", de).order("alterado_em", { ascending: true }).limit(200);
+    if (error) throw error;
+    alteradas = data ?? [];
+  }
   // Abrir a conversa (do fim, não ao paginar para trás) marca tudo como lido.
   let lidoAte = Number(a.meu.lido_ate);
   if (!antes) {
@@ -277,10 +287,42 @@ async function obter(c: Ctx, b: any) {
   return {
     conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, foto: a.conv.foto ?? null, descricao: a.conv.descricao ?? "", criadoEm: a.conv.criado_em, silenciado: !!a.meu.silenciado },
     membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
-    mensagens: mensagens.map((m: any) => ({ seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em })),
+    mensagens: mensagens.map(mensagemDe),
+    // Editadas ou apagadas desde a última consulta (quem está com a conversa aberta recebe sem reabrir).
+    alteradas: alteradas.map(mensagemDe),
+    agora: agoraServidor,
     reacoes: await reacoesDaConversa(a.conv.id),
     maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
   };
+}
+
+function mensagemDe(m: any) {
+  return { seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em, editadaEm: m.apagada ? null : m.editada_em ?? null };
+}
+
+// Editar a própria mensagem: o texto (ou a legenda do arquivo). Fica marcada como "editada";
+// a primeira versão é guardada em texto_original (rastreabilidade).
+async function editarMensagem(c: Ctx, b: any) {
+  const a = await carregarConversa(c, b.id);
+  const mid = txt(b.mensagem_id);
+  if (!UUID.test(mid)) erro(400, "Mensagem inválida.");
+  const { data: m, error } = await sb.from("ml_conversa_mensagens").select("*").eq("id", mid).maybeSingle();
+  if (error) throw error;
+  if (!m || m.conversa_id !== a.conv.id || m.tipo !== "mensagem" || m.apagada) erro(404, "Não encontrei essa mensagem.");
+  if (m.autor !== c.eu) erro(403, "Você só edita as suas próprias mensagens.");
+  if (m.anexo_caminho && ehAudio(m.anexo_tipo)) erro(400, "Mensagem de voz não tem texto para editar.");
+  const limite = m.anexo_caminho ? 1000 : 5000;
+  const texto = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, limite);
+  if (!texto && !m.anexo_caminho) erro(400, "Escreva a mensagem.");
+  if (texto === m.texto) return { ok: true, mensagem: mensagemDe(m) };
+  const agora = new Date().toISOString();
+  const { data, error: e2 } = await sb.from("ml_conversa_mensagens")
+    .update({ texto, editada_em: agora, alterado_em: agora, texto_original: m.texto_original ?? m.texto }).eq("id", mid).select("*").single();
+  if (e2) throw e2;
+  // Se era a última da conversa, a prévia da lista acompanha.
+  const ultima = await ultimaSeq(a.conv.id);
+  if (Number(m.seq) === ultima) await sb.from("ml_conversas").update({ ultima_msg_texto: resumoTexto(dizDe(data)) }).eq("id", a.conv.id);
+  return { ok: true, mensagem: mensagemDe(data) };
 }
 
 async function enviar(c: Ctx, b: any) {
@@ -477,7 +519,7 @@ async function apagarMensagem(c: Ctx, b: any) {
   if (error) throw error;
   if (!m || m.conversa_id !== a.conv.id || m.tipo !== "mensagem") erro(404, "Não encontrei essa mensagem.");
   if (m.autor !== c.eu) erro(403, "Você só apaga as suas próprias mensagens.");
-  const { error: e2 } = await sb.from("ml_conversa_mensagens").update({ apagada: true }).eq("id", mid);
+  const { error: e2 } = await sb.from("ml_conversa_mensagens").update({ apagada: true, alterado_em: new Date().toISOString() }).eq("id", mid);
   if (e2) throw e2;
   if (m.anexo_caminho) { const { error: eRm } = await sb.storage.from(BUCKET_ARQUIVOS).remove([m.anexo_caminho]); if (eRm) console.error("apagarArquivo", eRm); }
   const { data: ult } = await sb.from("ml_conversa_mensagens").select("texto,autor,criado_em,apagada,tipo,anexo_nome,anexo_caminho").eq("conversa_id", a.conv.id).order("seq", { ascending: false }).limit(20);
@@ -488,7 +530,7 @@ async function apagarMensagem(c: Ctx, b: any) {
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   usuarios: (c) => usuarios(c), conversas: (c) => listarConversas(c), contar: (c) => contar(c),
-  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, foto_grupo: fotoGrupo, descricao, enviar_arquivo: enviarArquivo, arquivo_url: arquivoUrl, reagir,
+  abrir_direta: abrirDireta, criar_grupo: criarGrupo, obter, enviar, membros: mudarMembros, sair, renomear, silenciar, apagar_mensagem: apagarMensagem, editar_mensagem: editarMensagem, foto_grupo: fotoGrupo, descricao, enviar_arquivo: enviarArquivo, arquivo_url: arquivoUrl, reagir,
 };
 
 Deno.serve(async (req) => {

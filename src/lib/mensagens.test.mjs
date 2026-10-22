@@ -84,3 +84,20 @@ test("reação local: põe, soma, tira e limpa", () => {
   r = alternarReacaoLocal(r, "m1", "👍", "ruth"); r = alternarReacaoLocal(r, "m1", "❤️", "ana"); assert.deepEqual(r, {}); // sem reação: some a mensagem do mapa
   const antes = { m1: [{ emoji: "👍", usuarios: ["ana"] }] }; alternarReacaoLocal(antes, "m1", "👍", "ana"); assert.deepEqual(antes.m1[0].usuarios, ["ana"]); // não mexe no original
 });
+
+test("editadas/apagadas chegam pelo id; última editável é a minha mais recente de texto", async () => {
+  const { aplicarAlteradas, ultimaEditavel } = await import("./mensagens.js");
+  const lista = [
+    { id: "a", seq: 1, autor: "eu", tipo: "mensagem", texto: "oi", apagada: false },
+    { id: "b", seq: 2, autor: "eu", tipo: "mensagem", texto: "", anexo: { nome: "x.webm", tipo: "audio/webm", duracao: 3 }, apagada: false },
+    { id: "c", seq: 3, autor: "ana", tipo: "mensagem", texto: "tudo bem?", apagada: false },
+  ];
+  const nova = aplicarAlteradas(lista, [{ id: "a", seq: 1, texto: "oi, pessoal", apagada: false, editadaEm: "2026-10-22T20:00:00Z" }, { id: "c", seq: 3, texto: "", apagada: true, editadaEm: null }, { id: "zz", texto: "fora" }]);
+  assert.equal(nova[0].texto, "oi, pessoal");
+  assert.equal(nova[0].editadaEm, "2026-10-22T20:00:00Z");
+  assert.equal(nova[2].apagada, true);
+  assert.equal(nova.length, 3);
+  assert.equal(aplicarAlteradas(lista, []), lista);
+  assert.equal(ultimaEditavel(lista, "eu").id, "a"); // pula o áudio
+  assert.equal(ultimaEditavel(lista, "ninguem"), null);
+});

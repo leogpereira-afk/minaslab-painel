@@ -9,7 +9,7 @@ import Avatar from "../tarefas/Avatar.jsx";
 import TextoRico from "./TextoRico.jsx";
 import { MARCAS, completarMencao, envolver, enderecoValido, inserirLink, mencaoEmDigitacao, sugestoesMencao, temFormatacao } from "../../lib/textoRico.js";
 
-export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoColarArquivos, pessoas, grupo, nomeDe, ehUsuario, eu, desabilitado, children }) {
+export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoColarArquivos, pessoas, grupo, nomeDe, ehUsuario, eu, desabilitado, aoCancelar, aoSetaCima, children }) {
   const [mencao, setMencao] = useState(null); // { inicio, busca }
   const [ativo, setAtivo] = useState(0);
   const [link, setLink] = useState(null); // { ini, fim, url }
@@ -73,6 +73,9 @@ export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoCol
       if (k === "b" || k === "i" || k === "u") { e.preventDefault(); formatar(k); return; }
       if (k === "k") { e.preventDefault(); abrirLink(); return; }
     }
+    if (e.key === "Escape" && aoCancelar) { e.preventDefault(); aoCancelar(); return; }
+    // Seta para cima com o campo vazio: edita a última mensagem que você mandou.
+    if (e.key === "ArrowUp" && !texto && aoSetaCima) { e.preventDefault(); aoSetaCima(); return; }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); aoEnviar(); }
   };
 

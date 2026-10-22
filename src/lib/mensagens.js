@@ -37,6 +37,30 @@ export function mesclarMensagens(atuais, novas) {
   return [...ordenadas, ...locais.filter((m) => !idsNovos.has(m.id))];
 }
 
+/** Troca pelo id as mensagens que foram editadas ou apagadas (vindas do servidor em "alteradas"). */
+export function aplicarAlteradas(atuais, alteradas) {
+  if (!alteradas?.length) return atuais;
+  const porId = new Map(alteradas.map((m) => [m.id, m]));
+  let mudou = false;
+  const lista = (atuais || []).map((m) => {
+    const n = porId.get(m.id);
+    if (!n || (n.texto === m.texto && n.apagada === m.apagada && n.editadaEm === m.editadaEm)) return m;
+    mudou = true;
+    return { ...m, ...n };
+  });
+  return mudou ? lista : atuais;
+}
+
+/** Última mensagem minha que dá para editar (seta ↑ com o campo vazio). */
+export function ultimaEditavel(mensagens, eu) {
+  for (let i = (mensagens || []).length - 1; i >= 0; i -= 1) {
+    const m = mensagens[i];
+    if (m.autor === eu && m.tipo === "mensagem" && !m.apagada && m.seq != null && !ehAudioMensagem(m)) return m;
+  }
+  return null;
+}
+export const ehAudioMensagem = (m) => !!m?.anexo && (String(m.anexo.tipo || "").startsWith("audio/") || m.anexo.duracao != null);
+
 /** Situação do tique de uma mensagem minha: "enviando" | "enviada" | "visualizada" (todos os outros membros já viram). */
 export function situacaoDaMensagem(mensagem, membros, eu) {
   if (mensagem.seq == null) return "enviando";
