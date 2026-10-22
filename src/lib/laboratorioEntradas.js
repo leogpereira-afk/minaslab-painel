@@ -251,8 +251,13 @@ export const CAMPOS_SETOR = {
   laboratorio: ["retiradaLabEm", "retiradaComercialEm", "finalizadoLab", "finalizadoMbEm", "finalizadoFqEm", "liberadoCliente", "liberadoEm", "descartado", "descartadoEm"],
   ambos: ["observacao"],
 };
-export const setorDoCampo = (campo) =>
-  CAMPOS_SETOR.administrativo.includes(campo) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(campo) ? "laboratorio" : CAMPOS_SETOR.ambos.includes(campo) ? "ambos" : null;
+// Amostra de PROVEDOR: quem faz a retirada é o Administrativo — as datas de
+// retirada passam a poder ser lançadas por ele (o Laboratório continua podendo).
+export const CAMPOS_RETIRADA = ["retiradaLabEm", "retiradaComercialEm"];
+export const ehProvedor = (e) => (e?.origem || []).some((o) => String(o).toUpperCase() === "PROVEDOR");
+export const setorDoCampo = (campo, registro) =>
+  CAMPOS_RETIRADA.includes(campo) && ehProvedor(registro) ? "ambos"
+    : CAMPOS_SETOR.administrativo.includes(campo) ? "administrativo" : CAMPOS_SETOR.laboratorio.includes(campo) ? "laboratorio" : CAMPOS_SETOR.ambos.includes(campo) ? "ambos" : null;
 
 // Valor para comparar: null e false são o mesmo "não", texto aparado, lista como texto.
 const comparavel = (v) => {
@@ -267,7 +272,7 @@ export function camposAlterados(antes, depois) {
 // Campos que este usuário mudou mas não pode (lista vazia = pode gravar).
 export function camposBloqueados(antes, depois, setores = []) {
   return camposAlterados(antes, depois).filter((c) => {
-    const s = setorDoCampo(c);
+    const s = setorDoCampo(c, depois);
     return s === "ambos" ? !setores.length : !setores.includes(s);
   });
 }

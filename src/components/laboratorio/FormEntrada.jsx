@@ -82,7 +82,7 @@ const Secao = ({ titulo, setor, bloqueado, children }) => (
   </fieldset>
 );
 
-export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento, opcoesRetirada, pessoas, podeAdm, podeLab, salvando, aoFechar, aoSalvar, aoExcluir }) {
+export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento, opcoesRetirada, opcoesRetiradaProvedor, pessoas, podeAdm, podeLab, salvando, aoFechar, aoSalvar, aoExcluir }) {
   const [f, setF] = useState(entrada);
   const [tentou, setTentou] = useState(false);
   const set = (campo) => (v) => setF((x) => ({ ...x, [campo]: v }));
@@ -98,6 +98,9 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
   // Cada bloco só abre para o setor dono dele; o servidor confere de novo.
   const dl = !podeAdm; // campos do Administrativo
   const ll = !podeLab; // campos do Laboratório
+  // Provedor: a retirada é do Administrativo (o Laboratório também pode lançar).
+  const provedor = (f.origem || []).includes("PROVEDOR");
+  const rl = !(podeLab || (provedor && podeAdm));
   const leitura = dl && ll;
   return (
     <Modal titulo={entrada.id ? `Entrada · OS ${entrada.os || "—"}` : "Nova entrada de amostra"} aberto={aberto} aoFechar={aoFechar} largura="max-w-3xl">
@@ -119,12 +122,13 @@ export default function FormEntrada({ aberto, entrada, lista, opcoesRecebimento,
           <div className="sm:col-span-2"><span className="label">Tipo de análise *</span><Marcar opcoes={TIPOS_ANALISE} valor={f.tipos} onChange={set("tipos")} desabilitado={dl} cor={corTipo} /></div>
           <div><span className="label">Interno ou provedor</span><Marcar opcoes={ORIGENS} valor={f.origem} onChange={set("origem")} desabilitado={dl} cor={corOrigem} /></div>
           <div className="sm:col-span-2"><span className="label">Responsável pelo recebimento</span><Marcar opcoes={opcoesRecebimento} valor={f.recebidoPor} onChange={set("recebidoPor")} desabilitado={dl} cor={pessoas.cor} rotulo={pessoas.curto} dica={dicaPessoa} /></div>
-          <div className="sm:col-span-2"><span className="label">Responsável pela retirada</span><Marcar opcoes={opcoesRetirada} valor={f.retiradoPor} onChange={set("retiradoPor")} desabilitado={dl} cor={pessoas.cor} rotulo={pessoas.curto} dica={dicaPessoa} /></div>
+          <div className="sm:col-span-2"><span className="label">Responsável pela retirada</span><Marcar opcoes={provedor ? opcoesRetiradaProvedor : opcoesRetirada} valor={f.retiradoPor} onChange={set("retiradoPor")} desabilitado={dl} cor={pessoas.cor} rotulo={pessoas.curto} dica={dicaPessoa} /></div>
           <SimNao rotulo="OS cancelada?" valor={!!f.cancelada} onChange={set("cancelada")} desabilitado={dl} />
         </Secao>
         <Secao titulo="Análise" setor="laboratorio" bloqueado={ll}>
-          <CampoData rotulo="Retirada pelo laboratório" valor={f.retiradaLabEm} onChange={set("retiradaLabEm")} desabilitado={ll} />
-          <CampoData rotulo="Retirado do comercial" valor={f.retiradaComercialEm} onChange={set("retiradaComercialEm")} desabilitado={ll} />
+          {provedor && <p className="sm:col-span-2 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Amostra de <b>provedor</b>: a retirada é feita pelo Administrativo, que também lança as datas de retirada.</p>}
+          <CampoData rotulo="Retirada pelo laboratório" valor={f.retiradaLabEm} onChange={set("retiradaLabEm")} desabilitado={rl} />
+          <CampoData rotulo="Retirado do comercial" valor={f.retiradaComercialEm} onChange={set("retiradaComercialEm")} desabilitado={rl} />
           <CampoData rotulo="Finalização Microbiologia (MB)" valor={f.finalizadoMbEm} onChange={set("finalizadoMbEm")} desabilitado={ll} />
           <CampoData rotulo="Finalização Físico-Química (FQ)" valor={f.finalizadoFqEm} onChange={set("finalizadoFqEm")} desabilitado={ll} />
           <SimNao rotulo="Finalizado pelo laboratório?" valor={!!f.finalizadoLab} onChange={set("finalizadoLab")} desabilitado={ll} />
