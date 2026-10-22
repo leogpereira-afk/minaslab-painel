@@ -10,6 +10,7 @@ import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
 import { useAcessoGestao } from "../lib/acessoGestao.js";
 import { trocarMinhaSenha } from "../services/dados.js";
+import { atualizarMinhasPaginas } from "../services/perfis.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
 import Notificacoes from "./Notificacoes.jsx";
@@ -190,6 +191,14 @@ export default function Layout() {
   }, [location.pathname, atual.rotulo]);
   const [menuAberto, setMenuAberto] = useState(false);
   const [trocandoSenha, setTrocandoSenha] = useState(false);
+  // A direção pode liberar ou tirar páginas com a pessoa já logada: confere ao abrir, ao voltar para a aba e a cada minuto.
+  useEffect(() => {
+    const rodar = () => { if (document.visibilityState === "visible") void atualizarMinhasPaginas(); };
+    rodar();
+    const t = setInterval(rodar, 60000);
+    window.addEventListener("focus", rodar);
+    return () => { clearInterval(t); window.removeEventListener("focus", rodar); };
+  }, []);
 
   const aoSair = () => {
     sair();

@@ -115,8 +115,12 @@ Deno.serve(async (req) => {
     const direcao = papel === "direcao";
     const perms: string[] = Array.isArray(conta?.paginas_consulta) ? conta!.paginas_consulta : [];
     const matriz = perms.includes("__matriz_v1");
-    const podeLer = direcao || !matriz || perms.includes(PAGINA);
-    const podeEscreverPagina = direcao || (papel === "equipe" && (!matriz || perms.includes(PAGINA)));
+    // Página inteira ("laboratorio") ou só seções: os dados são das Entradas de amostras; o Início só resume as entradas.
+    const secoes = perms.filter((x) => x.startsWith(`${PAGINA}/`));
+    const lePagina = perms.includes(PAGINA) || secoes.includes(`${PAGINA}/entradas`) || secoes.includes(`${PAGINA}/inicio`);
+    const escrevePagina = perms.includes(PAGINA) || secoes.includes(`${PAGINA}/entradas`);
+    const podeLer = direcao || !matriz || lePagina;
+    const podeEscreverPagina = direcao || (papel === "equipe" && (!matriz || escrevePagina));
     if (!podeLer) return json({ erro: "Seu acesso não inclui o Laboratório.", semPermissao: true }, 403);
     const cfgSetores = await lerSetores();
     const meusSetores = direcao ? ["administrativo", "laboratorio"]

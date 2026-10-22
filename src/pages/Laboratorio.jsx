@@ -8,6 +8,8 @@
 
 import { useSearchParams } from "react-router-dom";
 import { PageTitle, Segmented } from "../components/ui.jsx";
+import { getSessao } from "../lib/sessao.js";
+import { secoesLiberadas } from "../lib/laboratorioAcesso.js";
 import EntradasAmostras from "../components/laboratorio/EntradasAmostras.jsx";
 import InicioLaboratorio from "../components/laboratorio/InicioLaboratorio.jsx";
 import AreaEmBreve from "../components/laboratorio/AreaEmBreve.jsx";
@@ -22,7 +24,9 @@ const SECOES = [
 
 export default function Laboratorio() {
   const [params, setParams] = useSearchParams();
-  const secao = SECOES.find((s) => s.valor === params.get("secao")) || SECOES[0];
+  const liberadas = secoesLiberadas(getSessao(), SECOES);
+  if (!liberadas.length) return <p className="rounded-2xl border bg-white p-8 text-center text-slate-500">Seu acesso ainda não inclui nenhuma área do Laboratório. Peça à direção.</p>;
+  const secao = liberadas.find((s) => s.valor === params.get("secao")) || liberadas[0];
   const ir = (valor, aba) => {
     const p = new URLSearchParams(params);
     p.set("secao", valor);
@@ -32,7 +36,7 @@ export default function Laboratorio() {
   return (
     <div className="space-y-4">
       <PageTitle titulo="Laboratório" descricao={secao.descricao} />
-      <Segmented opcoes={SECOES} valor={secao.valor} onChange={(v) => ir(v)} className="w-full sm:w-fit" />
+      <Segmented opcoes={liberadas} valor={secao.valor} onChange={(v) => ir(v)} className="w-full sm:w-fit" />
       {secao.valor === "inicio" && <InicioLaboratorio irPara={ir} />}
       {secao.valor === "entradas" && <EntradasAmostras key={params.get("aba") || ""} abaInicial={params.get("aba")} />}
       {["qualidade", "microbiologia", "fisicoquimico"].includes(secao.valor) && <AreaEmBreve area={secao.valor} voltar={() => ir("inicio")} />}

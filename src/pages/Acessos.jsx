@@ -9,8 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, KeyRound, Copy, Check, Shield, Power, Dices, Camera, Pencil, CaseUpper,
 } from "lucide-react";
-import { contasListar, contaCriar, contaSenha, contaAtiva, contaPaginas } from "../services/dados.js";
-import { contaEditar, contasPadraoLer, contasPadraoNome } from "../services/contas.js";
+import { contasListar, contaCriar, contaSenha, contaAtiva } from "../services/dados.js";
+import { contaEditar, contaPaginas, contasPadraoLer, contasPadraoNome } from "../services/contas.js";
 import { getSessao } from "../lib/sessao.js";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import FotoConta from "../components/acessos/FotoConta.jsx";
@@ -466,7 +466,10 @@ export default function Acessos() {
         senha: formNova.senha,
         paginas_consulta: formNova.papel === "direcao" ? [] : ["__matriz_v1", ...formNova.paginas_consulta],
       };
-      await contaCriar(dados);
+      const secoesNovas = dados.paginas_consulta.filter((p) => p.startsWith("laboratorio/"));
+      // A porta de criação (ml-sync) só conhece as páginas inteiras; as seções do Laboratório entram em seguida pela porta de Acessos.
+      await contaCriar({ ...dados, paginas_consulta: dados.paginas_consulta.filter((p) => !secoesNovas.includes(p)) });
+      if (secoesNovas.length) await contaPaginas(dados.usuario, dados.paginas_consulta);
       setFormNova(null);
       setAviso({ tipo: "ok", texto: `Conta "${dados.usuario}" criada.` });
       setSenhaEntregue({ usuario: dados.usuario, senha: dados.senha });

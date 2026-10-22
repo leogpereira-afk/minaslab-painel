@@ -1,5 +1,6 @@
 // ml-perfis — fotos de perfil de quem usa o painel, para o sistema inteiro mostrar o rosto de cada pessoa.
 // Qualquer usuário ATIVO do painel lê (crachá conferido aqui + conta ativa ao vivo). Só devolve usuario → endereço da foto.
+// Ação "minhas": devolve as páginas liberadas AGORA para a própria conta (a tela atualiza a sessão sem precisar sair e entrar).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -33,6 +34,13 @@ Deno.serve(async (req) => {
   const cracha = await crachaDoPainel(req);
   if (!cracha) return json({ erro: "Sua sessão expirou. Entre de novo.", semSessao: true }, 401);
   try {
+    const body = await req.json().catch(() => ({}));
+    if (txt(body.acao) === "minhas") {
+      const { data: conta, error: e0 } = await sb.from("ml_contas").select("ativo,papel,paginas_consulta").eq("usuario", txt(cracha.sub)).maybeSingle();
+      if (e0) throw e0;
+      if (!conta?.ativo) return json({ erro: "Sua conta do painel está inativa. Entre de novo.", semSessao: true }, 401);
+      return json({ ok: true, papel: conta.papel, paginas_consulta: Array.isArray(conta.paginas_consulta) ? conta.paginas_consulta : [] });
+    }
     const { data, error } = await sb.from("ml_contas").select("usuario,ativo,foto");
     if (error) throw error;
     const eu = (data ?? []).find((c: any) => c.usuario === txt(cracha.sub));
