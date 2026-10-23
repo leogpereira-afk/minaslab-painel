@@ -16,3 +16,16 @@ export function acharProdutoBase(produtos, nome, especificacao = "", id = "") {
   const iguais = mesmos.filter((p) => chaveEspecificacao(p.especificacao) === esp);
   return iguais.find(ativo) || iguais[0] || mesmos.find(ativo) || mesmos[0];
 }
+
+// Só devolve cadastro quando não há dúvida: o único daquele nome, ou o de especificação igual. Senão null (a pessoa escolhe).
+export function acharProdutoBaseExato(produtos, nome, especificacao = "") {
+  const lista = Array.isArray(produtos) ? produtos : [];
+  const k = chave(nome);
+  if (!k) return null;
+  const mesmos = lista.filter((p) => chave(p.produto) === k);
+  if (mesmos.length === 1) return mesmos[0];
+  const esp = chaveEspecificacao(especificacao);
+  const iguais = mesmos.filter((p) => chaveEspecificacao(p.especificacao) === esp);
+  const ativo = (p) => String(p.status ?? "ATIVO").toUpperCase() !== "INATIVO";
+  return iguais.find(ativo) || iguais[0] || null;
+}

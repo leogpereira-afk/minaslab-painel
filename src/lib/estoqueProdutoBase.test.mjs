@@ -24,3 +24,11 @@ test("sem especificação que bata, cai no primeiro ativo; inativo só se não h
   assert.equal(acharProdutoBase(lista, "X", "9").id, "B");
   assert.equal(acharProdutoBase(lista, "Y", ""), null);
 });
+
+import { acharProdutoBaseExato } from "./estoqueProdutoBase.js";
+test("exato: só devolve quando não há dúvida", () => {
+  assert.equal(acharProdutoBaseExato(base, "KIT LAL", "0,06 EU/mL").id, "ML-2");
+  assert.equal(acharProdutoBaseExato(base, "KIT LAL", "GERAL"), null);
+  assert.equal(acharProdutoBaseExato(base, "KIT LAL", "outra"), null);
+  assert.equal(acharProdutoBaseExato(base, "ETANOL", "qualquer").id, "ML-3");
+});
