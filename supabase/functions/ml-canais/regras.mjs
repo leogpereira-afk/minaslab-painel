@@ -151,7 +151,23 @@ export function validarPost(b) {
   if (!titulo) return { ok: false, erro: "Dê um título para a publicação." };
   if (imagem && !/^https:\/\/[^\s"'<>]+$/i.test(imagem) && !ehFotoGuardada(imagem)) return { ok: false, erro: "O link da imagem precisa começar com https://" };
   imagem = imagem.slice(0, 1000);
-  return { ok: true, post: { tipo, titulo, texto, imagem, fixado: !!b?.fixado } };
+  return { ok: true, post: { tipo, titulo, texto, imagem, fixado: !!b?.fixado, visual: validarVisual(b?.visual) } };
+}
+
+/* Visual do cartão no mural (estilo + cor da paleta). Valores fora da lista viram automático. */
+export const ESTILOS_POST = ["auto", "simples", "capa", "citacao", "aviso", "evento", "numero"];
+export const CORES_POST = ["auto", "amarelo", "verde", "vermelho", "laranja", "azul", "roxo"];
+export function validarVisual(v) {
+  const estilo = ESTILOS_POST.includes(v?.estilo) ? v.estilo : "auto";
+  const cor = CORES_POST.includes(v?.cor) ? v.cor : "auto";
+  const destaque = String(v?.destaque ?? "").trim().slice(0, 40);
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(String(v?.data ?? "")) ? v.data : "";
+  const out = {};
+  if (estilo !== "auto") out.estilo = estilo;
+  if (cor !== "auto") out.cor = cor;
+  if (destaque) out.destaque = destaque;
+  if (data) out.data = data;
+  return out;
 }
 
 export function validarComentario(texto) {

@@ -9,7 +9,8 @@ import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Pl
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import { nomeCurto } from "../lib/nomes.js";
-import { TIPOS_POST, MESES, tempoRelativo, periodoFerias, fraseAniversario } from "../lib/canais.js";
+import { TIPOS_POST, MESES, tempoRelativo, periodoFerias, fraseAniversario, visualDoPost, PALETA, ESTILOS } from "../lib/canais.js";
+import ArtePost from "../components/canais/ArtePost.jsx";
 import {
   canaisFeed, canaisPublicar, canaisApagarPost, canaisComentar, canaisApagarComentario, canaisCurtir, canaisConfig, canaisSalvarConfig,
   canaisDestaqueOpcoes, canaisSalvarDestaque,
@@ -130,6 +131,8 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
   const tipo = TIPOS_POST[p.tipo] || TIPOS_POST.noticia;
   const aniv = p.tipo === "aniversario";
   const [abrirComentarios, setAbrirComentarios] = useState(p.comentarios.length > 0 && p.comentarios.length <= 3);
+  const visual = aniv ? null : visualDoPost(p);
+  const comArte = visual && visual.estilo !== "simples";
   return (
     <Card id={`post-${p.id}`} className={clsx("scroll-mt-20 overflow-hidden !p-0", destaque && "ring-2 ring-brand-400", aniv && "border-pink-200")}>
       {aniv && (
@@ -162,7 +165,8 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
             </div>
           )}
         </div>
-        {!aniv && <h2 className="font-display text-lg font-bold leading-snug text-slate-900">{p.titulo}</h2>}
+        {comArte && <div className="-mx-4 overflow-hidden sm:-mx-5"><ArtePost titulo={p.titulo} tipo={p.tipo} visual={visual} /></div>}
+        {!aniv && !comArte && <h2 className="font-display text-lg font-bold leading-snug text-slate-900">{p.titulo}</h2>}
         {p.texto && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-700">{p.texto}</p>}
         {p.imagemUrl && (
           // A imagem aparece INTEIRA (cartaz A4 em pé, foto deitada ou quadrada), sem corte; clicar abre no tamanho real.
@@ -398,7 +402,7 @@ function Linha({ f }) {
   );
 }
 
-const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false };
+const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false, visual: {} };
 
 /* Reduz a foto no navegador antes de enviar: até 1600 px no lado maior, JPEG. */
 function reduzirFoto(arquivo, max = 1600) {
@@ -420,6 +424,44 @@ function reduzirFoto(arquivo, max = 1600) {
   });
 }
 
+/* Escolha do visual: estilo, cor da paleta e prévia ao vivo do cartão. */
+function EscolhaVisual({ f, temFoto, aoMudar }) {
+  const v = f.visual || {};
+  const efetivo = visualDoPost({ ...f, id: f.id || f.titulo || "novo", imagem: temFoto ? "x" : "", visual: v });
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+      <div>
+        <span className="label">Visual do cartão</span>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Estilo">
+          {ESTILOS.map((e) => (
+            <button key={e.id} type="button" role="radio" aria-checked={(v.estilo || "auto") === e.id} title={e.dica} onClick={() => aoMudar({ estilo: e.id })}
+              className={clsx("rounded-full border px-3 py-1 text-xs font-semibold", (v.estilo || "auto") === e.id ? "border-brand bg-brand text-white" : "border-slate-200 text-slate-600 hover:border-brand-300")}>
+              {e.rotulo}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-600">Cor:</span>
+        <button type="button" onClick={() => aoMudar({ cor: "auto" })} className={clsx("rounded-full border px-2.5 py-0.5 text-xs", (v.cor || "auto") === "auto" ? "border-brand font-semibold text-brand-700" : "border-slate-200 text-slate-500")}>Variar</button>
+        {Object.values(PALETA).map((c) => (
+          <button key={c.nome} type="button" title={c.rotulo} aria-label={`Cor ${c.rotulo}`} aria-pressed={v.cor === c.nome} onClick={() => aoMudar({ cor: c.nome })}
+            className={clsx("h-7 w-7 rounded-full border-2 transition", v.cor === c.nome ? "scale-110 border-slate-900" : "border-white shadow")} style={{ background: c.base }} />
+        ))}
+      </div>
+      {efetivo.estilo === "numero" && <label className="block"><span className="label">Número em destaque</span><input className="input w-full" maxLength={40} value={v.destaque || ""} onChange={(e) => aoMudar({ destaque: e.target.value })} placeholder="Ex.: 471 ou 20%" /></label>}
+      {efetivo.estilo === "evento" && <label className="block"><span className="label">Data do evento</span><input className="input w-full" type="date" value={v.data || ""} onChange={(e) => aoMudar({ data: e.target.value })} /></label>}
+      {efetivo.estilo !== "simples" && f.titulo && (
+        <div>
+          <span className="label">Prévia</span>
+          <div className="overflow-hidden rounded-xl border border-slate-200"><ArtePost titulo={f.titulo} tipo={f.tipo} visual={efetivo} /></div>
+        </div>
+      )}
+      {efetivo.estilo === "simples" && temFoto && (v.estilo || "auto") === "auto" && <p className="text-xs text-slate-500">Com foto, o automático mostra só a foto. Escolha um estilo para ter a arte também.</p>}
+    </div>
+  );
+}
+
 function Compositor({ post, aoFechar, aoSalvar }) {
   const [f, setF] = useState(VAZIO);
   const [salvando, setSalvando] = useState(false);
@@ -428,7 +470,7 @@ function Compositor({ post, aoFechar, aoSalvar }) {
   const [previaAntiga, setPreviaAntiga] = useState("");
   useEffect(() => {
     if (post) {
-      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado } : {}) });
+      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado, visual: post.visual || {} } : {}) });
       setFoto(null); setPreviaAntiga(post.id ? post.imagemUrl || "" : ""); setErro("");
     }
   }, [post]);
@@ -477,6 +519,7 @@ function Compositor({ post, aoFechar, aoSalvar }) {
               </label>}
           {!previa && <input className="input mt-2 w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="ou cole o link de uma imagem (https://…)" aria-label="Link de uma imagem" />}
         </div>
+        <EscolhaVisual f={f} temFoto={!!previa} aoMudar={(v) => setF((x) => ({ ...x, visual: { ...x.visual, ...v } }))} />
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={f.fixado} onChange={set("fixado")} /> Fixar no topo do mural
         </label>
