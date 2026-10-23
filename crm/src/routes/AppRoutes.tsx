@@ -1,3 +1,5 @@
+import type { ReactElement } from 'react'
+import { ssoAtivo } from '../services/painelSso'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../layouts/AppLayout'
 import { Dashboard } from '../pages/Dashboard/Dashboard'
@@ -48,10 +50,13 @@ import { HomeRedirect } from './HomeRedirect'
 import { Licitacoes } from '../pages/Licitacoes/Licitacoes'
 import { AcompanhamentoProvedores } from '../pages/Provedores/AcompanhamentoProvedores'
 
+// Login unificado: publicado, entrar, esqueci a senha e trocar senha não existem no CRM — tudo é pelo painel.
+const semLoginProprio=(tela:ReactElement)=>ssoAtivo()?<Navigate to="/" replace/>:tela
+
 function DevDashboardPreview(){ if(!import.meta.env.DEV) return <Navigate to="/login" replace/>; return <AppLayout/> }
 
 export function AppRoutes(){return <Routes>
-  <Route path="/login" element={<Login/>}/><Route path="/forgot-password" element={<ForgotPassword/>}/><Route path="/reset-password" element={<ResetPassword/>}/>
+  <Route path="/login" element={semLoginProprio(<Login/>)}/><Route path="/forgot-password" element={semLoginProprio(<ForgotPassword/>)}/><Route path="/reset-password" element={semLoginProprio(<ResetPassword/>)}/>
   <Route element={<ProtectedRoute/>}><Route element={<AppLayout/>}>
     <Route path="/" element={<HomeRedirect/>}/><Route path="/meu-perfil" element={<MeuPerfil/>}/>
     <Route element={<PermissionRoute anyOf={['crm.read','operational.read']}/>}>

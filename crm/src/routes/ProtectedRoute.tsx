@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { urlDoPainel } from '../services/painelSso'
+import { ssoAtivo, urlDoPainel } from '../services/painelSso'
 
 // Sem login no painel não há CRM: leva a pessoa de volta ao painel, onde ela entra.
-function VoltarAoPainel() {
+export function VoltarAoPainel() {
   useEffect(() => {
     window.location.replace(urlDoPainel())
   }, [])
@@ -51,6 +51,8 @@ export function ProtectedRoute() {
         </div>
       )
     }
+    // Publicado, não existe login próprio do CRM: quem não tem sessão entra pelo painel.
+    if (ssoAtivo()) return <VoltarAoPainel />
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 

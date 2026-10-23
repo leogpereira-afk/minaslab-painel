@@ -1,7 +1,7 @@
 import { createContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../services/supabase'
-import { chamarSso, loginProprioAtivo, marcarLoginProprio, ssoAtivo, tokenDoPainel } from '../services/painelSso'
+import { chamarSso, loginProprioAtivo, marcarLoginProprio, ssoAtivo, tokenDoPainel, urlDoPainel } from '../services/painelSso'
 
 export type AuthProfile = {
   id: string
@@ -248,6 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         marcarLoginProprio(false)
         const { error } = await supabase.auth.signOut()
         if (error) throw new Error(error.message)
+        // Login unificado: sair do CRM volta ao painel (é lá que se entra e sai).
+        if (ssoAtivo()) window.location.replace(urlDoPainel())
       },
     }),
     [

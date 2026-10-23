@@ -6,7 +6,7 @@
 // Em desenvolvimento local (base '/') nada disso roda: vale o login normal por e-mail.
 
 const CHAVE_CRACHA_PAINEL = 'ml_auth_token'
-// Quem entrou pelo formulário de e-mail e senha (porta de emergência) não é derrubado por esta checagem.
+// Marca de quem entrou pelo formulário de e-mail e senha: só vale em desenvolvimento local.
 const CHAVE_LOGIN_PROPRIO = 'crm_login_proprio'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
@@ -39,6 +39,11 @@ export function urlDoPainel() {
 }
 
 export function loginProprioAtivo() {
+  // Login unificado: publicado, o CRM só abre pelo login do painel. Limpa a marca antiga da porta de e-mail.
+  if (ssoAtivo()) {
+    try { localStorage.removeItem(CHAVE_LOGIN_PROPRIO) } catch { /* sem armazenamento local */ }
+    return false
+  }
   try {
     return localStorage.getItem(CHAVE_LOGIN_PROPRIO) === '1'
   } catch {

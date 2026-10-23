@@ -2,7 +2,7 @@
 //
 // O painel usa um crachá próprio (JWT assinado com ML_JWT_SECRET); o CRM usa o Supabase Auth.
 // Esta função confere o crachá do painel e, se o usuário tem conta vinculada no CRM
-// (tabela crm_sso_vinculos), devolve um token de uso único que o CRM troca por sessão
+// (tabela crm_sso_vinculos; criada sozinha na primeira entrada), devolve um token de uso único que o CRM troca por sessão
 // (supabase.auth.verifyOtp). Nenhuma senha passa por aqui e nenhuma chave de serviço sai daqui.
 //
 // Ações:
@@ -35,6 +35,63 @@ async function crachaDoPainel(req: Request) {
   } catch { return null; }
 }
 
+// Nome sem acento/caixa/espaços extras, para achar a conta antiga do CRM da mesma pessoa.
+const normal = (v: unknown) => txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
+const primeiroUltimo = (v: unknown) => { const p = normal(v).split(" ").filter(Boolean); return p.length ? `${p[0]} ${p[p.length - 1]}` : ""; };
+
+async function vinculoDoUsuario(usuario: string) {
+  const { data, error } = await sb.from("crm_sso_vinculos").select("crm_user_id").eq("usuario_painel", usuario).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function criarVinculo(usuario: string, nome: string) {
+  // 1) A pessoa já tem conta no CRM ainda sem dono (criada antes da entrada única)? Usa essa, para não perder o histórico.
+  //    Só liga se o primeiro e último nome baterem com exatamente uma conta livre.
+  const [{ data: perfis, error: eP }, { data: ligados, error: eL }] = await Promise.all([
+    sb.from("profiles").select("id,nome"),
+    sb.from("crm_sso_vinculos").select("crm_user_id"),
+  ]);
+  if (eP) throw eP;
+  if (eL) throw eL;
+  const usados = new Set((ligados ?? []).map((x: any) => x.crm_user_id));
+  const chave = primeiroUltimo(nome);
+  const iguais = chave ? (perfis ?? []).filter((p: any) => !usados.has(p.id) && primeiroUltimo(p.nome) === chave) : [];
+  let crmUserId: string | null = iguais.length === 1 ? iguais[0].id : null;
+
+  // 2) Senão, cria a conta do CRM. O e-mail é só identificador interno: ninguém entra por ele, só pelo painel.
+  if (!crmUserId) {
+    const email = `${usuario.toLowerCase().replace(/[^a-z0-9._-]/g, "-")}@painel.minaslab.online`;
+    const { data: criado, error: eC } = await sb.auth.admin.createUser({ email, email_confirm: true, user_metadata: { name: nome, usuario_painel: usuario, origem: "painel" } });
+    if (eC) {
+      // Já existia (tentativa anterior interrompida): reaproveita.
+      for (let page = 1; page <= 20 && !crmUserId; page++) {
+        const { data: lista, error: eList } = await sb.auth.admin.listUsers({ page, perPage: 200 });
+        if (eList) throw eList;
+        crmUserId = lista.users.find((u) => txt(u.email).toLowerCase() === email)?.id ?? null;
+        if (lista.users.length < 200) break;
+      }
+      if (!crmUserId) throw eC;
+    } else crmUserId = criado.user.id;
+
+    const { error: ePerfil } = await sb.from("profiles").upsert({ id: crmUserId, nome, ativo: true }, { onConflict: "id", ignoreDuplicates: true });
+    if (ePerfil) throw ePerfil;
+    const { data: papel, error: ePapel } = await sb.from("roles").select("id").eq("codigo", "equipe").eq("ativo", true).maybeSingle();
+    if (ePapel) throw ePapel;
+    if (papel) {
+      const { error: eRole } = await sb.from("profile_roles").upsert({ profile_id: crmUserId, role_id: papel.id }, { onConflict: "profile_id,role_id", ignoreDuplicates: true });
+      if (eRole) throw eRole;
+    }
+  }
+
+  const { error: eVinc } = await sb.from("crm_sso_vinculos").upsert({ usuario_painel: usuario, crm_user_id: crmUserId }, { onConflict: "usuario_painel", ignoreDuplicates: true });
+  if (eVinc) throw eVinc;
+  // Lê de novo: se duas abas entraram juntas, vale o vínculo que gravou primeiro.
+  const final = await vinculoDoUsuario(usuario);
+  if (!final) throw new Error("Não foi possível ligar sua conta do CRM.");
+  return final;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ erro: "Use POST." }, 405);
@@ -48,15 +105,15 @@ Deno.serve(async (req) => {
     const usuario = txt(cracha.sub);
 
     // A conta precisa continuar ativa AGORA (o crachá vale 12h) e ter acesso ao CRM.
-    const { data: conta, error: eConta } = await sb.from("ml_contas").select("ativo,papel,paginas_consulta").eq("usuario", usuario).maybeSingle();
+    const { data: conta, error: eConta } = await sb.from("ml_contas").select("ativo,papel,paginas_consulta,nome").eq("usuario", usuario).maybeSingle();
     if (eConta) throw eConta;
     if (!conta?.ativo) return json({ erro: "Esta conta do painel está inativa.", semSessao: true }, 401);
     const paginas = Array.isArray(conta.paginas_consulta) ? conta.paginas_consulta : [];
     if (conta.papel !== "direcao" && !paginas.includes("crm")) return json({ erro: "Seu usuário não tem acesso ao CRM.", semAcesso: true }, 403);
 
-    const { data: vinculo, error: eVinc } = await sb.from("crm_sso_vinculos").select("crm_user_id").eq("usuario_painel", usuario).maybeSingle();
-    if (eVinc) throw eVinc;
-    if (!vinculo) return json({ erro: "Seu usuário do painel ainda não está ligado a uma conta do CRM. Peça à direção para ligar.", semVinculo: true }, 403);
+    // Login unificado: quem tem acesso ao CRM no painel ganha a conta do CRM na primeira entrada.
+    // As permissões continuam sendo do CRM (papel inicial "Equipe", ajustável lá dentro).
+    const vinculo = await vinculoDoUsuario(usuario) ?? await criarVinculo(usuario, txt(conta.nome) || usuario);
 
     if (acao === "quem") return json({ ok: true, crmUserId: vinculo.crm_user_id });
 
