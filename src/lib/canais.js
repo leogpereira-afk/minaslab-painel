@@ -43,3 +43,42 @@ export function fraseAniversario(a, diaHoje) {
   }
   return a.dia < diaHoje ? `Aniversariou no dia ${dia} 🎉` : `Faz aniversário no dia ${dia} 🎈`;
 }
+
+/* ------------------------------------------------------------------ visual
+   Paleta das apresentações coloridas (Guia de Frascos). Cada publicação pode
+   escolher estilo e cor; sem escolha, o sistema varia sozinho pelo tipo e pela
+   própria publicação (sempre a mesma cor para o mesmo post). */
+export const PALETA = {
+  amarelo: { nome: "amarelo", rotulo: "Amarelo", base: "#f5b800", escuro: "#8a6500", claro: "#fff8db", sobre: "#3d2f00" },
+  verde: { nome: "verde", rotulo: "Verde", base: "#16a34a", escuro: "#0f6b32", claro: "#eaf8ee", sobre: "#ffffff" },
+  vermelho: { nome: "vermelho", rotulo: "Vermelho", base: "#e5484d", escuro: "#a5232a", claro: "#fdeced", sobre: "#ffffff" },
+  laranja: { nome: "laranja", rotulo: "Laranja", base: "#f97316", escuro: "#a8480b", claro: "#fff1e6", sobre: "#ffffff" },
+  azul: { nome: "azul", rotulo: "Azul", base: "#2563eb", escuro: "#1e3fa8", claro: "#e8f0fe", sobre: "#ffffff" },
+  roxo: { nome: "roxo", rotulo: "Roxo", base: "#7c3aed", escuro: "#4c1d95", claro: "#f1eafe", sobre: "#ffffff" },
+};
+export const ESTILOS = [
+  { id: "auto", rotulo: "Automático", dica: "O sistema escolhe pelo tipo" },
+  { id: "capa", rotulo: "Capa", dica: "Título grande sobre a cor" },
+  { id: "citacao", rotulo: "Frase", dica: "Frase de destaque entre aspas" },
+  { id: "aviso", rotulo: "Aviso", dica: "Comunicado com faixa e megafone" },
+  { id: "evento", rotulo: "Evento", dica: "Data grande e título" },
+  { id: "numero", rotulo: "Número", dica: "Um número em destaque" },
+  { id: "simples", rotulo: "Simples", dica: "Só texto, sem arte" },
+];
+const ORDEM_CORES = ["azul", "verde", "roxo", "laranja", "vermelho", "amarelo"];
+const hash = (s) => [...String(s ?? "")].reduce((t, ch) => (t * 31 + ch.charCodeAt(0)) % 100003, 7);
+
+/** Estilo e cor efetivos de uma publicação (resolve o "automático"). */
+export function visualDoPost(p) {
+  const v = p?.visual || {};
+  const h = hash(p?.id);
+  let estilo = v.estilo;
+  if (!estilo || estilo === "auto") {
+    if (p?.imagem) estilo = "simples"; // a foto já é a arte
+    else if (p?.tipo === "comunicado") estilo = "aviso";
+    else if (p?.tipo === "evento") estilo = "evento";
+    else estilo = ["capa", "citacao", "capa"][h % 3];
+  }
+  const corNome = v.cor && v.cor !== "auto" ? v.cor : ORDEM_CORES[h % ORDEM_CORES.length];
+  return { estilo, cor: PALETA[corNome] || PALETA.azul, destaque: v.destaque || "", data: v.data || "" };
+}

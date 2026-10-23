@@ -84,7 +84,7 @@ test("validação de publicação e comentário", () => {
   assert.equal(validarPost({ titulo: "" }).ok, false);
   assert.equal(validarPost({ titulo: "Oi", imagem: "javascript:alert(1)" }).ok, false);
   const v = validarPost({ titulo: " Oi ", tipo: "xpto", imagem: "https://x.com/a.png", fixado: 1 });
-  assert.deepEqual(v.post, { tipo: "noticia", titulo: "Oi", texto: "", imagem: "https://x.com/a.png", fixado: true });
+  assert.deepEqual(v.post, { tipo: "noticia", titulo: "Oi", texto: "", imagem: "https://x.com/a.png", fixado: true, visual: {} });
   assert.equal(validarComentario("  ").ok, false);
   assert.equal(validarComentario("x".repeat(1001)).ok, false);
   assert.equal(validarComentario(" parabéns ").texto, "parabéns");
@@ -148,4 +148,17 @@ test("frase do aniversariante: hoje, já passou e ainda vem", () => {
   assert.equal(fraseAniversario({ pessoaId: "a", nome: "Ana", dia: 21 }, 21), hoje); // mesma pessoa, mesma frase
   assert.equal(fraseAniversario({ pessoaId: "b", nome: "Bia", dia: 5 }, 21), "Aniversariou no dia 05 🎉");
   assert.equal(fraseAniversario({ pessoaId: "c", nome: "Caio", dia: 28 }, 21), "Faz aniversário no dia 28 🎈");
+});
+
+test("visual da publicação: valida e varia sozinho", async () => {
+  const { validarVisual } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const { visualDoPost } = await import("./canais.js");
+  assert.deepEqual(validarVisual({ estilo: "capa", cor: "roxo", destaque: " 471 ", data: "2026-11-05" }), { estilo: "capa", cor: "roxo", destaque: "471", data: "2026-11-05" });
+  assert.deepEqual(validarVisual({ estilo: "<script>", cor: "rosa", data: "amanhã" }), {});
+  assert.equal(visualDoPost({ id: "x", tipo: "comunicado", visual: {} }).estilo, "aviso");
+  assert.equal(visualDoPost({ id: "x", tipo: "evento", visual: {} }).estilo, "evento");
+  assert.equal(visualDoPost({ id: "x", tipo: "noticia", imagem: "canais/a.jpg", visual: {} }).estilo, "simples");
+  assert.equal(visualDoPost({ id: "x", tipo: "noticia", visual: { estilo: "numero", cor: "verde" } }).cor.nome, "verde");
+  const cores = new Set(["a1", "b2", "c3", "d4", "e5", "f6", "g7", "h8"].map((id) => visualDoPost({ id, tipo: "noticia" }).cor.nome));
+  assert.ok(cores.size >= 3, "posts diferentes ganham cores diferentes");
 });
