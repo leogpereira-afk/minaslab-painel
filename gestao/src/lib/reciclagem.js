@@ -17,7 +17,7 @@ export const PERIODO_SUGERIDO = {
   "analise-critica": 12, "crm-sem-furos": 12, "proposta-sem-erro": 12, "os-correta": 12,
   atendimento: 12, tecnico: 24, licitacoes: 0, "follow-up": 0, spin: 0, gestora: 0,
   "pg012-satisfacao": 12, "pg013-reclamacoes": 12, "pg010-recebimento": 12, "pg011-armazenamento": 12,
-  "am-amostragem": 12, "am-coletas-especiais": 12, "am-purga": 12, integracao: 0, "gestao-tempo": 12, "aspecto-visual": 12, "painel-dia-a-dia": 0, "crm-painel": 12,
+  "am-amostragem": 12, "am-coletas-especiais": 12, "am-purga": 12, integracao: 0, "gestao-tempo": 12, "aspecto-visual": 12, "painel-dia-a-dia": 0, "crm-painel": 12, "crm-atendimento": 12, "crm-clientes": 12, "crm-pipeline": 12, "crm-propostas": 12, "crm-agendamento": 12, "crm-licitacoes": 12, "crm-recorrentes": 12, "crm-provedores": 12, "crm-contratos": 12,
 };
 
 /** Prazo sugerido para quem acabou de entrar (dias). */

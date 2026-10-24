@@ -14,6 +14,7 @@ import { MODELOS_TRILHAS } from "./treinamentosTrilhas.js";
 import { MODELO_VISUAL } from "./treinamentoVisual.js";
 import { MODELO_PAINEL } from "./treinamentoPainel.js";
 import { MODELO_CRM_PAINEL } from "./treinamentoCrm.js";
+import { MODELOS_CRM_MODULOS } from "./treinamentosCrmModulos.js";
 
 export const LAYOUTS = {
   capa: { nome: "Capa", campos: ["titulo", "subtitulo", "texto", "destaque", "imagem"], ajuda: { destaque: "Só no estilo colorido: palavras separadas por · viram pílulas coloridas.", imagem: "Opcional: foto ao lado do título." } },
@@ -201,6 +202,7 @@ export const MODELOS = [
   MODELO_VISUAL,
   MODELO_PAINEL,
   MODELO_CRM_PAINEL,
+  ...MODELOS_CRM_MODULOS,
   { id: "treinamento", categoria: "treinamento", tema: "colorido", nome: "Novo treinamento", desc: "Estrutura pronta: o número que queremos mudar, objetivo, conteúdo, regra de ouro, prática e teste.", titulo: "Novo treinamento", slides: TREINAMENTO },
   { id: "livre", categoria: "ambos", nome: "Em branco", desc: "Capa, um slide e encerramento. Monte do seu jeito.", titulo: "Nova apresentação", slides: LIVRE },
 ];
