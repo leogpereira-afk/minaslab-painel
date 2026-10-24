@@ -890,7 +890,7 @@ export default function PatrimonialFinanceiro({ tipo }) {
               <ul className="list-disc space-y-1 pl-4">
                 <li>Saldo estimado: o último extrato informado, mais os aportes e menos os resgates reconhecidos depois da data dele. Rendimentos creditados na conta corrente e créditos sem categoria não entram.</li>
                 <li>É uma estimativa mínima: o rendimento que acontece dentro da aplicação só aparece no próximo extrato informado. Se os resgates passarem do saldo informado, a tela pede um extrato mais recente em vez de mostrar saldo negativo.</li>
-                <li>Capital aportado líquido: aportes menos resgates desde o início da base. Não é saldo, porque não conta o que a aplicação rendeu.</li>
+                <li>Capital aportado líquido: aportes menos resgates desde o início da base. Crédito sem categoria cuja observação do banco começa com RESGATE RDC (ou RDB, CDB, LCA, LCI) também conta como resgate. Não é saldo, porque não conta o que a aplicação rendeu.</li>
                 <li>Só entram movimentos bancários com categoria específica de aplicação. Descrição livre não comprova a natureza.</li>
               </ul>
             ) : (
