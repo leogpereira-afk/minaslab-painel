@@ -7,6 +7,7 @@ import { TRILHA_GESTAO_TEMPO } from "./treinamentosTrilhas.js";
 import { TRILHA_VISUAL } from "./treinamentoVisual.js";
 import { TRILHA_PAINEL } from "./treinamentoPainel.js";
 import { TRILHA_CRM_PAINEL } from "./treinamentoCrm.js";
+import { TRILHAS_CRM_MODULOS } from "./treinamentosCrmModulos.js";
 import { modeloPorId } from "./modelosApresentacao.js";
 import { perguntasDoModelo } from "./treinamentosPG.js";
 
@@ -332,6 +333,7 @@ export const TRILHAS = [
   comModelo({ ...TRILHA_GESTAO_TEMPO, roteiro: roteiroPadrao(40) }),
   comModelo({ ...TRILHA_PAINEL, roteiro: roteiroPadrao(40) }),
   comModelo({ ...TRILHA_CRM_PAINEL, roteiro: roteiroPadrao(50) }),
+  ...TRILHAS_CRM_MODULOS.map((t) => comModelo({ ...t, roteiro: roteiroPadrao(t.minutos) })),
 ];
 export const trilhasDoSetor = (setor) => TRILHAS.filter((t) => t.setores.includes(setor));
 
