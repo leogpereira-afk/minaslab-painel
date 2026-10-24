@@ -16,6 +16,9 @@ const regras = {
   'REEMBOLSO A SOCIOS': ['socios', 'Reembolso a sócios'],
   'RETIRADA DE SOCIOS': ['socios', 'Retirada (natureza a conferir)'],
 };
+// Resgate que o Omie traz sem categoria de aplicação (ex.: "Outras entradas"). Só vale para crédito
+// cuja observação COMEÇA com a expressão que o próprio banco escreve no extrato. Nada de busca solta no texto.
+const OBSERVACAO_RESGATE = /^RESGATE (RDC|RDB|CDB|LCA|LCI|DE APLICACAO)\b/;
 export const naturezaPatrimonial = categoria => regras[normalizar(categoria)] || null;
 // Ordem fixa das naturezas: chips e legendas não trocam de lugar quando o filtro muda.
 const ordemDe = tipo => Object.freeze([...new Set(Object.values(regras).filter(r => r[0] === tipo).map(r => r[1]))]);
@@ -103,7 +106,10 @@ export function montarPatrimonial({ tipo, movimentos = [], despesas = [], recebi
     const nomes = [...new Set(vinculados.map(categoriaTitulo).filter(Boolean))];
     const vinculoCompleto = vinculados.length > 0 && vinculados.length === (m.conciliacoes || []).length && vinculados.every(t=>categoriaTitulo(t)) && Math.abs((m.conciliacoes || []).reduce((s,c)=>s+centavos(c.valor_conciliado || 0),0)-centavos(m.valor)) <= 1;
     const categoria = m.dados_omie?.cDesCategoria || m.categoria?.nome || (nomes.length === 1 && vinculoCompleto ? nomes[0] : '');
-    const regra = naturezaPatrimonial(categoria);
+    let regra = naturezaPatrimonial(categoria);
+    // Sem categoria de aplicação, mas o extrato do banco diz que é resgate: conta como resgate (marcado como inferido).
+    let inferido = false;
+    if (!regra && aplicacoes && m.tipo === 'CREDITO' && OBSERVACAO_RESGATE.test(normalizar(m.dados_omie?.cObservacoes))) { regra = ['aplicacoes', 'Resgate']; inferido = true; }
     // A observação da Omie (cObservacoes) só ajuda a SUSPEITAR: a descrição do
     // movimento é o favorecido (ex.: o próprio banco) e escondia "resgate" na observação.
     const suspeita = normalizar([categoria,m.descricao,m.dados_omie?.cObservacoes,...nomes].join(' '));
@@ -113,7 +119,7 @@ export function montarPatrimonial({ tipo, movimentos = [], despesas = [], recebi
     const nomesPessoas = [...new Set(vinculados.map(t => t.fornecedor || t.cliente).filter(Boolean))];
     const pessoaNome = m.dados_omie?.cRazCliente || m.dados_omie?.cDesCliente || (nomesPessoas.length === 1 ? nomesPessoas[0] : '') || 'Não identificado na origem';
     const pessoaId = `${m.empresa_id || ''}|${m.dados_omie?.nCodCliente || normalizar(pessoaNome)}`;
-    reconhecidosBase.push({ ...m, categoria, natureza: regra[1], pessoa: pessoaNome, pessoaId, valor: centavos(m.valor)/100 });
+    reconhecidosBase.push({ ...m, categoria, natureza: regra[1], inferido, pessoa: pessoaNome, pessoaId, valor: centavos(m.valor)/100 });
   }
   const reconhecidos = reconhecidosBase.filter(escopo);
   const reconhecidosPeriodo = reconhecidos.filter(noPeriodoMov);
