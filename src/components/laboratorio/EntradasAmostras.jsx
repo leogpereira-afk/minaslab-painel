@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Columns3, Download, FlaskConical, HelpCircle, Lock, Pencil, Plus, RefreshCw, Search, Trash2, Timer, Send, Upload, Users, X } from "lucide-react";
 import { listarEntradas, salvarEntrada, apagarEntrada, entradasEmLote, importarEntradas } from "../../services/laboratorio.js";
-import { podeEditar, ehDirecao, getSessao } from "../../lib/sessao.js";
+import { podeEditarSecao, ehDirecao, getSessao } from "../../lib/sessao.js";
 import { lerXlsx, converterPlanilha } from "../../lib/laboratorioImportacao.js";
 import { ymdLocal } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
@@ -104,7 +104,8 @@ export default function EntradasAmostras({ abaInicial } = {}) {
   const [contas, setContas] = useState([]);
   const [setoresConfig, setSetoresConfig] = useState({ administrativo: [], laboratorio: [] });
   const direcao = ehDirecao();
-  const pode = podeEditar(undefined, "laboratorio") && podeServidor;
+  // Mesma régua do servidor: basta ter a seção "Entradas de amostras" (não precisa do Laboratório inteiro).
+  const pode = podeEditarSecao("laboratorio", "entradas") && podeServidor;
   const podeAdm = direcao || (pode && meusSetores.includes("administrativo"));
   const podeLab = direcao || (pode && meusSetores.includes("laboratorio"));
   const [hoje, setHoje] = useState(() => ymdLocal(new Date()));
