@@ -216,3 +216,12 @@ test('extrato anterior ao início da base é avisado: os movimentos entre os doi
  assert.equal(r.saldo.anteriorABase,true);
  assert.equal(montarPatrimonial({...aplBase,movimentos:[aporte('a','2026-03-10',1000)],saldosInformados:[{id:'s',data:'2026-04-30',valor:500}]}).saldo.anteriorABase,false);
 });
+
+test('crédito sem categoria cuja observação do banco é RESGATE RDC desconta do capital; texto solto não',()=>{
+ const semCat=(id,data,valor,obs,cat='OUTRAS ENTRADAS')=>mov(id,cat,valor,{data_movimento:data,tipo:'CREDITO',dados_omie:{cDesCategoria:cat,cObservacoes:obs}});
+ const r=montarPatrimonial({...aplBase,movimentos:[aporte('a','2026-03-10',10000),semCat('r','2026-04-10',3000,'RESGATE RDC'),semCat('e','2026-04-11',500,'ESTORNO PIX recebido do resgate RDC'),semCat('x','2026-04-12',700,'Venda de rendimento da loja')]});
+ assert.equal(r.capitalAportado,7000);
+ assert.equal(r.itens.filter(m=>m.inferido).length,1);
+ const d=montarPatrimonial({...aplBase,movimentos:[aporte('a','2026-03-10',10000),mov('d','OUTRAS SAÍDAS',3000,{data_movimento:'2026-04-10',dados_omie:{cDesCategoria:'OUTRAS SAÍDAS',cObservacoes:'RESGATE RDC'}})]});
+ assert.equal(d.capitalAportado,10000);
+});
