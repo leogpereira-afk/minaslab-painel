@@ -41,10 +41,12 @@ type AgendaForm = {
   titulo: string
   descricao: string
   endereco_evento: string
+  recorrencia_id: string
 }
+type Recorrencia = { id: string; contrato_id: string; periodicidade: string; agendamento_id: string | null; status: string; contratos: { numero_contrato: string | null } | null }
 
 const emptyForm: AgendaForm = {
-  ordem_servico_id: '', proposta_id: '', numero_proposta_referencia: '', cliente_id: '', endereco_id: '', responsavel_id: '', inicio: '', fim: '', status: 'AGENDADO', titulo: '', descricao: '', endereco_evento: '',
+  ordem_servico_id: '', proposta_id: '', numero_proposta_referencia: '', cliente_id: '', endereco_id: '', responsavel_id: '', inicio: '', fim: '', status: 'AGENDADO', titulo: '', descricao: '', endereco_evento: '', recorrencia_id: '',
 }
 
 function toLocalDateTimeInput(value: string | null) {
@@ -83,7 +85,7 @@ async function withTimeout<T>(promise: Promise<T>, milliseconds = 15000): Promis
 }
 
 export function AgendaLista() {
-  const { hasPermission } = useAuth()
+  const { hasPermission, profile } = useAuth()
   const canWrite = hasPermission('crm.write')
   const canAdmin = hasPermission('admin.manage')
   const [rows, setRows] = useState<AgendaRow[]>([])
@@ -92,6 +94,7 @@ export function AgendaLista() {
   const [propostas, setPropostas] = useState<Proposta[]>([])
   const [perfis, setPerfis] = useState<Perfil[]>([])
   const [enderecos, setEnderecos] = useState<Endereco[]>([])
+  const [recorrencias, setRecorrencias] = useState<Recorrencia[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -140,6 +143,25 @@ export function AgendaLista() {
 
   useEffect(() => { void load() }, [])
 
+  // Contratos recorrentes ativos do cliente escolhido: o agendamento pode já preencher o Cliente Recorrente.
+  useEffect(() => {
+    if (!modalOpen || !form.cliente_id) { setRecorrencias([]); return }
+    let cancelled = false
+    void supabase.from('recorrencias_clientes').select('id,contrato_id,periodicidade,agendamento_id,status,contratos(numero_contrato)').eq('cliente_id', form.cliente_id).eq('ativo', true).neq('status', 'PAUSADO').then(({ data }) => {
+      if (cancelled) return
+      const list = (data ?? []) as unknown as Recorrencia[]
+      setRecorrencias(list)
+      setForm(current => {
+        if (current.recorrencia_id && list.some(r => r.id === current.recorrencia_id)) return current
+        const doAgendamento = editingId ? list.find(r => r.agendamento_id === editingId) : undefined
+        const livres = list.filter(r => !r.agendamento_id)
+        const escolhida = doAgendamento ?? (!editingId && livres.length === 1 ? livres[0] : undefined)
+        return { ...current, recorrencia_id: escolhida?.id ?? '' }
+      })
+    })
+    return () => { cancelled = true }
+  }, [modalOpen, form.cliente_id, editingId])
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const status = params.get('google_calendar')
@@ -176,7 +198,7 @@ export function AgendaLista() {
     setEditingId(row.id)
     setForm({
       ordem_servico_id: row.ordem_servico_id ?? '', proposta_id: row.proposta_id ?? '', numero_proposta_referencia: row.numero_proposta_referencia ?? (row.proposta_id ? propostaMap.get(row.proposta_id)?.numero_proposta ?? '' : ''), cliente_id: row.cliente_id ?? '', endereco_id: row.endereco_id ?? '', responsavel_id: row.responsavel_id ?? '',
-      inicio: toLocalDateTimeInput(row.inicio), fim: toLocalDateTimeInput(row.fim), status: row.status ?? 'AGENDADO', titulo: row.titulo ?? '', descricao: row.descricao ?? '', endereco_evento: row.endereco_evento ?? '',
+      inicio: toLocalDateTimeInput(row.inicio), fim: toLocalDateTimeInput(row.fim), status: row.status ?? 'AGENDADO', titulo: row.titulo ?? '', descricao: row.descricao ?? '', endereco_evento: row.endereco_evento ?? '', recorrencia_id: '',
     })
     if (row.cliente_id) await loadAddresses(row.cliente_id, row.endereco_id ?? '')
     else setEnderecos([])
@@ -219,6 +241,28 @@ export function AgendaLista() {
     setForm(current => ({ ...current, endereco_id: addressId, endereco_evento: address ? addressText(address) : '' }))
   }
 
+  // Mesmo efeito do botão "Agendar coleta" em Clientes Recorrentes: coleta + recorrência AGENDADO + histórico.
+  async function vincularRecorrencia(agendaId: string, p: { cliente_id: string | null; responsavel_id: string | null; inicio: string; descricao: string | null; endereco_evento: string | null }) {
+    const rec = recorrencias.find(r => r.id === form.recorrencia_id)
+    if (!rec) return ''
+    const coleta = { agendamento_id: agendaId, cliente_id: p.cliente_id, contrato_id: rec.contrato_id, recorrencia_id: rec.id, coletor_id: p.responsavel_id, realizada_pelo_cliente: false, ocorrida_em: p.inicio, status: 'AGENDADA', observacoes: p.descricao, endereco_evento: p.endereco_evento, source_system: 'CRM' }
+    const { data: existente, error: buscaErro } = await supabase.from('coletas').select('id').eq('agendamento_id', agendaId).is('deleted_at', null).limit(1).maybeSingle()
+    if (buscaErro) return ` Atenção: não foi possível verificar a Coleta vinculada (${buscaErro.message}).`
+    const { error: coletaErro } = existente?.id
+      ? await supabase.from('coletas').update(coleta).eq('id', existente.id)
+      : await supabase.from('coletas').insert(coleta)
+    if (coletaErro) return ` Atenção: a Coleta não foi criada (${coletaErro.message}).`
+    const { error: linkErro } = await supabase.from('recorrencias_clientes').update({ status: 'AGENDADO', agendamento_id: agendaId, responsavel_id: p.responsavel_id, updated_at: new Date().toISOString(), updated_by: profile?.id ?? null }).eq('id', rec.id)
+    if (linkErro) return ` Atenção: o Cliente Recorrente não foi atualizado (${linkErro.message}).`
+    if (rec.agendamento_id !== agendaId) await supabase.from('recorrencias_historico').insert({ recorrencia_id: rec.id, tipo: 'AGENDAMENTO', descricao: `Coleta agendada para ${new Date(p.inicio).toLocaleString('pt-BR')} pela Agenda e vinculada ao cliente recorrente.`, usuario_id: profile?.id ?? null })
+    return ' Cliente Recorrente atualizado como AGENDADO.'
+  }
+
+  // Tirou o vínculo ao editar: a recorrência volta a pendente de agendamento.
+  async function desvincularRecorrencia(agendaId: string) {
+    await supabase.from('recorrencias_clientes').update({ status: 'AGENDAMENTO PENDENTE', agendamento_id: null, updated_at: new Date().toISOString(), updated_by: profile?.id ?? null }).eq('agendamento_id', agendaId)
+  }
+
   async function save(event: React.FormEvent) {
     event.preventDefault()
     if (!form.inicio) return
@@ -251,6 +295,10 @@ export function AgendaLista() {
         id = String(data.id)
       }
 
+      let recorrenciaMsg = ''
+      if (id && form.recorrencia_id) recorrenciaMsg = await vincularRecorrencia(id, payload)
+      else if (id && editingId && recorrencias.some(r => r.agendamento_id === id)) await desvincularRecorrencia(id)
+
       let calendarOk = false
       if (id) {
         try {
@@ -263,7 +311,7 @@ export function AgendaLista() {
 
       setModalOpen(false)
       await load()
-      setMessage(calendarOk ? 'Agendamento salvo e sincronizado com o Google Calendar.' : 'Agendamento salvo no CRM. O Google Calendar ainda precisa ser conectado ou sincronizado novamente.')
+      setMessage((calendarOk ? 'Agendamento salvo e sincronizado com o Google Calendar.' : 'Agendamento salvo no CRM. O Google Calendar ainda precisa ser conectado ou sincronizado novamente.') + recorrenciaMsg)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o agendamento.')
     } finally {
@@ -313,6 +361,7 @@ export function AgendaLista() {
         <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium text-slate-700">Cliente</span><select value={form.cliente_id} onChange={e => void changeClient(e.target.value)} className={inputClass}><option value="">Selecione</option>{clientes.map(cliente => <option key={cliente.id} value={cliente.id}>{clientName(cliente)}</option>)}</select></label>
         <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium text-slate-700">Endereço do cadastro</span><select value={form.endereco_id} onChange={e => changeAddress(e.target.value)} className={inputClass}><option value="">Selecione</option>{enderecos.map(endereco => <option key={endereco.id} value={endereco.id}>{endereco.nome_unidade ? `${endereco.nome_unidade} — ` : ''}{addressText(endereco)}</option>)}</select></label>
         <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium text-slate-700">Endereço da coleta / evento</span><input value={form.endereco_evento} onChange={e => setForm(current => ({ ...current, endereco_evento: e.target.value }))} placeholder="Carregado automaticamente do cadastro e editável" className={inputClass}/></label>
+        {recorrencias.length > 0 && <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium text-slate-700">Contrato recorrente (opcional)</span><select value={form.recorrencia_id} onChange={e => setForm(current => ({ ...current, recorrencia_id: e.target.value }))} className={inputClass}><option value="">Não vincular</option>{recorrencias.map(r => <option key={r.id} value={r.id}>{r.contratos?.numero_contrato ? `Contrato ${r.contratos.numero_contrato}` : 'Contrato'} · {r.periodicidade}{r.agendamento_id && r.agendamento_id !== editingId ? ' (já agendado)' : ''}</option>)}</select><span className="mt-1 block text-xs text-slate-500">Ao salvar, o cliente recorrente é marcado como AGENDADO e a coleta é criada, sem lançar de novo em Clientes Recorrentes.</span></label>}
         <label><span className="mb-1.5 block text-sm font-medium text-slate-700">Coletor / responsável</span><select value={form.responsavel_id} onChange={e => setForm(current => ({ ...current, responsavel_id: e.target.value }))} className={inputClass}><option value="">Selecione</option>{perfis.map(perfil => <option key={perfil.id} value={perfil.id}>{perfil.nome || perfil.id}</option>)}</select></label>
         <label><span className="mb-1.5 block text-sm font-medium text-slate-700">Status</span><select value={form.status} onChange={e => setForm(current => ({ ...current, status: e.target.value }))} className={inputClass}><option>AGENDADO</option><option>CONFIRMADO</option><option>REALIZADO</option><option>CANCELADO</option></select></label>
         <label><span className="mb-1.5 block text-sm font-medium text-slate-700">Início *</span><input required type="datetime-local" value={form.inicio} onChange={e => setForm(current => ({ ...current, inicio: e.target.value }))} className={inputClass}/></label>
