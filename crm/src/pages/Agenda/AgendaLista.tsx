@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Edit3, ExternalLink, Plus, RefreshCw, Search } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Edit3, ExternalLink, Plus, RefreshCw, Search } from 'lucide-react'
 import { Modal } from '../../components/ui/Modal'
 import { PageShell } from '../../components/ui/PageShell'
 import { useAuth } from '../../hooks/useAuth'
@@ -98,6 +98,7 @@ export function AgendaLista() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [markingId, setMarkingId] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -192,6 +193,36 @@ export function AgendaLista() {
     setForm({ ...emptyForm })
     setError(null)
     setModalOpen(true)
+  }
+
+  // O coletor (ou quem edita a Agenda) informa que a coleta foi feita: agendamento REALIZADO, Coleta COLETADA
+  // e, se houver cliente recorrente, a última execução é registrada.
+  async function marcarColetada(row: AgendaRow) {
+    if (markingId || !window.confirm('Confirmar que esta coleta foi realizada?')) return
+    setMarkingId(row.id)
+    setError(null)
+    setMessage(null)
+    try {
+      const agora = new Date()
+      const { error: agendaErro } = await supabase.from('agendamentos').update({ status: 'REALIZADO', updated_at: agora.toISOString() }).eq('id', row.id)
+      if (agendaErro) throw agendaErro
+      const { data: coleta, error: coletaErro } = await supabase.from('coletas').update({ status: 'COLETADA', updated_at: agora.toISOString() }).eq('agendamento_id', row.id).is('deleted_at', null).select('id,recorrencia_id').maybeSingle()
+      if (coletaErro) throw new Error(`O agendamento foi marcado, mas a Coleta não foi atualizada (${coletaErro.message}).`)
+      let extra = ''
+      if (coleta?.recorrencia_id) {
+        const hoje = agora.toLocaleDateString('en-CA')
+        const { error: recErro } = await supabase.from('recorrencias_clientes').update({ status: 'CONCLUIDO', ultima_execucao: hoje, updated_at: agora.toISOString(), updated_by: profile?.id ?? null }).eq('id', coleta.recorrencia_id)
+        if (recErro) extra = ` Atenção: o Cliente Recorrente não foi atualizado (${recErro.message}).`
+        else await supabase.from('recorrencias_historico').insert({ recorrencia_id: coleta.recorrencia_id, tipo: 'COLETA_REALIZADA', descricao: `Coleta informada como realizada pela Agenda em ${agora.toLocaleDateString('pt-BR')}.`, usuario_id: profile?.id ?? null })
+      }
+      try { await withTimeout(supabase.functions.invoke('google-calendar-sync', { body: { agendamento_id: row.id } })) } catch { /* o Google Agenda se acerta na próxima sincronização */ }
+      await load()
+      setMessage(`Coleta marcada como realizada.${extra}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'Não foi possível marcar a coleta.')
+    } finally {
+      setMarkingId(null)
+    }
   }
 
   async function openEdit(row: AgendaRow) {
@@ -349,7 +380,7 @@ export function AgendaLista() {
         <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50"><RefreshCw className="h-4 w-4"/>Atualizar</button>
       </div>
       <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Início</th><th className="px-5 py-3">Cliente / OS</th><th className="px-5 py-3">Coletor</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Google Calendar</th><th className="px-5 py-3 text-right">Ações</th></tr></thead><tbody className="divide-y divide-slate-100">
-        {loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Carregando...</td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Sem agendamentos</td></tr> : filtered.map(row => <tr key={row.id} className="hover:bg-slate-50/70"><td className="whitespace-nowrap px-5 py-4 text-slate-700">{formatDate(row.inicio)}</td><td className="px-5 py-4 text-slate-700"><div className="font-medium">{clientName(row.cliente_id ? clienteMap.get(row.cliente_id) : undefined)}</div><div className="text-xs text-slate-500">{row.ordem_servico_id ? `OS ${osMap.get(row.ordem_servico_id)?.numero_os || 'sem número'}` : row.numero_proposta_referencia ? `Proposta ${row.numero_proposta_referencia}` : row.proposta_id ? `Proposta ${propostaMap.get(row.proposta_id)?.numero_proposta || 'sem número'}` : 'Sem vínculo'}</div></td><td className="px-5 py-4 text-slate-700">{row.responsavel_id ? perfilMap.get(row.responsavel_id)?.nome || '—' : '—'}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{row.status || 'AGENDADO'}</span></td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.external_calendar_id ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{row.external_calendar_id ? 'SINCRONIZADO' : 'PENDENTE'}</span></td><td className="px-5 py-4 text-right">{canWrite && <button onClick={() => void openEdit(row)} title="Editar" className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><Edit3 className="h-4 w-4"/></button>}</td></tr>)}
+        {loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Carregando...</td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Sem agendamentos</td></tr> : filtered.map(row => <tr key={row.id} className="hover:bg-slate-50/70"><td className="whitespace-nowrap px-5 py-4 text-slate-700">{formatDate(row.inicio)}</td><td className="px-5 py-4 text-slate-700"><div className="font-medium">{clientName(row.cliente_id ? clienteMap.get(row.cliente_id) : undefined)}</div><div className="text-xs text-slate-500">{row.ordem_servico_id ? `OS ${osMap.get(row.ordem_servico_id)?.numero_os || 'sem número'}` : row.numero_proposta_referencia ? `Proposta ${row.numero_proposta_referencia}` : row.proposta_id ? `Proposta ${propostaMap.get(row.proposta_id)?.numero_proposta || 'sem número'}` : 'Sem vínculo'}</div></td><td className="px-5 py-4 text-slate-700">{row.responsavel_id ? perfilMap.get(row.responsavel_id)?.nome || '—' : '—'}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{row.status || 'AGENDADO'}</span></td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.external_calendar_id ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{row.external_calendar_id ? 'SINCRONIZADO' : 'PENDENTE'}</span></td><td className="whitespace-nowrap px-5 py-4 text-right">{(canWrite || (!!profile?.id && row.responsavel_id === profile.id)) && !['REALIZADO', 'CANCELADO'].includes(row.status ?? '') && <button onClick={() => void marcarColetada(row)} disabled={markingId === row.id} title="Marcar como coletada" className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"><CheckCircle2 className="h-4 w-4"/>{markingId === row.id ? 'Salvando...' : 'Coletada'}</button>}{canWrite && <button onClick={() => void openEdit(row)} title="Editar" className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100"><Edit3 className="h-4 w-4"/></button>}</td></tr>)}
       </tbody></table></div>
       <div className="border-t border-slate-100 px-5 py-4 text-sm text-slate-500">{filtered.length} registro(s)</div>
     </section>
