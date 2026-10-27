@@ -10,6 +10,7 @@ import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/
 import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
+  osDoExtrato, serieMensal,
 } from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
@@ -27,7 +28,7 @@ function baixar(nome, texto) {
 
 export default function Comissoes() {
   const { dados, gravar, remover } = useBase();
-  const [aba, setAba] = useState("propostas");
+  const [aba, setAba] = useState("resumo");
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
   const [importando, setImportando] = useState(false);
@@ -62,7 +63,7 @@ export default function Comissoes() {
 
   return (
     <>
-      <Cabecalho sobre="Comissões" titulo="Comissão por proposta" sub="Cada proposta: quanto vale, quanto já virou OS, quanto foi faturado, quanto gerou de comissão (1% das OS faturadas), quanto já foi pago e quanto falta pagar.">
+      <Cabecalho sobre="Comissões" titulo="Comissões" sub="1% de cada OS com nota emitida, por proposta aprovada. OS sem nota aparecem como comissão prevista.">
         <button type="button" className="btn claro" onClick={crm.recarregar}>Atualizar</button>
         <button type="button" className="btn claro" disabled={!crm.dados} onClick={() => setImportando(true)}>Importar planilha antiga</button>
         <button type="button" className="btn" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
@@ -71,18 +72,20 @@ export default function Comissoes() {
       {crm.carregando && <div className="carregando">Lendo propostas e serviços gerados…</div>}
       {crm.dados && (
         <>
-          <div className="grade grade-kpi">
+          {aba !== "resumo" && <div className="grade grade-kpi">
             <Kpi rotulo="Falta pagar" valor={brl(soma((x) => x.ex.totais.aPagar))} sub={`${contas.filter((x) => x.ex.totais.aPagar > 0).length} colaborador(es)`} />
             <Kpi rotulo={`Gerada em ${mesLongo(mes).toLowerCase()}`} valor={brl(soma((x) => geradaNoMes(x.ex, mes)))} sub="1% das notas emitidas no mês" />
             <Kpi rotulo="Vem por aí" valor={brl(soma((x) => x.ex.totais.previsao))} sub="OS prontas para faturar" />
             <Kpi rotulo={`Pago em ${ano}`} valor={brl(pagoAno)} sub="planilha e sistema" />
-          </div>
+          </div>}
           <Abas valor={aba} aoMudar={setAba} abas={[
-            ["propostas", "Por proposta"],
+            ["resumo", "Resumo"],
+            ["propostas", "Por colaborador"],
             ["pagamentos", "Pagamentos", pagamentos.length || ""],
             ["colaboradores", "Colaboradores", colabs.length || ""],
           ]} />
           {colabs.length === 0 && <div className="aviso marca">Cadastre quem recebe comissão em “Novo colaborador”, ou traga o histórico em “Importar planilha antiga”.</div>}
+          {aba === "resumo" && <Resumo contas={contas} pagamentos={pagamentos} />}
           {aba === "propostas" && atual && (
             <>
               <div className="pilulas" role="group" aria-label="Colaborador">
@@ -121,6 +124,7 @@ function Extrato({ conta, gravar, nomeDe }) {
   const [aberta, setAberta] = useState("");
   const [desmarcadas, setDesmarcadas] = useState(() => new Set());
   const [pagando, setPagando] = useState(false);
+  const [ver, setVer] = useState("propostas");
   const q = busca.trim().toLowerCase();
   const f = FILTROS.find((x) => x[0] === filtro)[2];
   const lista = ex.linhas.filter((l) => f(l) && (!q || l.numero.includes(q) || l.cliente.toLowerCase().includes(q)));
@@ -145,6 +149,7 @@ function Extrato({ conta, gravar, nomeDe }) {
           <Num rot="Valor das propostas" v={brl(t.valorProposta)} />
           <Num rot="Já virou OS" v={brl(t.geradas)} />
           <Num rot="Faturado (NF)" v={brl(t.faturado)} />
+          <Num rot="OS sem NF" v={brl(t.semNF)} tom={t.semNF > 0 ? "alerta" : undefined} />
           <Num rot="Cliente pagou" v={brl(t.pagoCliente)} />
           <Num rot="Comissão gerada" v={brl(t.gerada)} />
           <Num rot="Já pago" v={brl(t.pago)} />
@@ -152,6 +157,10 @@ function Extrato({ conta, gravar, nomeDe }) {
           {t.adiantado > 0 && <Num rot="Pago adiantado" v={brl(t.adiantado)} />}
         </div>
       </div>
+      <div style={{ padding: "8px 20px 0" }}>
+        <Abas valor={ver} aoMudar={setVer} abas={[["propostas", "Propostas", ex.linhas.length], ["os", "Todas as OS", ex.linhas.reduce((n, l) => n + l.os.length, 0)]]} />
+      </div>
+      {ver === "os" ? <ListaOS ex={ex} nome={nomeCurto(c.nome)} /> : <>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "12px 20px" }}>
         <div className="pilulas" role="group" aria-label="Filtro">
           {FILTROS.map(([id, rot, fx]) => {
@@ -184,7 +193,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                     </td>
                     <td className="tnum" style={D}>{brl(l.valorProposta)}</td>
                     <td className="tnum" style={D}>{brl(l.geradas)}<div className="suave peq">{l.osGeradas} OS{l.faltaGerar > 0 ? ` · falta ${brl(l.faltaGerar)}` : ""}</div></td>
-                    <td className="tnum" style={D}>{brl(l.faturado)}</td>
+                    <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}</td>
                     <td className="tnum" style={D}>{brl(l.pagoCliente)}</td>
                     <td className="tnum" style={D}>{brl(l.gerada)}</td>
                     <td className="tnum" style={D}>{brl(l.pago)}</td>
@@ -202,6 +211,7 @@ function Extrato({ conta, gravar, nomeDe }) {
         <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}.csv`, csvExtrato(lista, `Comissão por proposta · ${nomeCurto(c.nome)}`))}>Baixar planilha</button>
         <button type="button" className="btn" disabled={!pagaveis.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)} ({pagaveis.length} proposta{pagaveis.length === 1 ? "" : "s"})</button>
       </div>
+      </>}
       {pagando && <RegistrarPagamento colab={c} linhas={pagaveis} total={totalSel} gravar={gravar} aoFechar={() => setPagando(false)} />}
     </Card>
   );
@@ -581,5 +591,201 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- todas as OS
+const FILTROS_OS = [["todas", "Todas"], ["faltaNF", "Falta emitir NF"], ["aguardando", "Aguardando"], ["nf", "NF emitida"], ["cancelada", "Canceladas"]];
+
+function ListaOS({ ex, nome }) {
+  const todas = useMemo(() => osDoExtrato(ex), [ex]);
+  const [f, setF] = useState("todas");
+  const [busca, setBusca] = useState("");
+  const q = busca.trim().toLowerCase();
+  const lista = todas.filter((o) => (f === "todas" || o.sit.id === f) && (!q || String(o.proposta).includes(q) || String(o.os).toLowerCase().includes(q) || String(o.cliente).toLowerCase().includes(q)));
+  const pag = usePaginacao(lista, 25, `${f}|${q}`);
+  const soma = (xs, k) => centavos(xs.reduce((s, o) => s + (Number(o[k]) || 0), 0));
+  const csv = () => {
+    const n = (v) => Number(v || 0).toFixed(2).replace(".", ",");
+    const t = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const linhas = [["OS", "Gerada em", "Proposta", "Cliente", "Valor", "Situação", "NF", "Emissão", "Pagamento do cliente", "Comissão liberada", "Comissão prevista"].join(";"),
+      ...lista.map((o) => [t(o.os), t(dataCurta(o.dataOs)), t(o.proposta), t(o.cliente), n(o.valor), t(o.sit.rotulo), t(o.nf), t(dataCurta(o.emissao)), t(String(o.pag || "").toLowerCase()), n(o.comissao), n(o.prevista)].join(";"))];
+    baixar(`os-${nome.replace(/\s+/g, "-").toLowerCase()}.csv`, "\uFEFF" + linhas.join("\r\n"));
+  };
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "12px 20px" }}>
+        <div className="pilulas" role="group" aria-label="Situação da OS">
+          {FILTROS_OS.map(([id, rot]) => {
+            const xs = id === "todas" ? todas : todas.filter((o) => o.sit.id === id);
+            return <button key={id} type="button" className={`pilula${f === id ? " ativa" : ""}`} aria-pressed={f === id} onClick={() => setF(id)}>{rot} ({xs.length})</button>;
+          })}
+        </div>
+        <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar OS, proposta ou cliente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar OS, proposta ou cliente" />
+      </div>
+      <div className="suave peq" style={{ padding: "0 20px 8px" }}>
+        {lista.length} OS · {brl(soma(lista, "valor"))} · comissão liberada {brl(soma(lista, "comissao"))} · prevista (quando emitir a NF) {brl(soma(lista, "prevista"))}
+      </div>
+      {lista.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhuma OS nesta situação.</div> : (
+        <div className="tabela-caixa tabela-comissao">
+          <table>
+            <thead><tr><th>OS</th><th>Gerada em</th><th>Proposta</th><th style={D}>Valor</th><th>Situação</th><th>NF</th><th>Cliente</th><th style={D}>Comissão</th></tr></thead>
+            <tbody>
+              {pag.itens.map((o) => (
+                <tr key={o.id} style={o.sit.id === "cancelada" ? { opacity: 0.55 } : undefined}>
+                  <td className="tnum">{o.os}</td>
+                  <td className="tnum">{dataCurta(o.dataOs)}</td>
+                  <td><span className="tnum">{o.proposta}</span><div className="suave peq" title={o.cliente} style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.cliente}</div></td>
+                  <td className="tnum" style={D}>{brl(o.valor)}</td>
+                  <td><Chip tom={o.sit.tom}>{o.sit.rotulo}</Chip>{o.sit.id === "aguardando" && o.pag ? <div className="suave peq">{String(o.pag).toLowerCase()}</div> : null}</td>
+                  <td className="tnum">{o.faturada ? <>{o.nf ? `NF ${o.nf}` : "emitida"}<div className="suave peq">{dataCurta(o.emissao)}</div></> : "—"}</td>
+                  <td>{o.clientePagou ? <Chip tom="ok">pagou</Chip> : o.faturada ? <span className="peq">{String(o.pag || "").toLowerCase()}</span> : <span className="suave">—</span>}</td>
+                  <td className="tnum" style={D}>{o.faturada ? <b>{brl(o.comissao)}</b> : o.prevista ? <span className="suave" title="Vira comissão quando a NF for emitida">prevista {brl(o.prevista)}</span> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Paginacao pag={pag} rotulo="OS" />
+      <div style={{ padding: "8px 20px 18px" }}><button type="button" className="btn claro mini" onClick={csv}>Baixar planilha das OS</button></div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- resumo (gráfico)
+const COR_GERADA = "#7cc9bf";
+const COR_PAGA = "#0f766e";
+
+function GraficoComissao({ serie, media }) {
+  const [foco, setFoco] = useState(null);
+  const W = 760, H = 240, ml = 56, mr = 12, mt = 14, mb = 28;
+  const max = Math.max(1, media, ...serie.flatMap((x) => [x.gerada, x.paga])) * 1.1;
+  const y = (v) => mt + (H - mt - mb) * (1 - v / max);
+  const passo = (W - ml - mr) / Math.max(1, serie.length);
+  const bw = Math.max(4, Math.min(18, passo / 2 - 4));
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((k) => max * k);
+  const x0 = (i) => ml + passo * i + passo / 2;
+  const f = foco != null ? serie[foco] : null;
+  return (
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Comissão gerada e paga por mês" style={{ display: "block" }} onMouseLeave={() => setFoco(null)}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={ml} x2={W - mr} y1={y(t)} y2={y(t)} stroke="var(--linha)" strokeWidth="1" />
+            <text x={ml - 6} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--suave)">{t >= 1000 ? `${(t / 1000).toFixed(1).replace(".", ",")} mil` : Math.round(t)}</text>
+          </g>
+        ))}
+        {serie.map((s, i) => (
+          <g key={s.mes} onMouseEnter={() => setFoco(i)}>
+            <rect x={ml + passo * i} y={mt} width={passo} height={H - mt - mb} fill={foco === i ? "var(--marca-50)" : "transparent"} />
+            <rect x={x0(i) - bw - 1} y={y(s.gerada)} width={bw} height={Math.max(0, y(0) - y(s.gerada))} rx="3" fill={COR_GERADA} />
+            <rect x={x0(i) + 1} y={y(s.paga)} width={bw} height={Math.max(0, y(0) - y(s.paga))} rx="3" fill={COR_PAGA} />
+            <text x={x0(i)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--suave)">{mesLongo(s.mes).slice(0, 3)}/{s.mes.slice(2, 4)}</text>
+          </g>
+        ))}
+        {media > 0 && (
+          <g pointerEvents="none">
+            <line x1={ml} x2={W - mr} y1={y(media)} y2={y(media)} stroke="var(--alerta)" strokeWidth="2" strokeDasharray="6 4" />
+            <rect x={ml + 4} y={y(media) - 20} width="150" height="16" rx="4" fill="#fff" opacity=".9" />
+            <text x={ml + 8} y={y(media) - 8} fontSize="11" fontWeight="600" fill="var(--alerta-tx)">média paga {brl(media)}</text>
+          </g>
+        )}
+      </svg>
+      {f && (
+        <div className="peq" style={{ position: "absolute", top: 4, left: `${Math.min(70, (x0(foco) / W) * 100)}%`, background: "#fff", border: "1px solid var(--linha)", borderRadius: 8, padding: "6px 10px", boxShadow: "0 4px 14px rgba(0,0,0,.08)", pointerEvents: "none" }}>
+          <b>{mesLongo(f.mes)}</b><div>Gerada: {brl(f.gerada)}</div><div>Paga: {brl(f.paga)}</div>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 6 }} className="peq">
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: COR_GERADA, marginRight: 6 }} />Gerada (1% das NF emitidas no mês)</span>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: COR_PAGA, marginRight: 6 }} />Paga (mês do pagamento / folha)</span>
+        <span><span style={{ display: "inline-block", width: 14, borderTop: "2px dashed var(--alerta)", marginRight: 6, verticalAlign: "middle" }} />Média paga por mês</span>
+      </div>
+    </div>
+  );
+}
+
+function Resumo({ contas, pagamentos }) {
+  const [quem, setQuem] = useState("");
+  const mes = mesAtual();
+  const sel = quem ? contas.filter((x) => x.c.id === quem) : contas;
+  const pgs = quem ? pagamentos.filter((p) => p.colaboradorId === quem) : pagamentos;
+  const s = serieMensal(sel.map((x) => x.ex), pgs, { ate: mes });
+  const tot = (k) => centavos(sel.reduce((a, x) => a + x.ex.totais[k], 0));
+  const todasOS = sel.flatMap((x) => osDoExtrato(x.ex));
+  const porSit = (id) => todasOS.filter((o) => o.sit.id === id);
+  const somaV = (xs, k = "valor") => centavos(xs.reduce((a, o) => a + (Number(o[k]) || 0), 0));
+  const ultimos = s.serie.slice(-12);
+  return (
+    <>
+      <div className="pilulas" role="group" aria-label="Colaborador">
+        <button type="button" className={`pilula${!quem ? " ativa" : ""}`} aria-pressed={!quem} onClick={() => setQuem("")}>Todos</button>
+        {contas.map((x) => <button key={x.c.id} type="button" className={`pilula${quem === x.c.id ? " ativa" : ""}`} aria-pressed={quem === x.c.id} onClick={() => setQuem(x.c.id)}>{nomeCurto(x.c.nome)}</button>)}
+      </div>
+      <div className="grade grade-kpi">
+        <Kpi rotulo="Média paga por mês" valor={brl(s.mediaPaga)} sub={`${s.mesesPagos} mês(es) com pagamento`} />
+        <Kpi rotulo="Média gerada por mês" valor={brl(s.mediaGerada)} sub="1% das NF emitidas" />
+        <Kpi rotulo="Falta pagar" valor={brl(tot("aPagar"))} sub={tot("adiantado") > 0 ? `${brl(tot("adiantado"))} pagos adiantado` : "comissão já liberada"} />
+        <Kpi rotulo="Prevista (OS sem NF)" valor={brl(somaV([...porSit("faltaNF"), ...porSit("aguardando")], "prevista"))} sub={`${porSit("faltaNF").length + porSit("aguardando").length} OS ainda sem nota`} />
+      </div>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+          <h2>Comissão por mês</h2>
+          {s.pagoSemMes > 0 && <span className="suave peq">{brl(s.pagoSemMes)} pagos pela planilha sem mês da folha ficam fora do gráfico</span>}
+        </div>
+        {ultimos.length ? <GraficoComissao serie={ultimos} media={s.mediaPaga} /> : <div className="vazio">Ainda não há comissão gerada nem paga.</div>}
+      </Card>
+      <div className="grade grade-2" style={{ alignItems: "start" }}>
+        <Card semPad>
+          <div className="card-cab"><h2>Situação das OS</h2><span className="suave peq">{todasOS.length} OS das propostas com comissão</span></div>
+          <div className="tabela-caixa tabela-comissao">
+            <table>
+              <thead><tr><th>Situação</th><th style={D}>OS</th><th style={D}>Valor</th><th style={D}>Comissão</th></tr></thead>
+              <tbody>
+                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
+                  const xs = porSit(id);
+                  return <tr key={id}><td><Chip tom={tom}>{rot}</Chip></td><td className="tnum" style={D}>{xs.length}</td><td className="tnum" style={D}>{brl(somaV(xs))}</td><td className="tnum" style={D}>{k ? <>{brl(somaV(xs, k))} <span className="suave peq">{txt}</span></> : "—"}</td></tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        <Card semPad>
+          <div className="card-cab"><h2>Mês a mês</h2></div>
+          <div className="tabela-caixa tabela-comissao" style={{ maxHeight: 340, overflowY: "auto" }}>
+            <table>
+              <thead><tr><th>Mês</th><th style={D}>Gerada</th><th style={D}>Paga</th></tr></thead>
+              <tbody>
+                {[...s.serie].reverse().map((x) => <tr key={x.mes}><td>{mesLongo(x.mes)}</td><td className="tnum" style={D}>{brl(x.gerada)}</td><td className="tnum" style={D}>{brl(x.paga)}</td></tr>)}
+                {s.pagoSemMes > 0 && <tr><td className="suave">Pago sem mês (planilha)</td><td /><td className="tnum" style={D}>{brl(s.pagoSemMes)}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+      <Card semPad>
+        <div className="card-cab"><h2>Por colaborador</h2></div>
+        <div className="tabela-caixa tabela-comissao">
+          <table>
+            <thead><tr><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>Faturado</th><th style={D}>OS sem NF</th><th style={D}>Gerada</th><th style={D}>Paga</th><th style={D}>Falta pagar</th><th style={D}>Adiantado</th></tr></thead>
+            <tbody>
+              {contas.map(({ c, ex }) => (
+                <tr key={c.id}>
+                  <td>{nomeCurto(c.nome)}{c.ativo === false && <div className="suave peq">só a planilha</div>}</td>
+                  <td className="tnum" style={D}>{ex.totais.propostas}</td>
+                  <td className="tnum" style={D}>{brl(ex.totais.faturado)}</td>
+                  <td className="tnum" style={D}>{brl(ex.totais.semNF)}</td>
+                  <td className="tnum" style={D}>{brl(ex.totais.gerada)}</td>
+                  <td className="tnum" style={D}>{brl(ex.totais.pago)}</td>
+                  <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(ex.totais.aPagar)}</td>
+                  <td className="tnum" style={D}>{ex.totais.adiantado > 0 ? brl(ex.totais.adiantado) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
   );
 }
