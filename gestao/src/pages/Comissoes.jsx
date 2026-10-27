@@ -289,14 +289,66 @@ function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
   );
 }
 
+const semMes = (p) => p.planilha && String(p.obs).includes("sem o mês");
+const mesDoPagamento = (p) => (semMes(p) ? "sem" : String(p.pagoEm || "").slice(0, 7));
+
+/** Pagamentos mês a mês (mês da folha): uma linha por mês, uma coluna por colaborador. */
+function PagamentosPorMes({ pagamentos, nomeDe, aoVer }) {
+  const pessoas = [...new Set(pagamentos.map((p) => p.colaboradorId))].sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), "pt-BR"));
+  const meses = [...new Set(pagamentos.map(mesDoPagamento))].sort((a, b) => (a === "sem" ? 1 : b === "sem" ? -1 : b.localeCompare(a)));
+  const celula = (m, id) => pagamentos.filter((p) => mesDoPagamento(p) === m && p.colaboradorId === id);
+  const soma = (ps) => centavos(ps.reduce((s, p) => s + Number(p.total || 0), 0));
+  const abrir = (m, id) => {
+    const ps = celula(m, id);
+    if (!ps.length) return;
+    aoVer({ pagamento: { id: "mes", pagoEm: ps[0].pagoEm, planilha: ps.every((p) => p.planilha), obs: [...new Set(ps.map((p) => p.obs).filter(Boolean))].join(" · "), itens: ps.flatMap((p) => p.itens || []), total: soma(ps) }, quem: nomeDe(id), titulo: m === "sem" ? "sem mês da folha na planilha" : mesLongo(m) });
+  };
+  return (
+    <Card semPad>
+      <div className="card-cab"><h2>Pago por mês da folha</h2><span className="suave peq">clique no valor para ver as propostas pagas</span></div>
+      <div className="tabela-caixa tabela-comissao">
+        <table>
+          <thead><tr><th>Mês</th>{pessoas.map((id) => <th key={id} style={D}>{nomeDe(id)}</th>)}<th style={D}>Total</th></tr></thead>
+          <tbody>
+            {meses.map((m) => (
+              <tr key={m}>
+                <td>{m === "sem" ? <span className="suave">Sem mês na planilha</span> : mesLongo(m)}</td>
+                {pessoas.map((id) => {
+                  const ps = celula(m, id);
+                  return <td key={id} className="tnum" style={D}>{ps.length ? <button type="button" className="btn-link" onClick={() => abrir(m, id)}>{brl(soma(ps))}</button> : <span className="suave">—</span>}</td>;
+                })}
+                <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(soma(pagamentos.filter((p) => mesDoPagamento(p) === m)))}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ fontWeight: 700 }}>Total</td>
+              {pessoas.map((id) => <td key={id} className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(soma(pagamentos.filter((p) => p.colaboradorId === id)))}</td>)}
+              <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(soma(pagamentos))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 function Pagamentos({ pagamentos, nomeDe, aoVer, remover }) {
+  const [modo, setModo] = useState("mes");
   const pag = usePaginacao(pagamentos, 15);
-  if (!pagamentos.length) return <div className="vazio">Nenhum pagamento registrado ainda.</div>;
+  if (!pagamentos.length) return <div className="vazio">Nenhum pagamento registrado ainda. Os pagos da planilha antiga aparecem aqui, mês a mês, depois de “Importar planilha antiga”.</div>;
+  const troca = (
+    <div className="pilulas" role="group" aria-label="Ver pagamentos">
+      {[["mes", "Por mês"], ["lista", "Lista de pagamentos"]].map(([id, rot]) => <button key={id} type="button" className={`pilula${modo === id ? " ativa" : ""}`} aria-pressed={modo === id} onClick={() => setModo(id)}>{rot}</button>)}
+    </div>
+  );
+  if (modo === "mes") return <>{troca}<PagamentosPorMes pagamentos={pagamentos} nomeDe={nomeDe} aoVer={aoVer} /></>;
   const desfazer = async (p) => {
     if (!window.confirm(`Desfazer o pagamento de ${brl(p.total)} para ${nomeDe(p.colaboradorId)}? O valor volta para "falta pagar".`)) return;
     try { await remover("comissoes", p.id); } catch (e) { window.alert(e.message); }
   };
   return (
+    <>
+    {troca}
     <Card semPad>
       <div className="tabela-caixa">
         <table>
@@ -320,13 +372,14 @@ function Pagamentos({ pagamentos, nomeDe, aoVer, remover }) {
       </div>
       <Paginacao pag={pag} rotulo="pagamentos" />
     </Card>
+    </>
   );
 }
 
-function VerPagamento({ pagamento: p, quem, aoFechar }) {
+function VerPagamento({ pagamento: p, quem, titulo, aoFechar }) {
   const itens = p.itens || [];
   return (
-    <Modal titulo={`Pagamento de ${p.planilha && String(p.obs).includes("sem o mês") ? "data não informada" : dataCurta(p.pagoEm)} · ${quem}`} aoFechar={aoFechar} largo>
+    <Modal titulo={`${titulo ? `Pago em ${titulo}` : `Pagamento de ${p.planilha && String(p.obs).includes("sem o mês") ? "data não informada" : dataCurta(p.pagoEm)}`} · ${quem}`} aoFechar={aoFechar} largo>
       {p.obs && <div className="suave peq" style={{ marginBottom: 8 }}>{p.obs}</div>}
       <div className="tabela-caixa">
         <table>
