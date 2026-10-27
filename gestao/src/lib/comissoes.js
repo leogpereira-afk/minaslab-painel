@@ -39,7 +39,8 @@ export const aFaturar = (os) => String(os?.fat || "").toUpperCase() === "PRONTO 
  */
 export function calcularColaborador(colab, propostas, os) {
   const desde = String(colab?.desde || "");
-  if (!colab?.crmId || !desde) return { itens: [], previsao: [] };
+  // Fora do cálculo: não gera comissão nova (o histórico e o saldo continuam).
+  if (!colab?.crmId || !desde || colab.ativo === false) return { itens: [], previsao: [] };
   const minhas = new Map();
   for (const p of propostas) {
     if (p.responsavel === colab.crmId && p.aceite && p.aceite >= desde) minhas.set(p.numero, p);
@@ -76,11 +77,17 @@ export function pagoPorOS(pagamentos) {
   return out;
 }
 
+/** OS cancelada (ou desfaturada) depois de paga: só assim vira estorno. */
+const OS_CANCELADA = (o) => !o || ["CANCELADO", "NAO FATURAR"].includes(String(o.fat || "").toUpperCase()) || String(o.pag || "").toUpperCase() === "CANCELADO";
+
 /**
  * Situação de um colaborador: o que está pago, o que falta pagar e ajustes.
  * outrosPagos: Set de osId já pagos a OUTROS colaboradores.
+ * extra.saldos: comissões antigas ainda não pagas (importadas da planilha).
+ * extra.osPorId: Map id → OS (para saber se uma OS paga foi cancelada).
  */
-export function situacao(colab, calc, pagamentos, outrosPagos = new Set()) {
+export function situacao(colab, calc, pagamentos, outrosPagos = new Set(), extra = {}) {
+  const osPorId = extra.osPorId;
   const pagos = pagoPorOS(pagamentos)[colab.id] || {};
   const aPagar = [];
   const vistos = new Set();
@@ -92,23 +99,43 @@ export function situacao(colab, calc, pagamentos, outrosPagos = new Set()) {
     const dif = centavos(it.comissao - ja);
     if (Math.abs(dif) >= 0.01) aPagar.push({ ...it, pago: ja, valor: dif, ajuste: ja !== 0 });
   }
-  // OS que foram pagas e saíram da conta (cancelada, desfaturada): estorno.
+  // Saldo antigo (planilha): o que ainda não foi pago.
+  for (const it of extra.saldos || []) {
+    vistos.add(it.id);
+    const ja = pagos[it.id]?.valor || 0;
+    const dif = centavos((Number(it.valor) || 0) - ja);
+    if (dif >= 0.01) aPagar.push({ ...it, comissao: it.valor, pago: ja, valor: dif, planilha: true });
+  }
+  // OS que foram pagas e depois canceladas: estorno. Pagamentos antigos da
+  // planilha e OS ainda a faturar (pagas adiantado) não viram estorno.
   for (const [osId, x] of Object.entries(pagos)) {
     if (vistos.has(osId) || Math.abs(x.valor) < 0.01) continue;
+    if (x.ultimo?.planilha || osId.startsWith("plan-")) continue;
+    if (osPorId && !OS_CANCELADA(osPorId.get(osId))) continue;
     const u = x.ultimo || {};
     aPagar.push({ id: osId, os: u.os, proposta: u.proposta, cliente: u.cliente, emissao: u.emissao, competencia: u.competencia, base: 0, pct: u.pct, comissao: 0, pago: x.valor, valor: centavos(-x.valor), ajuste: true, estorno: true });
   }
   aPagar.sort((a, b) => String(a.competencia || "").localeCompare(String(b.competencia || "")) || String(a.os).localeCompare(String(b.os)));
-  const totalComissao = centavos(calc.itens.filter((i) => !deOutro.includes(i)).reduce((s, i) => s + i.comissao, 0));
+  const historico = Object.values(pagos).filter((x) => x.ultimo?.planilha).reduce((s, x) => s + x.valor, 0);
+  const saldo = (extra.saldos || []).filter((i) => !pagos[i.id]).reduce((s, i) => s + (Number(i.valor) || 0), 0);
+  const totalComissao = centavos(calc.itens.filter((i) => !deOutro.includes(i)).reduce((s, i) => s + i.comissao, 0) + historico + saldo);
   const totalPago = centavos(Object.values(pagos).reduce((s, x) => s + x.valor, 0));
   const totalAPagar = centavos(aPagar.reduce((s, i) => s + i.valor, 0));
   return { aPagar, deOutro, totalComissao, totalPago, totalAPagar };
 }
 
 /** Comissão, pago e a pagar por competência (mês da emissão). */
-export function porMes(calc, pagamentosDoColab) {
+export function porMes(calc, pagamentosDoColab, saldos = []) {
   const m = {};
-  const linha = (k) => (m[k] ||= { mes: k, faturado: 0, comissao: 0, pago: 0, os: 0 });
+  const linha = (k) => (m[k] ||= { mes: k, faturado: 0, comissao: 0, pago: 0, os: 0, planilha: false });
+  const pagos = new Set();
+  for (const pg of pagamentosDoColab || []) for (const it of pg.itens || []) pagos.add(it.osId);
+  for (const it of saldos) {
+    if (pagos.has(it.id)) continue; // já entra pelo pagamento
+    const l = linha(it.competencia);
+    l.comissao = centavos(l.comissao + (Number(it.valor) || 0));
+    l.planilha = true;
+  }
   for (const it of calc.itens) {
     const l = linha(it.competencia);
     l.faturado = centavos(l.faturado + it.base);
@@ -119,6 +146,8 @@ export function porMes(calc, pagamentosDoColab) {
     for (const it of pg.itens || []) {
       const l = linha(it.competencia || mesDe(pg.pagoEm));
       l.pago = centavos(l.pago + (Number(it.valor) || 0));
+      // Comissão antiga (planilha): o que foi pago também é a comissão do mês.
+      if (it.planilha || String(it.osId).startsWith("plan-")) { l.comissao = centavos(l.comissao + (Number(it.valor) || 0)); l.planilha = true; }
     }
   }
   return Object.values(m).map((l) => ({ ...l, aPagar: centavos(l.comissao - l.pago) })).sort((a, b) => b.mes.localeCompare(a.mes));
@@ -128,7 +157,7 @@ export function porMes(calc, pagamentosDoColab) {
 export function itensDoPagamento(selecionados) {
   return selecionados.map((i) => ({
     osId: i.id, os: i.os ?? "", proposta: i.proposta ?? "", cliente: i.cliente ?? "", emissao: i.emissao ?? "",
-    competencia: i.competencia ?? "", base: i.base ?? 0, pct: i.pct ?? 0, valor: centavos(i.valor), ...(i.ajuste ? { ajuste: true } : {}),
+    competencia: i.competencia ?? "", base: i.base ?? 0, pct: i.pct ?? 0, valor: centavos(i.valor), ...(i.ajuste ? { ajuste: true } : {}), ...(i.planilha ? { planilha: true } : {}),
   }));
 }
 

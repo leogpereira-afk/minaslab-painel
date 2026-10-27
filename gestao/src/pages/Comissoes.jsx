@@ -10,6 +10,8 @@ import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/
 import {
   calcularColaborador, situacao, porMes, itensDoPagamento, validarColaborador, taxaAtual, csvItens, centavos,
 } from "../lib/comissoes.js";
+import { lerXlsx } from "../lib/xlsxLeve.js";
+import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
 
 const pctTxt = (p) => `${String(Number(p || 0)).replace(".", ",")}%`;
 const nomeCurto = (n) => { const p = nomeProprio(n).split(" ").filter(Boolean); return p.length > 1 ? `${p[0]} ${p.at(-1)}` : p[0] || ""; };
@@ -26,10 +28,16 @@ export default function Comissoes() {
   const [aba, setAba] = useState("pagar");
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
+  const [importando, setImportando] = useState(false);
 
   const registros = dados.comissoes || [];
   const colabs = useMemo(() => registros.filter((r) => r.tipo === "colaborador").sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR")), [registros]);
   const pagamentos = useMemo(() => registros.filter((r) => r.tipo === "pagamento").sort((a, b) => String(b.pagoEm).localeCompare(String(a.pagoEm)) || String(b.criadoEm).localeCompare(String(a.criadoEm))), [registros]);
+  const saldosDe = useMemo(() => {
+    const m = new Map();
+    for (const r of registros) if (r.tipo === "saldo") m.set(r.colaboradorId, [...(m.get(r.colaboradorId) || []), ...(r.itens || []).map((i) => ({ ...i, saldoId: r.id }))]);
+    return m;
+  }, [registros]);
   const ativos = colabs.filter((c) => c.ativo !== false);
   const ids = [...new Set(colabs.map((c) => c.crmId).filter(Boolean))].sort();
   const crm = useCRM(`comissoes:${ids.join(",")}`, () => comissoesCRM(ids));
@@ -37,14 +45,33 @@ export default function Comissoes() {
 
   const contas = useMemo(() => {
     if (!crm.dados) return [];
+    const osPorId = new Map(crm.dados.os.map((o) => [o.id, o]));
     return colabs.map((c) => {
       const calc = calcularColaborador(c, crm.dados.propostas, crm.dados.os);
       const outros = new Set(pagamentos.filter((p) => p.colaboradorId !== c.id).flatMap((p) => (p.itens || []).map((i) => i.osId)));
-      const sit = situacao(c, calc, pagamentos, outros);
+      const saldos = saldosDe.get(c.id) || [];
+      const sit = situacao(c, calc, pagamentos, outros, { saldos, osPorId });
       const meus = pagamentos.filter((p) => p.colaboradorId === c.id);
-      return { c, calc, sit, meses: porMes(calc, meus), pagamentos: meus };
+      return { c, calc, sit, saldos, meses: porMes(calc, meus, saldos), pagamentos: meus };
     });
-  }, [crm.dados, colabs, pagamentos]);
+  }, [crm.dados, colabs, pagamentos, saldosDe]);
+  // Situação das OS de cada proposta (para as linhas antigas da planilha).
+  const osDaProposta = useMemo(() => {
+    const m = new Map();
+    for (const o of crm.dados?.os || []) {
+      const x = m.get(o.proposta) || { n: 0, faturadas: 0, pagas: 0 };
+      x.n += 1;
+      if (String(o.fat).toUpperCase() === "FATURADO" && String(o.pag).toUpperCase() !== "CANCELADO") x.faturadas += 1;
+      if (String(o.pag).toUpperCase() === "PAGO") x.pagas += 1;
+      m.set(o.proposta, x);
+    }
+    return m;
+  }, [crm.dados]);
+  const tirarSaldo = async (item) => {
+    const reg = registros.find((r) => r.id === item.saldoId);
+    if (!reg || !window.confirm(`Tirar da lista a comissão antiga da proposta ${item.proposta} (${brl(item.valor)})? Ela não será paga.`)) return;
+    try { await gravar("comissoes", { ...reg, itens: reg.itens.filter((i) => i.id !== item.id), tirados: [...(reg.tirados || []), { ...reg.itens.find((i) => i.id === item.id), tiradoEm: new Date().toISOString() }] }); } catch (e) { window.alert(e.message); }
+  };
 
   const total = (f) => centavos(contas.reduce((s, x) => s + f(x), 0));
   const mes = mesAtual();
@@ -57,6 +84,7 @@ export default function Comissoes() {
     <>
       <Cabecalho sobre="Comissões" titulo="Comissão sobre o faturado" sub="Propostas aprovadas no CRM × OS faturadas em Serviços gerados. A comissão sai no mês da emissão da nota, com a taxa vigente naquela data.">
         <button type="button" className="btn claro" onClick={crm.recarregar}>Atualizar</button>
+        <button type="button" className="btn claro" disabled={!crm.dados} onClick={() => setImportando(true)}>Importar planilha antiga</button>
         <button type="button" className="btn" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
       </Cabecalho>
       {crm.erro && <div className="aviso ruim">{crm.erro}</div>}
@@ -78,7 +106,7 @@ export default function Comissoes() {
           {colabs.length === 0 && (
             <div className="aviso marca">Cadastre quem recebe comissão: o usuário do CRM (responsável comercial das propostas), a data de contagem e a taxa.</div>
           )}
-          {aba === "pagar" && <APagar contas={contas.filter((x) => x.c.ativo !== false || x.sit.aPagar.length)} gravar={gravar} />}
+          {aba === "pagar" && <APagar contas={contas.filter((x) => x.c.ativo !== false || x.sit.aPagar.length)} gravar={gravar} osDaProposta={osDaProposta} aoTirar={tirarSaldo} />}
           {aba === "meses" && <PorMes contas={contas} aoVer={setVendo} />}
           {aba === "pagamentos" && <Pagamentos pagamentos={pagamentos} colabs={colabs} aoVer={setVendo} remover={remover} />}
           {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} pagamentos={pagamentos} />}
@@ -86,11 +114,19 @@ export default function Comissoes() {
       )}
       {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => pagamentos.some((p) => p.colaboradorId === id)} />}
       {vendo && <VerItens {...vendo} aoFechar={() => setVendo(null)} />}
+      {importando && <ImportarPlanilha colabs={colabs} pessoasCRM={pessoasCRM} gravar={gravar} aoFechar={() => setImportando(false)} />}
     </>
   );
 }
 
-function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus }) {
+function SituacaoProposta({ info }) {
+  if (!info) return <div className="suave">sem OS em Serviços gerados</div>;
+  if (info.pagas >= info.n) return <div className="suave">cliente já pagou</div>;
+  if (info.faturadas) return <div className="suave">{info.faturadas} de {info.n} OS faturada(s)</div>;
+  return <div className="suave">OS ainda não faturada</div>;
+}
+
+function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus, osDaProposta, aoTirar }) {
   const pag = usePaginacao(itens, 15, itens.length);
   return (
     <>
@@ -107,7 +143,7 @@ function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus }) {
                 {aoMarcar && <td><input type="checkbox" aria-label={`Pagar OS ${i.os}`} checked={marcados.has(i.id)} onChange={() => aoMarcar(i.id)} /></td>}
                 <td className="tnum peq">{i.competencia ? mesLongo(i.competencia) : "—"}</td>
                 <td className="tnum peq">{i.proposta}</td>
-                <td className="tnum peq">{i.os}{i.nf ? <div className="suave">NF {i.nf}</div> : null}</td>
+                <td className="tnum peq">{i.planilha ? <><Chip tom="neutro">planilha</Chip>{osDaProposta && <SituacaoProposta info={osDaProposta.get(i.proposta)} />}</> : <>{i.os}{i.nf ? <div className="suave">NF {i.nf}</div> : null}</>}</td>
                 <td className="peq" style={{ maxWidth: 260 }}>{i.cliente}</td>
                 <td className="tnum peq">{dataCurta(i.emissao)}</td>
                 <td className="tnum" style={{ textAlign: "right" }}>{i.estorno ? "—" : brl(i.base)}</td>
@@ -115,6 +151,7 @@ function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus }) {
                 <td className="tnum" style={{ textAlign: "right", fontWeight: 600, color: Number(i.valor ?? i.comissao) < 0 ? "var(--ruim)" : undefined }}>
                   {brl(i.valor ?? i.comissao)}
                   {i.estorno ? <div><Chip tom="ruim">estorno: OS cancelada</Chip></div> : i.ajuste ? <div><Chip tom="alerta">ajuste (já pago {brl(i.pago)})</Chip></div> : null}
+                  {aoTirar && i.planilha && i.saldoId && <div><button type="button" className="btn-link peq" onClick={() => aoTirar(i)}>tirar da lista</button></div>}
                 </td>
                 {mostrarStatus && <td>{i.situacao === "pago" ? <Chip tom="ok">Pago</Chip> : i.situacao === "outro" ? <Chip tom="neutro">Pago a outro</Chip> : <Chip tom="alerta">A pagar</Chip>}</td>}
               </tr>
@@ -127,13 +164,13 @@ function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus }) {
   );
 }
 
-function APagar({ contas, gravar }) {
+function APagar({ contas, gravar, osDaProposta, aoTirar }) {
   const com = contas.filter((x) => x.sit.aPagar.length);
   if (!com.length) return <div className="vazio">Nada a pagar: todas as comissões calculadas já estão pagas.</div>;
-  return <div className="grade" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>{com.map((x) => <CartaoAPagar key={x.c.id} conta={x} gravar={gravar} />)}</div>;
+  return <div className="grade" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>{com.map((x) => <CartaoAPagar key={x.c.id} conta={x} gravar={gravar} osDaProposta={osDaProposta} aoTirar={aoTirar} />)}</div>;
 }
 
-function CartaoAPagar({ conta, gravar }) {
+function CartaoAPagar({ conta, gravar, osDaProposta, aoTirar }) {
   const { c, sit, calc } = conta;
   const meses = [...new Set(sit.aPagar.map((i) => i.competencia).filter(Boolean))].sort();
   const [ate, setAte] = useState("");
@@ -150,7 +187,7 @@ function CartaoAPagar({ conta, gravar }) {
       <div className="card-cab" style={{ flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2>{nomeCurto(c.nome)}</h2>
-          <div className="suave peq">Desde {dataCurta(c.desde)} · taxa atual {pctTxt(taxaAtual(c, hojeBR()))}{previsto ? ` · previsão ${brl(previsto)} em ${calc.previsao.length} OS a faturar` : ""}</div>
+          <div className="suave peq">{c.ativo === false ? "Fora do cálculo · " : ""}Desde {dataCurta(c.desde)} · taxa atual {pctTxt(taxaAtual(c, hojeBR()))}{previsto ? ` · previsão ${brl(previsto)} em ${calc.previsao.length} OS a faturar` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {meses.length > 1 && (
@@ -162,7 +199,7 @@ function CartaoAPagar({ conta, gravar }) {
           <span className="tnum" style={{ fontWeight: 700 }}>{brl(sit.totalAPagar)}</span>
         </div>
       </div>
-      <TabelaItens itens={visiveis} marcados={marcados} aoMarcar={alternar} />
+      <TabelaItens itens={visiveis} marcados={marcados} aoMarcar={alternar} osDaProposta={osDaProposta} aoTirar={aoTirar} />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 20px 18px", flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}-a-pagar.csv`, csvItens(sel, { titulo: `Comissão a pagar · ${nomeCurto(c.nome)}` }))}>Baixar planilha</button>
         <button type="button" className="btn" disabled={!sel.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)}</button>
@@ -207,12 +244,16 @@ function PorMes({ contas, aoVer }) {
   if (!com.length) return <div className="vazio">Nenhuma OS faturada ainda para os colaboradores cadastrados.</div>;
   return (
     <div className="grade" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-      {com.map(({ c, calc, sit, meses }) => {
+      {com.map(({ c, calc, sit, meses, saldos, pagamentos: meus }) => {
         const pagas = new Set(sit.aPagar.map((i) => i.id));
         const deOutro = new Set(sit.deOutro.map((i) => i.id));
         const ver = (m) => aoVer({
           titulo: `${nomeCurto(c.nome)} · ${mesLongo(m)}`,
-          itens: calc.itens.filter((i) => i.competencia === m).map((i) => ({ ...i, situacao: deOutro.has(i.id) ? "outro" : pagas.has(i.id) ? "aPagar" : "pago" })),
+          itens: [
+            ...calc.itens.filter((i) => i.competencia === m).map((i) => ({ ...i, situacao: deOutro.has(i.id) ? "outro" : pagas.has(i.id) ? "aPagar" : "pago" })),
+            ...meus.flatMap((p) => (p.itens || []).filter((i) => i.planilha && i.competencia === m).map((i) => ({ ...i, id: i.osId, situacao: "pago" }))),
+            ...saldos.filter((i) => i.competencia === m && pagas.has(i.id)).map((i) => ({ ...i, situacao: "aPagar" })),
+          ],
           mostrarStatus: true,
         });
         return (
@@ -224,13 +265,13 @@ function PorMes({ contas, aoVer }) {
                 <tbody>
                   {meses.map((l) => (
                     <tr key={l.mes}>
-                      <td>{mesLongo(l.mes)}</td>
+                      <td>{mesLongo(l.mes)}{l.planilha && <div className="suave peq">inclui a planilha antiga</div>}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{l.os}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{brl(l.faturado)}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{brl(l.comissao)}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{brl(l.pago)}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{Math.abs(l.aPagar) >= 0.01 ? <Chip tom={l.aPagar > 0 ? "alerta" : "ruim"}>{brl(l.aPagar)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
-                      <td style={{ textAlign: "right" }}>{l.os > 0 && <button type="button" className="btn claro mini" onClick={() => ver(l.mes)}>Ver OS</button>}</td>
+                      <td style={{ textAlign: "right" }}>{(l.os > 0 || l.planilha) && <button type="button" className="btn claro mini" onClick={() => ver(l.mes)}>{l.os > 0 ? "Ver OS" : "Ver"}</button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -399,6 +440,94 @@ function VerItens({ titulo, itens, mostrarStatus, csv, aoFechar }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" className="btn claro mini" onClick={() => baixar(csv || "comissao.csv", csvItens(itens, { titulo }))}>Baixar planilha</button>
           <button type="button" className="btn mini" onClick={aoFechar}>Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Importa a planilha antiga (uma linha por proposta, 1% do valor dela):
+// "Pago" vira histórico de pagamento, "Não pago" vira saldo a pagar.
+function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
+  const { dados } = useBase();
+  const [plano, setPlano] = useState(null);
+  const [arquivo, setArquivo] = useState("");
+  const [erro, setErro] = useState("");
+  const [gravando, setGravando] = useState("");
+  const ler = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setErro(""); setPlano(null);
+    try {
+      const { linhas } = lerLinhasPlanilha(await lerXlsx(f));
+      if (!linhas.length) throw new Error("A planilha não tem linhas de comissão.");
+      setArquivo(f.name);
+      setPlano({ ...planoImportacao(linhas, { colabs, pessoasCRM, arquivo: "planilha antiga" }), linhas: linhas.length });
+    } catch (ex) { setErro(ex.message || "Não consegui ler a planilha."); }
+  };
+  const importar = async () => {
+    try {
+      const existentes = new Map((dados.comissoes || []).map((r) => [r.id, r]));
+      const regs = [
+        ...plano.colaboradores,
+        ...plano.pagamentos,
+        ...plano.saldos.map((s) => {
+          const antes = existentes.get(s.id);
+          const tirados = antes?.tirados || [];
+          const fora = new Set(tirados.map((i) => i.id));
+          return { ...s, itens: s.itens.filter((i) => !fora.has(i.id)), tirados, importadoDe: arquivo };
+        }),
+      ];
+      let n = 0;
+      for (const r of regs) { setGravando(`Gravando ${++n} de ${regs.length}…`); await gravar("comissoes", { ...r, importadoDe: arquivo }); }
+      aoFechar();
+    } catch (ex) { setErro(ex.message); setGravando(""); }
+  };
+  const repetidas = plano?.alertas.filter((a) => a.tipo === "repetida") || [];
+  return (
+    <Modal titulo="Importar a planilha antiga de comissões" aoFechar={() => !gravando && aoFechar()} largo>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="aviso marca peq">
+          Linhas <b>Pago</b> entram no histórico de pagamentos (agrupadas pelo mês da folha). Linhas <b>Não pago</b> entram em “A pagar” como comissão antiga.
+          Quem não está cadastrado entra <b>fora do cálculo</b>: guarda o histórico, mas não gera comissão nova. Importar de novo o mesmo arquivo não duplica.
+        </div>
+        <input type="file" accept=".xlsx" className="entrada" onChange={ler} disabled={!!gravando} aria-label="Escolher a planilha" />
+        {erro && <div className="aviso ruim">{erro}</div>}
+        {plano && (
+          <>
+            <div className="tabela-caixa">
+              <table>
+                <thead><tr><th>Colaborador</th><th style={{ textAlign: "right" }}>Linhas pagas</th><th style={{ textAlign: "right" }}>Pago</th><th style={{ textAlign: "right" }}>Não pagas</th><th style={{ textAlign: "right" }}>A pagar</th><th /></tr></thead>
+                <tbody>
+                  {plano.resumo.map((x) => (
+                    <tr key={x.nome}>
+                      <td>{nomeCurto(x.nome)}</td>
+                      <td className="tnum" style={{ textAlign: "right" }}>{x.pagas}</td>
+                      <td className="tnum" style={{ textAlign: "right" }}>{brl(x.pago)}</td>
+                      <td className="tnum" style={{ textAlign: "right" }}>{x.abertas}</td>
+                      <td className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{brl(x.aPagar)}</td>
+                      <td>{x.novo ? <Chip>entra fora do cálculo</Chip> : <Chip tom="ok">já cadastrada</Chip>}{x.semCRM && <Chip tom="alerta">sem usuário no CRM</Chip>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {plano.alertas.length > 0 && (
+              <div className="aviso alerta peq">
+                <b>Conferência da planilha.</b>
+                {repetidas.length > 0 && <> {repetidas.length} proposta(s) aparecem pagas duas vezes com o mesmo valor e data: {brl(repetidas.reduce((s, a) => s + a.valor, 0))} possivelmente pagos em dobro.</>}
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, maxHeight: 180, overflow: "auto" }}>
+                  {plano.alertas.map((a) => <li key={a.proposta + a.tipo}>{a.proposta}: {a.texto}{a.valor ? ` (${brl(a.valor)} a mais)` : ""}</li>)}
+                </ul>
+                <div style={{ marginTop: 6 }}>A importação grava como está na planilha; os acertos você faz depois.</div>
+              </div>
+            )}
+          </>
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+          {gravando && <span className="suave peq">{gravando}</span>}
+          <button type="button" className="btn claro" disabled={!!gravando} onClick={aoFechar}>Cancelar</button>
+          <button type="button" className="btn" disabled={!plano || !!gravando} onClick={importar}>Importar {plano ? `${plano.linhas} linhas` : ""}</button>
         </div>
       </div>
     </Modal>
