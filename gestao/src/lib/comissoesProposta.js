@@ -195,8 +195,10 @@ export const STATUS_PROPOSTA = {
 };
 export function statusProposta(l) {
   const st = String(l.status || "").toUpperCase();
-  if (["CANCELADA", "RECUSADA"].includes(st)) return "cancelada";
-  if (l.os.length && l.os.every((o) => o.cancelada)) return "cancelada";
+  const temOSValida = l.os.some((o) => !o.cancelada);
+  // Cancelada no CRM mas com OS de verdade: vale o que aconteceu (e a conferência avisa).
+  if (["CANCELADA", "RECUSADA"].includes(st) && !temOSValida) return "cancelada";
+  if (l.os.length && !temOSValida) return "cancelada";
   if (!l.osGeradas) return "pendente";
   if (l.geradas >= l.valorProposta - 0.005 && l.semNF < 0.005) return "finalizada";
   return "andamento";
@@ -204,3 +206,48 @@ export function statusProposta(l) {
 
 /** Mês do pagamento ("AAAA-MM" ou "sem" para os da planilha sem mês da folha). */
 export const mesDoPagamentoItem = (p) => (p.planilha && String(p.obs || "").includes("sem o mês") ? "sem" : String(p.pagoEm || "").slice(0, 7));
+
+const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+
+/**
+ * Conferência: o que está errado nos dados (CRM e Serviços gerados) e afeta a
+ * comissão, com a forma de corrigir. contas: [{ c, ex }].
+ */
+export function conferencia(contas, hoje) {
+  const out = [];
+  for (const { c, ex } of contas) {
+    for (const l of ex.linhas) {
+      const st = String(l.status || "").toUpperCase();
+      const faturadas = l.os.filter((o) => o.faturada);
+      if (st && st !== "APROVADA" && faturadas.length) {
+        out.push({ tipo: "crmStatus", colab: c, proposta: l.numero, cliente: l.cliente, valor: l.gerada,
+          texto: `Está "${st.toLowerCase()}" no CRM, mas tem ${faturadas.length} OS faturada(s).`,
+          corrigir: "No CRM, abra a proposta e mude para Aprovada, com a data de aceite." });
+      }
+      if (!st && l.origem === "planilha") {
+        out.push({ tipo: "semCadastro", colab: c, proposta: l.numero, cliente: l.cliente, valor: 0,
+          texto: "Está na planilha, mas não existe no CRM.",
+          corrigir: "Confira o número na planilha; se a proposta existe, cadastre no CRM com o mesmo número." });
+      }
+      if (statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
+        out.push({ tipo: "semOS", colab: c, proposta: l.numero, cliente: l.cliente, valor: l.valorProposta,
+          texto: `Aprovada em ${l.aceite.split("-").reverse().join("/")} e nenhuma OS gerada.`,
+          corrigir: "Se o serviço foi feito, confira o Contrato (nº da proposta) da OS em Serviços gerados. Se não vai acontecer, cancele a proposta no CRM." });
+      }
+      if (l.origem === "crm" && l.aceite) {
+        const antes = l.os.filter((o) => !o.cancelada && o.dataOs && diasEntre(o.dataOs, l.aceite) > 30);
+        if (antes.length) out.push({ tipo: "aceiteAtrasado", colab: c, proposta: l.numero, cliente: l.cliente, valor: 0,
+          texto: `${antes.length} OS geradas mais de 30 dias antes do aceite registrado no CRM.`,
+          corrigir: "Corrija a data de aceite da proposta no CRM (deve ser antes da primeira OS)." });
+      }
+    }
+  }
+  return out;
+}
+
+export const TIPOS_CONFERENCIA = {
+  crmStatus: "Proposta não aprovada no CRM, mas com OS faturada",
+  semCadastro: "Proposta da planilha que não existe no CRM",
+  semOS: "Aprovada há mais de 30 dias sem nenhuma OS",
+  aceiteAtrasado: "Data de aceite depois das OS",
+};

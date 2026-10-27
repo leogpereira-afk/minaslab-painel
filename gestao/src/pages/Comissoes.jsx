@@ -10,7 +10,7 @@ import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/
 import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
-  osDoExtrato, serieMensal, statusProposta, STATUS_PROPOSTA, mesDoPagamentoItem,
+  osDoExtrato, serieMensal, statusProposta, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
 } from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
@@ -209,7 +209,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                         <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
                         <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
                         {l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
-                        {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM</Chip>}
+                        {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM · corrigir</Chip>}
                         <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
                       </div>
                       <div className="suave peq" title={l.cliente} style={{ maxWidth: 230, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.cliente || "—"}</div>
@@ -783,6 +783,7 @@ function Resumo({ contas, pagamentos }) {
         <button type="button" className={`pilula${!quem ? " ativa" : ""}`} aria-pressed={!quem} onClick={() => setQuem("")}>Todos</button>
         {contas.map((x) => <button key={x.c.id} type="button" className={`pilula${quem === x.c.id ? " ativa" : ""}`} aria-pressed={quem === x.c.id} onClick={() => setQuem(x.c.id)}>{nomeCurto(x.c.nome)}</button>)}
       </div>
+      <Conferencia contas={sel} />
       <div className="grade grade-kpi">
         <Kpi rotulo="Média paga por mês" valor={brl(s.mediaPaga)} sub={`${s.mesesPagos} mês(es) com pagamento`} />
         <Kpi rotulo="Média gerada por mês" valor={brl(s.mediaGerada)} sub="1% das NF emitidas" />
@@ -847,5 +848,50 @@ function Resumo({ contas, pagamentos }) {
         </div>
       </Card>
     </>
+  );
+}
+
+// ---------------------------------------------------------------- conferência
+function Conferencia({ contas }) {
+  const [aberto, setAberto] = useState("");
+  const itens = useMemo(() => conferencia(contas, hojeBR()), [contas]);
+  if (!itens.length) return <div className="aviso marca peq">Conferência: nenhuma falha nos dados do CRM e dos Serviços gerados que afete a comissão.</div>;
+  const tipos = Object.keys(TIPOS_CONFERENCIA).filter((t) => itens.some((i) => i.tipo === t));
+  return (
+    <Card semPad>
+      <div className="card-cab"><h2>O que corrigir</h2><span className="suave peq">{itens.length} ponto(s) nos dados que mexem na comissão · corrija na origem e clique em Atualizar</span></div>
+      <div style={{ display: "grid" }}>
+        {tipos.map((t) => {
+          const xs = itens.filter((i) => i.tipo === t);
+          return (
+            <div key={t} style={{ borderTop: "1px solid var(--linha-fraca)" }}>
+              <button type="button" onClick={() => setAberto(aberto === t ? "" : t)} style={{ width: "100%", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "12px 20px", background: "none", border: 0, cursor: "pointer", textAlign: "left", font: "inherit" }} aria-expanded={aberto === t}>
+                <span><Chip tom={t === "crmStatus" || t === "semCadastro" ? "ruim" : "alerta"}>{xs.length}</Chip> <b style={{ fontWeight: 600, marginLeft: 6 }}>{TIPOS_CONFERENCIA[t]}</b></span>
+                <span className="suave peq">{aberto === t ? "fechar ▴" : "ver ▾"}</span>
+              </button>
+              {aberto === t && (
+                <div style={{ padding: "0 20px 14px" }}>
+                  <div className="aviso marca peq" style={{ marginBottom: 8 }}><b>Como corrigir:</b> {xs[0].corrigir}</div>
+                  <div className="tabela-caixa tabela-comissao">
+                    <table>
+                      <thead><tr><th>Proposta</th><th>Colaborador</th><th>O que está errado</th></tr></thead>
+                      <tbody>
+                        {xs.map((i) => (
+                          <tr key={i.proposta + i.tipo}>
+                            <td><span className="tnum">{i.proposta}</span><div className="suave peq" style={{ maxWidth: 240, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.cliente}</div></td>
+                            <td className="peq">{nomeCurto(i.colab.nome)}</td>
+                            <td className="peq">{i.texto}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

@@ -107,6 +107,21 @@ test("situação da proposta: pendente, em andamento, finalizada e cancelada", a
   assert.equal(statusProposta(L({ geradas: 50 })), "andamento");
   assert.equal(statusProposta(L({ semNF: 10 })), "andamento");
   assert.equal(statusProposta(L({})), "finalizada");
-  assert.equal(statusProposta(L({ status: "CANCELADA" })), "cancelada");
+  assert.equal(statusProposta(L({ status: "CANCELADA", os: [], osGeradas: 0, geradas: 0 })), "cancelada");
   assert.equal(statusProposta(L({ os: [{ cancelada: true }], osGeradas: 0 })), "cancelada");
+});
+
+test("conferência: status do CRM, aprovada sem OS e aceite atrasado", async () => {
+  const { conferencia, statusProposta } = await import("./comissoesProposta.js");
+  const L = (x) => ({ numero: "1", cliente: "", origem: "crm", status: "APROVADA", os: [], osGeradas: 0, geradas: 0, valorProposta: 100, semNF: 0, gerada: 0, aceite: "2026-05-01", ...x });
+  const fat = { faturada: true, cancelada: false, dataOs: "2026-05-02" };
+  const contas = [{ c: { nome: "X" }, ex: { linhas: [
+    L({ numero: "a", status: "CANCELADA", os: [fat], osGeradas: 1, geradas: 100 }),
+    L({ numero: "b" }),
+    L({ numero: "c", aceite: "2026-08-01", os: [fat], osGeradas: 1, geradas: 100 }),
+    L({ numero: "d", status: "", origem: "planilha", aceite: "" }),
+  ] } }];
+  const r = conferencia(contas, "2026-10-27");
+  assert.deepEqual(r.map((x) => `${x.proposta}:${x.tipo}`).sort(), ["a:crmStatus", "b:semOS", "c:aceiteAtrasado", "d:semCadastro"]);
+  assert.equal(statusProposta(contas[0].ex.linhas[0]), "finalizada"); // cancelada no CRM, mas com OS
 });
