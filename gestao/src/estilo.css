@@ -761,3 +761,6 @@ tr:last-child td { border-bottom: 0; }
 .tabela-comissao th { padding: 10px 8px; letter-spacing: .02em; }
 .tabela-comissao td { padding: 10px 8px; font-size: 13px; }
 .tabela-comissao th:first-child, .tabela-comissao td:first-child { padding-left: 16px; }
+.tabela-comissao td.tnum { white-space: nowrap; }
+.tabela-comissao td:nth-child(2) { white-space: normal; }
+.tabela-comissao td.tnum .peq { white-space: normal; }
