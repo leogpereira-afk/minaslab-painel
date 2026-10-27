@@ -19,7 +19,7 @@ export const SETORES = {
 export const CHAVES = [
   "equipe", "config", "ocorrencias", "avaliacoes", "feedbacks", "estrategias", "funcoes", "pdi",
   "treinamentos", "reunioes", "decisoes", "objetivos", "acoes", "nps", "destaque", "apresentacoes",
-  "fotos", "ncs", "produtividade", "agenda",
+  "fotos", "ncs", "produtividade", "agenda", "comissoes",
 ];
 
 // A agenda de reuniões e compromissos é uma só para os dois setores.
@@ -59,6 +59,8 @@ export const PAGINAS = {
     P("funil", "Funil", "Resultado", [], ["funil"]),
     P("dado", "Qualidade do dado", "Resultado", [], ["resumo", "semResponsavel"]),
     ...PESSOAS("comercial"),
+    // Comissões: valores de pagamento. Só quem recebe esta página (e as donas).
+    P("comissoes", "Comissões", "Pessoas", ["comissoes"], ["comissoes"]),
     P("carteira", "Carteira", "Clientes", [], ["carteira"]),
     P("satisfacao", "Satisfação", "Clientes", ["nps"], ["nps"]),
     P("licitacoes", "Licitações", "Clientes", [], ["licitacoes"]),

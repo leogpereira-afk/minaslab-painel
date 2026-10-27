@@ -1,7 +1,7 @@
 // ============================================================================
 // ml-comercial — a porta de dados do Comercial MinasLab (repositório gestao).
 //
-// SÓ LEITURA do CRM. As únicas escritas são as do Destaque do Mês em
+// SÓ LEITURA do CRM e de Serviços gerados (comissões). As únicas escritas são as do Destaque do Mês em
 // ml_registros: a votação da equipe (rh_comercial_pesquisas) e a avaliação da
 // liderança por link (rh_comercial_convites → rh_comercial_destaque).
 // Devolve números já somados (propostas por mês e por
@@ -903,6 +903,38 @@ Deno.serve(async (req) => {
             porProvedor: Object.entries(porProvedor).map(([nome, x]) => ({ nome, envios: x.envios, comResultado: x.comResultado, noPrazo: x.noPrazo, mediaDias: x.comResultado ? Math.round((x.diasSoma / x.comResultado) * 10) / 10 : null })).sort((a, b) => b.envios - a.envios),
           },
         });
+      }
+
+      // Comissões: propostas APROVADAS dos responsáveis pedidos e as OS delas
+      // em Serviços gerados (Finanças), pelo nº da proposta. Só leitura; o
+      // cálculo e o controle de pagamento ficam na tela (src/lib/comissoes.js).
+      case "comissoes": {
+        const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const ids = [...new Set((Array.isArray(body.responsaveis) ? body.responsaveis : []).map(String))].filter((x) => UUID.test(x)).slice(0, 30);
+        const perfis = await lerTudo("profiles", "id,nome,ativo");
+        const pessoas = perfis.map((p) => ({ id: p.id, nome: String(p.nome ?? "").replace(/\s+/g, " ").trim(), ativo: p.ativo !== false }))
+          .filter((p) => p.nome).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+        if (!ids.length) return resp({ geradoEm: new Date().toISOString(), pessoas, propostas: [], os: [] });
+        const diaBR = (iso: unknown) => (iso ? new Date(new Date(String(iso)).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10) : "");
+        const props = (await lerTudo("propostas", "id,numero_proposta,responsavel_comercial_id,status,data_aceite,cliente_id,ativo,deleted_at",
+          (q) => q.in("responsavel_comercial_id", ids).eq("status", "APROVADA").is("deleted_at", null)))
+          .filter((p) => p.numero_proposta);
+        const nomes = await nomesClientes(props.map((p) => p.cliente_id));
+        const propostas = props.map((p) => ({ numero: String(p.numero_proposta).trim(), responsavel: p.responsavel_comercial_id, aceite: diaBR(p.data_aceite), cliente: nomes[p.cliente_id] ?? "" }));
+        const numeros = [...new Set(propostas.map((p) => p.numero))];
+        const os: unknown[] = [];
+        for (let i = 0; i < numeros.length; i += 150) {
+          const fatia = numeros.slice(i, i + 150);
+          const linhas = await lerTudo("servicos_gerados", "id,os_numero,contrato_proposta,cliente,servico,data_os,data_emissao,valor_faturar,status_faturamento,status_pagamento,numero_nf,apagado",
+            (q) => q.in("contrato_proposta", fatia));
+          for (const l of linhas) {
+            if (l.apagado) continue;
+            os.push({ id: l.id, os: l.os_numero ?? "", proposta: String(l.contrato_proposta ?? "").trim(), cliente: l.cliente ?? "", servico: l.servico ?? "",
+              dataOs: String(l.data_os ?? "").slice(0, 10), emissao: String(l.data_emissao ?? "").slice(0, 10), valor: Number(l.valor_faturar) || 0,
+              fat: l.status_faturamento ?? "", pag: l.status_pagamento ?? "", nf: l.numero_nf ?? "" });
+          }
+        }
+        return resp({ geradoEm: new Date().toISOString(), pessoas, propostas, os });
       }
 
       // Pesquisas de satisfação registradas no CRM.
