@@ -6,6 +6,19 @@ export const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho
 export type PeriodFilter = { year: string; month: string }
 export const ALL_PERIOD: PeriodFilter = { year: 'TODOS', month: 'TODOS' }
 
+/** Ano e mês atuais (fuso de São Paulo) — padrão das telas que mostram números do mês. */
+export function currentPeriod(): PeriodFilter {
+  const ym = yearMonthOf(new Date())
+  return ym ? { year: String(ym.year), month: String(ym.month) } : ALL_PERIOD
+}
+
+/** Texto curto do período escolhido: "Outubro/2026", "2026", "Outubro (todos os anos)" ou "todo o período". */
+export function periodLabel(period: PeriodFilter): string {
+  const month = period.month === 'TODOS' ? null : MONTHS[Number(period.month) - 1]
+  if (period.year === 'TODOS') return month ? `${month} (todos os anos)` : 'todo o período'
+  return month ? `${month}/${period.year}` : period.year
+}
+
 const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
 
 /** Ano e mês (1–12) de uma data no fuso de São Paulo; aceita 'YYYY-MM-DD' sem deslocar o dia. */
