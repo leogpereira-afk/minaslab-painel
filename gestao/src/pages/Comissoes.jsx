@@ -81,10 +81,10 @@ export default function Comissoes() {
           {aba === "pagar" && <APagar contas={contas.filter((x) => x.c.ativo !== false || x.sit.aPagar.length)} gravar={gravar} />}
           {aba === "meses" && <PorMes contas={contas} aoVer={setVendo} />}
           {aba === "pagamentos" && <Pagamentos pagamentos={pagamentos} colabs={colabs} aoVer={setVendo} remover={remover} />}
-          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} />}
+          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} pagamentos={pagamentos} />}
         </>
       )}
-      {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} temPagamento={(id) => pagamentos.some((p) => p.colaboradorId === id)} />}
+      {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => pagamentos.some((p) => p.colaboradorId === id)} />}
       {vendo && <VerItens {...vendo} aoFechar={() => setVendo(null)} />}
     </>
   );
@@ -279,10 +279,19 @@ function Pagamentos({ pagamentos, colabs, aoVer, remover }) {
   );
 }
 
-function Colaboradores({ contas, pessoasCRM, aoEditar }) {
+function Colaboradores({ contas, pessoasCRM, aoEditar, remover, pagamentos }) {
+  const [erro, setErro] = useState("");
   if (!contas.length) return null;
+  const excluir = async (c) => {
+    setErro("");
+    if (pagamentos.some((p) => p.colaboradorId === c.id)) return setErro(`${nomeCurto(c.nome)} já tem pagamentos registrados. Desfaça os pagamentos antes ou marque “fora do cálculo” em Editar, para não perder o histórico.`);
+    if (!window.confirm(`Excluir ${nomeCurto(c.nome)} (contagem desde ${dataCurta(c.desde)}) da comissão?`)) return;
+    try { await remover("comissoes", c.id); } catch (e) { setErro(e.message); }
+  };
   const nomeCRM = (id) => pessoasCRM.find((p) => p.id === id)?.nome || "Usuário do CRM";
   return (
+    <>
+    {erro && <div className="aviso ruim">{erro}</div>}
     <div className="grade grade-2">
       {contas.map(({ c, calc, sit }) => (
         <Card key={c.id}>
@@ -299,14 +308,18 @@ function Colaboradores({ contas, pessoasCRM, aoEditar }) {
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
             {[...(c.taxas || [])].sort((a, b) => String(a.desde).localeCompare(String(b.desde))).map((t) => <Chip key={t.desde} tom="marca">{pctTxt(t.pct)} desde {dataCurta(t.desde)}</Chip>)}
           </div>
-          <div style={{ marginTop: 12 }}><button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button></div>
+          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+            <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>
+            <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>
+          </div>
         </Card>
       ))}
     </div>
+    </>
   );
 }
 
-function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, temPagamento }) {
+function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, temPagamento, colabs = [] }) {
   const novo = !!inicial.novo;
   const [f, setF] = useState(() => novo
     ? { nome: "", crmId: "", desde: hojeBR(), taxas: [{ desde: hojeBR(), pct: 1 }], ativo: true }
@@ -321,12 +334,14 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
     delete reg.novo;
     const e = validarColaborador(reg);
     if (e) return setErro(e);
+    const igual = colabs.find((c) => c.id !== reg.id && c.crmId === reg.crmId);
+    if (igual) return setErro(`${nomeCurto(igual.nome)} já está cadastrada na comissão (contagem desde ${dataCurta(igual.desde)}). Para mudar a data ou a taxa, use Editar no cadastro que já existe.`);
     setSalvando(true); setErro("");
     try { await gravar("comissoes", reg); aoFechar(); } catch (x) { setErro(x.message); setSalvando(false); }
   };
   const apagar = async () => {
     if (temPagamento(f.id)) return setErro("Este colaborador já tem pagamentos registrados. Marque “fora do cálculo” em vez de apagar, para não perder o histórico.");
-    if (!window.confirm("Apagar este cadastro de comissão?")) return;
+    if (!window.confirm("Excluir este cadastro de comissão?")) return;
     try { await remover("comissoes", f.id); aoFechar(); } catch (x) { setErro(x.message); }
   };
   return (
@@ -363,7 +378,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
         </label>
         {erro && <div className="aviso ruim">{erro}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
-          {!novo ? <button type="button" className="btn perigo" onClick={apagar}>Apagar</button> : <span />}
+          {!novo ? <button type="button" className="btn perigo" onClick={apagar}>Excluir</button> : <span />}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn claro" onClick={aoFechar}>Cancelar</button>
             <button type="button" className="btn" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
