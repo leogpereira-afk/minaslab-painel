@@ -51,7 +51,18 @@ test("limpeza e assinatura estável", () => {
 test("laboratório nunca lê números comerciais do CRM", () => {
   const { PAGINAS } = acessos;
   const tudoLab = permissoes("lab", { setores: { laboratorio: PAGINAS.laboratorio.map((p) => p.id) } });
-  for (const a of ["resumo", "cockpit", "carteira", "funil", "semResponsavel", "nps", "licitacoes"]) assert.equal(podeAcao(tudoLab, a), false, a);
+  for (const a of ["resumo", "cockpit", "carteira", "funil", "semResponsavel", "nps", "licitacoes", "comissoes"]) assert.equal(podeAcao(tudoLab, a), false, a);
   assert.ok(podeAcao(tudoLab, "labPainel"));
   assert.ok(podeAcao(tudoLab, "setores"));
+});
+
+test("comissões: só quem tem a página lê os valores", () => {
+  const sem = permissoes("x", { setores: { comercial: ["cockpit", "pessoas", "avaliacao"] } });
+  assert.equal(podeLer(sem, "comercial", "comissoes"), false);
+  assert.equal(podeAcao(sem, "comissoes"), false);
+  const com = permissoes("y", { setores: { comercial: ["comissoes"] } });
+  assert.ok(podeLer(com, "comercial", "comissoes"));
+  assert.ok(podeGravar(com, "comercial", "comissoes"));
+  assert.ok(podeAcao(com, "comissoes"));
+  assert.ok(podeAcao(permissoes("ana", null), "comissoes"));
 });

@@ -30,3 +30,4 @@ export const IcTrofeu = I(<><path d="M8 4h8v5a4 4 0 0 1-8 0z" /><path d="M8 6H5a
 export const IcFrasco = I(<><path d="M9 3h6" /><path d="M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3" /><path d="M7 15h10" /></>);
 export const IcCadeado = I(<><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>);
 export const IcPulso = I(<path d="M3 12h4l2-6 4 12 2-6h6" />);
+export const IcMoeda = I(<><circle cx="12" cy="12" r="9" /><path d="M15 9.5a3 3 0 0 0-3-1.5c-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2a3 3 0 0 1-3-1.5" /><path d="M12 6v2" /><path d="M12 16v2" /></>);
