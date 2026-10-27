@@ -175,7 +175,7 @@ function Extrato({ conta, gravar, nomeDe }) {
           <table>
             <thead><tr>
               <th style={{ width: 32 }} />
-              <th>Proposta</th><th style={D}>Valor</th><th style={D}>OS geradas</th><th style={D}>Faturado</th><th style={D}>Cliente pagou</th><th style={D}>Comissão</th><th style={D}>Pago</th><th style={D}>Falta pagar</th>
+              <th>Proposta</th><th style={D}>Valor</th><th style={D}>Virou OS</th><th style={D}>Saldo</th><th style={D}>Faturado</th><th style={D}>Comissão</th><th style={D}>Pago</th><th style={D}>Falta pagar</th>
             </tr></thead>
             <tbody>
               {pag.itens.map((l) => (
@@ -192,9 +192,9 @@ function Extrato({ conta, gravar, nomeDe }) {
                       <div className="suave peq" title={l.cliente} style={{ maxWidth: 230, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.cliente || "—"}</div>
                     </td>
                     <td className="tnum" style={D}>{brl(l.valorProposta)}</td>
-                    <td className="tnum" style={D}>{brl(l.geradas)}<div className="suave peq">{l.osGeradas} OS{l.faltaGerar > 0 ? ` · falta ${brl(l.faltaGerar)}` : ""}</div></td>
-                    <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}</td>
-                    <td className="tnum" style={D}>{brl(l.pagoCliente)}</td>
+                    <td className="tnum" style={D}>− {brl(l.geradas)}<div className="suave peq">{l.osGeradas} OS</div></td>
+                    <td className="tnum" style={D}><Saldo l={l} /></td>
+                    <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}{l.pagoCliente > 0 && <div className="suave peq">cliente pagou {brl(l.pagoCliente)}</div>}</td>
                     <td className="tnum" style={D}>{brl(l.gerada)}</td>
                     <td className="tnum" style={D}>{brl(l.pago)}</td>
                     <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
@@ -217,10 +217,38 @@ function Extrato({ conta, gravar, nomeDe }) {
   );
 }
 
+/** Saldo da proposta: valor − OS geradas. Recorrente passa do valor. */
+function Saldo({ l }) {
+  const saldo = centavos(l.valorProposta - l.geradas);
+  const pct = l.valorProposta > 0 ? Math.min(100, (l.geradas / l.valorProposta) * 100) : 100;
+  return (
+    <div style={{ minWidth: 96 }}>
+      {saldo > 0 ? <b>{brl(saldo)}</b> : saldo === 0 ? <Chip tom="ok">usada toda</Chip> : <span className="peq" title="Já gerou mais OS do que o valor da proposta (proposta recorrente)">passou {brl(-saldo)}</span>}
+      <div style={{ height: 5, borderRadius: 3, background: "var(--linha)", marginTop: 4, overflow: "hidden" }} title={`${Math.round(pct)}% da proposta já virou OS`}>
+        <div style={{ width: `${pct}%`, height: "100%", background: saldo < 0 ? "var(--alerta)" : "var(--marca)" }} />
+      </div>
+    </div>
+  );
+}
+
 function DetalheProposta({ l, nomeDe }) {
+  // Abatimento: cada OS (não cancelada) desconta do valor da proposta, na ordem em que foi gerada.
+  let resto = l.valorProposta;
+  const saldoApos = new Map();
+  for (const o of l.os) { if (!o.cancelada) resto = centavos(resto - o.valor); saldoApos.set(o.id, o.cancelada ? null : resto); }
+  const comTotal = centavos(l.valorProposta * 0.01);
   const situacaoOS = (o) => o.cancelada ? <Chip tom="ruim">cancelada</Chip> : o.faturada ? <Chip tom="ok">faturada</Chip> : o.aFaturar ? <Chip tom="alerta">pronta para faturar</Chip> : <Chip>{String(o.fat || "—").toLowerCase()}</Chip>;
   return (
     <div style={{ padding: "12px 16px 16px", display: "grid", gap: 12 }}>
+      <div style={{ display: "flex", gap: "10px 24px", flexWrap: "wrap", background: "#fff", borderRadius: 10, padding: "10px 14px" }}>
+        <div><div className="suave peq">Valor da proposta</div><b className="tnum">{brl(l.valorProposta)}</b></div>
+        <div><div className="suave peq">Já virou OS</div><b className="tnum">− {brl(l.geradas)}</b></div>
+        <div><div className="suave peq">Saldo da proposta</div><Saldo l={l} /></div>
+        <div style={{ borderLeft: "1px solid var(--linha)", paddingLeft: 24 }}><div className="suave peq">Comissão da proposta toda (1%)</div><b className="tnum">{brl(comTotal)}</b></div>
+        <div><div className="suave peq">Liberada (OS com NF)</div><b className="tnum">{brl(l.gerada)}</b></div>
+        <div><div className="suave peq">Já paga</div><b className="tnum">{brl(l.pago)}</b></div>
+        <div><div className="suave peq">Ainda vai liberar</div><b className="tnum">{brl(Math.max(0, centavos(comTotal - l.gerada)))}</b></div>
+      </div>
       <div className="peq">
         <b>Como chegou nesta conta:</b> {l.osGeradas} OS geradas ({brl(l.geradas)}), {brl(l.faturado)} faturados → comissão {brl(l.gerada)} · já pago {brl(l.pago)} ·{" "}
         {l.aPagar > 0 ? <b>falta pagar {brl(l.aPagar)}</b> : l.adiantado > 0 ? <>pago adiantado {brl(l.adiantado)} (é descontado das próximas OS)</> : "em dia"}
@@ -228,14 +256,16 @@ function DetalheProposta({ l, nomeDe }) {
       </div>
       <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
         <table>
-          <thead><tr><th>OS</th><th>Gerada em</th><th style={D}>Valor</th><th>Situação</th><th>NF</th><th>Cliente</th><th style={D}>Comissão</th></tr></thead>
+          <thead><tr><th>OS</th><th>Gerada em</th><th style={D}>Valor da OS</th><th style={D}>Saldo da proposta</th><th>Situação</th><th>NF</th><th>Cliente</th><th style={D}>Comissão</th></tr></thead>
           <tbody>
-            {l.os.length === 0 && <tr><td colSpan={7} className="suave">Nenhuma OS gerada ainda para esta proposta.</td></tr>}
+            <tr style={{ background: "var(--marca-50)" }}><td colSpan={3} className="peq"><b>Valor da proposta</b>{l.aceite ? ` · aceite em ${dataCurta(l.aceite)}` : ""}</td><td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(l.valorProposta)}</td><td colSpan={4} /></tr>
+            {l.os.length === 0 && <tr><td colSpan={8} className="suave">Nenhuma OS gerada ainda para esta proposta.</td></tr>}
             {l.os.map((o) => (
               <tr key={o.id} style={o.cancelada ? { opacity: 0.55 } : undefined}>
                 <td className="tnum peq">{o.os}</td>
                 <td className="tnum peq">{dataCurta(o.dataOs)}</td>
-                <td className="tnum" style={D}>{brl(o.valor)}</td>
+                <td className="tnum" style={D}>− {brl(o.valor)}</td>
+                <td className="tnum" style={{ ...D, fontWeight: 600, color: saldoApos.get(o.id) < 0 ? "var(--alerta)" : undefined }}>{saldoApos.get(o.id) == null ? "não abate" : brl(saldoApos.get(o.id))}</td>
                 <td>{situacaoOS(o)}</td>
                 <td className="tnum peq">{o.faturada ? <>{o.nf ? `NF ${o.nf} · ` : ""}{dataCurta(o.emissao)}</> : "—"}</td>
                 <td className="peq">{o.clientePagou ? <Chip tom="ok">pagou</Chip> : o.faturada ? String(o.pag || "").toLowerCase() : "—"}</td>
