@@ -179,3 +179,28 @@ export function serieMensal(extratos, pagamentos, { ate }) {
   const media = (xs, k) => (xs.length ? centavos(xs.reduce((s, x) => s + x[k], 0) / xs.length) : 0);
   return { serie, pagoSemMes, mediaPaga: media(comPago, "paga"), mediaGerada: media(comGerada, "gerada"), mesesPagos: comPago.length };
 }
+
+/**
+ * Situação da proposta (execução):
+ *  - cancelada: cancelada/recusada no CRM ou todas as OS canceladas;
+ *  - pendente: ainda não gerou OS;
+ *  - finalizada: o valor todo já virou OS e todas têm NF;
+ *  - andamento: o resto (tem OS, mas falta OS ou falta NF).
+ */
+export const STATUS_PROPOSTA = {
+  pendente: { rotulo: "Pendente", tom: "neutro" },
+  andamento: { rotulo: "Em andamento", tom: "alerta" },
+  finalizada: { rotulo: "Finalizada", tom: "ok" },
+  cancelada: { rotulo: "Cancelada", tom: "ruim" },
+};
+export function statusProposta(l) {
+  const st = String(l.status || "").toUpperCase();
+  if (["CANCELADA", "RECUSADA"].includes(st)) return "cancelada";
+  if (l.os.length && l.os.every((o) => o.cancelada)) return "cancelada";
+  if (!l.osGeradas) return "pendente";
+  if (l.geradas >= l.valorProposta - 0.005 && l.semNF < 0.005) return "finalizada";
+  return "andamento";
+}
+
+/** Mês do pagamento ("AAAA-MM" ou "sem" para os da planilha sem mês da folha). */
+export const mesDoPagamentoItem = (p) => (p.planilha && String(p.obs || "").includes("sem o mês") ? "sem" : String(p.pagoEm || "").slice(0, 7));

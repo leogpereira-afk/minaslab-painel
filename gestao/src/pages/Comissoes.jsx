@@ -10,7 +10,7 @@ import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/
 import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
-  osDoExtrato, serieMensal,
+  osDoExtrato, serieMensal, statusProposta, STATUS_PROPOSTA, mesDoPagamentoItem,
 } from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
@@ -110,16 +110,20 @@ export default function Comissoes() {
 }
 
 const FILTROS = [
-  ["aPagar", "Falta pagar", (l) => l.aPagar > 0],
   ["todas", "Todas", () => true],
-  ["faltaGerar", "Falta gerar OS", (l) => l.faltaGerar > 0],
+  ["aPagar", "Falta pagar", (l) => l.aPagar > 0],
+  ["emDia", "Em dia", (l) => l.aPagar === 0 && l.adiantado === 0 && l.gerada > 0],
   ["adiantado", "Pago adiantado", (l) => l.adiantado > 0],
 ];
+const STATUS_ORDEM = ["pendente", "andamento", "finalizada", "cancelada"];
+const rotMes = (m) => (m === "sem" ? "Sem mês (planilha)" : mesLongo(m));
 
 function Extrato({ conta, gravar, nomeDe }) {
   const { c, ex } = conta;
   const t = ex.totais;
   const [filtro, setFiltro] = useState(t.aPagar > 0 ? "aPagar" : "todas");
+  const [status, setStatus] = useState("");
+  const [mesPago, setMesPago] = useState("");
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState("");
   const [desmarcadas, setDesmarcadas] = useState(() => new Set());
@@ -127,8 +131,11 @@ function Extrato({ conta, gravar, nomeDe }) {
   const [ver, setVer] = useState("propostas");
   const q = busca.trim().toLowerCase();
   const f = FILTROS.find((x) => x[0] === filtro)[2];
-  const lista = ex.linhas.filter((l) => f(l) && (!q || l.numero.includes(q) || l.cliente.toLowerCase().includes(q)));
-  const pag = usePaginacao(lista, 20, `${filtro}|${q}`);
+  const pagoNoMes = (l) => (mesPago ? centavos(l.pagamentos.filter((p) => mesDoPagamentoItem(p) === mesPago).reduce((s, p) => s + p.valor, 0)) : 0);
+  const mesesPagos = [...new Set(ex.linhas.flatMap((l) => l.pagamentos.map(mesDoPagamentoItem)).filter(Boolean))].sort((a, b) => (a === "sem" ? 1 : b === "sem" ? -1 : b.localeCompare(a)));
+  const lista = ex.linhas.filter((l) => f(l) && (!status || statusProposta(l) === status) && (!mesPago || pagoNoMes(l) !== 0) && (!q || l.numero.includes(q) || l.cliente.toLowerCase().includes(q)));
+  const totalMes = mesPago ? centavos(lista.reduce((s, l) => s + pagoNoMes(l), 0)) : 0;
+  const pag = usePaginacao(lista, 20, `${filtro}|${status}|${mesPago}|${q}`);
   const pagaveis = ex.linhas.filter((l) => l.aPagar > 0 && !desmarcadas.has(l.numero));
   const totalSel = centavos(pagaveis.reduce((s, l) => s + l.aPagar, 0));
   const alternar = (n) => setDesmarcadas((d) => { const x = new Set(d); x.has(n) ? x.delete(n) : x.add(n); return x; });
@@ -161,21 +168,36 @@ function Extrato({ conta, gravar, nomeDe }) {
         <Abas valor={ver} aoMudar={setVer} abas={[["propostas", "Propostas", ex.linhas.length], ["os", "Todas as OS", ex.linhas.reduce((n, l) => n + l.os.length, 0)]]} />
       </div>
       {ver === "os" ? <ListaOS ex={ex} nome={nomeCurto(c.nome)} /> : <>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "12px 20px" }}>
-        <div className="pilulas" role="group" aria-label="Filtro">
-          {FILTROS.map(([id, rot, fx]) => {
-            const n = ex.linhas.filter(fx).length;
-            return <button key={id} type="button" className={`pilula${filtro === id ? " ativa" : ""}`} aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{rot} ({n})</button>;
-          })}
+      <div style={{ display: "grid", gap: 8, padding: "12px 20px" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="rotulo" style={{ minWidth: 92 }}>Proposta</span>
+          <div className="pilulas" role="group" aria-label="Situação da proposta">
+            <button type="button" className={`pilula${!status ? " ativa" : ""}`} aria-pressed={!status} onClick={() => setStatus("")}>Todas ({ex.linhas.length})</button>
+            {STATUS_ORDEM.map((id) => <button key={id} type="button" className={`pilula${status === id ? " ativa" : ""}`} aria-pressed={status === id} onClick={() => setStatus(id)}>{STATUS_PROPOSTA[id].rotulo} ({ex.linhas.filter((l) => statusProposta(l) === id).length})</button>)}
+          </div>
         </div>
-        <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar proposta ou cliente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar proposta ou cliente" />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="rotulo" style={{ minWidth: 92 }}>Comissão</span>
+          <div className="pilulas" role="group" aria-label="Situação da comissão">
+            {FILTROS.map(([id, rot, fx]) => <button key={id} type="button" className={`pilula${filtro === id ? " ativa" : ""}`} aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{rot} ({ex.linhas.filter(fx).length})</button>)}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="rotulo" style={{ minWidth: 92 }}>Pago em</span>
+          <select className="entrada" style={{ minHeight: 36, flex: "0 1 230px" }} value={mesPago} onChange={(e) => { setMesPago(e.target.value); if (e.target.value) setFiltro("todas"); }} aria-label="Pago no mês">
+            <option value="">Qualquer mês</option>
+            {mesesPagos.map((m) => <option key={m} value={m}>{rotMes(m)}</option>)}
+          </select>
+          <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar proposta ou cliente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar proposta ou cliente" />
+        </div>
+        {mesPago && <div className="aviso marca peq">{lista.length} proposta(s) com pagamento em {rotMes(mesPago).toLowerCase()} · total pago no mês <b>{brl(totalMes)}</b></div>}
       </div>
       {lista.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhuma proposta neste filtro.</div> : (
         <div className="tabela-caixa tabela-comissao">
           <table>
             <thead><tr>
               <th style={{ width: 32 }} />
-              <th>Proposta</th><th style={D}>Valor</th><th style={D}>Virou OS</th><th style={D}>Saldo</th><th style={D}>Faturado</th><th style={D}>Comissão</th><th style={D}>Pago</th><th style={D}>Falta pagar</th>
+              <th>Proposta</th><th style={D}>Valor</th><th style={D}>Virou OS</th><th style={D}>Saldo</th><th style={D}>Faturado</th><th style={D}>Comissão</th><th style={D}>{mesPago ? "Pago no mês" : "Pago"}</th><th style={D}>Falta pagar</th>
             </tr></thead>
             <tbody>
               {pag.itens.map((l) => (
@@ -185,6 +207,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                     <td>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
+                        <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
                         {l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
                         {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM</Chip>}
                         <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
@@ -196,7 +219,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                     <td className="tnum" style={D}><Saldo l={l} /></td>
                     <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}{l.pagoCliente > 0 && <div className="suave peq">cliente pagou {brl(l.pagoCliente)}</div>}</td>
                     <td className="tnum" style={D}>{brl(l.gerada)}</td>
-                    <td className="tnum" style={D}>{brl(l.pago)}</td>
+                    <td className="tnum" style={D}>{mesPago ? <>{brl(pagoNoMes(l))}<div className="suave peq">total {brl(l.pago)}</div></> : brl(l.pago)}</td>
                     <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
                   </tr>
                   {aberta === l.numero && <tr><td colSpan={9} style={{ background: "var(--marca-50)", padding: 0 }}><DetalheProposta l={l} nomeDe={nomeDe} /></td></tr>}
@@ -241,12 +264,14 @@ function DetalheProposta({ l, nomeDe }) {
   return (
     <div style={{ padding: "12px 16px 16px", display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: "10px 24px", flexWrap: "wrap", background: "#fff", borderRadius: 10, padding: "10px 14px" }}>
+        <div><div className="suave peq">Situação</div><Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip></div>
         <div><div className="suave peq">Valor da proposta</div><b className="tnum">{brl(l.valorProposta)}</b></div>
         <div><div className="suave peq">Já virou OS</div><b className="tnum">− {brl(l.geradas)}</b></div>
         <div><div className="suave peq">Saldo da proposta</div><Saldo l={l} /></div>
         <div style={{ borderLeft: "1px solid var(--linha)", paddingLeft: 24 }}><div className="suave peq">Comissão da proposta toda (1%)</div><b className="tnum">{brl(comTotal)}</b></div>
         <div><div className="suave peq">Liberada (OS com NF)</div><b className="tnum">{brl(l.gerada)}</b></div>
         <div><div className="suave peq">Já paga</div><b className="tnum">{brl(l.pago)}</b></div>
+        <div><div className="suave peq">Falta pagar</div><b className="tnum" style={{ color: l.aPagar > 0 ? "var(--alerta-tx)" : undefined }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</b></div>
         <div><div className="suave peq">Ainda vai liberar</div><b className="tnum">{brl(Math.max(0, centavos(comTotal - l.gerada)))}</b></div>
       </div>
       <div className="peq">
@@ -277,17 +302,22 @@ function DetalheProposta({ l, nomeDe }) {
       </div>
       <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
         <table>
-          <thead><tr><th>Pagamento</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
+          <thead><tr><th>Pago em</th><th>Mês da folha</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
           <tbody>
-            {l.pagamentos.length === 0 && <tr><td colSpan={4} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
+            {l.pagamentos.length === 0 && <tr><td colSpan={5} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
             {l.pagamentos.map((p, i) => (
               <tr key={i}>
                 <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (planilha)" : dataCurta(p.pagoEm)}</td>
+                <td className="peq">{rotMes(mesDoPagamentoItem(p))}</td>
                 <td className="peq">{nomeDe(p.colaboradorId)}</td>
                 <td className="peq">{p.planilha ? "planilha antiga" : "registrado no sistema"}</td>
                 <td className="tnum" style={D}>{brl(p.valor)}</td>
               </tr>
             ))}
+            <tr style={{ background: "var(--marca-50)" }}>
+              <td colSpan={4} className="peq"><b>Comissão liberada {brl(l.gerada)}</b> · já pago {brl(l.pago)}</td>
+              <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? `falta ${brl(l.aPagar)}` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</td>
+            </tr>
           </tbody>
         </table>
       </div>

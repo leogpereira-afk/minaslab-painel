@@ -99,3 +99,14 @@ test("série mensal: gerada pela NF, paga pela folha, média dos meses pagos", (
   assert.equal(s.pagoSemMes, 5);
   assert.equal(s.serie.find((x) => x.mes === "2026-10").gerada, 4.6);
 });
+
+test("situação da proposta: pendente, em andamento, finalizada e cancelada", async () => {
+  const { statusProposta } = await import("./comissoesProposta.js");
+  const L = (x) => ({ status: "APROVADA", os: [{ cancelada: false }], osGeradas: 1, geradas: 100, valorProposta: 100, semNF: 0, ...x });
+  assert.equal(statusProposta(L({ os: [], osGeradas: 0, geradas: 0 })), "pendente");
+  assert.equal(statusProposta(L({ geradas: 50 })), "andamento");
+  assert.equal(statusProposta(L({ semNF: 10 })), "andamento");
+  assert.equal(statusProposta(L({})), "finalizada");
+  assert.equal(statusProposta(L({ status: "CANCELADA" })), "cancelada");
+  assert.equal(statusProposta(L({ os: [{ cancelada: true }], osGeradas: 0 })), "cancelada");
+});
