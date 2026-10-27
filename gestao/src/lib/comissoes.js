@@ -19,8 +19,9 @@ export const mesDe = (data) => String(data || "").slice(0, 7);
 
 /** Taxa (%) vigente numa data: a de maior "desde" que já começou. */
 export function taxaEm(colab, data) {
-  const t = (colab?.taxas || []).filter((x) => x?.desde && String(x.desde) <= String(data))
-    .sort((a, b) => String(b.desde).localeCompare(String(a.desde)))[0];
+  const todas = (colab?.taxas || []).filter((x) => x?.desde).sort((a, b) => String(b.desde).localeCompare(String(a.desde)));
+  // Antes da primeira taxa (ex.: OS antigas das propostas da planilha), vale a primeira.
+  const t = todas.find((x) => String(x.desde) <= String(data)) || todas.at(-1);
   return t ? Number(t.pct) || 0 : 0;
 }
 

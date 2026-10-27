@@ -14,4 +14,4 @@ export const npsCRM = () => chamar("nps");
 export const setoresCRM = (mes) => chamar("setores", { mes });
 export const labPainelCRM = () => chamar("labPainel");
 // Comissões: propostas aprovadas dos responsáveis + OS de Serviços gerados.
-export const comissoesCRM = (responsaveis = []) => chamar("comissoes", { responsaveis });
+export const comissoesCRM = (responsaveis = [], numeros = []) => chamar("comissoes", { responsaveis, numeros });

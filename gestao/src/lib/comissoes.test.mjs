@@ -13,7 +13,7 @@ const OS = (id, extra) => ({ id, os: id, proposta: "001/2026", dataOs: "2026-10-
 test("taxa vigente muda na data e não mexe no passado", () => {
   assert.equal(taxaEm(COLAB, "2026-11-30"), 1);
   assert.equal(taxaEm(COLAB, "2026-12-01"), 1.5);
-  assert.equal(taxaEm(COLAB, "2026-09-01"), 0);
+  assert.equal(taxaEm(COLAB, "2026-09-01"), 1); // antes da primeira taxa vale a primeira
 });
 
 test("proposta de 500 faturada em dois meses paga 250 em cada mês", () => {
