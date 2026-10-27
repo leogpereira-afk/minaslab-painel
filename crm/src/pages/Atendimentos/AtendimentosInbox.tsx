@@ -5,7 +5,7 @@ import { PageShell } from '../../components/ui/PageShell'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { PeriodSelect } from '../../components/ui/PeriodFilter'
-import { ALL_PERIOD, inPeriod, yearsFrom, type PeriodFilter } from '../../lib/period'
+import { currentPeriod, inPeriod, yearsFrom, type PeriodFilter } from '../../lib/period'
 
 type Atendimento={id:string;lead_id:string|null;cliente_id:string|null;contato_id:string|null;ocorrido_em:string;canal:string|null;assunto:string|null;resumo:string|null;external_id:string|null;source_system:string;usuario_id:string|null}
 type Lead={id:string;nome:string|null;telefone_whatsapp:string|null;origem:string|null;assunto:string|null;status:string|null;tipo_analise:string|null;responsavel_id:string|null;data_primeiro_atendimento:string|null;resumo:string|null;cliente_convertido_id:string|null;contato_convertido_id:string|null;email_contato?:string|null;empresa_contato?:string|null}
@@ -30,7 +30,7 @@ export function AtendimentosInbox(){
  const {profile,hasPermission}=useAuth(),canWrite=hasPermission('crm.write'),navigate=useNavigate()
  const[atendimentos,setAtendimentos]=useState<Atendimento[]>([]),[leads,setLeads]=useState<Lead[]>([]),[clientes,setClientes]=useState<Cliente[]>([]),[contatos,setContatos]=useState<Contato[]>([]),[interacoes,setInteracoes]=useState<Interacao[]>([]),[perfis,setPerfis]=useState<Perfil[]>([])
  const[oportunidades,setOportunidades]=useState<Oportunidade[]>([]),[propostas,setPropostas]=useState<Proposta[]>([]),[contratos,setContratos]=useState<Contrato[]>([]),[listas,setListas]=useState<Lista[]>([]),[grupos,setGrupos]=useState<Grupo[]>([])
- const[selectedKey,setSelectedKey]=useState<string|null>(null),[q,setQ]=useState(''),[tab,setTab]=useState('TODOS'),[period,setPeriod]=useState<PeriodFilter>(ALL_PERIOD),[detailTab,setDetailTab]=useState('CONVERSAS'),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('')
+ const[selectedKey,setSelectedKey]=useState<string|null>(null),[q,setQ]=useState(''),[tab,setTab]=useState('TODOS'),[period,setPeriod]=useState<PeriodFilter>(currentPeriod),[detailTab,setDetailTab]=useState('CONVERSAS'),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('')
  const[editingInfo,setEditingInfo]=useState(false),[editingClass,setEditingClass]=useState(false),[editingContact,setEditingContact]=useState(false)
  const[contactName,setContactName]=useState(''),[contactPhone,setContactPhone]=useState(''),[contactEmail,setContactEmail]=useState(''),[contactCompany,setContactCompany]=useState(''),[contactClientId,setContactClientId]=useState('')
  const[conversationMessages,setConversationMessages]=useState<Interacao[]>([]),[conversationLoading,setConversationLoading]=useState(false),[conversationError,setConversationError]=useState('')
