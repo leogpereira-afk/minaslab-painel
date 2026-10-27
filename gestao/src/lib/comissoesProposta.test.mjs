@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { donosDasPropostas, pagosPorProposta, extratoColaborador, itensPagamentoPropostas, geradaNoMes } from "./comissoesProposta.js";
+import { donosDasPropostas, pagosPorProposta, extratoColaborador, itensPagamentoPropostas, geradaNoMes, osDoExtrato, serieMensal, situacaoOS } from "./comissoesProposta.js";
 
 const RUTH = { id: "r", nome: "RUTH", crmId: "u1", desde: "2026-10-01", taxas: [{ desde: "2026-10-01", pct: 1 }] };
 const VERA = { id: "v", nome: "VERA", crmId: "u2", desde: "2026-10-01", taxas: [{ desde: "2026-01-01", pct: 1 }], ativo: false };
@@ -73,4 +73,29 @@ test("pagar o que falta zera a proposta", () => {
   const pg = { tipo: "pagamento", colaboradorId: "r", pagoEm: "2026-10-30", itens: itensPagamentoPropostas(sel) };
   const ex2 = contexto([...REG, pg], PROPS, OSS)(RUTH);
   assert.equal(ex2.totais.aPagar, 0);
+});
+
+test("todas as OS: com e sem NF, comissão liberada ou prevista", () => {
+  const ex = contexto(REG, PROPS, OSS)(RUTH);
+  const os = osDoExtrato(ex);
+  const f = os.find((o) => o.id === "f");
+  assert.equal(f.sit.id, "faltaNF");
+  assert.equal(f.prevista, 2.5);
+  assert.equal(os.find((o) => o.id === "e").sit.id, "nf");
+  assert.equal(situacaoOS({ fat: "CANCELADO", pag: "CANCELADO" }).id, "cancelada");
+  assert.equal(ex.linhas.find((l) => l.numero === "900").semNF, 250);
+});
+
+test("série mensal: gerada pela NF, paga pela folha, média dos meses pagos", () => {
+  const ex = contexto(REG, PROPS, OSS)(RUTH);
+  const pg = [
+    { pagoEm: "2026-06-01", total: 10 }, { pagoEm: "2026-08-01", total: 20 },
+    { pagoEm: "2026-01-01", total: 5, planilha: true, obs: "Importado: pago, mas sem o mês da folha na planilha" },
+  ];
+  const s = serieMensal([ex], pg, { ate: "2026-10" });
+  assert.equal(s.serie[0].mes, "2026-05");
+  assert.equal(s.serie.at(-1).mes, "2026-10");
+  assert.equal(s.mediaPaga, 15);
+  assert.equal(s.pagoSemMes, 5);
+  assert.equal(s.serie.find((x) => x.mes === "2026-10").gerada, 4.6);
 });

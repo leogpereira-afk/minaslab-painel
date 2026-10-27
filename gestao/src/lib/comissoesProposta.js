@@ -84,6 +84,7 @@ export function extratoColaborador(colab, ctx) {
     const geradas = centavos(vivas.reduce((s, o) => s + o.valor, 0));
     const faturado = centavos(vivas.filter((o) => o.faturada).reduce((s, o) => s + o.valor, 0));
     const pagoCliente = centavos(vivas.filter((o) => o.clientePagou).reduce((s, o) => s + o.valor, 0));
+    const semNF = centavos(vivas.filter((o) => !o.faturada).reduce((s, o) => s + o.valor, 0));
     const gerada = centavos(os.reduce((s, o) => s + o.comissao, 0));
     const previsao = centavos(os.filter((o) => o.aFaturar).reduce((s, o) => s + (o.valor * o.pct) / 100, 0));
     const pagamentos = (ctx.pagos.get(numero) || []).slice().sort((a, b) => String(a.pagoEm).localeCompare(String(b.pagoEm)));
@@ -92,7 +93,7 @@ export function extratoColaborador(colab, ctx) {
     linhas.push({
       numero, origem: d.origem, cliente: prop?.cliente || pl[0]?.cliente || vivas[0]?.cliente || "", aceite: prop?.aceite || "", status: prop?.status || (pl.length ? "" : "APROVADA"),
       valorProposta: centavos(valorProposta), osGeradas: vivas.length, geradas, faltaGerar: centavos(Math.max(0, valorProposta - geradas)),
-      faturado, pagoCliente, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao,
+      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao,
       os, pagamentos, planilha: pl,
     });
   }
@@ -100,7 +101,7 @@ export function extratoColaborador(colab, ctx) {
   const soma = (k) => centavos(linhas.reduce((s, l) => s + l[k], 0));
   return {
     linhas,
-    totais: { propostas: linhas.length, valorProposta: soma("valorProposta"), geradas: soma("geradas"), faltaGerar: soma("faltaGerar"), faturado: soma("faturado"), pagoCliente: soma("pagoCliente"), gerada: soma("gerada"), pago: soma("pago"), aPagar: soma("aPagar"), adiantado: soma("adiantado"), previsao: soma("previsao") },
+    totais: { propostas: linhas.length, valorProposta: soma("valorProposta"), geradas: soma("geradas"), faltaGerar: soma("faltaGerar"), faturado: soma("faturado"), pagoCliente: soma("pagoCliente"), semNF: soma("semNF"), gerada: soma("gerada"), pago: soma("pago"), aPagar: soma("aPagar"), adiantado: soma("adiantado"), previsao: soma("previsao") },
   };
 }
 
@@ -121,4 +122,60 @@ export function csvExtrato(linhas, titulo = "") {
   out.push(["Proposta", "Cliente", "Valor da proposta", "OS geradas", "Valor das OS", "Falta gerar", "Faturado", "Cliente pagou", "Comissão gerada", "Pago", "A pagar", "Adiantado"].join(";"));
   for (const l of linhas) out.push([t(l.numero), t(l.cliente), n(l.valorProposta), l.osGeradas, n(l.geradas), n(l.faltaGerar), n(l.faturado), n(l.pagoCliente), n(l.gerada), n(l.pago), n(l.aPagar), n(l.adiantado)].join(";"));
   return "﻿" + out.join("\r\n");
+}
+
+/** Situação de uma OS em palavras (para a lista de OS). */
+export function situacaoOS(o) {
+  const fat = String(o.fat || "").toUpperCase();
+  const pag = String(o.pag || "").toUpperCase();
+  if (o.cancelada || fat === "CANCELADO" || pag === "CANCELADO") return { id: "cancelada", rotulo: "Cancelada", tom: "ruim" };
+  if (fat === "NAO FATURAR") return { id: "cancelada", rotulo: "Não faturar", tom: "ruim" };
+  if (o.faturada) return { id: "nf", rotulo: "NF emitida", tom: "ok" };
+  if (fat === "PRONTO PARA FATURAR") return { id: "faltaNF", rotulo: "Falta emitir NF", tom: "alerta" };
+  return { id: "aguardando", rotulo: fat ? fat.charAt(0) + fat.slice(1).toLowerCase() : "Aguardando", tom: "neutro" };
+}
+
+/** Todas as OS das propostas de um extrato, com a comissão liberada ou prevista. */
+export function osDoExtrato(extrato) {
+  return extrato.linhas.flatMap((l) => l.os.map((o) => {
+    const sit = situacaoOS(o);
+    const prevista = sit.id === "faltaNF" || sit.id === "aguardando" ? centavos((o.valor * (o.pct || 0)) / 100) : 0;
+    return { ...o, proposta: l.numero, cliente: o.cliente || l.cliente, sit, prevista };
+  })).sort((a, b) => String(b.dataOs).localeCompare(String(a.dataOs)));
+}
+
+const mesesEntre = (de, ate) => {
+  const out = [];
+  let [a, m] = de.split("-").map(Number);
+  const [a2, m2] = ate.split("-").map(Number);
+  while (a < a2 || (a === a2 && m <= m2)) { out.push(`${a}-${String(m).padStart(2, "0")}`); m += 1; if (m > 12) { m = 1; a += 1; } }
+  return out;
+};
+
+/**
+ * Série mês a mês: comissão GERADA (mês da emissão da NF) e PAGA (mês do
+ * pagamento/folha). Pagamentos antigos sem mês da folha ficam de fora da
+ * série e voltam em `pagoSemMes`.
+ */
+export function serieMensal(extratos, pagamentos, { ate }) {
+  const gerada = {};
+  const paga = {};
+  let pagoSemMes = 0;
+  for (const ex of extratos) for (const l of ex.linhas) for (const o of l.os) {
+    if (!o.faturada) continue;
+    const m = String(o.emissao).slice(0, 7);
+    if (m) gerada[m] = centavos((gerada[m] || 0) + o.comissao);
+  }
+  for (const p of pagamentos) {
+    if (p.planilha && String(p.obs || "").includes("sem o mês")) { pagoSemMes = centavos(pagoSemMes + Number(p.total || 0)); continue; }
+    const m = String(p.pagoEm || "").slice(0, 7);
+    if (m) paga[m] = centavos((paga[m] || 0) + Number(p.total || 0));
+  }
+  const todos = [...Object.keys(gerada), ...Object.keys(paga)].filter((m) => m <= ate).sort();
+  const meses = todos.length ? mesesEntre(todos[0], ate) : [];
+  const serie = meses.map((m) => ({ mes: m, gerada: gerada[m] || 0, paga: paga[m] || 0 }));
+  const comPago = serie.filter((x) => x.paga > 0);
+  const comGerada = serie.filter((x) => x.gerada > 0);
+  const media = (xs, k) => (xs.length ? centavos(xs.reduce((s, x) => s + x[k], 0) / xs.length) : 0);
+  return { serie, pagoSemMes, mediaPaga: media(comPago, "paga"), mediaGerada: media(comGerada, "gerada"), mesesPagos: comPago.length };
 }
