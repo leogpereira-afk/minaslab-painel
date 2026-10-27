@@ -1,20 +1,22 @@
-// Comissões: % sobre o faturado das propostas aprovadas de cada colaborador.
-// Lê o CRM (propostas aprovadas) e Serviços gerados (OS faturadas) pelo
-// ml-comercial; o cadastro dos colaboradores e os pagamentos ficam na
-// coleção rh_comercial_comissoes. Regra e cálculo: src/lib/comissoes.js.
-import { useMemo, useState } from "react";
+// Comissões: extrato por PROPOSTA de cada colaborador. Lê o CRM (propostas)
+// e Serviços gerados (OS) pelo ml-comercial; cadastro, planilha antiga e
+// pagamentos ficam na coleção rh_comercial_comissoes.
+// Regra e cálculo: src/lib/comissoesProposta.js.
+import { Fragment, useMemo, useState } from "react";
 import { useBase, useCRM } from "../hooks/base.jsx";
 import { Card, Chip, Kpi, Cabecalho, Abas, Modal, Paginacao, usePaginacao } from "../components/ui.jsx";
 import { comissoesCRM } from "../services/crm.js";
 import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/format.js";
+import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
-  calcularColaborador, situacao, porMes, itensDoPagamento, validarColaborador, taxaAtual, csvItens, centavos,
-} from "../lib/comissoes.js";
+  donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
+} from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
 
 const pctTxt = (p) => `${String(Number(p || 0)).replace(".", ",")}%`;
 const nomeCurto = (n) => { const p = nomeProprio(n).split(" ").filter(Boolean); return p.length > 1 ? `${p[0]} ${p.at(-1)}` : p[0] || ""; };
+const D = { textAlign: "right" };
 
 function baixar(nome, texto) {
   const url = URL.createObjectURL(new Blob([texto], { type: "text/csv;charset=utf-8" }));
@@ -25,64 +27,42 @@ function baixar(nome, texto) {
 
 export default function Comissoes() {
   const { dados, gravar, remover } = useBase();
-  const [aba, setAba] = useState("pagar");
+  const [aba, setAba] = useState("propostas");
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
   const [importando, setImportando] = useState(false);
+  const [quem, setQuem] = useState("");
 
   const registros = dados.comissoes || [];
-  const colabs = useMemo(() => registros.filter((r) => r.tipo === "colaborador").sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR")), [registros]);
+  const colabs = useMemo(() => registros.filter((r) => r.tipo === "colaborador").sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR")), [registros]);
   const pagamentos = useMemo(() => registros.filter((r) => r.tipo === "pagamento").sort((a, b) => String(b.pagoEm).localeCompare(String(a.pagoEm)) || String(b.criadoEm).localeCompare(String(a.criadoEm))), [registros]);
-  const saldosDe = useMemo(() => {
-    const m = new Map();
-    for (const r of registros) if (r.tipo === "saldo") m.set(r.colaboradorId, [...(m.get(r.colaboradorId) || []), ...(r.itens || []).map((i) => ({ ...i, saldoId: r.id }))]);
-    return m;
-  }, [registros]);
-  const ativos = colabs.filter((c) => c.ativo !== false);
   const ids = [...new Set(colabs.map((c) => c.crmId).filter(Boolean))].sort();
-  const crm = useCRM(`comissoes:${ids.join(",")}`, () => comissoesCRM(ids));
+  const numeros = useMemo(() => [...new Set(registros.filter((r) => r.tipo === "planilha").flatMap((r) => (r.linhas || []).map((l) => l.proposta)))].sort(), [registros]);
+  const crm = useCRM(`comissoes:${ids.join(",")}:${numeros.length}`, () => comissoesCRM(ids, numeros));
   const pessoasCRM = crm.dados?.pessoas || [];
 
   const contas = useMemo(() => {
     if (!crm.dados) return [];
-    const osPorId = new Map(crm.dados.os.map((o) => [o.id, o]));
-    return colabs.map((c) => {
-      const calc = calcularColaborador(c, crm.dados.propostas, crm.dados.os);
-      const outros = new Set(pagamentos.filter((p) => p.colaboradorId !== c.id).flatMap((p) => (p.itens || []).map((i) => i.osId)));
-      const saldos = saldosDe.get(c.id) || [];
-      const sit = situacao(c, calc, pagamentos, outros, { saldos, osPorId });
-      const meus = pagamentos.filter((p) => p.colaboradorId === c.id);
-      return { c, calc, sit, saldos, meses: porMes(calc, meus, saldos), pagamentos: meus };
-    });
-  }, [crm.dados, colabs, pagamentos, saldosDe]);
-  // Situação das OS de cada proposta (para as linhas antigas da planilha).
-  const osDaProposta = useMemo(() => {
-    const m = new Map();
-    for (const o of crm.dados?.os || []) {
-      const x = m.get(o.proposta) || { n: 0, faturadas: 0, pagas: 0 };
-      x.n += 1;
-      if (String(o.fat).toUpperCase() === "FATURADO" && String(o.pag).toUpperCase() !== "CANCELADO") x.faturadas += 1;
-      if (String(o.pag).toUpperCase() === "PAGO") x.pagas += 1;
-      m.set(o.proposta, x);
-    }
-    return m;
-  }, [crm.dados]);
-  const tirarSaldo = async (item) => {
-    const reg = registros.find((r) => r.id === item.saldoId);
-    if (!reg || !window.confirm(`Tirar da lista a comissão antiga da proposta ${item.proposta} (${brl(item.valor)})? Ela não será paga.`)) return;
-    try { await gravar("comissoes", { ...reg, itens: reg.itens.filter((i) => i.id !== item.id), tirados: [...(reg.tirados || []), { ...reg.itens.find((i) => i.id === item.id), tiradoEm: new Date().toISOString() }] }); } catch (e) { window.alert(e.message); }
-  };
+    const osPorProposta = new Map();
+    for (const o of crm.dados.os) osPorProposta.set(o.proposta, [...(osPorProposta.get(o.proposta) || []), o]);
+    const base = {
+      dono: donosDasPropostas(colabs, registros, crm.dados.propostas),
+      propsPorNumero: new Map(crm.dados.propostas.map((p) => [p.numero, p])),
+      osPorProposta, pagos: pagosPorProposta(pagamentos),
+    };
+    return colabs.map((c) => ({ c, ex: extratoColaborador(c, { ...base, planilha: linhasPlanilha(registros, c.id) }) }));
+  }, [crm.dados, colabs, registros, pagamentos]);
 
-  const total = (f) => centavos(contas.reduce((s, x) => s + f(x), 0));
+  const soma = (f) => centavos(contas.reduce((s, x) => s + f(x), 0));
   const mes = mesAtual();
-  const doMes = total((x) => x.calc.itens.filter((i) => i.competencia === mes).reduce((s, i) => s + i.comissao, 0));
-  const previsto = total((x) => x.calc.previsao.reduce((s, i) => s + i.comissao, 0));
   const ano = mes.slice(0, 4);
   const pagoAno = centavos(pagamentos.filter((p) => String(p.pagoEm).startsWith(ano)).reduce((s, p) => s + Number(p.total || 0), 0));
+  const atual = contas.find((x) => x.c.id === quem) || contas.find((x) => x.ex.totais.aPagar > 0) || contas[0];
+  const nomeDe = (id) => nomeCurto(colabs.find((c) => c.id === id)?.nome || "") || "—";
 
   return (
     <>
-      <Cabecalho sobre="Comissões" titulo="Comissão sobre o faturado" sub="Propostas aprovadas no CRM × OS faturadas em Serviços gerados. A comissão sai no mês da emissão da nota, com a taxa vigente naquela data.">
+      <Cabecalho sobre="Comissões" titulo="Comissão por proposta" sub="Cada proposta: quanto vale, quanto já virou OS, quanto foi faturado, quanto gerou de comissão (1% das OS faturadas), quanto já foi pago e quanto falta pagar.">
         <button type="button" className="btn claro" onClick={crm.recarregar}>Atualizar</button>
         <button type="button" className="btn claro" disabled={!crm.dados} onClick={() => setImportando(true)}>Importar planilha antiga</button>
         <button type="button" className="btn" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
@@ -92,141 +72,211 @@ export default function Comissoes() {
       {crm.dados && (
         <>
           <div className="grade grade-kpi">
-            <Kpi rotulo="A pagar" valor={brl(total((x) => x.sit.totalAPagar))} sub={`${contas.filter((x) => x.sit.aPagar.length).length} colaborador(es) com saldo`} />
-            <Kpi rotulo={`Comissão de ${mesLongo(mes).toLowerCase()}`} valor={brl(doMes)} sub="sobre as notas emitidas no mês" />
-            <Kpi rotulo="Previsão" valor={brl(previsto)} sub="OS prontas para faturar" />
-            <Kpi rotulo={`Pago em ${ano}`} valor={brl(pagoAno)} sub={`${pagamentos.filter((p) => String(p.pagoEm).startsWith(ano)).length} pagamento(s)`} />
+            <Kpi rotulo="Falta pagar" valor={brl(soma((x) => x.ex.totais.aPagar))} sub={`${contas.filter((x) => x.ex.totais.aPagar > 0).length} colaborador(es)`} />
+            <Kpi rotulo={`Gerada em ${mesLongo(mes).toLowerCase()}`} valor={brl(soma((x) => geradaNoMes(x.ex, mes)))} sub="1% das notas emitidas no mês" />
+            <Kpi rotulo="Vem por aí" valor={brl(soma((x) => x.ex.totais.previsao))} sub="OS prontas para faturar" />
+            <Kpi rotulo={`Pago em ${ano}`} valor={brl(pagoAno)} sub="planilha e sistema" />
           </div>
           <Abas valor={aba} aoMudar={setAba} abas={[
-            ["pagar", "A pagar", contas.filter((x) => x.sit.aPagar.length).length || ""],
-            ["meses", "Por mês"],
+            ["propostas", "Por proposta"],
             ["pagamentos", "Pagamentos", pagamentos.length || ""],
-            ["colaboradores", "Colaboradores", ativos.length || ""],
+            ["colaboradores", "Colaboradores", colabs.length || ""],
           ]} />
-          {colabs.length === 0 && (
-            <div className="aviso marca">Cadastre quem recebe comissão: o usuário do CRM (responsável comercial das propostas), a data de contagem e a taxa.</div>
+          {colabs.length === 0 && <div className="aviso marca">Cadastre quem recebe comissão em “Novo colaborador”, ou traga o histórico em “Importar planilha antiga”.</div>}
+          {aba === "propostas" && atual && (
+            <>
+              <div className="pilulas" role="group" aria-label="Colaborador">
+                {contas.map((x) => (
+                  <button key={x.c.id} type="button" className={`pilula${x.c.id === atual.c.id ? " ativa" : ""}`} aria-pressed={x.c.id === atual.c.id} onClick={() => setQuem(x.c.id)}>
+                    {nomeCurto(x.c.nome)}{x.ex.totais.aPagar > 0 ? ` · ${brl(x.ex.totais.aPagar)}` : ""}
+                  </button>
+                ))}
+              </div>
+              <Extrato key={atual.c.id} conta={atual} gravar={gravar} nomeDe={nomeDe} />
+            </>
           )}
-          {aba === "pagar" && <APagar contas={contas.filter((x) => x.c.ativo !== false || x.sit.aPagar.length)} gravar={gravar} osDaProposta={osDaProposta} aoTirar={tirarSaldo} />}
-          {aba === "meses" && <PorMes contas={contas} aoVer={setVendo} />}
-          {aba === "pagamentos" && <Pagamentos pagamentos={pagamentos} colabs={colabs} aoVer={setVendo} remover={remover} />}
-          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} pagamentos={pagamentos} />}
+          {aba === "pagamentos" && <Pagamentos pagamentos={pagamentos} nomeDe={nomeDe} aoVer={setVendo} remover={remover} />}
+          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} registros={registros} />}
         </>
       )}
-      {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => pagamentos.some((p) => p.colaboradorId === id)} />}
-      {vendo && <VerItens {...vendo} aoFechar={() => setVendo(null)} />}
+      {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === id)} />}
+      {vendo && <VerPagamento {...vendo} aoFechar={() => setVendo(null)} />}
       {importando && <ImportarPlanilha colabs={colabs} pessoasCRM={pessoasCRM} gravar={gravar} aoFechar={() => setImportando(false)} />}
     </>
   );
 }
 
-function SituacaoProposta({ info }) {
-  if (!info) return <div className="suave">sem OS em Serviços gerados</div>;
-  if (info.pagas >= info.n) return <div className="suave">cliente já pagou</div>;
-  if (info.faturadas) return <div className="suave">{info.faturadas} de {info.n} OS faturada(s)</div>;
-  return <div className="suave">OS ainda não faturada</div>;
+const FILTROS = [
+  ["aPagar", "Falta pagar", (l) => l.aPagar > 0],
+  ["todas", "Todas", () => true],
+  ["faltaGerar", "Falta gerar OS", (l) => l.faltaGerar > 0],
+  ["adiantado", "Pago adiantado", (l) => l.adiantado > 0],
+];
+
+function Extrato({ conta, gravar, nomeDe }) {
+  const { c, ex } = conta;
+  const t = ex.totais;
+  const [filtro, setFiltro] = useState(t.aPagar > 0 ? "aPagar" : "todas");
+  const [busca, setBusca] = useState("");
+  const [aberta, setAberta] = useState("");
+  const [desmarcadas, setDesmarcadas] = useState(() => new Set());
+  const [pagando, setPagando] = useState(false);
+  const q = busca.trim().toLowerCase();
+  const f = FILTROS.find((x) => x[0] === filtro)[2];
+  const lista = ex.linhas.filter((l) => f(l) && (!q || l.numero.includes(q) || l.cliente.toLowerCase().includes(q)));
+  const pag = usePaginacao(lista, 20, `${filtro}|${q}`);
+  const pagaveis = ex.linhas.filter((l) => l.aPagar > 0 && !desmarcadas.has(l.numero));
+  const totalSel = centavos(pagaveis.reduce((s, l) => s + l.aPagar, 0));
+  const alternar = (n) => setDesmarcadas((d) => { const x = new Set(d); x.has(n) ? x.delete(n) : x.add(n); return x; });
+  const Num = ({ rot, v, forte, tom }) => (
+    <div style={{ minWidth: 120 }}><div className="suave peq">{rot}</div><div className="tnum" style={{ fontWeight: forte ? 700 : 600, fontSize: forte ? 18 : 15, color: tom ? `var(--${tom})` : undefined }}>{v}</div></div>
+  );
+  return (
+    <Card semPad>
+      <div style={{ padding: "18px 20px 6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+          <h2>{nomeCurto(c.nome)}</h2>
+          <span className="suave peq">
+            {c.ativo === false ? "Só as propostas da planilha antiga" : `Planilha antiga + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: "14px 24px", flexWrap: "wrap", marginTop: 12 }}>
+          <Num rot="Propostas" v={t.propostas} />
+          <Num rot="Valor das propostas" v={brl(t.valorProposta)} />
+          <Num rot="Já virou OS" v={brl(t.geradas)} />
+          <Num rot="Faturado (NF)" v={brl(t.faturado)} />
+          <Num rot="Cliente pagou" v={brl(t.pagoCliente)} />
+          <Num rot="Comissão gerada" v={brl(t.gerada)} />
+          <Num rot="Já pago" v={brl(t.pago)} />
+          <Num rot="Falta pagar" v={brl(t.aPagar)} forte tom={t.aPagar > 0 ? "alerta-tx" : undefined} />
+          {t.adiantado > 0 && <Num rot="Pago adiantado" v={brl(t.adiantado)} />}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "12px 20px" }}>
+        <div className="pilulas" role="group" aria-label="Filtro">
+          {FILTROS.map(([id, rot, fx]) => {
+            const n = ex.linhas.filter(fx).length;
+            return <button key={id} type="button" className={`pilula${filtro === id ? " ativa" : ""}`} aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{rot} ({n})</button>;
+          })}
+        </div>
+        <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar proposta ou cliente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar proposta ou cliente" />
+      </div>
+      {lista.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhuma proposta neste filtro.</div> : (
+        <div className="tabela-caixa tabela-comissao">
+          <table>
+            <thead><tr>
+              <th style={{ width: 32 }} />
+              <th>Proposta</th><th style={D}>Valor</th><th style={D}>OS geradas</th><th style={D}>Faturado</th><th style={D}>Cliente pagou</th><th style={D}>Comissão</th><th style={D}>Pago</th><th style={D}>Falta pagar</th>
+            </tr></thead>
+            <tbody>
+              {pag.itens.map((l) => (
+                <Fragment key={l.numero}>
+                  <tr style={{ cursor: "pointer" }} onClick={() => setAberta(aberta === l.numero ? "" : l.numero)}>
+                    <td onClick={(e) => e.stopPropagation()}>{l.aPagar > 0 && <input type="checkbox" aria-label={`Pagar a proposta ${l.numero}`} checked={!desmarcadas.has(l.numero)} onChange={() => alternar(l.numero)} />}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
+                        {l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
+                        {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM</Chip>}
+                        <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
+                      </div>
+                      <div className="suave peq" title={l.cliente} style={{ maxWidth: 230, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.cliente || "—"}</div>
+                    </td>
+                    <td className="tnum" style={D}>{brl(l.valorProposta)}</td>
+                    <td className="tnum" style={D}>{brl(l.geradas)}<div className="suave peq">{l.osGeradas} OS{l.faltaGerar > 0 ? ` · falta ${brl(l.faltaGerar)}` : ""}</div></td>
+                    <td className="tnum" style={D}>{brl(l.faturado)}</td>
+                    <td className="tnum" style={D}>{brl(l.pagoCliente)}</td>
+                    <td className="tnum" style={D}>{brl(l.gerada)}</td>
+                    <td className="tnum" style={D}>{brl(l.pago)}</td>
+                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
+                  </tr>
+                  {aberta === l.numero && <tr><td colSpan={9} style={{ background: "var(--marca-50)", padding: 0 }}><DetalheProposta l={l} nomeDe={nomeDe} /></td></tr>}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Paginacao pag={pag} rotulo="propostas" />
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 20px 18px", flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}.csv`, csvExtrato(lista, `Comissão por proposta · ${nomeCurto(c.nome)}`))}>Baixar planilha</button>
+        <button type="button" className="btn" disabled={!pagaveis.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)} ({pagaveis.length} proposta{pagaveis.length === 1 ? "" : "s"})</button>
+      </div>
+      {pagando && <RegistrarPagamento colab={c} linhas={pagaveis} total={totalSel} gravar={gravar} aoFechar={() => setPagando(false)} />}
+    </Card>
+  );
 }
 
-function TabelaItens({ itens, marcados, aoMarcar, mostrarStatus, osDaProposta, aoTirar }) {
-  const pag = usePaginacao(itens, 15, itens.length);
+function DetalheProposta({ l, nomeDe }) {
+  const situacaoOS = (o) => o.cancelada ? <Chip tom="ruim">cancelada</Chip> : o.faturada ? <Chip tom="ok">faturada</Chip> : o.aFaturar ? <Chip tom="alerta">pronta para faturar</Chip> : <Chip>{String(o.fat || "—").toLowerCase()}</Chip>;
   return (
-    <>
-      <div className="tabela-caixa">
+    <div style={{ padding: "12px 16px 16px", display: "grid", gap: 12 }}>
+      <div className="peq">
+        <b>Como chegou nesta conta:</b> {l.osGeradas} OS geradas ({brl(l.geradas)}), {brl(l.faturado)} faturados → comissão {brl(l.gerada)} · já pago {brl(l.pago)} ·{" "}
+        {l.aPagar > 0 ? <b>falta pagar {brl(l.aPagar)}</b> : l.adiantado > 0 ? <>pago adiantado {brl(l.adiantado)} (é descontado das próximas OS)</> : "em dia"}
+        {l.aceite ? <> · aceite em {dataCurta(l.aceite)}</> : null}
+      </div>
+      <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
         <table>
-          <thead><tr>
-            {aoMarcar && <th style={{ width: 32 }} />}
-            <th>Competência</th><th>Proposta</th><th>OS</th><th>Cliente</th><th>Emissão NF</th><th style={{ textAlign: "right" }}>Faturado</th><th>%</th><th style={{ textAlign: "right" }}>Comissão</th>
-            {mostrarStatus && <th>Situação</th>}
-          </tr></thead>
+          <thead><tr><th>OS</th><th>Gerada em</th><th style={D}>Valor</th><th>Situação</th><th>NF</th><th>Cliente</th><th style={D}>Comissão</th></tr></thead>
           <tbody>
-            {pag.itens.map((i) => (
-              <tr key={i.id || i.osId}>
-                {aoMarcar && <td><input type="checkbox" aria-label={`Pagar OS ${i.os}`} checked={marcados.has(i.id)} onChange={() => aoMarcar(i.id)} /></td>}
-                <td className="tnum peq">{i.competencia ? mesLongo(i.competencia) : "—"}</td>
-                <td className="tnum peq">{i.proposta}</td>
-                <td className="tnum peq">{i.planilha ? <><Chip tom="neutro">planilha</Chip>{osDaProposta && <SituacaoProposta info={osDaProposta.get(i.proposta)} />}</> : <>{i.os}{i.nf ? <div className="suave">NF {i.nf}</div> : null}</>}</td>
-                <td className="peq" style={{ maxWidth: 260 }}>{i.cliente}</td>
-                <td className="tnum peq">{dataCurta(i.emissao)}</td>
-                <td className="tnum" style={{ textAlign: "right" }}>{i.estorno ? "—" : brl(i.base)}</td>
-                <td className="tnum peq">{pctTxt(i.pct)}</td>
-                <td className="tnum" style={{ textAlign: "right", fontWeight: 600, color: Number(i.valor ?? i.comissao) < 0 ? "var(--ruim)" : undefined }}>
-                  {brl(i.valor ?? i.comissao)}
-                  {i.estorno ? <div><Chip tom="ruim">estorno: OS cancelada</Chip></div> : i.ajuste ? <div><Chip tom="alerta">ajuste (já pago {brl(i.pago)})</Chip></div> : null}
-                  {aoTirar && i.planilha && i.saldoId && <div><button type="button" className="btn-link peq" onClick={() => aoTirar(i)}>tirar da lista</button></div>}
-                </td>
-                {mostrarStatus && <td>{i.situacao === "pago" ? <Chip tom="ok">Pago</Chip> : i.situacao === "outro" ? <Chip tom="neutro">Pago a outro</Chip> : <Chip tom="alerta">A pagar</Chip>}</td>}
+            {l.os.length === 0 && <tr><td colSpan={7} className="suave">Nenhuma OS gerada ainda para esta proposta.</td></tr>}
+            {l.os.map((o) => (
+              <tr key={o.id} style={o.cancelada ? { opacity: 0.55 } : undefined}>
+                <td className="tnum peq">{o.os}</td>
+                <td className="tnum peq">{dataCurta(o.dataOs)}</td>
+                <td className="tnum" style={D}>{brl(o.valor)}</td>
+                <td>{situacaoOS(o)}</td>
+                <td className="tnum peq">{o.faturada ? <>{o.nf ? `NF ${o.nf} · ` : ""}{dataCurta(o.emissao)}</> : "—"}</td>
+                <td className="peq">{o.clientePagou ? <Chip tom="ok">pagou</Chip> : o.faturada ? String(o.pag || "").toLowerCase() : "—"}</td>
+                <td className="tnum" style={D}>{o.faturada ? <>{brl(o.comissao)} <span className="suave peq">({pctTxt(o.pct)})</span></> : "—"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <Paginacao pag={pag} rotulo="OS" />
-    </>
+      <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
+        <table>
+          <thead><tr><th>Pagamento</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
+          <tbody>
+            {l.pagamentos.length === 0 && <tr><td colSpan={4} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
+            {l.pagamentos.map((p, i) => (
+              <tr key={i}>
+                <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (planilha)" : dataCurta(p.pagoEm)}</td>
+                <td className="peq">{nomeDe(p.colaboradorId)}</td>
+                <td className="peq">{p.planilha ? "planilha antiga" : "registrado no sistema"}</td>
+                <td className="tnum" style={D}>{brl(p.valor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {l.planilha.length > 0 && (
+        <div className="suave peq">
+          Na planilha: {l.planilha.map((x) => `${dataCurta(x.data)} · proposta ${brl(x.base)} · comissão ${brl(x.valor)} · ${x.pago ? "pago" : "não pago"}`).join("  |  ")}
+        </div>
+      )}
+    </div>
   );
 }
 
-function APagar({ contas, gravar, osDaProposta, aoTirar }) {
-  const com = contas.filter((x) => x.sit.aPagar.length);
-  if (!com.length) return <div className="vazio">Nada a pagar: todas as comissões calculadas já estão pagas.</div>;
-  return <div className="grade" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>{com.map((x) => <CartaoAPagar key={x.c.id} conta={x} gravar={gravar} osDaProposta={osDaProposta} aoTirar={aoTirar} />)}</div>;
-}
-
-function CartaoAPagar({ conta, gravar, osDaProposta, aoTirar }) {
-  const { c, sit, calc } = conta;
-  const meses = [...new Set(sit.aPagar.map((i) => i.competencia).filter(Boolean))].sort();
-  const [ate, setAte] = useState("");
-  const visiveis = sit.aPagar.filter((i) => !ate || !i.competencia || i.competencia <= ate);
-  const [desmarcados, setDesmarcados] = useState(() => new Set());
-  const marcados = new Set(visiveis.map((i) => i.id).filter((id) => !desmarcados.has(id)));
-  const sel = visiveis.filter((i) => marcados.has(i.id));
-  const totalSel = centavos(sel.reduce((s, i) => s + i.valor, 0));
-  const [pagando, setPagando] = useState(false);
-  const alternar = (id) => setDesmarcados((d) => { const n = new Set(d); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const previsto = centavos(calc.previsao.reduce((s, i) => s + i.comissao, 0));
-  return (
-    <Card semPad>
-      <div className="card-cab" style={{ flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h2>{nomeCurto(c.nome)}</h2>
-          <div className="suave peq">{c.ativo === false ? "Fora do cálculo · " : ""}Desde {dataCurta(c.desde)} · taxa atual {pctTxt(taxaAtual(c, hojeBR()))}{previsto ? ` · previsão ${brl(previsto)} em ${calc.previsao.length} OS a faturar` : ""}</div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {meses.length > 1 && (
-            <select className="entrada" aria-label="Pagar até a competência" value={ate} onChange={(e) => setAte(e.target.value)} style={{ minHeight: 36 }}>
-              <option value="">Todas as competências</option>
-              {meses.map((m) => <option key={m} value={m}>Até {mesLongo(m).toLowerCase()}</option>)}
-            </select>
-          )}
-          <span className="tnum" style={{ fontWeight: 700 }}>{brl(sit.totalAPagar)}</span>
-        </div>
-      </div>
-      <TabelaItens itens={visiveis} marcados={marcados} aoMarcar={alternar} osDaProposta={osDaProposta} aoTirar={aoTirar} />
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 20px 18px", flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}-a-pagar.csv`, csvItens(sel, { titulo: `Comissão a pagar · ${nomeCurto(c.nome)}` }))}>Baixar planilha</button>
-        <button type="button" className="btn" disabled={!sel.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)}</button>
-      </div>
-      {pagando && <RegistrarPagamento colab={c} itens={sel} total={totalSel} gravar={gravar} aoFechar={() => setPagando(false)} />}
-    </Card>
-  );
-}
-
-function RegistrarPagamento({ colab, itens, total, gravar, aoFechar }) {
+function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
   const [pagoEm, setPagoEm] = useState(hojeBR());
   const [obs, setObs] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const competencias = [...new Set(itens.map((i) => i.competencia).filter(Boolean))].sort();
   const salvar = async () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return setErro("Informe a data do pagamento.");
     setSalvando(true); setErro("");
     try {
-      await gravar("comissoes", { tipo: "pagamento", colaboradorId: colab.id, nome: colab.nome, pagoEm, obs: obs.trim(), competencias, itens: itensDoPagamento(itens), total });
+      await gravar("comissoes", { tipo: "pagamento", colaboradorId: colab.id, nome: colab.nome, pagoEm, obs: obs.trim(), itens: itensPagamentoPropostas(linhas), total });
       aoFechar();
     } catch (e) { setErro(e.message); setSalvando(false); }
   };
   return (
     <Modal titulo={`Pagamento · ${nomeCurto(colab.nome)}`} aoFechar={aoFechar}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className="aviso marca">{itens.length} OS · {competencias.map((m) => mesLongo(m).toLowerCase()).join(", ") || "ajustes"} · <b>{brl(total)}</b></div>
+        <div className="aviso marca">{linhas.length} proposta{linhas.length === 1 ? "" : "s"} · <b>{brl(total)}</b></div>
         <div className="campo"><label htmlFor="pg-data">Data do pagamento</label><input id="pg-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
         <div className="campo"><label htmlFor="pg-obs">Observação</label><input id="pg-obs" className="entrada" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex.: pago na folha de novembro" /></div>
         {erro && <div className="aviso ruim">{erro}</div>}
@@ -239,75 +289,28 @@ function RegistrarPagamento({ colab, itens, total, gravar, aoFechar }) {
   );
 }
 
-function PorMes({ contas, aoVer }) {
-  const com = contas.filter((x) => x.meses.length);
-  if (!com.length) return <div className="vazio">Nenhuma OS faturada ainda para os colaboradores cadastrados.</div>;
-  return (
-    <div className="grade" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-      {com.map(({ c, calc, sit, meses, saldos, pagamentos: meus }) => {
-        const pagas = new Set(sit.aPagar.map((i) => i.id));
-        const deOutro = new Set(sit.deOutro.map((i) => i.id));
-        const ver = (m) => aoVer({
-          titulo: `${nomeCurto(c.nome)} · ${mesLongo(m)}`,
-          itens: [
-            ...calc.itens.filter((i) => i.competencia === m).map((i) => ({ ...i, situacao: deOutro.has(i.id) ? "outro" : pagas.has(i.id) ? "aPagar" : "pago" })),
-            ...meus.flatMap((p) => (p.itens || []).filter((i) => i.planilha && i.competencia === m).map((i) => ({ ...i, id: i.osId, situacao: "pago" }))),
-            ...saldos.filter((i) => i.competencia === m && pagas.has(i.id)).map((i) => ({ ...i, situacao: "aPagar" })),
-          ],
-          mostrarStatus: true,
-        });
-        return (
-          <Card semPad key={c.id}>
-            <div className="card-cab"><h2>{nomeCurto(c.nome)}</h2><span className="suave peq">comissão {brl(sit.totalComissao)} · pago {brl(sit.totalPago)}</span></div>
-            <div className="tabela-caixa">
-              <table>
-                <thead><tr><th>Competência</th><th style={{ textAlign: "right" }}>OS faturadas</th><th style={{ textAlign: "right" }}>Faturado</th><th style={{ textAlign: "right" }}>Comissão</th><th style={{ textAlign: "right" }}>Pago</th><th style={{ textAlign: "right" }}>A pagar</th><th /></tr></thead>
-                <tbody>
-                  {meses.map((l) => (
-                    <tr key={l.mes}>
-                      <td>{mesLongo(l.mes)}{l.planilha && <div className="suave peq">inclui a planilha antiga</div>}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{l.os}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{brl(l.faturado)}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{brl(l.comissao)}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{brl(l.pago)}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{Math.abs(l.aPagar) >= 0.01 ? <Chip tom={l.aPagar > 0 ? "alerta" : "ruim"}>{brl(l.aPagar)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
-                      <td style={{ textAlign: "right" }}>{(l.os > 0 || l.planilha) && <button type="button" className="btn claro mini" onClick={() => ver(l.mes)}>{l.os > 0 ? "Ver OS" : "Ver"}</button>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function Pagamentos({ pagamentos, colabs, aoVer, remover }) {
-  const pag = usePaginacao(pagamentos, 12);
-  const nome = (id) => nomeCurto(colabs.find((c) => c.id === id)?.nome || "") || "—";
+function Pagamentos({ pagamentos, nomeDe, aoVer, remover }) {
+  const pag = usePaginacao(pagamentos, 15);
   if (!pagamentos.length) return <div className="vazio">Nenhum pagamento registrado ainda.</div>;
   const desfazer = async (p) => {
-    if (!window.confirm(`Desfazer o pagamento de ${brl(p.total)} para ${nome(p.colaboradorId)}? As OS voltam para "A pagar".`)) return;
+    if (!window.confirm(`Desfazer o pagamento de ${brl(p.total)} para ${nomeDe(p.colaboradorId)}? O valor volta para "falta pagar".`)) return;
     try { await remover("comissoes", p.id); } catch (e) { window.alert(e.message); }
   };
   return (
     <Card semPad>
       <div className="tabela-caixa">
         <table>
-          <thead><tr><th>Pago em</th><th>Colaborador</th><th>Competências</th><th style={{ textAlign: "right" }}>OS</th><th style={{ textAlign: "right" }}>Valor</th><th>Obs.</th><th /></tr></thead>
+          <thead><tr><th>Pago em</th><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>Valor</th><th>Obs.</th><th /></tr></thead>
           <tbody>
             {pag.itens.map((p) => (
               <tr key={p.id}>
-                <td className="tnum">{dataCurta(p.pagoEm)}</td>
-                <td>{nome(p.colaboradorId)}</td>
-                <td className="peq">{(p.competencias || []).map((m) => mesLongo(m)).join(", ") || "ajustes"}</td>
-                <td className="tnum" style={{ textAlign: "right" }}>{(p.itens || []).length}</td>
-                <td className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{brl(p.total)}</td>
+                <td className="tnum">{p.planilha && String(p.obs).includes("sem o mês") ? <span className="suave">sem data</span> : dataCurta(p.pagoEm)}</td>
+                <td>{nomeDe(p.colaboradorId)}</td>
+                <td className="tnum" style={D}>{new Set((p.itens || []).map((i) => i.proposta)).size}</td>
+                <td className="tnum" style={{ ...D, fontWeight: 600 }}>{brl(p.total)}</td>
                 <td className="peq suave">{p.obs}</td>
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button type="button" className="btn claro mini" onClick={() => aoVer({ titulo: `Pagamento de ${dataCurta(p.pagoEm)} · ${nome(p.colaboradorId)}`, itens: (p.itens || []).map((i) => ({ ...i, id: i.osId })), csv: `comissao-paga-${p.pagoEm}.csv` })}>Ver</button>{" "}
+                <td style={{ ...D, whiteSpace: "nowrap" }}>
+                  <button type="button" className="btn claro mini" onClick={() => aoVer({ pagamento: p, quem: nomeDe(p.colaboradorId) })}>Ver</button>{" "}
                   <button type="button" className="btn perigo mini" onClick={() => desfazer(p)}>Desfazer</button>
                 </td>
               </tr>
@@ -320,42 +323,62 @@ function Pagamentos({ pagamentos, colabs, aoVer, remover }) {
   );
 }
 
-function Colaboradores({ contas, pessoasCRM, aoEditar, remover, pagamentos }) {
+function VerPagamento({ pagamento: p, quem, aoFechar }) {
+  const itens = p.itens || [];
+  return (
+    <Modal titulo={`Pagamento de ${p.planilha && String(p.obs).includes("sem o mês") ? "data não informada" : dataCurta(p.pagoEm)} · ${quem}`} aoFechar={aoFechar} largo>
+      {p.obs && <div className="suave peq" style={{ marginBottom: 8 }}>{p.obs}</div>}
+      <div className="tabela-caixa">
+        <table>
+          <thead><tr><th>Proposta</th><th>Cliente</th><th style={D}>Base</th><th style={D}>Valor pago</th></tr></thead>
+          <tbody>
+            {itens.map((i, k) => (
+              <tr key={k}><td className="tnum">{i.proposta}</td><td className="peq">{i.cliente}</td><td className="tnum" style={D}>{brl(i.base)}</td><td className="tnum" style={{ ...D, fontWeight: 600 }}>{brl(i.valor)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+        <b className="tnum">Total {brl(p.total)}</b>
+        <button type="button" className="btn mini" onClick={aoFechar}>Fechar</button>
+      </div>
+    </Modal>
+  );
+}
+
+function Colaboradores({ contas, pessoasCRM, aoEditar, remover, registros }) {
   const [erro, setErro] = useState("");
   if (!contas.length) return null;
   const excluir = async (c) => {
     setErro("");
-    if (pagamentos.some((p) => p.colaboradorId === c.id)) return setErro(`${nomeCurto(c.nome)} já tem pagamentos registrados. Desfaça os pagamentos antes ou marque “fora do cálculo” em Editar, para não perder o histórico.`);
-    if (!window.confirm(`Excluir ${nomeCurto(c.nome)} (contagem desde ${dataCurta(c.desde)}) da comissão?`)) return;
+    if (registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === c.id)) return setErro(`${nomeCurto(c.nome)} tem histórico (pagamentos ou planilha). Para não perder o histórico, desmarque “pega propostas novas” em Editar em vez de excluir.`);
+    if (!window.confirm(`Excluir ${nomeCurto(c.nome)} da comissão?`)) return;
     try { await remover("comissoes", c.id); } catch (e) { setErro(e.message); }
   };
-  const nomeCRM = (id) => pessoasCRM.find((p) => p.id === id)?.nome || "Usuário do CRM";
+  const nomeCRM = (id) => pessoasCRM.find((p) => p.id === id)?.nome || (id ? "Usuário do CRM" : "sem usuário no CRM");
   return (
     <>
-    {erro && <div className="aviso ruim">{erro}</div>}
-    <div className="grade grade-2">
-      {contas.map(({ c, calc, sit }) => (
-        <Card key={c.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-            <div>
-              <h2>{nomeCurto(c.nome)}</h2>
-              <div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div>
+      {erro && <div className="aviso ruim">{erro}</div>}
+      <div className="grade grade-2">
+        {contas.map(({ c, ex }) => (
+          <Card key={c.id}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+              <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
+              {c.ativo === false ? <Chip>só a planilha</Chip> : <Chip tom="ok">pega propostas novas</Chip>}
             </div>
-            {c.ativo === false ? <Chip>Fora do cálculo</Chip> : <Chip tom="ok">No cálculo</Chip>}
-          </div>
-          <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
-            Conta a partir de <b>{dataCurta(c.desde)}</b> · {calc.itens.length} OS faturadas · comissão {brl(sit.totalComissao)} · pago {brl(sit.totalPago)}
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-            {[...(c.taxas || [])].sort((a, b) => String(a.desde).localeCompare(String(b.desde))).map((t) => <Chip key={t.desde} tom="marca">{pctTxt(t.pct)} desde {dataCurta(t.desde)}</Chip>)}
-          </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>
-            <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>
-          </div>
-        </Card>
-      ))}
-    </div>
+            <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
+              {c.ativo === false ? "Só as propostas da planilha antiga" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+              {[...(c.taxas || [])].sort((a, b) => String(a.desde).localeCompare(String(b.desde))).map((t) => <Chip key={t.desde} tom="marca">{pctTxt(t.pct)} desde {dataCurta(t.desde)}</Chip>)}
+            </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+              <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>
+              <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>
+            </div>
+          </Card>
+        ))}
+      </div>
     </>
   );
 }
@@ -381,7 +404,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
     try { await gravar("comissoes", reg); aoFechar(); } catch (x) { setErro(x.message); setSalvando(false); }
   };
   const apagar = async () => {
-    if (temPagamento(f.id)) return setErro("Este colaborador já tem pagamentos registrados. Marque “fora do cálculo” em vez de apagar, para não perder o histórico.");
+    if (temPagamento(f.id)) return setErro("Este colaborador tem histórico (pagamentos ou planilha). Desmarque “pega propostas novas” em vez de excluir, para não perder o histórico.");
     if (!window.confirm("Excluir este cadastro de comissão?")) return;
     try { await remover("comissoes", f.id); aoFechar(); } catch (x) { setErro(x.message); }
   };
@@ -415,7 +438,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
           <span className="suave peq">Aumento vale para as notas emitidas a partir da data nova; o que já foi faturado antes continua com a taxa antiga.</span>
         </div>
         <label className="peq" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={f.ativo !== false} onChange={(e) => muda("ativo", e.target.checked)} /> No cálculo (desmarque se a pessoa deixou de receber comissão)
+          <input type="checkbox" checked={f.ativo !== false} onChange={(e) => muda("ativo", e.target.checked)} /> Pega propostas novas (desmarque se deixou de receber; as propostas antigas continuam no extrato)
         </label>
         {erro && <div className="aviso ruim">{erro}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
@@ -430,26 +453,10 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
   );
 }
 
-function VerItens({ titulo, itens, mostrarStatus, csv, aoFechar }) {
-  const total = centavos(itens.reduce((s, i) => s + Number(i.valor ?? i.comissao ?? 0), 0));
-  return (
-    <Modal titulo={titulo} aoFechar={aoFechar} largo>
-      <TabelaItens itens={itens} mostrarStatus={mostrarStatus} />
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <b className="tnum">Total {brl(total)}</b>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="btn claro mini" onClick={() => baixar(csv || "comissao.csv", csvItens(itens, { titulo }))}>Baixar planilha</button>
-          <button type="button" className="btn mini" onClick={aoFechar}>Fechar</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 // Importa a planilha antiga (uma linha por proposta, 1% do valor dela):
-// "Pago" vira histórico de pagamento, "Não pago" vira saldo a pagar.
+// "Pago" vira histórico de pagamento; todas as linhas dizem de quem é cada
+// proposta antiga, que passa a seguir a regra nova descontando o já pago.
 function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
-  const { dados } = useBase();
   const [plano, setPlano] = useState(null);
   const [arquivo, setArquivo] = useState("");
   const [erro, setErro] = useState("");
@@ -467,17 +474,7 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
   };
   const importar = async () => {
     try {
-      const existentes = new Map((dados.comissoes || []).map((r) => [r.id, r]));
-      const regs = [
-        ...plano.colaboradores,
-        ...plano.pagamentos,
-        ...plano.saldos.map((s) => {
-          const antes = existentes.get(s.id);
-          const tirados = antes?.tirados || [];
-          const fora = new Set(tirados.map((i) => i.id));
-          return { ...s, itens: s.itens.filter((i) => !fora.has(i.id)), tirados, importadoDe: arquivo };
-        }),
-      ];
+      const regs = [...plano.colaboradores, ...plano.pagamentos, ...plano.planilhas];
       let n = 0;
       for (const r of regs) { setGravando(`Gravando ${++n} de ${regs.length}…`); await gravar("comissoes", { ...r, importadoDe: arquivo }); }
       aoFechar();
@@ -488,8 +485,8 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
     <Modal titulo="Importar a planilha antiga de comissões" aoFechar={() => !gravando && aoFechar()} largo>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="aviso marca peq">
-          Linhas <b>Pago</b> entram no histórico de pagamentos (agrupadas pelo mês da folha). Linhas <b>Não pago</b> entram em “A pagar” como comissão antiga.
-          Quem não está cadastrado entra <b>fora do cálculo</b>: guarda o histórico, mas não gera comissão nova. Importar de novo o mesmo arquivo não duplica.
+          As linhas <b>Pago</b> entram no histórico de pagamentos (pelo mês da folha). Cada proposta da planilha passa a seguir a regra nova:
+          1% de cada OS faturada, <b>descontando o que a planilha já pagou</b>. Quem não está cadastrado entra só com as propostas da planilha (não pega proposta nova). Importar de novo o mesmo arquivo não duplica.
         </div>
         <input type="file" accept=".xlsx" className="entrada" onChange={ler} disabled={!!gravando} aria-label="Escolher a planilha" />
         {erro && <div className="aviso ruim">{erro}</div>}
@@ -497,7 +494,7 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
           <>
             <div className="tabela-caixa">
               <table>
-                <thead><tr><th>Colaborador</th><th style={{ textAlign: "right" }}>Linhas pagas</th><th style={{ textAlign: "right" }}>Pago</th><th style={{ textAlign: "right" }}>Não pagas</th><th style={{ textAlign: "right" }}>A pagar</th><th /></tr></thead>
+                <thead><tr><th>Colaborador</th><th style={{ textAlign: "right" }}>Linhas pagas</th><th style={{ textAlign: "right" }}>Pago</th><th style={{ textAlign: "right" }}>Não pagas na planilha</th><th style={{ textAlign: "right" }}>Valor não pago</th><th /></tr></thead>
                 <tbody>
                   {plano.resumo.map((x) => (
                     <tr key={x.nome}>
@@ -506,7 +503,7 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
                       <td className="tnum" style={{ textAlign: "right" }}>{brl(x.pago)}</td>
                       <td className="tnum" style={{ textAlign: "right" }}>{x.abertas}</td>
                       <td className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{brl(x.aPagar)}</td>
-                      <td>{x.novo ? <Chip>entra fora do cálculo</Chip> : <Chip tom="ok">já cadastrada</Chip>}{x.semCRM && <Chip tom="alerta">sem usuário no CRM</Chip>}</td>
+                      <td>{x.novo ? <Chip>entra só com a planilha</Chip> : <Chip tom="ok">já cadastrada</Chip>}{x.semCRM && <Chip tom="alerta">sem usuário no CRM</Chip>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -519,7 +516,7 @@ function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18, maxHeight: 180, overflow: "auto" }}>
                   {plano.alertas.map((a) => <li key={a.proposta + a.tipo}>{a.proposta}: {a.texto}{a.valor ? ` (${brl(a.valor)} a mais)` : ""}</li>)}
                 </ul>
-                <div style={{ marginTop: 6 }}>A importação grava como está na planilha; os acertos você faz depois.</div>
+                <div style={{ marginTop: 6 }}>O pago em dobro aparece depois como “adiantado” na proposta e é descontado das próximas OS dela.</div>
               </div>
             )}
           </>

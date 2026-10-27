@@ -5,10 +5,11 @@
 // Vira, no sistema:
 //  - PAGAMENTOS (histórico): as linhas "Pago", um registro por colaborador e
 //    mês da folha (sem mês na planilha: um por mês da proposta, marcado).
-//  - SALDO da planilha: as linhas "Não pago", que aparecem em "A pagar" e são
-//    pagas pelo mesmo botão de sempre.
+//  - PLANILHA: todas as linhas (pagas ou não), por colaborador. Dizem de quem
+//    é cada proposta antiga; a comissão delas passa a seguir a regra nova
+//    (1% das OS faturadas), descontando o que a planilha já pagou.
 //  - quem não está cadastrado na comissão entra "fora do cálculo" (só o
-//    histórico e o saldo; não gera comissão nova).
+//    histórico e as propostas da planilha; não pega proposta nova).
 // Os ids são fixos (proposta + linha), então importar de novo o mesmo arquivo
 // regrava os mesmos registros em vez de duplicar.
 
@@ -90,7 +91,7 @@ function acharCRM(nome, pessoasCRM) {
 
 /**
  * Monta o que será gravado. Devolve { colaboradores (novos), pagamentos,
- * saldos, resumo (por pessoa), alertas }.
+ * planilhas, resumo (por pessoa), alertas }.
  */
 export function planoImportacao(linhas, { colabs = [], pessoasCRM = [], arquivo = "planilha" } = {}) {
   const porPessoa = new Map();
@@ -103,14 +104,14 @@ export function planoImportacao(linhas, { colabs = [], pessoasCRM = [], arquivo 
     if (!c) {
       const datas = linhas.filter((x) => normNome(x.colaborador) === chave).map((x) => x.data).filter(Boolean).sort();
       const desde = datas[0] || "2026-01-01";
-      c = { id: `com_plan_${slug(l.colaborador)}`, tipo: "colaborador", nome: chave, crmId: crm?.id || "", desde, taxas: [{ desde, pct: 1 }], ativo: false, origem: "planilha" };
+      c = { id: `com_plan_${slug(l.colaborador)}`, tipo: "colaborador", nome: chave, crmId: crm?.id || "", desde: "2026-10-01", taxas: [{ desde, pct: 1 }], ativo: false, origem: "planilha" };
       colaboradores.push(c);
     }
     porPessoa.set(chave, c);
   }
 
   const pagos = new Map();
-  const saldos = new Map();
+  const planilhas = new Map();
   for (const l of linhas) {
     const c = porPessoa.get(normNome(l.colaborador));
     const item = {
@@ -130,11 +131,10 @@ export function planoImportacao(linhas, { colabs = [], pessoasCRM = [], arquivo 
         });
       }
       pagos.get(id).itens.push({ osId: item.id, os: "", proposta: item.proposta, cliente: item.cliente, emissao: item.emissao, competencia: item.competencia, base: item.base, pct: item.pct, valor: item.valor, planilha: true });
-    } else {
-      const id = `plan-saldo-${c.id}`;
-      if (!saldos.has(id)) saldos.set(id, { id, tipo: "saldo", colaboradorId: c.id, nome: c.nome, origem: arquivo, itens: [] });
-      saldos.get(id).itens.push(item);
     }
+    const idp = `plan-linhas-${c.id}`;
+    if (!planilhas.has(idp)) planilhas.set(idp, { id: idp, tipo: "planilha", colaboradorId: c.id, nome: c.nome, origem: arquivo, linhas: [] });
+    planilhas.get(idp).linhas.push({ linha: l.linha, proposta: l.proposta, cliente: l.cliente, data: l.data, base: l.base, valor: l.valor, pago: l.pago, folhaMes: l.folhaMes });
   }
   const pagamentos = [...pagos.values()].map((p) => ({
     ...p, total: centavos(p.itens.reduce((s, i) => s + i.valor, 0)),
@@ -164,5 +164,5 @@ export function planoImportacao(linhas, { colabs = [], pessoasCRM = [], arquivo 
     };
   }).sort((a, b) => b.pago + b.aPagar - (a.pago + a.aPagar));
 
-  return { colaboradores, pagamentos, saldos: [...saldos.values()], resumo, alertas };
+  return { colaboradores, pagamentos, planilhas: [...planilhas.values()], resumo, alertas };
 }

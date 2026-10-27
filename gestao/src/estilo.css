@@ -757,3 +757,7 @@ tr:last-child td { border-bottom: 0; }
 .dk-capa.com-imagem .dk-pilulas { justify-content: flex-start; }
 .dk-capa-img { width: 100%; max-height: 40cqw; object-fit: contain; }
 @media print { .dk-video, .dk-video-play { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+/* Comissões por proposta: tabela larga, mais justa para caber na tela. */
+.tabela-comissao th { padding: 10px 8px; letter-spacing: .02em; }
+.tabela-comissao td { padding: 10px 8px; font-size: 13px; }
+.tabela-comissao th:first-child, .tabela-comissao td:first-child { padding-left: 16px; }

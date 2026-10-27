@@ -34,31 +34,12 @@ test("plano: pagos viram histórico por folha, não pagos viram saldo, conferên
   const pgA = p.pagamentos.filter((x) => x.colaboradorId === "c1");
   assert.equal(pgA.length, 2); // sem mês da folha (jan) e folha de abril
   assert.equal(pgA.find((x) => x.pagoEm === "2026-04-01").total, 5);
-  assert.equal(p.saldos[0].itens[0].valor, 2);
+  assert.equal(p.planilhas.find((x) => x.colaboradorId === "c1").linhas.length, 4);
   assert.ok(p.alertas.some((a) => a.tipo === "repetida" && a.proposta === "00000002/2026" && a.valor === 3));
   assert.ok(p.alertas.some((a) => a.tipo === "duasPessoas" && a.proposta === "00000010/2026"));
   // Importar de novo dá os mesmos ids (não duplica).
   const p2 = planoImportacao(linhas, { colabs, pessoasCRM });
   assert.deepEqual(p2.pagamentos.map((x) => x.id), p.pagamentos.map((x) => x.id));
-});
-
-test("saldo da planilha entra no a pagar, sai quando pago, e histórico não vira estorno", () => {
-  const { linhas } = lerLinhasPlanilha(ABAS);
-  const colab = { id: "c1", nome: "PESSOA A", crmId: "u1", desde: "2026-10-01", taxas: [{ desde: "2026-10-01", pct: 1 }] };
-  const p = planoImportacao(linhas, { colabs: [colab], pessoasCRM: [{ id: "u1", nome: "Pessoa A" }] });
-  const pgs = p.pagamentos.filter((x) => x.colaboradorId === "c1");
-  const saldos = p.saldos.find((s) => s.colaboradorId === "c1").itens;
-  const calc = { itens: [], previsao: [] };
-  const s1 = situacao(colab, calc, pgs, new Set(), { saldos, osPorId: new Map() });
-  assert.equal(s1.totalAPagar, 2);
-  assert.equal(s1.aPagar[0].planilha, true);
-  assert.equal(s1.totalPago, 11);
-  assert.equal(s1.totalComissao, 13);
-  const pago = { id: "x", colaboradorId: "c1", pagoEm: "2026-10-30", itens: itensDoPagamento(s1.aPagar) };
-  const s2 = situacao(colab, calc, [...pgs, pago], new Set(), { saldos, osPorId: new Map() });
-  assert.equal(s2.aPagar.length, 0);
-  const m = porMes(calc, [...pgs, pago], saldos);
-  assert.ok(m.every((l) => Math.abs(l.aPagar) < 0.01));
 });
 
 test("OS paga e ainda a faturar não vira estorno; cancelada vira", () => {

@@ -905,23 +905,30 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Comissões: propostas APROVADAS dos responsáveis pedidos e as OS delas
+      // Comissões: propostas APROVADAS dos responsáveis pedidos (e as da planilha
+      // antiga, pelo número) e as OS delas
       // em Serviços gerados (Finanças), pelo nº da proposta. Só leitura; o
-      // cálculo e o controle de pagamento ficam na tela (src/lib/comissoes.js).
+      // cálculo e o controle de pagamento ficam na tela (src/lib/comissoesProposta.js).
       case "comissoes": {
         const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const ids = [...new Set((Array.isArray(body.responsaveis) ? body.responsaveis : []).map(String))].filter((x) => UUID.test(x)).slice(0, 30);
         const perfis = await lerTudo("profiles", "id,nome,ativo");
         const pessoas = perfis.map((p) => ({ id: p.id, nome: String(p.nome ?? "").replace(/\s+/g, " ").trim(), ativo: p.ativo !== false }))
           .filter((p) => p.nome).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-        if (!ids.length) return resp({ geradoEm: new Date().toISOString(), pessoas, propostas: [], os: [] });
+        // Propostas antigas (da planilha de comissões), em qualquer situação no CRM.
+        const extras = [...new Set((Array.isArray(body.numeros) ? body.numeros : []).map(String))].filter((x) => /^\d{1,10}\/\d{4}$/.test(x)).slice(0, 3000);
+        if (!ids.length && !extras.length) return resp({ geradoEm: new Date().toISOString(), pessoas, propostas: [], os: [] });
         const diaBR = (iso: unknown) => (iso ? new Date(new Date(String(iso)).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10) : "");
-        const props = (await lerTudo("propostas", "id,numero_proposta,responsavel_comercial_id,status,data_aceite,cliente_id,ativo,deleted_at",
-          (q) => q.in("responsavel_comercial_id", ids).eq("status", "APROVADA").is("deleted_at", null)))
-          .filter((p) => p.numero_proposta);
+        const CAMPOS_PROP = "id,numero_proposta,responsavel_comercial_id,status,valor,data_aceite,cliente_id,ativo,deleted_at";
+        const porId = new Map<string, any>();
+        if (ids.length) for (const p of await lerTudo("propostas", CAMPOS_PROP, (q) => q.in("responsavel_comercial_id", ids).eq("status", "APROVADA").is("deleted_at", null))) porId.set(p.id, p);
+        for (let i = 0; i < extras.length; i += 150) {
+          for (const p of await lerTudo("propostas", CAMPOS_PROP, (q) => q.in("numero_proposta", extras.slice(i, i + 150)).is("deleted_at", null))) porId.set(p.id, p);
+        }
+        const props = [...porId.values()].filter((p) => p.numero_proposta);
         const nomes = await nomesClientes(props.map((p) => p.cliente_id));
-        const propostas = props.map((p) => ({ numero: String(p.numero_proposta).trim(), responsavel: p.responsavel_comercial_id, aceite: diaBR(p.data_aceite), cliente: nomes[p.cliente_id] ?? "" }));
-        const numeros = [...new Set(propostas.map((p) => p.numero))];
+        const propostas = props.map((p) => ({ numero: String(p.numero_proposta).trim(), responsavel: p.responsavel_comercial_id, aceite: diaBR(p.data_aceite), cliente: nomes[p.cliente_id] ?? "", valor: Number(p.valor) || 0, status: String(p.status ?? "") }));
+        const numeros = [...new Set([...propostas.map((p) => p.numero), ...extras])];
         const os: unknown[] = [];
         for (let i = 0; i < numeros.length; i += 150) {
           const fatia = numeros.slice(i, i + 150);
