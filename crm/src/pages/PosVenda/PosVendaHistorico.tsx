@@ -3,7 +3,7 @@ import {CalendarDays,History,MessageSquare,Search,Smile} from 'lucide-react'
 import {Link} from 'react-router-dom'
 import {PageShell} from '../../components/ui/PageShell'
 import {PeriodSelect} from '../../components/ui/PeriodFilter'
-import {ALL_PERIOD,inPeriod,yearsFrom,type PeriodFilter} from '../../lib/period'
+import {currentPeriod,inPeriod,yearsFrom,type PeriodFilter} from '../../lib/period'
 import {supabase} from '../../services/supabase'
 
 type Hist={id:string;recorrencia_id:string;tipo:string;descricao:string|null;ocorrido_em:string;usuario_id:string|null}
@@ -16,7 +16,7 @@ type QueryResult<T>={data:T[]|null;error:{message:string}|null}
 const PAGE_SIZE=1000
 async function fetchAll<T>(makeQuery:(from:number,to:number)=>PromiseLike<QueryResult<T>>){const rows:T[]=[];for(let from=0;;from+=PAGE_SIZE){const result=await makeQuery(from,from+PAGE_SIZE-1);if(result.error)return{data:rows,error:result.error};const batch=(result.data??[]) as T[];rows.push(...batch);if(batch.length<PAGE_SIZE)return{data:rows,error:null}}}
 
-export function PosVendaHistorico(){const[events,setEvents]=useState<Event[]>([]),[people,setPeople]=useState<Person[]>([]),[q,setQ]=useState(''),[type,setType]=useState('TODOS'),[loading,setLoading]=useState(true),[error,setError]=useState(''),[ymFilter,setYmFilter]=useState<PeriodFilter>(ALL_PERIOD);async function load(){setLoading(true);const[a,b,c,d,e]=await Promise.all([
+export function PosVendaHistorico(){const[events,setEvents]=useState<Event[]>([]),[people,setPeople]=useState<Person[]>([]),[q,setQ]=useState(''),[type,setType]=useState('TODOS'),[loading,setLoading]=useState(true),[error,setError]=useState(''),[ymFilter,setYmFilter]=useState<PeriodFilter>(currentPeriod);async function load(){setLoading(true);const[a,b,c,d,e]=await Promise.all([
  fetchAll<Hist>((from,to)=>supabase.from('recorrencias_historico').select('id,recorrencia_id,tipo,descricao,ocorrido_em,usuario_id').order('ocorrido_em',{ascending:false}).range(from,to)),
  fetchAll<Rec>((from,to)=>supabase.from('recorrencias_clientes').select('id,cliente_id').order('id').range(from,to)),
  fetchAll<Nps>((from,to)=>supabase.from('satisfacao_nps').select('id,cliente_id,nota,comentario,respondido_em,responsavel_id').is('deleted_at',null).order('respondido_em',{ascending:false}).range(from,to)),
