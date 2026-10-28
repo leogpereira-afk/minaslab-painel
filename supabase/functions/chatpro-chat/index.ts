@@ -27,14 +27,26 @@ function lista(x: any): any[] {
   }
   return [];
 }
+// Objeto único (getSessionById etc.) embrulhado ou não.
+function objeto(x: any): any {
+  if (x && typeof x === "object" && !Array.isArray(x) && typeof x.id === "string") return x;
+  for (const k of ["data", "session", "result", "item"]) if (x?.[k] && typeof x[k] === "object") { const r = objeto(x[k]); if (r) return r; }
+  return null;
+}
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim());
 
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Chama a API do ChatPro; se ela pedir calma (429), espera e tenta de novo.
 async function chamar(token: string, caminho: string, corpo: Record<string, unknown>) {
-  const r = await fetch(BASE + caminho, { method: "POST", headers: { "content-type": "application/json", "instance-token": token }, body: JSON.stringify(corpo) });
-  const t = await r.text();
-  let dados: unknown = null;
-  try { dados = JSON.parse(t); } catch { dados = t.slice(0, 300); }
-  return { status: r.status, ok: r.ok, dados };
+  for (let tentativa = 0; ; tentativa++) {
+    const r = await fetch(BASE + caminho, { method: "POST", headers: { "content-type": "application/json", "instance-token": token }, body: JSON.stringify(corpo) });
+    const t = await r.text();
+    if (r.status === 429 && tentativa < 4) { await espera(1500 * (tentativa + 1)); continue; }
+    let dados: unknown = null;
+    try { dados = JSON.parse(t); } catch { dados = t.slice(0, 300); }
+    return { status: r.status, ok: r.ok, dados };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -110,11 +122,66 @@ Deno.serve(async (req) => {
     if (error) return json(500, { ok: false, erro: "falha ao gravar motivos: " + error.message });
   }
 
-  // Liga usuários do ChatPro aos do CRM (e-mail/nome) e reaplica as sessões.
-  const { data: reaplicado, error: errR } = await sb.rpc("chatpro_reaplicar_tudo");
+  // Liga usuários do ChatPro aos do CRM e reaplica os eventos de sessão guardados.
+  let reaplicado: unknown = null;
+  if (acao !== "sessoes") {
+    const r = await sb.rpc("chatpro_reaplicar_tudo");
+    if (r.error) return json(500, { ok: false, erro: "falha ao reaplicar: " + r.error.message });
+    reaplicado = r.data;
+  }
+
+  // O ChatPro nem sempre avisa a finalização pelo webhook: confere na API o
+  // estado real das sessões que o CRM ainda tem como abertas.
+  // 1) Lista as sessões finalizadas desde a mais antiga aberta no CRM (100 por página).
+  // 2) As que continuarem abertas no CRM são conferidas uma a uma, devagar
+  //    (a API limita as chamadas por minuto); o que sobrar fica para a próxima rodada.
+  const inicio = Date.now(), LIMITE_MS = corpo?.rapido ? 25_000 : 110_000;
+  const registrar = async (sessao: any) => {
+    const { error } = await sb.rpc("chatpro_registrar_sessao", { p_payload: { event: "sync.api", new: sessao }, p_recebido: new Date().toISOString() });
+    return !error;
+  };
+  let amostraFalha: unknown = undefined;
+  const { data: maisAntiga } = await sb.from("chatpro_sessoes").select("aberta_em,ultima_atualizacao").eq("aberta", true)
+    .order("aberta_em", { ascending: true, nullsFirst: false }).limit(1);
+  const desde = (maisAntiga?.[0] as any)?.aberta_em || (maisAntiga?.[0] as any)?.ultima_atualizacao;
+  let listadas = 0, paginas = 0;
+  if (desde) {
+    for (let offset = 0; Date.now() - inicio < LIMITE_MS / 2 && paginas < 40; offset += 100) {
+      const r = await chamar(token, "/sessions/list", { instanceId: instancia, open: false, start: new Date(desde).toISOString(), end: new Date().toISOString(), limit: 100, offset });
+      paginas++;
+      if (!r.ok) { amostraFalha ??= { etapa: "lista", status: r.status, resposta: typeof r.dados === "string" ? r.dados.slice(0, 120) : Object.keys(r.dados ?? {}) }; break; }
+      const itens = lista(r.dados).filter((x: any) => x && typeof x.id === "string");
+      for (const sessao of itens) if (await registrar(sessao)) listadas++;
+      if (itens.length < 100) break;
+      await espera(400);
+    }
+  }
+
+  const { data: abertas } = await sb.from("chatpro_sessoes").select("id").eq("aberta", true)
+    .order("ultima_atualizacao", { ascending: true, nullsFirst: true }).limit(Number(corpo?.limite) || 600);
+  const ids: string[] = (abertas ?? []).map((x: any) => x.id as string);
+  let conferidas = 0, finalizadas = 0, falhas = 0;
+  for (const id of ids) {
+    if (Date.now() - inicio > LIMITE_MS) break;
+    try {
+      const r = await chamar(token, "/sessions/getSessionById", { instanceId: instancia, sessionId: id });
+      const sessao = objeto(r.dados);
+      if (!r.ok || !sessao || sessao.id !== id) {
+        falhas++;
+        amostraFalha ??= { etapa: "sessao", status: r.status, resposta: typeof r.dados === "string" ? r.dados.slice(0, 120) : Object.keys(r.dados ?? {}) };
+        if (r.status === 429) break;
+        continue;
+      }
+      conferidas++;
+      if (sessao.open === false) finalizadas++;
+      if (!(await registrar(sessao))) falhas++;
+    } catch { falhas++; }
+    await espera(350);
+  }
   return json(200, {
-    ok: !errR, instancia,
-    usuarios: linhasU.length, motivos: linhasM.length, status_motivos: motivos.status,
-    reaplicado: reaplicado ?? null, erro: errR?.message,
+    ok: true, instancia,
+    usuarios: linhasU.length, motivos: linhasM.length,
+    reaplicado,
+    sessoes: { listadas_finalizadas: listadas, paginas, em_aberto_no_crm: ids.length, conferidas, finalizadas_no_chatpro: finalizadas, falhas, restantes: Math.max(0, ids.length - conferidas - falhas), amostra_falha: amostraFalha },
   });
 });
