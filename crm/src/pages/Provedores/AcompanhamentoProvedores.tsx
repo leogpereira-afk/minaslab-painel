@@ -6,7 +6,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Badge, Button, Card, CardBody, FieldLabel, Input, Select } from '../../components/ui/DesignSystem'
 import { TableFooter } from '../../components/ui/DataDisplay'
 import { PeriodSelect } from '../../components/ui/PeriodFilter'
-import { currentPeriod, inPeriod as inYearMonth, periodLabel, yearsFrom, type PeriodFilter } from '../../lib/period'
+import { currentPeriod, inPeriod as inYearMonth, yearsFrom, type PeriodFilter } from '../../lib/period'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -94,10 +94,10 @@ export function AcompanhamentoProvedores(){
  return <PageShell title="Acompanhamento de Provedores" description="Envios de amostras para laboratórios externos (FM-LAB-060): prazos, rastreio, custos e entrega do resultado ao cliente." action={canWrite?<Button onClick={newEnvio}><Plus className="h-4 w-4"/>Novo envio</Button>:undefined}>
   {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
   <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-   <Metric icon={Truck} label={`Em andamento — ${periodLabel(ymFilter)}`} value={stats.active} onClick={()=>setStatusFilter('ATIVOS')} active={statusFilter==='ATIVOS'}/>
-   <Metric icon={AlarmClock} label={`Resultados atrasados — ${periodLabel(ymFilter)}`} value={stats.late} tone="danger" onClick={()=>setStatusFilter('ATRASADOS')} active={statusFilter==='ATRASADOS'}/>
-   <Metric icon={Hourglass} label={`Vencem em até 2 dias — ${periodLabel(ymFilter)}`} value={stats.soon} tone="warning" onClick={()=>setStatusFilter('VENCENDO')} active={statusFilter==='VENCENDO'}/>
-   <Metric icon={CheckCircle2} label={`Resultado a enviar ao cliente — ${periodLabel(ymFilter)}`} value={stats.client} onClick={()=>setStatusFilter('RESULTADO_RECEBIDO')} active={statusFilter==='RESULTADO_RECEBIDO'}/>
+   <Metric icon={Truck} label="Em andamento" value={stats.active} onClick={()=>setStatusFilter('ATIVOS')} active={statusFilter==='ATIVOS'}/>
+   <Metric icon={AlarmClock} label="Resultados atrasados" value={stats.late} tone="danger" onClick={()=>setStatusFilter('ATRASADOS')} active={statusFilter==='ATRASADOS'}/>
+   <Metric icon={Hourglass} label="Vencem em até 2 dias" value={stats.soon} tone="warning" onClick={()=>setStatusFilter('VENCENDO')} active={statusFilter==='VENCENDO'}/>
+   <Metric icon={CheckCircle2} label="Resultado a enviar ao cliente" value={stats.client} onClick={()=>setStatusFilter('RESULTADO_RECEBIDO')} active={statusFilter==='RESULTADO_RECEBIDO'}/>
   </section>
 
   {alerts.length>0&&<Card><CardBody><div className="mb-3 flex items-center gap-2"><AlarmClock className="h-5 w-5 text-red-600"/><h3 className="font-bold">Alertas de prazo</h3></div><div className="grid gap-2 lg:grid-cols-2">{alerts.map(x=>{const isLate=late(x),client=pendingClient(x);return <button type="button" key={x.id} onClick={()=>canWrite&&edit(x)} className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-left text-sm ${isLate?'border-red-200 bg-red-50':client?'border-teal-200 bg-teal-50':'border-amber-200 bg-amber-50'}`}><div className="min-w-0"><b className="block truncate">{x.numero_os||'Sem OS'} · {providerName(x,labs)}</b><span className="block truncate text-xs text-slate-600">{x.amostras||x.grupo||clientName(x)||'—'}</span></div><span className={`shrink-0 text-xs font-semibold ${isLate?'text-red-700':client?'text-teal-700':'text-amber-700'}`}>{client?'Enviar ao cliente':isLate?`Atrasado ${Math.abs(daysUntil(x.data_prevista!))} d`:daysUntil(x.data_prevista!)===0?'Vence hoje':`Vence em ${daysUntil(x.data_prevista!)} d`}</span></button>})}</div></CardBody></Card>}

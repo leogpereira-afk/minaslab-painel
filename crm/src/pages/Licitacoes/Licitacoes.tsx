@@ -7,7 +7,7 @@ import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { PncpOpportunities } from './PncpOpportunities'
 import { PeriodSelect } from '../../components/ui/PeriodFilter'
-import { currentPeriod, inPeriod, periodLabel, yearsFrom, type PeriodFilter } from '../../lib/period'
+import { currentPeriod, inPeriod, yearsFrom, type PeriodFilter } from '../../lib/period'
 
 type Option={value:string;label:string}
 type Bid={id:string;numero:string;orgao:string;modalidade:string|null;objeto:string;portal_url:string|null;municipio:string|null;uf:string|null;status:string;data_publicacao:string|null;data_sessao:string|null;valor_estimado:number|null;valor_proposta:number|null;valor_homologado:number|null;cliente_id:string|null;proposta_id:string|null;contrato_id:string|null;responsavel_id:string|null;resultado:string|null;motivo_perda:string|null;observacoes:string|null;created_at:string;updated_at:string}
@@ -86,7 +86,7 @@ export function Licitacoes(){
 
  return <PageShell title="Licitações" description="Fluxo MinasLab: cadastro, prazos, documentos, proposta, resultado e contrato." action={canWrite?<Button onClick={()=>{setEditing(null);setForm(empty);setFormOpen(true)}}><Plus className="h-4 w-4"/>Nova licitação</Button>:undefined}>
   {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-  <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={Gavel} label={`Em andamento — ${periodLabel(ymFilter)}`} value={String(stats.open)}/><Metric icon={Bell} label="Sessões nos próximos 7 dias" value={String(stats.next)}/><Metric icon={Trophy} label={`Ganhas — ${periodLabel(ymFilter)}`} value={String(stats.won)}/><Metric icon={Target} label={`Valor homologado — ${periodLabel(ymFilter)}`} value={brl.format(stats.value)}/></section>
+  <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={Gavel} label="Em andamento" value={String(stats.open)}/><Metric icon={Bell} label="Sessões nos próximos 7 dias" value={String(stats.next)}/><Metric icon={Trophy} label="Ganhas" value={String(stats.won)}/><Metric icon={Target} label="Valor homologado" value={brl.format(stats.value)}/></section>
   <OpportunitySources/>
   <PncpOpportunities onConverted={load}/>
   <Card><CardBody className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_200px_220px_auto_auto]"><Input aria-label="Buscar licitação" placeholder="Número, órgão, objeto ou modalidade..." value={query} onChange={e=>setQuery(e.target.value)}/><Select aria-label="Status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="TODOS">Todos os status</option>{statuses.map(s=><option key={s}>{s}</option>)}</Select><Options value={responsibleFilter} change={setResponsibleFilter} options={profiles} blank="Todos os responsáveis" blankValue="TODOS"/><PeriodSelect value={ymFilter} onChange={setYmFilter} years={years}/><Button variant="secondary" onClick={()=>void load()}><RefreshCw className={`h-4 w-4 ${loading?'animate-spin':''}`}/>Atualizar</Button></CardBody></Card>
