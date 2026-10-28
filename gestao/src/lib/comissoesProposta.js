@@ -21,7 +21,7 @@ import { centavos, taxaEm, faturada, aFaturar } from "./comissoes.js";
 // - entram TODAS as propostas aprovadas no CRM com aceite a partir de
 //   DESDE_PADRAO, de cada responsável comercial (sem precisar cadastrar);
 // - OS com NF emitida libera a comissão para pagamento; sem NF fica prevista;
-// - propostas da planilha de pagas ficam 100% pagas (quitadas).
+// - propostas do histórico de pagas (planilha importada) ficam 100% pagas (quitadas), sem previsão.
 export const DESDE_PADRAO = "2026-09-01";
 
 /**
@@ -122,7 +122,7 @@ export function extratoColaborador(colab, ctx) {
     linhas.push({
       numero, origem: d.origem, cliente: prop?.cliente || pl[0]?.cliente || vivas[0]?.cliente || "", aceite: prop?.aceite || "", status: prop?.status || (pl.length ? "" : "APROVADA"),
       valorProposta: centavos(valorProposta), osGeradas: vivas.length, geradas, faltaGerar: centavos(Math.max(0, valorProposta - geradas)),
-      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada ? 0 : previsao,
+      faturado, pagoCliente, semNF: quitada ? 0 : semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada ? 0 : previsao,
       os, pagamentos, planilha: pl, quitada,
     });
   }
@@ -167,7 +167,9 @@ export function situacaoOS(o) {
 /** Todas as OS das propostas de um extrato, com a comissão liberada ou prevista. */
 export function osDoExtrato(extrato) {
   return extrato.linhas.flatMap((l) => l.os.map((o) => {
-    const sit = situacaoOS(o);
+    const s0 = situacaoOS(o);
+    // Proposta do histórico de pagas: já quitada, não tem previsão (mesmo OS sem nota).
+    const sit = l.quitada && (s0.id === "faltaNF" || s0.id === "aguardando") ? { id: "quitada", rotulo: "Paga (histórico)", tom: "ok" } : s0;
     const prevista = sit.id === "faltaNF" || sit.id === "aguardando" ? centavos((o.valor * (o.pct || 0)) / 100) : 0;
     return { ...o, proposta: l.numero, cliente: o.cliente || l.cliente, sit, prevista };
   })).sort((a, b) => String(b.dataOs).localeCompare(String(a.dataOs)));
@@ -277,8 +279,8 @@ export function conferencia(contas, hoje) {
       }
       if (!st && l.origem === "planilha") {
         out.push({ tipo: "semCadastro", colab: c, proposta: l.numero, cliente: l.cliente, valor: 0,
-          texto: "Está na planilha, mas não existe no CRM.",
-          corrigir: "Confira o número na planilha; se a proposta existe, cadastre no CRM com o mesmo número." });
+          texto: "Está no histórico de pagas, mas não existe no CRM.",
+          corrigir: "Confira o número; se a proposta existe, cadastre no CRM com o mesmo número." });
       }
       if (!l.quitada && statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
         out.push({ tipo: "semOS", colab: c, proposta: l.numero, cliente: l.cliente, valor: l.valorProposta,
@@ -298,7 +300,7 @@ export function conferencia(contas, hoje) {
 
 export const TIPOS_CONFERENCIA = {
   crmStatus: "Proposta não aprovada no CRM, mas com OS faturada",
-  semCadastro: "Proposta da planilha que não existe no CRM",
+  semCadastro: "Proposta do histórico que não existe no CRM",
   semOS: "Aprovada há mais de 30 dias sem nenhuma OS",
   aceiteAtrasado: "Data de aceite depois das OS",
 };

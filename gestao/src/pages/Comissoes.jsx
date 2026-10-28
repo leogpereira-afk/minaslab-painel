@@ -13,8 +13,6 @@ import {
   osDoExtrato, serieMensal, statusProposta, colaboradoresComAutomaticos, DESDE_PADRAO, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
   mesDaFolha, folhaSugerida, fechamentoDoMes,
 } from "../lib/comissoesProposta.js";
-import { lerXlsx } from "../lib/xlsxLeve.js";
-import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
 
 const pctTxt = (p) => `${String(Number(p || 0)).replace(".", ",")}%`;
 const nomeCurto = (n) => { const p = nomeProprio(n).split(" ").filter(Boolean); return p.length > 1 ? `${p[0]} ${p.at(-1)}` : p[0] || ""; };
@@ -33,10 +31,16 @@ export default function Comissoes() {
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
   const [fechando, setFechando] = useState(false);
-  const [importando, setImportando] = useState(false);
   const [quem, setQuem] = useState("");
 
-  const registros = dados.comissoes || [];
+  const todosRegistros = dados.comissoes || [];
+  // Quem foi tirado das comissões (registro tipo "excluido" por usuário do CRM): some de tudo, mas o histórico fica guardado.
+  const excluidos = useMemo(() => todosRegistros.filter((r) => r.tipo === "excluido"), [todosRegistros]);
+  const foraIds = useMemo(() => {
+    const crm = new Set(excluidos.map((r) => r.crmId));
+    return new Set([...[...crm].map((id) => `auto_${id}`), ...todosRegistros.filter((r) => r.tipo === "colaborador" && crm.has(r.crmId)).map((r) => r.id)]);
+  }, [excluidos, todosRegistros]);
+  const registros = useMemo(() => todosRegistros.filter((r) => r.tipo !== "excluido" && !foraIds.has(r.tipo === "colaborador" ? r.id : r.colaboradorId)), [todosRegistros, foraIds]);
   const gravados = useMemo(() => registros.filter((r) => r.tipo === "colaborador"), [registros]);
   const pagamentos = useMemo(() => registros.filter((r) => r.tipo === "pagamento").sort((a, b) => String(b.pagoEm).localeCompare(String(a.pagoEm)) || String(b.criadoEm).localeCompare(String(a.criadoEm))), [registros]);
   // 1º: a lista de responsáveis do CRM; 2º: as propostas aprovadas de todos eles + as da planilha.
@@ -47,14 +51,14 @@ export default function Comissoes() {
   const crm = lista.dados ? crmDados : lista;
   const pessoasCRM = crm.dados?.pessoas || lista.dados?.pessoas || [];
   const colabs = useMemo(() => {
-    const todos = colaboradoresComAutomaticos(gravados, pessoasCRM, crm.dados?.propostas || []);
+    const todos = colaboradoresComAutomaticos(gravados, pessoasCRM, crm.dados?.propostas || []).filter((c) => !foraIds.has(c.id));
     // Dono de proposta da planilha sem cadastro (ex.: id auto_ de quem não tem proposta nova).
     for (const r of registros) if (r.tipo === "planilha" && !todos.some((c) => c.id === r.colaboradorId)) {
       const crmId = String(r.colaboradorId).replace(/^auto_/, "");
       todos.push({ id: r.colaboradorId, tipo: "colaborador", nome: String(r.nome || pessoasCRM.find((p) => p.id === crmId)?.nome || "Colaborador").toLocaleUpperCase("pt-BR"), crmId, desde: DESDE_PADRAO, taxas: [{ desde: DESDE_PADRAO, pct: 1 }], ativo: false, automatico: true });
     }
     return todos.sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
-  }, [gravados, pessoasCRM, crm.dados, registros]);
+  }, [gravados, pessoasCRM, crm.dados, registros, foraIds]);
 
   const contas = useMemo(() => {
     if (!crm.dados) return [];
@@ -80,7 +84,7 @@ export default function Comissoes() {
 
   return (
     <>
-      <Cabecalho sobre="Comissões" titulo="Comissões" sub={`1% de cada OS com nota emitida, das propostas aprovadas no CRM desde ${dataCurta(DESDE_PADRAO)} (por responsável comercial). OS sem nota aparece como prevista. Propostas da planilha de pagas ficam quitadas.`}>
+      <Cabecalho sobre="Comissões" titulo="Comissões" sub={`1% de cada OS com nota emitida, das propostas aprovadas no CRM desde ${dataCurta(DESDE_PADRAO)} (por responsável comercial). OS sem nota aparece como prevista. Propostas já pagas antes do sistema ficam quitadas (histórico).`}>
         <button type="button" className="btn claro" onClick={recarregar}>Atualizar</button>
         <button type="button" className="btn claro" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
         <button type="button" className="btn" disabled={!crm.dados} onClick={() => setFechando(true)}>Fechar mês</button>
@@ -93,7 +97,7 @@ export default function Comissoes() {
             <Kpi rotulo="Falta pagar" valor={brl(soma((x) => x.ex.totais.aPagar))} sub={`${contas.filter((x) => x.ex.totais.aPagar > 0).length} colaborador(es)`} />
             <Kpi rotulo={`Gerada em ${mesLongo(mes).toLowerCase()}`} valor={brl(soma((x) => geradaNoMes(x.ex, mes)))} sub="1% das notas emitidas no mês" />
             <Kpi rotulo="Vem por aí" valor={brl(soma((x) => x.ex.totais.previsao))} sub="OS prontas para faturar" />
-            <Kpi rotulo={`Pago em ${ano}`} valor={brl(pagoAno)} sub="planilha e sistema" />
+            <Kpi rotulo={`Pago em ${ano}`} valor={brl(pagoAno)} sub="histórico e sistema" />
           </div>}
           <Abas valor={aba} aoMudar={setAba} abas={[
             ["resumo", "Resumo"],
@@ -116,13 +120,12 @@ export default function Comissoes() {
             </>
           )}
           {aba === "pagamentos" && <Pagamentos pagamentos={pagamentos} nomeDe={nomeDe} aoVer={setVendo} remover={remover} />}
-          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} registros={registros} />}
+          {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} gravar={gravar} remover={remover} registros={registros} excluidos={excluidos} />}
         </>
       )}
       {fechando && <FecharMes contas={contas} gravar={gravar} aoFechar={() => setFechando(false)} />}
       {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === id)} />}
       {vendo && <VerPagamento {...vendo} aoFechar={() => setVendo(null)} />}
-      {importando && <ImportarPlanilha colabs={colabs} pessoasCRM={pessoasCRM} gravar={gravar} aoFechar={() => setImportando(false)} />}
     </>
   );
 }
@@ -134,7 +137,7 @@ const FILTROS = [
   ["adiantado", "Pago adiantado", (l) => l.adiantado > 0],
 ];
 const STATUS_ORDEM = ["pendente", "andamento", "finalizada", "cancelada"];
-const rotMes = (m) => (m === "sem" ? "Sem mês (planilha)" : mesLongo(m));
+const rotMes = (m) => (m === "sem" ? "Sem mês (histórico)" : mesLongo(m));
 
 function Extrato({ conta, gravar, nomeDe }) {
   const { c, ex } = conta;
@@ -166,7 +169,7 @@ function Extrato({ conta, gravar, nomeDe }) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
           <h2>{nomeCurto(c.nome)}</h2>
           <span className="suave peq">
-            {c.ativo === false ? "Só as propostas da planilha antiga" : `Planilha antiga + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
+            {c.ativo === false ? "Só o histórico de pagas" : `Histórico de pagas + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
           </span>
         </div>
         <div style={{ display: "flex", gap: "14px 24px", flexWrap: "wrap", marginTop: 12 }}>
@@ -226,7 +229,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
                         <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
-                        {l.quitada ? <Chip tom="ok">paga (planilha)</Chip> : l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
+                        {l.quitada ? <Chip tom="ok">paga (histórico)</Chip> : l.origem === "planilha" && <Chip tom="neutro">histórico</Chip>}
                         {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM · corrigir</Chip>}
                         <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
                       </div>
@@ -249,7 +252,7 @@ function Extrato({ conta, gravar, nomeDe }) {
       )}
       <Paginacao pag={pag} rotulo="propostas" />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 20px 18px", flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}.csv`, csvExtrato(lista, `Comissão por proposta · ${nomeCurto(c.nome)}`))}>Baixar planilha</button>
+        <button type="button" className="btn claro mini" onClick={() => baixar(`comissao-${nomeCurto(c.nome).replace(/\s+/g, "-").toLowerCase()}.csv`, csvExtrato(lista, `Comissão por proposta · ${nomeCurto(c.nome)}`))}>Baixar Excel</button>
         <button type="button" className="btn" disabled={!pagaveis.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)} ({pagaveis.length} proposta{pagaveis.length === 1 ? "" : "s"})</button>
       </div>
       </>}
@@ -322,14 +325,14 @@ function DetalheProposta({ l, nomeDe }) {
         <table>
           <thead><tr><th>Pago em</th><th>Mês da folha</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
           <tbody>
-            {l.quitada && <tr><td colSpan={4} className="peq"><b>Quitada pela planilha de pagas</b>: toda a comissão desta proposta conta como paga.</td><td className="tnum" style={D}>{brl(l.pago)}</td></tr>}
+            {l.quitada && <tr><td colSpan={4} className="peq"><b>Quitada (já paga antes do sistema)</b>: toda a comissão desta proposta conta como paga.</td><td className="tnum" style={D}>{brl(l.pago)}</td></tr>}
             {!l.quitada && l.pagamentos.length === 0 && <tr><td colSpan={5} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
             {l.pagamentos.map((p, i) => (
               <tr key={i}>
-                <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (planilha)" : dataCurta(p.pagoEm)}</td>
+                <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (histórico)" : dataCurta(p.pagoEm)}</td>
                 <td className="peq">{rotMes(mesDoPagamentoItem(p))}</td>
                 <td className="peq">{nomeDe(p.colaboradorId)}</td>
-                <td className="peq">{p.planilha ? "planilha antiga" : "registrado no sistema"}</td>
+                <td className="peq">{p.planilha ? "histórico (antes do sistema)" : "registrado no sistema"}</td>
                 <td className="tnum" style={D}>{brl(p.valor)}</td>
               </tr>
             ))}
@@ -342,7 +345,7 @@ function DetalheProposta({ l, nomeDe }) {
       </div>
       {l.planilha.length > 0 && (
         <div className="suave peq">
-          Na planilha: {l.planilha.map((x) => `${dataCurta(x.data)} · proposta ${brl(x.base)} · comissão ${brl(x.valor)} · ${x.pago ? "pago" : "não pago"}`).join("  |  ")}
+          No histórico: {l.planilha.map((x) => `${dataCurta(x.data)} · proposta ${brl(x.base)} · comissão ${brl(x.valor)} · ${x.pago ? "pago" : "não pago"}`).join("  |  ")}
         </div>
       )}
     </div>
@@ -466,7 +469,7 @@ function PagamentosPorMes({ pagamentos, nomeDe, aoVer }) {
   const abrir = (m, id) => {
     const ps = celula(m, id);
     if (!ps.length) return;
-    aoVer({ pagamento: { id: "mes", pagoEm: ps[0].pagoEm, planilha: ps.every((p) => p.planilha), obs: [...new Set(ps.map((p) => p.obs).filter(Boolean))].join(" · "), itens: ps.flatMap((p) => p.itens || []), total: soma(ps) }, quem: nomeDe(id), titulo: m === "sem" ? "sem mês da folha na planilha" : mesLongo(m) });
+    aoVer({ pagamento: { id: "mes", pagoEm: ps[0].pagoEm, planilha: ps.every((p) => p.planilha), obs: [...new Set(ps.map((p) => p.obs).filter(Boolean))].join(" · "), itens: ps.flatMap((p) => p.itens || []), total: soma(ps) }, quem: nomeDe(id), titulo: m === "sem" ? "sem mês da folha no histórico" : mesLongo(m) });
   };
   return (
     <Card semPad>
@@ -477,7 +480,7 @@ function PagamentosPorMes({ pagamentos, nomeDe, aoVer }) {
           <tbody>
             {meses.map((m) => (
               <tr key={m}>
-                <td>{m === "sem" ? <span className="suave">Sem mês na planilha</span> : mesLongo(m)}</td>
+                <td>{m === "sem" ? <span className="suave">Sem mês no histórico</span> : mesLongo(m)}</td>
                 {pessoas.map((id) => {
                   const ps = celula(m, id);
                   return <td key={id} className="tnum" style={D}>{ps.length ? <button type="button" className="btn-link" onClick={() => abrir(m, id)}>{brl(soma(ps))}</button> : <span className="suave">—</span>}</td>;
@@ -500,7 +503,7 @@ function PagamentosPorMes({ pagamentos, nomeDe, aoVer }) {
 function Pagamentos({ pagamentos, nomeDe, aoVer, remover }) {
   const [modo, setModo] = useState("mes");
   const pag = usePaginacao(pagamentos, 15);
-  if (!pagamentos.length) return <div className="vazio">Nenhum pagamento registrado ainda. Os pagos da planilha antiga aparecem aqui, mês a mês, depois de “Importar planilha antiga”.</div>;
+  if (!pagamentos.length) return <div className="vazio">Nenhum pagamento registrado ainda. Use “Fechar mês” para registrar.</div>;
   const troca = (
     <div className="pilulas" role="group" aria-label="Ver pagamentos">
       {[["mes", "Por mês"], ["lista", "Lista de pagamentos"]].map(([id, rot]) => <button key={id} type="button" className={`pilula${modo === id ? " ativa" : ""}`} aria-pressed={modo === id} onClick={() => setModo(id)}>{rot}</button>)}
@@ -564,12 +567,18 @@ function VerPagamento({ pagamento: p, quem, titulo, aoFechar }) {
   );
 }
 
-function Colaboradores({ contas, pessoasCRM, aoEditar, remover, registros }) {
+function Colaboradores({ contas, pessoasCRM, aoEditar, gravar, remover, registros, excluidos }) {
   const [erro, setErro] = useState("");
-  if (!contas.length) return null;
+  const tirar = async (c) => {
+    setErro("");
+    if (!c.crmId) return setErro("Este colaborador não tem usuário no CRM; use Excluir.");
+    if (!window.confirm(`Tirar ${nomeCurto(c.nome)} das comissões? Some das listas e do fechamento; o histórico fica guardado e dá para voltar depois.`)) return;
+    try { await gravar("comissoes", { id: `fora_${c.crmId}`, tipo: "excluido", crmId: c.crmId, nome: c.nome }); } catch (e) { setErro(e.message); }
+  };
+  const voltar = async (r) => { setErro(""); try { await remover("comissoes", r.id); } catch (e) { setErro(e.message); } };
   const excluir = async (c) => {
     setErro("");
-    if (registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === c.id)) return setErro(`${nomeCurto(c.nome)} tem histórico (pagamentos ou planilha). Para não perder o histórico, desmarque “pega propostas novas” em Editar em vez de excluir.`);
+    if (registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === c.id)) return setErro(`${nomeCurto(c.nome)} tem histórico de pagamentos. Para não perder o histórico, desmarque “pega propostas novas” em Editar em vez de excluir.`);
     if (!window.confirm(`Excluir ${nomeCurto(c.nome)} da comissão?`)) return;
     try { await remover("comissoes", c.id); } catch (e) { setErro(e.message); }
   };
@@ -582,21 +591,31 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, remover, registros }) {
           <Card key={c.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
               <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
-              {c.ativo === false ? <Chip>só a planilha</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
+              {c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
             </div>
             <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
-              {c.ativo === false ? "Só as propostas da planilha antiga" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
+              {c.ativo === false ? "Só o histórico de pagas" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
               {[...(c.taxas || [])].sort((a, b) => String(a.desde).localeCompare(String(b.desde))).map((t) => <Chip key={t.desde} tom="marca">{pctTxt(t.pct)} desde {dataCurta(t.desde)}</Chip>)}
             </div>
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
               <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>
+              {c.crmId && <button type="button" className="btn claro mini" onClick={() => tirar(c)}>Tirar das comissões</button>}
               {!c.automatico && <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>}
             </div>
           </Card>
         ))}
       </div>
+      {excluidos.length > 0 && (
+        <Card>
+          <h2>Fora das comissões</h2>
+          <div className="suave peq" style={{ marginBottom: 8 }}>Não aparecem nas listas nem no fechamento. O histórico continua guardado.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {excluidos.map((r) => <span key={r.id} className="pilula" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{nomeCurto(r.nome)} <button type="button" className="btn claro mini" onClick={() => voltar(r)}>Voltar</button></span>)}
+          </div>
+        </Card>
+      )}
     </>
   );
 }
@@ -622,7 +641,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
     try { await gravar("comissoes", reg); aoFechar(); } catch (x) { setErro(x.message); setSalvando(false); }
   };
   const apagar = async () => {
-    if (temPagamento(f.id)) return setErro("Este colaborador tem histórico (pagamentos ou planilha). Desmarque “pega propostas novas” em vez de excluir, para não perder o histórico.");
+    if (temPagamento(f.id)) return setErro("Este colaborador tem histórico de pagamentos. Desmarque “pega propostas novas” em vez de excluir, para não perder o histórico.");
     if (!window.confirm("Excluir este cadastro de comissão?")) return;
     try { await remover("comissoes", f.id); aoFechar(); } catch (x) { setErro(x.message); }
   };
@@ -671,86 +690,9 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
   );
 }
 
-// Importa a planilha antiga (uma linha por proposta, 1% do valor dela):
-// "Pago" vira histórico de pagamento; todas as linhas dizem de quem é cada
-// proposta antiga, que passa a seguir a regra nova descontando o já pago.
-function ImportarPlanilha({ colabs, pessoasCRM, gravar, aoFechar }) {
-  const [plano, setPlano] = useState(null);
-  const [arquivo, setArquivo] = useState("");
-  const [erro, setErro] = useState("");
-  const [gravando, setGravando] = useState("");
-  const ler = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setErro(""); setPlano(null);
-    try {
-      const { linhas } = lerLinhasPlanilha(await lerXlsx(f));
-      if (!linhas.length) throw new Error("A planilha não tem linhas de comissão.");
-      setArquivo(f.name);
-      setPlano({ ...planoImportacao(linhas, { colabs, pessoasCRM, arquivo: "planilha antiga" }), linhas: linhas.length });
-    } catch (ex) { setErro(ex.message || "Não consegui ler a planilha."); }
-  };
-  const importar = async () => {
-    try {
-      const regs = [...plano.colaboradores, ...plano.pagamentos, ...plano.planilhas];
-      let n = 0;
-      for (const r of regs) { setGravando(`Gravando ${++n} de ${regs.length}…`); await gravar("comissoes", { ...r, importadoDe: arquivo }); }
-      aoFechar();
-    } catch (ex) { setErro(ex.message); setGravando(""); }
-  };
-  const repetidas = plano?.alertas.filter((a) => a.tipo === "repetida") || [];
-  return (
-    <Modal titulo="Importar a planilha antiga de comissões" aoFechar={() => !gravando && aoFechar()} largo>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className="aviso marca peq">
-          As linhas <b>Pago</b> entram no histórico de pagamentos (pelo mês da folha). Cada proposta da planilha passa a seguir a regra nova:
-          1% de cada OS faturada, <b>descontando o que a planilha já pagou</b>. Quem não está cadastrado entra só com as propostas da planilha (não pega proposta nova). Importar de novo o mesmo arquivo não duplica.
-        </div>
-        <input type="file" accept=".xlsx" className="entrada" onChange={ler} disabled={!!gravando} aria-label="Escolher a planilha" />
-        {erro && <div className="aviso ruim">{erro}</div>}
-        {plano && (
-          <>
-            <div className="tabela-caixa">
-              <table>
-                <thead><tr><th>Colaborador</th><th style={{ textAlign: "right" }}>Linhas pagas</th><th style={{ textAlign: "right" }}>Pago</th><th style={{ textAlign: "right" }}>Não pagas na planilha</th><th style={{ textAlign: "right" }}>Valor não pago</th><th /></tr></thead>
-                <tbody>
-                  {plano.resumo.map((x) => (
-                    <tr key={x.nome}>
-                      <td>{nomeCurto(x.nome)}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{x.pagas}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{brl(x.pago)}</td>
-                      <td className="tnum" style={{ textAlign: "right" }}>{x.abertas}</td>
-                      <td className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{brl(x.aPagar)}</td>
-                      <td>{x.novo ? <Chip>entra só com a planilha</Chip> : <Chip tom="ok">já cadastrada</Chip>}{x.semCRM && <Chip tom="alerta">sem usuário no CRM</Chip>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {plano.alertas.length > 0 && (
-              <div className="aviso alerta peq">
-                <b>Conferência da planilha.</b>
-                {repetidas.length > 0 && <> {repetidas.length} proposta(s) aparecem pagas duas vezes com o mesmo valor e data: {brl(repetidas.reduce((s, a) => s + a.valor, 0))} possivelmente pagos em dobro.</>}
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18, maxHeight: 180, overflow: "auto" }}>
-                  {plano.alertas.map((a) => <li key={a.proposta + a.tipo}>{a.proposta}: {a.texto}{a.valor ? ` (${brl(a.valor)} a mais)` : ""}</li>)}
-                </ul>
-                <div style={{ marginTop: 6 }}>O pago em dobro aparece depois como “adiantado” na proposta e é descontado das próximas OS dela.</div>
-              </div>
-            )}
-          </>
-        )}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
-          {gravando && <span className="suave peq">{gravando}</span>}
-          <button type="button" className="btn claro" disabled={!!gravando} onClick={aoFechar}>Cancelar</button>
-          <button type="button" className="btn" disabled={!plano || !!gravando} onClick={importar}>Importar {plano ? `${plano.linhas} linhas` : ""}</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // ---------------------------------------------------------------- todas as OS
-const FILTROS_OS = [["todas", "Todas"], ["faltaNF", "Falta emitir NF"], ["aguardando", "Aguardando"], ["nf", "NF emitida"], ["cancelada", "Canceladas"]];
+const FILTROS_OS = [["todas", "Todas"], ["faltaNF", "Falta emitir NF"], ["aguardando", "Aguardando"], ["nf", "NF emitida"], ["quitada", "Paga (histórico)"], ["cancelada", "Canceladas"]];
 
 function ListaOS({ ex, nome }) {
   const todas = useMemo(() => osDoExtrato(ex), [ex]);
@@ -803,7 +745,7 @@ function ListaOS({ ex, nome }) {
         </div>
       )}
       <Paginacao pag={pag} rotulo="OS" />
-      <div style={{ padding: "8px 20px 18px" }}><button type="button" className="btn claro mini" onClick={csv}>Baixar planilha das OS</button></div>
+      <div style={{ padding: "8px 20px 18px" }}><button type="button" className="btn claro mini" onClick={csv}>Baixar Excel das OS</button></div>
     </>
   );
 }
@@ -888,7 +830,7 @@ function Resumo({ contas, pagamentos }) {
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
           <h2>Comissão por mês</h2>
-          {s.pagoSemMes > 0 && <span className="suave peq">{brl(s.pagoSemMes)} pagos pela planilha sem mês da folha ficam fora do gráfico</span>}
+          {s.pagoSemMes > 0 && <span className="suave peq">{brl(s.pagoSemMes)} pagos no histórico sem mês da folha ficam fora do gráfico</span>}
         </div>
         {ultimos.length ? <GraficoComissao serie={ultimos} media={s.mediaPaga} /> : <div className="vazio">Ainda não há comissão gerada nem paga.</div>}
       </Card>
@@ -899,7 +841,7 @@ function Resumo({ contas, pagamentos }) {
             <table>
               <thead><tr><th>Situação</th><th style={D}>OS</th><th style={D}>Valor</th><th style={D}>Comissão</th></tr></thead>
               <tbody>
-                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
+                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["quitada", "Paga (histórico, sem previsão)", "ok", null, ""], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
                   const xs = porSit(id);
                   return <tr key={id}><td><Chip tom={tom}>{rot}</Chip></td><td className="tnum" style={D}>{xs.length}</td><td className="tnum" style={D}>{brl(somaV(xs))}</td><td className="tnum" style={D}>{k ? <>{brl(somaV(xs, k))} <span className="suave peq">{txt}</span></> : "—"}</td></tr>;
                 })}
@@ -914,7 +856,7 @@ function Resumo({ contas, pagamentos }) {
               <thead><tr><th>Mês</th><th style={D}>Gerada</th><th style={D}>Paga</th></tr></thead>
               <tbody>
                 {[...s.serie].reverse().map((x) => <tr key={x.mes}><td>{mesLongo(x.mes)}</td><td className="tnum" style={D}>{brl(x.gerada)}</td><td className="tnum" style={D}>{brl(x.paga)}</td></tr>)}
-                {s.pagoSemMes > 0 && <tr><td className="suave">Pago sem mês (planilha)</td><td /><td className="tnum" style={D}>{brl(s.pagoSemMes)}</td></tr>}
+                {s.pagoSemMes > 0 && <tr><td className="suave">Pago sem mês (histórico)</td><td /><td className="tnum" style={D}>{brl(s.pagoSemMes)}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -928,7 +870,7 @@ function Resumo({ contas, pagamentos }) {
             <tbody>
               {contas.map(({ c, ex }) => (
                 <tr key={c.id}>
-                  <td>{nomeCurto(c.nome)}{c.ativo === false && <div className="suave peq">só a planilha</div>}</td>
+                  <td>{nomeCurto(c.nome)}{c.ativo === false && <div className="suave peq">só histórico</div>}</td>
                   <td className="tnum" style={D}>{ex.totais.propostas}</td>
                   <td className="tnum" style={D}>{brl(ex.totais.faturado)}</td>
                   <td className="tnum" style={D}>{brl(ex.totais.semNF)}</td>

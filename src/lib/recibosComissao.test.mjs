@@ -15,6 +15,8 @@ test("mês da folha: o informado ou o da data", () => {
 test("lista só pagamentos com valor, mais recentes primeiro", () => {
   const l = pagamentosDeComissao([{ tipo: "colaborador" }, { tipo: "pagamento", total: 0, pagoEm: "2026-12-01" }, { ...PG, id: "a", folha: "2026-08" }, PG]);
   assert.deepEqual(l.map((p) => p.id), ["pg1", "a"]);
+  const fora = pagamentosDeComissao([{ tipo: "excluido", crmId: "x1" }, { ...PG, colaboradorId: "auto_x1" }, { ...PG, id: "b", colaboradorId: "auto_x2" }]);
+  assert.deepEqual(fora.map((p) => p.id), ["b"]);
 });
 
 test("agrupa por proposta", () => {

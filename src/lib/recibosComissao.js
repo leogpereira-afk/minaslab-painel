@@ -14,8 +14,10 @@ export const mesDaFolha = (p = {}) => (/^\d{4}-\d{2}$/.test(String(p.folha || ""
 
 /** Pagamentos de comissão com valor, do mais recente para o mais antigo. */
 export function pagamentosDeComissao(registros = []) {
+  // Quem foi tirado das comissões no Gestão (registro "excluido") não aparece aqui.
+  const fora = new Set(registros.filter((r) => r?.tipo === "excluido").map((r) => `auto_${r.crmId}`));
   return registros
-    .filter((r) => r && r.tipo === "pagamento" && Number(r.total) > 0)
+    .filter((r) => r && r.tipo === "pagamento" && Number(r.total) > 0 && !fora.has(r.colaboradorId))
     .sort((a, b) => mesDaFolha(b).localeCompare(mesDaFolha(a)) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
 }
 
