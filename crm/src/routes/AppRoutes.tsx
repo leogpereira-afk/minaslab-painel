@@ -10,6 +10,7 @@ import { NotFound } from '../pages/NotFound/NotFound'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PermissionRoute } from './PermissionRoute'
 import { Atendimentos } from '../pages/Atendimentos/Atendimentos'
+import { AtendimentosRelatorio } from '../pages/Atendimentos/AtendimentosRelatorio'
 import { Leads } from '../pages/Leads/Leads'
 import { Clientes } from '../pages/Clientes/Clientes'
 import { Contatos } from '../pages/Contatos/Contatos'
@@ -65,7 +66,7 @@ export function AppRoutes(){return <Routes>
     </Route>
     <Route element={<PermissionRoute anyOf={['crm.read']}/>}>
       <Route path="/licitacoes" element={<Licitacoes/>}/>
-      <Route path="/agenda" element={<Agenda/>}/><Route path="/agenda/lista" element={<AgendaLista/>}/><Route path="/pos-venda/calendario" element={<Agenda/>}/><Route path="/coletas" element={<ColetasPainel/>}/><Route path="/primeiro-atendimento" element={<PrimeiroAtendimento/>}/><Route path="/atendimentos" element={<Atendimentos/>}/><Route path="/leads" element={<Leads/>}/><Route path="/leads/:id" element={<LeadDetalhe/>}/><Route path="/clientes" element={<Clientes/>}/><Route path="/clientes/:id" element={<ClienteDetalhe/>}/><Route path="/contatos" element={<Contatos/>}/><Route path="/oportunidades" element={<Oportunidades/>}/><Route path="/oportunidades/:id" element={<OportunidadeDetalhe/>}/><Route path="/pipeline" element={<Pipeline/>}/><Route path="/propostas" element={<Propostas/>}/><Route path="/propostas/:id" element={<PropostaDetalhe/>}/><Route path="/tarefas" element={<Tarefas/>}/><Route path="/tarefas/cadastro" element={<TarefasCadastro/>}/><Route path="/workflows" element={<Workflows/>}/><Route path="/inteligencia" element={<Inteligencia/>}/>
+      <Route path="/agenda" element={<Agenda/>}/><Route path="/agenda/lista" element={<AgendaLista/>}/><Route path="/pos-venda/calendario" element={<Agenda/>}/><Route path="/coletas" element={<ColetasPainel/>}/><Route path="/primeiro-atendimento" element={<PrimeiroAtendimento/>}/><Route path="/atendimentos" element={<Atendimentos/>}/><Route path="/atendimentos/relatorio" element={<AtendimentosRelatorio/>}/><Route path="/leads" element={<Leads/>}/><Route path="/leads/:id" element={<LeadDetalhe/>}/><Route path="/clientes" element={<Clientes/>}/><Route path="/clientes/:id" element={<ClienteDetalhe/>}/><Route path="/contatos" element={<Contatos/>}/><Route path="/oportunidades" element={<Oportunidades/>}/><Route path="/oportunidades/:id" element={<OportunidadeDetalhe/>}/><Route path="/pipeline" element={<Pipeline/>}/><Route path="/propostas" element={<Propostas/>}/><Route path="/propostas/:id" element={<PropostaDetalhe/>}/><Route path="/tarefas" element={<Tarefas/>}/><Route path="/tarefas/cadastro" element={<TarefasCadastro/>}/><Route path="/workflows" element={<Workflows/>}/><Route path="/inteligencia" element={<Inteligencia/>}/>
     </Route>
     <Route element={<PermissionRoute anyOf={['operational.read']}/>}>
       <Route path="/contratos" element={<Contratos/>}/><Route path="/ordens-servico" element={<OrdensServico/>}/><Route path="/ordens-servico/:id" element={<OrdemServicoDetalhe/>}/><Route path="/amostras-parametros" element={<AmostrasParametros/>}/><Route path="/pos-venda" element={<Navigate to="/pos-venda/visao-geral" replace/>}/>
