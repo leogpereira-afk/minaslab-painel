@@ -125,3 +125,24 @@ test("conferência: status do CRM, aprovada sem OS e aceite atrasado", async () 
   assert.deepEqual(r.map((x) => `${x.proposta}:${x.tipo}`).sort(), ["a:crmStatus", "b:semOS", "c:aceiteAtrasado", "d:semCadastro"]);
   assert.equal(statusProposta(contas[0].ex.linhas[0]), "finalizada"); // cancelada no CRM, mas com OS
 });
+
+test("regra de setembro: responsável automático e proposta quitada pela planilha", async () => {
+  const { colaboradoresComAutomaticos, extratoColaborador, donosDasPropostas, pagosPorProposta } = await import("./comissoesProposta.js");
+  const props = [
+    { numero: "10", responsavel: "u9", aceite: "2026-09-05", valor: 300, status: "APROVADA" },
+    { numero: "11", responsavel: "u9", aceite: "2026-08-30", valor: 300, status: "APROVADA" },
+    { numero: "12", responsavel: "u9", aceite: "2026-09-10", valor: 500, status: "APROVADA" },
+  ];
+  const colabs = colaboradoresComAutomaticos([], [{ id: "u9", nome: "Fulana Teste" }], props);
+  assert.equal(colabs.length, 1);
+  assert.equal(colabs[0].id, "auto_u9");
+  const regs = [{ tipo: "planilha", colaboradorId: "auto_u9", linhas: [{ proposta: "12", quitada: true, data: "2026-09-10" }] }];
+  const os = new Map([["10", [{ id: "a", proposta: "10", dataOs: "2026-09-06", emissao: "2026-09-08", valor: 300, fat: "FATURADO", pag: "A RECEBER" }]],
+    ["12", [{ id: "b", proposta: "12", dataOs: "2026-09-11", emissao: "2026-09-12", valor: 500, fat: "FATURADO", pag: "PAGO" }]]]);
+  const ex = extratoColaborador(colabs[0], { dono: donosDasPropostas(colabs, regs, props), propsPorNumero: new Map(props.map((p) => [p.numero, p])), osPorProposta: os, pagos: pagosPorProposta([]), planilha: regs[0].linhas });
+  const l10 = ex.linhas.find((l) => l.numero === "10");
+  const l12 = ex.linhas.find((l) => l.numero === "12");
+  assert.equal(l10.aPagar, 3);
+  assert.deepEqual([l12.quitada, l12.pago, l12.aPagar], [true, 5, 0]);
+  assert.ok(!ex.linhas.some((l) => l.numero === "11"));
+});
