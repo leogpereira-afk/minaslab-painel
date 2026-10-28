@@ -132,7 +132,9 @@ begin
     -- Recebido: o remetente; enviado pelo webmail: o primeiro destinatário (só liga, não cria).
     v_quem := case when v_dir = 'RECEIVED' then p->>'de_email' else (p->'para'->>0) end;
     select * into r from public.email_vincular(v_quem, case when v_dir = 'RECEIVED' then p->>'de_nome' end, p->>'assunto',
-      p->>'in_reply_to', v_refs, coalesce((p->>'automatica')::boolean, false), v_dir = 'RECEIVED');
+      p->>'in_reply_to', v_refs,
+      -- Histórico (primeira leitura) segue a regra das automáticas: só cria se o remetente for cadastrado.
+      coalesce((p->>'automatica')::boolean, false) or coalesce((p->>'historico')::boolean, false), v_dir = 'RECEIVED');
     v_lead := r.lead_id; v_cli := r.cliente_id; v_cont := r.contato_id; v_criado := coalesce(r.criado, false);
   else
     select l.cliente_convertido_id, l.contato_convertido_id into v_cli, v_cont from public.leads l where l.id = v_lead;

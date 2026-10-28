@@ -180,7 +180,7 @@ function semCitacao(t: string) {
 }
 const deHtml = (h: string) => h.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|tr|li|h\d)>/gi, "\n").replace(/<[^>]+>/g, "")
   .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-const nomeArquivo = (n: string) => (n || "anexo").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_").slice(-90);
+const nomeArquivo = (n: string) => (n || "anexo").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.-]+/g, "_").slice(-90);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
@@ -314,13 +314,16 @@ Deno.serve(async (req) => {
           if (!up.error) anexos.push({ nome: a.filename || "anexo", tipo: a.mimeType, tamanho: bytes.length, caminho: `${BUCKET_ANEXOS}:${cam}` });
         }
         const direcao = pasta === "INBOX" ? "RECEIVED" : "SENT";
+        const quando = m.date ? new Date(m.date) : internal ? new Date(internal) : new Date();
+        // E-mail antigo (primeira leitura): só cria atendimento para remetente já cadastrado.
+        const historico = Date.now() - quando.getTime() > 2 * 864e5;
         const { data: reg, error } = await sb.rpc("email_registrar", { p: {
           caixa: usuario, pasta, uid, message_id: messageId, in_reply_to: txt(m.inReplyTo) || null,
           referencias: txt(m.references).split(/\s+/).filter(Boolean),
           direcao, de_email: de, de_nome: txt(m.from?.name) || null,
           para: (m.to || []).map((x: any) => x.address).filter(Boolean), cc: (m.cc || []).map((x: any) => x.address).filter(Boolean),
-          assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), anexos, automatica,
-          recebido_em: m.date ? new Date(m.date).toISOString() : internal ? new Date(internal).toISOString() : new Date().toISOString(),
+          assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), anexos, automatica, historico,
+          recebido_em: (isNaN(quando.getTime()) ? new Date() : quando).toISOString(),
         } });
         if (error) { erros++; break; }
         gravados++; if ((reg as any)?.atendimento_novo) novos++;
