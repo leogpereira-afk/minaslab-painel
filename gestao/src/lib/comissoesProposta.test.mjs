@@ -146,3 +146,17 @@ test("regra de setembro: responsável automático e proposta quitada pela planil
   assert.deepEqual([l12.quitada, l12.pago, l12.aPagar], [true, 5, 0]);
   assert.ok(!ex.linhas.some((l) => l.numero === "11"));
 });
+
+test("desligado: comissão encerra, nada fica pendente nem previsto", () => {
+  const props = [{ numero: "1", responsavel: "u9", aceite: "2026-10-02", valor: 500, status: "APROVADA" }, { numero: "2", responsavel: "u9", aceite: "2026-11-10", valor: 100, status: "APROVADA" }];
+  const os = [OS("x", "1", "2026-10-03", 250), OS("y", "1", "2026-10-20", 250, "PRONTO PARA FATURAR", "AGUARDANDO"), OS("z", "2", "2026-11-11", 100)];
+  const ctx = (c) => extratoColaborador(c, { dono: donosDasPropostas([c], [], props), propsPorNumero: new Map(props.map((p) => [p.numero, p])), osPorProposta: new Map([["1", os.slice(0, 2)], ["2", [os[2]]]]), pagos: new Map(), planilha: [] });
+  const ativa = ctx({ id: "d", crmId: "u9", desde: "2026-10-01", taxas: [{ desde: "2026-10-01", pct: 1 }] });
+  assert.equal(ativa.totais.aPagar, 3.5);
+  const fora = ctx({ id: "d", crmId: "u9", desde: "2026-10-01", desligadoEm: "2026-10-31", taxas: [{ desde: "2026-10-01", pct: 1 }] });
+  assert.deepEqual(fora.linhas.map((l) => l.numero), ["1"]); // aceita depois do desligamento não entra
+  assert.equal(fora.totais.aPagar, 0);
+  assert.equal(fora.totais.previsao, 0);
+  assert.equal(fora.totais.naoPago, 2.5);
+  assert.equal(osDoExtrato(fora).find((o) => o.id === "y").sit.id, "encerrada");
+});

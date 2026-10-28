@@ -136,7 +136,7 @@ const FILTROS = [
   ["emDia", "Em dia", (l) => l.aPagar === 0 && l.adiantado === 0 && l.gerada > 0],
   ["adiantado", "Pago adiantado", (l) => l.adiantado > 0],
 ];
-const STATUS_ORDEM = ["pendente", "andamento", "finalizada", "cancelada"];
+const STATUS_ORDEM = ["pendente", "andamento", "finalizada", "cancelada", "encerrada"];
 const rotMes = (m) => (m === "sem" ? "Sem mês (histórico)" : mesLongo(m));
 
 function Extrato({ conta, gravar, nomeDe }) {
@@ -172,6 +172,7 @@ function Extrato({ conta, gravar, nomeDe }) {
             {c.ativo === false ? "Só o histórico de pagas" : `Histórico de pagas + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
           </span>
         </div>
+        {c.desligadoEm && <div className="aviso marca" style={{ marginTop: 10 }}>Desligada em <b>{dataCurta(c.desligadoEm)}</b>: a comissão está encerrada. Nada fica pendente nem previsto{t.naoPago > 0 ? <> ({brl(t.naoPago)} gerados e não pagos não contam)</> : null}; propostas aceitas depois do desligamento não entram.</div>}
         <div style={{ display: "flex", gap: "14px 24px", flexWrap: "wrap", marginTop: 12 }}>
           <Num rot="Propostas" v={t.propostas} />
           <Num rot="Valor das propostas" v={brl(t.valorProposta)} />
@@ -194,7 +195,7 @@ function Extrato({ conta, gravar, nomeDe }) {
           <span className="rotulo" style={{ minWidth: 92 }}>Proposta</span>
           <div className="pilulas" role="group" aria-label="Situação da proposta">
             <button type="button" className={`pilula${!status ? " ativa" : ""}`} aria-pressed={!status} onClick={() => setStatus("")}>Todas ({ex.linhas.length})</button>
-            {STATUS_ORDEM.map((id) => <button key={id} type="button" className={`pilula${status === id ? " ativa" : ""}`} aria-pressed={status === id} onClick={() => setStatus(id)}>{STATUS_PROPOSTA[id].rotulo} ({ex.linhas.filter((l) => statusProposta(l) === id).length})</button>)}
+            {STATUS_ORDEM.filter((id) => id !== "encerrada" || c.desligadoEm).map((id) => <button key={id} type="button" className={`pilula${status === id ? " ativa" : ""}`} aria-pressed={status === id} onClick={() => setStatus(id)}>{STATUS_PROPOSTA[id].rotulo} ({ex.linhas.filter((l) => statusProposta(l) === id).length})</button>)}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -241,7 +242,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                     <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}{l.pagoCliente > 0 && <div className="suave peq">cliente pagou {brl(l.pagoCliente)}</div>}</td>
                     <td className="tnum" style={D}>{brl(l.gerada)}</td>
                     <td className="tnum" style={D}>{mesPago ? <>{brl(pagoNoMes(l))}<div className="suave peq">total {brl(l.pago)}</div></> : brl(l.pago)}</td>
-                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : <Chip tom="ok">em dia</Chip>}</td>
+                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.naoPago > 0 ? <Chip tom="neutro">encerrada · {brl(l.naoPago)} não conta</Chip> : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : l.encerrada ? <Chip tom="neutro">encerrada</Chip> : <Chip tom="ok">em dia</Chip>}</td>
                   </tr>
                   {aberta === l.numero && <tr><td colSpan={9} style={{ background: "var(--marca-50)", padding: 0 }}><DetalheProposta l={l} nomeDe={nomeDe} /></td></tr>}
                 </Fragment>
@@ -292,12 +293,12 @@ function DetalheProposta({ l, nomeDe }) {
         <div style={{ borderLeft: "1px solid var(--linha)", paddingLeft: 24 }}><div className="suave peq">Comissão da proposta toda (1%)</div><b className="tnum">{brl(comTotal)}</b></div>
         <div><div className="suave peq">Liberada (OS com NF)</div><b className="tnum">{brl(l.gerada)}</b></div>
         <div><div className="suave peq">Já paga</div><b className="tnum">{brl(l.pago)}</b></div>
-        <div><div className="suave peq">Falta pagar</div><b className="tnum" style={{ color: l.aPagar > 0 ? "var(--alerta-tx)" : undefined }}>{l.aPagar > 0 ? brl(l.aPagar) : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</b></div>
+        <div><div className="suave peq">Falta pagar</div><b className="tnum" style={{ color: l.aPagar > 0 ? "var(--alerta-tx)" : undefined }}>{l.aPagar > 0 ? brl(l.aPagar) : l.naoPago > 0 ? `encerrada (${brl(l.naoPago)} não conta)` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</b></div>
         <div><div className="suave peq">Ainda vai liberar</div><b className="tnum">{brl(Math.max(0, centavos(comTotal - l.gerada)))}</b></div>
       </div>
       <div className="peq">
         <b>Como chegou nesta conta:</b> {l.osGeradas} OS geradas ({brl(l.geradas)}), {brl(l.faturado)} faturados → comissão {brl(l.gerada)} · já pago {brl(l.pago)} ·{" "}
-        {l.aPagar > 0 ? <b>falta pagar {brl(l.aPagar)}</b> : l.adiantado > 0 ? <>pago adiantado {brl(l.adiantado)} (é descontado das próximas OS)</> : "em dia"}
+        {l.aPagar > 0 ? <b>falta pagar {brl(l.aPagar)}</b> : l.naoPago > 0 ? <>comissão encerrada pelo desligamento: {brl(l.naoPago)} não pagos não contam</> : l.adiantado > 0 ? <>pago adiantado {brl(l.adiantado)} (é descontado das próximas OS)</> : "em dia"}
         {l.aceite ? <> · aceite em {dataCurta(l.aceite)}</> : null}
       </div>
       <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
@@ -338,7 +339,7 @@ function DetalheProposta({ l, nomeDe }) {
             ))}
             <tr style={{ background: "var(--marca-50)" }}>
               <td colSpan={4} className="peq"><b>Comissão liberada {brl(l.gerada)}</b> · já pago {brl(l.pago)}</td>
-              <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? `falta ${brl(l.aPagar)}` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</td>
+              <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? `falta ${brl(l.aPagar)}` : l.naoPago > 0 ? `encerrada (${brl(l.naoPago)} não conta)` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</td>
             </tr>
           </tbody>
         </table>
@@ -392,13 +393,21 @@ function FecharMes({ contas, gravar, aoFechar }) {
   const grupos = useMemo(() => fechamentoDoMes(contas), [contas]);
   const [folha, setFolha] = useState(folhaSugerida(hojeBR()));
   const [pagoEm, setPagoEm] = useState(hojeBR());
-  const [fora, setFora] = useState(() => new Set());
+  const [fora, setFora] = useState(() => new Set()); // colaborador fora deste fechamento
+  const [foraProp, setForaProp] = useState(() => new Set()); // "colab|proposta" fora deste fechamento
+  const [abertos, setAbertos] = useState(() => new Set());
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [feitos, setFeitos] = useState(null);
-  const marcados = grupos.filter((g) => !fora.has(g.c.id));
+  const chave = (g, l) => `${g.c.id}|${l.numero}`;
+  const comEscolha = grupos.map((g) => {
+    const linhas = fora.has(g.c.id) ? [] : g.linhas.filter((l) => !foraProp.has(chave(g, l)));
+    return { ...g, linhas, total: centavos(linhas.reduce((s, l) => s + l.aPagar, 0)) };
+  });
+  const marcados = comEscolha.filter((g) => g.linhas.length && g.total > 0);
   const total = centavos(marcados.reduce((s, g) => s + g.total, 0));
-  const alternar = (id) => setFora((f) => { const x = new Set(f); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  const troca = (set) => (k) => set((f) => { const x = new Set(f); x.has(k) ? x.delete(k) : x.add(k); return x; });
+  const alternar = troca(setFora), alternarProp = troca(setForaProp), abrir = troca(setAbertos);
   const salvar = async () => {
     if (!/^\d{4}-\d{2}$/.test(folha)) return setErro("Informe o mês da folha.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return setErro("Informe a data do pagamento.");
@@ -425,10 +434,10 @@ function FecharMes({ contas, gravar, aoFechar }) {
     </Modal>
   );
   return (
-    <Modal titulo="Fechar mês" aoFechar={aoFechar}>
+    <Modal titulo="Fechar mês" aoFechar={aoFechar} largo>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {!grupos.length ? <div className="aviso marca">Nada liberado para pagar agora: nenhuma OS com nota emitida está sem comissão paga.</div> : <>
-          <p className="suave peq" style={{ margin: 0 }}>Entra tudo que já tem nota emitida e ainda não foi pago. O que é só previsto (OS sem nota) fica para o próximo fechamento.</p>
+          <p className="suave peq" style={{ margin: 0 }}>Entra tudo que já tem nota emitida e ainda não foi pago. O que é só previsto (OS sem nota) fica para o próximo fechamento. Clique em “ver propostas” para conferir e desmarcar alguma. Desligados não entram.</p>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-folha">Mês da folha</label><input id="fm-folha" type="month" className="entrada" value={folha} onChange={(e) => setFolha(e.target.value)} /></div>
             <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-data">Data do pagamento</label><input id="fm-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
@@ -437,14 +446,32 @@ function FecharMes({ contas, gravar, aoFechar }) {
             <table>
               <thead><tr><th></th><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>A pagar</th></tr></thead>
               <tbody>
-                {grupos.map((g) => (
-                  <tr key={g.c.id}>
-                    <td><input type="checkbox" aria-label={`Incluir ${nomeCurto(g.c.nome)}`} checked={!fora.has(g.c.id)} onChange={() => alternar(g.c.id)} /></td>
-                    <td><b>{nomeCurto(g.c.nome)}</b></td>
-                    <td className="tnum" style={D}>{g.linhas.length}</td>
-                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(g.total)}</td>
-                  </tr>
-                ))}
+                {grupos.map((g, i) => {
+                  const esc = comEscolha[i], aberto = abertos.has(g.c.id);
+                  return (
+                    <Fragment key={g.c.id}>
+                      <tr>
+                        <td><input type="checkbox" aria-label={`Incluir ${nomeCurto(g.c.nome)}`} checked={!fora.has(g.c.id)} onChange={() => alternar(g.c.id)} /></td>
+                        <td><b>{nomeCurto(g.c.nome)}</b> <button type="button" className="btn claro mini" style={{ marginLeft: 6 }} aria-expanded={aberto} onClick={() => abrir(g.c.id)}>{aberto ? "esconder propostas ▴" : "ver propostas ▾"}</button></td>
+                        <td className="tnum" style={D}>{esc.linhas.length}{esc.linhas.length !== g.linhas.length ? <span className="suave peq"> de {g.linhas.length}</span> : null}</td>
+                        <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(esc.total)}</td>
+                      </tr>
+                      {aberto && g.linhas.map((l) => (
+                        <tr key={l.numero} style={{ background: "#fafcfc", opacity: fora.has(g.c.id) || foraProp.has(chave(g, l)) ? 0.5 : 1 }}>
+                          <td />
+                          <td className="peq">
+                            <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                              <input type="checkbox" disabled={fora.has(g.c.id)} checked={!foraProp.has(chave(g, l))} onChange={() => alternarProp(chave(g, l))} />
+                              <span><b>Proposta {l.numero}</b> · {l.cliente || "—"}<br /><span className="suave">faturado {brl(l.faturado)} · comissão {brl(l.gerada)}{l.pago > 0 ? ` · já pago ${brl(l.pago)}` : ""}</span></span>
+                            </label>
+                          </td>
+                          <td className="tnum peq" style={D}>{l.os.filter((o) => o.faturada).length} OS c/ NF</td>
+                          <td className="tnum" style={D}>{brl(l.aPagar)}</td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
                 <tr style={{ background: "var(--marca-50)" }}><td></td><td><b>Total</b></td><td className="tnum" style={D}>{marcados.reduce((s, g) => s + g.linhas.length, 0)}</td><td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(total)}</td></tr>
               </tbody>
             </table>
@@ -591,7 +618,8 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, gravar, remover, registro
           <Card key={c.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
               <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
-              {c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
+              {c.desligadoEm ? <Chip tom="neutro">desligada em {dataCurta(c.desligadoEm)}</Chip> : c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
+              {!c.desligadoEm && pessoasCRM.find((p) => p.id === c.crmId)?.ativo === false && <Chip tom="alerta">inativa no CRM: se saiu, marque o desligamento em Editar</Chip>}
             </div>
             <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
               {c.ativo === false ? "Só o histórico de pagas" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
@@ -631,7 +659,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
   const mudaTaxa = (i, k, v) => setF((x) => ({ ...x, taxas: x.taxas.map((t, j) => (j === i ? { ...t, [k]: v } : t)) }));
   const escolherCRM = (id) => setF((x) => ({ ...x, crmId: id, nome: x.nome || pessoasCRM.find((p) => p.id === id)?.nome || "" }));
   const salvar = async () => {
-    const reg = { ...f, tipo: "colaborador", nome: String(f.nome).trim().toLocaleUpperCase("pt-BR"), taxas: f.taxas.map((t) => ({ desde: t.desde, pct: Number(String(t.pct).replace(",", ".")) })) };
+    const reg = { ...f, desligadoEm: f.desligadoEm || "", tipo: "colaborador", nome: String(f.nome).trim().toLocaleUpperCase("pt-BR"), taxas: f.taxas.map((t) => ({ desde: t.desde, pct: Number(String(t.pct).replace(",", ".")) })) };
     delete reg.novo;
     const e = validarColaborador(reg);
     if (e) return setErro(e);
@@ -674,6 +702,14 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
           <div><button type="button" className="btn claro mini" onClick={() => setF((x) => ({ ...x, taxas: [...x.taxas, { desde: hojeBR(), pct: x.taxas.at(-1)?.pct ?? 1 }] }))}>Mudar a taxa a partir de uma data</button></div>
           <span className="suave peq">Aumento vale para as notas emitidas a partir da data nova; o que já foi faturado antes continua com a taxa antiga.</span>
         </div>
+        <div className="campo">
+          <label htmlFor="cm-deslig">Desligado em (deixe vazio enquanto estiver na empresa)</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input id="cm-deslig" type="date" className="entrada" value={f.desligadoEm || ""} onChange={(e) => muda("desligadoEm", e.target.value)} />
+            {f.desligadoEm && <button type="button" className="btn claro mini" onClick={() => muda("desligadoEm", "")}>Limpar</button>}
+          </div>
+          <span className="suave peq">Com a data, a comissão encerra: o que não foi pago deixa de ficar pendente e de ser previsto, e propostas aceitas depois dela não entram. Se for pagar algo na rescisão, registre o pagamento antes de marcar o desligamento.</span>
+        </div>
         <label className="peq" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={(e) => muda("ativo", e.target.checked)} /> Pega propostas novas (desmarque se deixou de receber; as propostas antigas continuam no extrato)
         </label>
@@ -692,7 +728,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
 
 
 // ---------------------------------------------------------------- todas as OS
-const FILTROS_OS = [["todas", "Todas"], ["faltaNF", "Falta emitir NF"], ["aguardando", "Aguardando"], ["nf", "NF emitida"], ["quitada", "Paga (histórico)"], ["cancelada", "Canceladas"]];
+const FILTROS_OS = [["todas", "Todas"], ["faltaNF", "Falta emitir NF"], ["aguardando", "Aguardando"], ["nf", "NF emitida"], ["quitada", "Paga (histórico)"], ["encerrada", "Encerrada"], ["cancelada", "Canceladas"]];
 
 function ListaOS({ ex, nome }) {
   const todas = useMemo(() => osDoExtrato(ex), [ex]);
@@ -841,7 +877,7 @@ function Resumo({ contas, pagamentos }) {
             <table>
               <thead><tr><th>Situação</th><th style={D}>OS</th><th style={D}>Valor</th><th style={D}>Comissão</th></tr></thead>
               <tbody>
-                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["quitada", "Paga (histórico, sem previsão)", "ok", null, ""], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
+                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["quitada", "Paga (histórico, sem previsão)", "ok", null, ""], ["encerrada", "Encerrada (desligamento)", "neutro", null, ""], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
                   const xs = porSit(id);
                   return <tr key={id}><td><Chip tom={tom}>{rot}</Chip></td><td className="tnum" style={D}>{xs.length}</td><td className="tnum" style={D}>{brl(somaV(xs))}</td><td className="tnum" style={D}>{k ? <>{brl(somaV(xs, k))} <span className="suave peq">{txt}</span></> : "—"}</td></tr>;
                 })}
