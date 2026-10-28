@@ -57,7 +57,13 @@ export default function Comissoes() {
       const crmId = String(r.colaboradorId).replace(/^auto_/, "");
       todos.push({ id: r.colaboradorId, tipo: "colaborador", nome: String(r.nome || pessoasCRM.find((p) => p.id === crmId)?.nome || "Colaborador").toLocaleUpperCase("pt-BR"), crmId, desde: DESDE_PADRAO, taxas: [{ desde: DESDE_PADRAO, pct: 1 }], ativo: false, automatico: true });
     }
-    return todos.sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+    // Desligamento: o que você marcar aqui vale; se não marcou, vale a data da ficha do RH (vem só a data).
+    const comRH = todos.map((c) => {
+      const pe = pessoasCRM.find((p) => p.id === c.crmId);
+      const manual = c.desligadoEm || "";
+      return { ...c, desligadoManual: manual, desligadoRH: pe?.desligadoEm || "", situacaoRH: pe?.rh || "", desligadoEm: manual || pe?.desligadoEm || "" };
+    });
+    return comRH.sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
   }, [gravados, pessoasCRM, crm.dados, registros, foraIds]);
 
   const contas = useMemo(() => {
@@ -172,7 +178,7 @@ function Extrato({ conta, gravar, nomeDe }) {
             {c.ativo === false ? "Só o histórico de pagas" : `Histórico de pagas + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
           </span>
         </div>
-        {c.desligadoEm && <div className="aviso marca" style={{ marginTop: 10 }}>Desligada em <b>{dataCurta(c.desligadoEm)}</b>: a comissão está encerrada. Nada fica pendente nem previsto{t.naoPago > 0 ? <> ({brl(t.naoPago)} gerados e não pagos não contam)</> : null}; propostas aceitas depois do desligamento não entram.</div>}
+        {c.desligadoEm && <div className="aviso marca" style={{ marginTop: 10 }}>Desligada em <b>{dataCurta(c.desligadoEm)}</b>{c.desligadoManual ? "" : " (data da ficha do RH)"}: a comissão está encerrada. Nada fica pendente nem previsto{t.naoPago > 0 ? <> ({brl(t.naoPago)} gerados e não pagos não contam)</> : null}; propostas aceitas depois do desligamento não entram.</div>}
         <div style={{ display: "flex", gap: "14px 24px", flexWrap: "wrap", marginTop: 12 }}>
           <Num rot="Propostas" v={t.propostas} />
           <Num rot="Valor das propostas" v={brl(t.valorProposta)} />
@@ -618,8 +624,10 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, gravar, remover, registro
           <Card key={c.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
               <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
-              {c.desligadoEm ? <Chip tom="neutro">desligada em {dataCurta(c.desligadoEm)}</Chip> : c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
-              {!c.desligadoEm && pessoasCRM.find((p) => p.id === c.crmId)?.ativo === false && <Chip tom="alerta">inativa no CRM: se saiu, marque o desligamento em Editar</Chip>}
+              {c.desligadoEm ? <Chip tom="neutro">desligada em {dataCurta(c.desligadoEm)}{c.desligadoManual ? "" : " (RH)"}</Chip> : c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
+              {!c.desligadoEm && c.situacaoRH === "ambiguo" && <Chip tom="alerta">dois cadastros parecidos no RH: marque o desligamento em Editar, se for o caso</Chip>}
+              {!c.desligadoEm && c.situacaoRH === "nao_encontrado" && <Chip tom="neutro">não achei no RH pelo nome: desligamento só manual</Chip>}
+              {!c.desligadoEm && c.situacaoRH !== "nao_encontrado" && c.situacaoRH !== "ambiguo" && pessoasCRM.find((p) => p.id === c.crmId)?.ativo === false && <Chip tom="alerta">inativa no CRM: se saiu, marque o desligamento no RH</Chip>}
             </div>
             <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
               {c.ativo === false ? "Só o histórico de pagas" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
@@ -652,7 +660,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
   const novo = !!inicial.novo;
   const [f, setF] = useState(() => novo
     ? { nome: "", crmId: "", desde: hojeBR(), taxas: [{ desde: hojeBR(), pct: 1 }], ativo: true }
-    : { ...inicial, taxas: [...(inicial.taxas || [])] });
+    : { ...inicial, desligadoEm: inicial.desligadoManual ?? inicial.desligadoEm ?? "", taxas: [...(inicial.taxas || [])] });
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const muda = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -660,7 +668,7 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
   const escolherCRM = (id) => setF((x) => ({ ...x, crmId: id, nome: x.nome || pessoasCRM.find((p) => p.id === id)?.nome || "" }));
   const salvar = async () => {
     const reg = { ...f, desligadoEm: f.desligadoEm || "", tipo: "colaborador", nome: String(f.nome).trim().toLocaleUpperCase("pt-BR"), taxas: f.taxas.map((t) => ({ desde: t.desde, pct: Number(String(t.pct).replace(",", ".")) })) };
-    delete reg.novo;
+    delete reg.novo; delete reg.desligadoManual; delete reg.desligadoRH; delete reg.situacaoRH;
     const e = validarColaborador(reg);
     if (e) return setErro(e);
     const igual = colabs.find((c) => c.id !== reg.id && c.crmId === reg.crmId);
@@ -703,7 +711,8 @@ function EditarColaborador({ inicial, pessoasCRM, aoFechar, gravar, remover, tem
           <span className="suave peq">Aumento vale para as notas emitidas a partir da data nova; o que já foi faturado antes continua com a taxa antiga.</span>
         </div>
         <div className="campo">
-          <label htmlFor="cm-deslig">Desligado em (deixe vazio enquanto estiver na empresa)</label>
+          <label htmlFor="cm-deslig">Desligado em (deixe vazio para usar a data da ficha do RH)</label>
+          {inicial.desligadoRH && <span className="suave peq">No RH: desligada em <b>{dataCurta(inicial.desligadoRH)}</b>. A comissão já encerra nessa data; só preencha aqui para usar outra data.</span>}
           <div style={{ display: "flex", gap: 8 }}>
             <input id="cm-deslig" type="date" className="entrada" value={f.desligadoEm || ""} onChange={(e) => muda("desligadoEm", e.target.value)} />
             {f.desligadoEm && <button type="button" className="btn claro mini" onClick={() => muda("desligadoEm", "")}>Limpar</button>}

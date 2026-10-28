@@ -29,6 +29,7 @@ import { agregarPropostas, mesBR, probabilidadesPorIdade, chanceDaIdade, carteir
 import { CRITERIOS_LIDERANCA, MOTIVOS_ELIMINATORIOS, DIAS_CONVITE, conviteValido, validarAvaliacao } from "./lideranca.mjs";
 import { somarSetores } from "./setores.mjs";
 import { SETORES, CHAVES, PAGINAS, colecaoDe, permissoes, podeLer, podeGravar, podeAcao, limparSetores } from "./acessos.mjs";
+import { situacaoNoRH } from "./comissoes.mjs";
 import { PERGUNTAS_EQUIPE, PERGUNTAS_GESTAO, validarVoto, aplicarVoto, resultado, gerarCodigos, normalizarCodigo, codigoValido } from "./pesquisa.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -913,8 +914,12 @@ Deno.serve(async (req) => {
         const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const ids = [...new Set((Array.isArray(body.responsaveis) ? body.responsaveis : []).map(String))].filter((x) => UUID.test(x)).slice(0, 30);
         const perfis = await lerTudo("profiles", "id,nome,ativo");
+        // Desligamento vem da ficha do RH, mas só a data sai daqui (casada pelo nome; na dúvida, avisa).
+        const rh = (await lerTudo(T_REG, "id,registro,apagado", (q) => q.eq("colecao", "rh_pessoas")))
+          .filter((l) => !l.apagado && l.registro).map((l) => ({ nome: l.registro.nome, ativo: l.registro.ativo, desligadoEm: l.registro.desligadoEm }));
         const pessoas = perfis.map((p) => ({ id: p.id, nome: String(p.nome ?? "").replace(/\s+/g, " ").trim(), ativo: p.ativo !== false }))
-          .filter((p) => p.nome).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+          .filter((p) => p.nome).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+          .map((p) => ({ ...p, ...situacaoNoRH(p.nome, rh) }));
         // Propostas antigas (da planilha de comissões), em qualquer situação no CRM.
         const extras = [...new Set((Array.isArray(body.numeros) ? body.numeros : []).map(String))].filter((x) => /^\d{1,10}\/\d{4}$/.test(x)).slice(0, 3000);
         if (!ids.length && !extras.length) return resp({ geradoEm: new Date().toISOString(), pessoas, propostas: [], os: [] });
