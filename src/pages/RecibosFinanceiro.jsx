@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Printer, Plus, Trash2, FilePlus2, Eraser, Calculator, Save, History, FileText, Copy, Search } from "lucide-react";
+import { Printer, Plus, Trash2, FilePlus2, Eraser, Calculator, Save, History, FileText, Copy, Search, HandCoins, X } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
 import { carregarColecoes, salvar, apagar } from "../services/dados.js";
 import { filtrarPessoasPorNome } from "../lib/rhApresentacao.js";
@@ -8,6 +8,7 @@ import {
   EMPRESAS_RECIBO, valorPorExtenso, moeda, numeroBR, lerValor, dataExtenso, dataCurta,
   horasTexto, calcularHoraExtra, calcularDescontoDano, somarItens, periodoExtenso, competenciaDe, listaPorExtenso, identificacaoFiscal, valorDoRecibo, nomeDoRecibo,
 } from "../lib/recibos.js";
+import { COLECAO_COMISSOES, pagamentosDeComissao, propostasDoPagamento, mesDaFolha, aplicarComissao, recibosPorComissao } from "../lib/recibosComissao.js";
 
 const CHAVE_RASCUNHO = "financeiro.recibos.rascunho.v1";
 const COLECAO_HISTORICO = "fin_recibos"; // prefixo fin_: só a direção lê e grava (regra do ml-sync)
@@ -382,6 +383,64 @@ function PreviaA4({ children }) {
   </div>;
 }
 
+
+/* ---------- Trazer comissão do Gestão (só leitura) ---------- */
+
+function TrazerComissao({ d, set, pessoas, historico }) {
+  const [aberto, setAberto] = useState(false);
+  const [lista, setLista] = useState(null);
+  const [erro, setErro] = useState("");
+  const [mes, setMes] = useState("");
+  const [detalhar, setDetalhar] = useState(false);
+  const [feito, setFeito] = useState("");
+  const abrir = async () => {
+    setAberto(true); setErro(""); setFeito("");
+    try {
+      const r = await carregarColecoes([COLECAO_COMISSOES]);
+      if (r._recusadas?.length) throw new Error("Sem permissão para consultar as comissões.");
+      const l = pagamentosDeComissao(r[COLECAO_COMISSOES] || []);
+      setLista(l);
+      setMes((m) => m || (l[0] ? mesDaFolha(l[0]) : ""));
+    } catch (e) { setErro(e.message || "Não consegui consultar as comissões."); }
+  };
+  const usados = useMemo(() => recibosPorComissao(historico), [historico]);
+  const meses = useMemo(() => [...new Set((lista || []).map(mesDaFolha))], [lista]);
+  const doMes = (lista || []).filter((p) => !mes || mesDaFolha(p) === mes);
+  const noRecibo = new Set((d.itens || []).map((i) => i.comissaoId).filter(Boolean));
+  const trazer = (p) => {
+    set(aplicarComissao(d, p, { detalhar, pessoas }));
+    const outro = d.nome?.trim() && d.nome.trim().toLocaleUpperCase("pt-BR") !== String(p.nome).toLocaleUpperCase("pt-BR");
+    setFeito(`Comissão de ${p.nome} (${moeda(p.total)}) entrou nos detalhes do recibo.${outro ? ` Atenção: o recibo está no nome de ${d.nome.trim()}.` : ""}`);
+  };
+  if (!aberto) return <button type="button" className="btn-outline mb-3 w-full justify-center" onClick={abrir}><HandCoins size={16} /> Trazer comissão do Gestão</button>;
+  return <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/60 p-3">
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <p className="text-sm font-bold text-slate-800"><HandCoins size={15} className="mr-1 inline" />Comissões pagas (registradas no Gestão)</p>
+      <button type="button" className="text-slate-400 hover:text-slate-700" aria-label="Fechar" onClick={() => setAberto(false)}><X size={16} /></button>
+    </div>
+    {erro && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{erro}</p>}
+    {!erro && !lista && <p className="text-xs text-slate-500">Consultando comissões…</p>}
+    {lista && !lista.length && <p className="text-xs text-slate-600">Nenhum pagamento de comissão registrado. Feche o mês em Gestão › Comissões e volte aqui.</p>}
+    {lista && lista.length > 0 && <>
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2"><span className="text-xs font-semibold text-slate-600">Folha de</span>
+          <select className="input py-1" value={mes} onChange={(e) => setMes(e.target.value)}>{meses.map((m) => <option key={m} value={m}>{competenciaDe(`${m}-01`)}</option>)}</select></label>
+        <label className="flex items-center gap-1.5 text-xs text-slate-700"><input type="checkbox" checked={detalhar} onChange={(e) => setDetalhar(e.target.checked)} /> Uma linha por proposta</label>
+      </div>
+      <ul className="space-y-1.5">{doMes.map((p) => {
+        const r = usados.get(p.id), n = propostasDoPagamento(p).length, ja = noRecibo.has(p.id);
+        return <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+          <span><b className="text-slate-900">{p.nome}</b> <span className="text-xs text-slate-500">· {n} proposta{n === 1 ? "" : "s"} · pago em {dataCurta(p.pagoEm)}{r ? ` · já está no recibo de ${quandoBR(r.criadoEm)}` : ""}</span></span>
+          <span className="flex items-center gap-2"><b className="whitespace-nowrap">{moeda(p.total)}</b>
+            <button type="button" className={ja ? "btn-outline text-xs" : "btn-primary text-xs"} onClick={() => trazer(p)}>{ja ? "Trazer de novo" : "Trazer"}</button></span>
+        </li>;
+      })}</ul>
+      <p className="mt-2 text-xs text-slate-500">Preenche nome, CPF e competência se estiverem vazios e adiciona a comissão nos detalhes. Salário ou outros valores que você já digitou continuam.</p>
+    </>}
+    {feito && <p role="status" className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{feito}</p>}
+  </div>;
+}
+
 /* ---------- Página ---------- */
 
 const hashDe = (modelo, d) => JSON.stringify([modelo, d]);
@@ -597,6 +656,7 @@ export default function RecibosFinanceiro() {
         {avisoCadastro && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{avisoCadastro}</p>}
         {registroAberto && <p className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">Editando um recibo do histórico (de {quandoBR(registroAberto.criadoEm)}). Salvar ou imprimir atualiza esse registro; use “Salvar como novo” para manter o original.</p>}
         {aviso && <div className="mb-3">{aviso}</div>}
+        {modelo === "pagamento" && <TrazerComissao d={atual} set={(novo) => set(novo)} pessoas={pessoas} historico={historico} />}
         <Form d={atual} set={set} pessoas={pessoas} escolher={escolher} />
         <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           <button type="button" className="btn-primary" onClick={() => imprimir("atual")}><Printer size={16} /> Imprimir este recibo</button>
