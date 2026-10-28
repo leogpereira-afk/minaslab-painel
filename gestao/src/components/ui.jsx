@@ -75,8 +75,8 @@ export function Cabecalho({ sobre, titulo, sub, children }) {
     <header className="cabecalho">
       <div>
         {sobre && <div className="sobretitulo">{sobre}</div>}
-        <h1 style={{ marginTop: 4 }}>{titulo}</h1>
-        {sub && <div className="suave peq" style={{ marginTop: 4 }}>{sub}</div>}
+        <h1>{titulo}</h1>
+        {sub && <div className="suave peq" style={{ marginTop: 4, maxWidth: 760 }}>{sub}</div>}
       </div>
       {children && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>{children}</div>}
     </header>
