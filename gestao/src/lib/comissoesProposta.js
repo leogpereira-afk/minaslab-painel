@@ -81,7 +81,7 @@ export function pagosPorProposta(pagamentos) {
     for (const it of pg.itens || []) {
       if (!it.proposta) continue;
       if (!m.has(it.proposta)) m.set(it.proposta, []);
-      m.get(it.proposta).push({ valor: Number(it.valor) || 0, pagoEm: pg.pagoEm, colaboradorId: pg.colaboradorId, planilha: !!(it.planilha || pg.planilha), pagamentoId: pg.id, obs: pg.obs || "" });
+      m.get(it.proposta).push({ valor: Number(it.valor) || 0, pagoEm: pg.pagoEm, folha: mesDaFolha(pg), colaboradorId: pg.colaboradorId, planilha: !!(it.planilha || pg.planilha), pagamentoId: pg.id, obs: pg.obs || "" });
     }
   }
   return m;
@@ -197,7 +197,7 @@ export function serieMensal(extratos, pagamentos, { ate }) {
   }
   for (const p of pagamentos) {
     if (p.planilha && String(p.obs || "").includes("sem o mês")) { pagoSemMes = centavos(pagoSemMes + Number(p.total || 0)); continue; }
-    const m = String(p.pagoEm || "").slice(0, 7);
+    const m = mesDaFolha(p);
     if (m) paga[m] = centavos((paga[m] || 0) + Number(p.total || 0));
   }
   const todos = [...Object.keys(gerada), ...Object.keys(paga)].filter((m) => m <= ate).sort();
@@ -234,7 +234,29 @@ export function statusProposta(l) {
 }
 
 /** Mês do pagamento ("AAAA-MM" ou "sem" para os da planilha sem mês da folha). */
-export const mesDoPagamentoItem = (p) => (p.planilha && String(p.obs || "").includes("sem o mês") ? "sem" : String(p.pagoEm || "").slice(0, 7));
+export const mesDoPagamentoItem = (p) => (p.planilha && String(p.obs || "").includes("sem o mês") ? "sem" : mesDaFolha(p));
+
+/** Mês da folha de um pagamento: o escolhido no fechamento ou, nos antigos, o mês da data. */
+export function mesDaFolha(p = {}) {
+  return /^\d{4}-\d{2}$/.test(String(p.folha || "")) ? p.folha : String(p.pagoEm || "").slice(0, 7);
+}
+
+/** Mês da folha sugerido: até o dia 15 é a folha do mês anterior; depois, a do mês corrente. */
+export function folhaSugerida(hoje) {
+  const [a, m, d] = String(hoje).split("-").map(Number);
+  if (d > 15) return `${a}-${String(m).padStart(2, "0")}`;
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`;
+}
+
+/** Fechamento do mês: quem tem comissão liberada (nota emitida) e ainda não paga. */
+export function fechamentoDoMes(contas) {
+  return contas
+    .map(({ c, ex }) => {
+      const linhas = ex.linhas.filter((l) => l.aPagar > 0);
+      return { c, linhas, total: centavos(linhas.reduce((s, l) => s + l.aPagar, 0)) };
+    })
+    .filter((x) => x.linhas.length && x.total > 0);
+}
 
 const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 

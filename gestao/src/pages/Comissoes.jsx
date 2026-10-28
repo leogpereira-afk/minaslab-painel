@@ -11,6 +11,7 @@ import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
   osDoExtrato, serieMensal, statusProposta, colaboradoresComAutomaticos, DESDE_PADRAO, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
+  mesDaFolha, folhaSugerida, fechamentoDoMes,
 } from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
@@ -31,6 +32,7 @@ export default function Comissoes() {
   const [aba, setAba] = useState("resumo");
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
+  const [fechando, setFechando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [quem, setQuem] = useState("");
 
@@ -80,7 +82,8 @@ export default function Comissoes() {
     <>
       <Cabecalho sobre="Comissões" titulo="Comissões" sub={`1% de cada OS com nota emitida, das propostas aprovadas no CRM desde ${dataCurta(DESDE_PADRAO)} (por responsável comercial). OS sem nota aparece como prevista. Propostas da planilha de pagas ficam quitadas.`}>
         <button type="button" className="btn claro" onClick={recarregar}>Atualizar</button>
-        <button type="button" className="btn" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
+        <button type="button" className="btn claro" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
+        <button type="button" className="btn" disabled={!crm.dados} onClick={() => setFechando(true)}>Fechar mês</button>
       </Cabecalho>
       {crm.erro && <div className="aviso ruim">{crm.erro}</div>}
       {crm.carregando && <div className="carregando">Lendo propostas e serviços gerados…</div>}
@@ -116,6 +119,7 @@ export default function Comissoes() {
           {aba === "colaboradores" && <Colaboradores contas={contas} pessoasCRM={pessoasCRM} aoEditar={setEditando} remover={remover} registros={registros} />}
         </>
       )}
+      {fechando && <FecharMes contas={contas} gravar={gravar} aoFechar={() => setFechando(false)} />}
       {editando && <EditarColaborador inicial={editando} pessoasCRM={pessoasCRM} aoFechar={() => setEditando(null)} gravar={gravar} remover={remover} colabs={colabs} temPagamento={(id) => registros.some((r) => (r.tipo === "pagamento" || r.tipo === "planilha") && r.colaboradorId === id)} />}
       {vendo && <VerPagamento {...vendo} aoFechar={() => setVendo(null)} />}
       {importando && <ImportarPlanilha colabs={colabs} pessoasCRM={pessoasCRM} gravar={gravar} aoFechar={() => setImportando(false)} />}
@@ -347,14 +351,16 @@ function DetalheProposta({ l, nomeDe }) {
 
 function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
   const [pagoEm, setPagoEm] = useState(hojeBR());
+  const [folha, setFolha] = useState(folhaSugerida(hojeBR()));
   const [obs, setObs] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const salvar = async () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return setErro("Informe a data do pagamento.");
+    if (!/^\d{4}-\d{2}$/.test(folha)) return setErro("Informe o mês da folha.");
     setSalvando(true); setErro("");
     try {
-      await gravar("comissoes", { tipo: "pagamento", colaboradorId: colab.id, nome: colab.nome, pagoEm, obs: obs.trim(), itens: itensPagamentoPropostas(linhas), total });
+      await gravar("comissoes", { tipo: "pagamento", colaboradorId: colab.id, nome: colab.nome, folha, pagoEm, obs: obs.trim(), itens: itensPagamentoPropostas(linhas), total });
       aoFechar();
     } catch (e) { setErro(e.message); setSalvando(false); }
   };
@@ -362,6 +368,7 @@ function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
     <Modal titulo={`Pagamento · ${nomeCurto(colab.nome)}`} aoFechar={aoFechar}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="aviso marca">{linhas.length} proposta{linhas.length === 1 ? "" : "s"} · <b>{brl(total)}</b></div>
+        <div className="campo"><label htmlFor="pg-folha">Mês da folha</label><input id="pg-folha" type="month" className="entrada" value={folha} onChange={(e) => setFolha(e.target.value)} /></div>
         <div className="campo"><label htmlFor="pg-data">Data do pagamento</label><input id="pg-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
         <div className="campo"><label htmlFor="pg-obs">Observação</label><input id="pg-obs" className="entrada" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex.: pago na folha de novembro" /></div>
         {erro && <div className="aviso ruim">{erro}</div>}
@@ -375,7 +382,80 @@ function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
 }
 
 const semMes = (p) => p.planilha && String(p.obs).includes("sem o mês");
-const mesDoPagamento = (p) => (semMes(p) ? "sem" : String(p.pagoEm || "").slice(0, 7));
+const mesDoPagamento = (p) => (semMes(p) ? "sem" : mesDaFolha(p));
+
+/** Fechar o mês: registra de uma vez o pagamento de tudo que está liberado (nota emitida), por colaborador. */
+function FecharMes({ contas, gravar, aoFechar }) {
+  const grupos = useMemo(() => fechamentoDoMes(contas), [contas]);
+  const [folha, setFolha] = useState(folhaSugerida(hojeBR()));
+  const [pagoEm, setPagoEm] = useState(hojeBR());
+  const [fora, setFora] = useState(() => new Set());
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [feitos, setFeitos] = useState(null);
+  const marcados = grupos.filter((g) => !fora.has(g.c.id));
+  const total = centavos(marcados.reduce((s, g) => s + g.total, 0));
+  const alternar = (id) => setFora((f) => { const x = new Set(f); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  const salvar = async () => {
+    if (!/^\d{4}-\d{2}$/.test(folha)) return setErro("Informe o mês da folha.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return setErro("Informe a data do pagamento.");
+    setSalvando(true); setErro("");
+    const ok = [];
+    try {
+      for (const g of marcados) {
+        await gravar("comissoes", { tipo: "pagamento", colaboradorId: g.c.id, nome: g.c.nome, folha, pagoEm, obs: `Fechamento da folha de ${mesLongo(folha).toLowerCase()}`, itens: itensPagamentoPropostas(g.linhas), total: g.total });
+        ok.push(g);
+      }
+      setFeitos(ok);
+    } catch (e) {
+      setErro(`${ok.length ? `Registrei ${ok.map((g) => nomeCurto(g.c.nome)).join(", ")}; ` : ""}parou em um erro: ${e.message}`);
+      setSalvando(false);
+    }
+  };
+  if (feitos) return (
+    <Modal titulo="Mês fechado" aoFechar={aoFechar}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="aviso marca">Registrei {feitos.length} pagamento{feitos.length === 1 ? "" : "s"} da folha de {mesLongo(folha).toLowerCase()} ({brl(centavos(feitos.reduce((s, g) => s + g.total, 0)))}). As propostas ficaram quitadas até aqui.</div>
+        <div className="aviso marca">Para o recibo: no Painel, abra <b>Finanças › Recibos › Recibo de pagamento</b> e clique em <b>Trazer comissão do Gestão</b>. Nome, CPF, competência e o valor da comissão entram sozinhos.</div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" className="btn" onClick={aoFechar}>Pronto</button></div>
+      </div>
+    </Modal>
+  );
+  return (
+    <Modal titulo="Fechar mês" aoFechar={aoFechar}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {!grupos.length ? <div className="aviso marca">Nada liberado para pagar agora: nenhuma OS com nota emitida está sem comissão paga.</div> : <>
+          <p className="suave peq" style={{ margin: 0 }}>Entra tudo que já tem nota emitida e ainda não foi pago. O que é só previsto (OS sem nota) fica para o próximo fechamento.</p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-folha">Mês da folha</label><input id="fm-folha" type="month" className="entrada" value={folha} onChange={(e) => setFolha(e.target.value)} /></div>
+            <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-data">Data do pagamento</label><input id="fm-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
+          </div>
+          <div className="tabela-caixa tabela-comissao">
+            <table>
+              <thead><tr><th></th><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>A pagar</th></tr></thead>
+              <tbody>
+                {grupos.map((g) => (
+                  <tr key={g.c.id}>
+                    <td><input type="checkbox" aria-label={`Incluir ${nomeCurto(g.c.nome)}`} checked={!fora.has(g.c.id)} onChange={() => alternar(g.c.id)} /></td>
+                    <td><b>{nomeCurto(g.c.nome)}</b></td>
+                    <td className="tnum" style={D}>{g.linhas.length}</td>
+                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(g.total)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: "var(--marca-50)" }}><td></td><td><b>Total</b></td><td className="tnum" style={D}>{marcados.reduce((s, g) => s + g.linhas.length, 0)}</td><td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(total)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </>}
+        {erro && <div className="aviso ruim">{erro}</div>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="btn claro" onClick={aoFechar}>Cancelar</button>
+          {grupos.length > 0 && <button type="button" className="btn" disabled={salvando || !marcados.length} onClick={salvar}>{salvando ? "Registrando…" : `Registrar ${marcados.length} pagamento${marcados.length === 1 ? "" : "s"} · ${brl(total)}`}</button>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 /** Pagamentos mês a mês (mês da folha): uma linha por mês, uma coluna por colaborador. */
 function PagamentosPorMes({ pagamentos, nomeDe, aoVer }) {
