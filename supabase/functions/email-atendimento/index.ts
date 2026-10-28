@@ -298,8 +298,20 @@ Deno.serve(async (req) => {
         const internal = r.linhas.join(" ").match(/INTERNALDATE "([^"]+)"/)?.[1];
         const m: any = await PostalMime.parse(bruto);
         const cabecalhos = new Map<string, string>((m.headers || []).map((h: any) => [String(h.key).toLowerCase(), String(h.value)]));
-        const de = txt(m.from?.address).toLowerCase();
-        const automatica = /no-?reply|mailer-daemon|postmaster|notifica|newsletter/i.test(de)
+        let de = txt(m.from?.address).toLowerCase(), deNome = txt(m.from?.name) || null;
+        // Formulário do site: chega "de" um endereço da MinasLab com o visitante no corpo
+        // ("De: Nome email@..."). Currículos ("Trabalhe no Minaslab") não viram atendimento.
+        let formularioRh = false;
+        const proprio = /@([a-z0-9-]+\.)*minaslab\./i.test(de);
+        if (proprio && pasta === "INBOX") {
+          const corpoForm = txt(m.text) || deHtml(m.html || "");
+          const v = corpoForm.match(/^\s*De:\s*(.*?)\s*<?([^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)>?\s*$/im);
+          formularioRh = /trabalhe|curr[ií]culo|vaga/i.test(txt(m.subject));
+          const resp = txt(m.replyTo?.[0]?.address).toLowerCase();
+          if (v && !/minaslab\./i.test(v[2])) { de = v[2].toLowerCase(); deNome = txt(v[1]) || deNome; }
+          else if (resp && !/minaslab\./i.test(resp)) { de = resp; deNome = txt(m.replyTo?.[0]?.name) || deNome; }
+        }
+        const automatica = formularioRh || /no-?reply|mailer-daemon|postmaster|notifica|newsletter/i.test(de)
           || (cabecalhos.get("auto-submitted") || "no").toLowerCase() !== "no"
           || /bulk|list|junk/i.test(cabecalhos.get("precedence") || "") || cabecalhos.has("list-unsubscribe");
         const texto = (txt(m.text) || deHtml(m.html || "")) + (tamanho > MAX_BYTES ? "\n\n[E-mail grande demais para trazer ao CRM; abra no webmail.]" : "");
@@ -320,7 +332,7 @@ Deno.serve(async (req) => {
         const { data: reg, error } = await sb.rpc("email_registrar", { p: {
           caixa: usuario, pasta, uid, message_id: messageId, in_reply_to: txt(m.inReplyTo) || null,
           referencias: txt(m.references).split(/\s+/).filter(Boolean),
-          direcao, de_email: de, de_nome: txt(m.from?.name) || null,
+          direcao, de_email: de, de_nome: deNome,
           para: (m.to || []).map((x: any) => x.address).filter(Boolean), cc: (m.cc || []).map((x: any) => x.address).filter(Boolean),
           assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), anexos, automatica, historico,
           recebido_em: (isNaN(quando.getTime()) ? new Date() : quando).toISOString(),
