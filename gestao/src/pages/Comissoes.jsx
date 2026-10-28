@@ -11,7 +11,7 @@ import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
   osDoExtrato, serieMensal, statusProposta, colaboradoresComAutomaticos, DESDE_PADRAO, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
-  mesDaFolha, folhaSugerida, fechamentoDoMes,
+  mesDaFolha, folhaSugerida, fechamentoDoMes, fimDoMes,
 } from "../lib/comissoesProposta.js";
 
 const pctTxt = (p) => `${String(Number(p || 0)).replace(".", ",")}%`;
@@ -138,12 +138,27 @@ export default function Comissoes() {
 
 const FILTROS = [
   ["todas", "Todas", () => true],
-  ["aPagar", "Falta pagar", (l) => l.aPagar > 0],
-  ["emDia", "Em dia", (l) => l.aPagar === 0 && l.adiantado === 0 && l.gerada > 0],
+  ["aPagar", "Liberado para pagar", (l) => l.aPagar > 0],
+  ["aguardando", "Aguardando faturar", (l) => !l.quitada && !l.encerrada && l.semNF > 0],
+  ["pago", "Pago", (l) => l.aPagar === 0 && l.pago > 0],
+  ["semOS", "Sem OS ainda", (l) => l.osGeradas === 0 && statusProposta(l) !== "cancelada"],
   ["adiantado", "Pago adiantado", (l) => l.adiantado > 0],
 ];
 const STATUS_ORDEM = ["pendente", "andamento", "finalizada", "cancelada", "encerrada"];
 const rotMes = (m) => (m === "sem" ? "Sem mês (histórico)" : mesLongo(m));
+
+/** Situação do PAGAMENTO da comissão da proposta, em uma palavra (o que importa para pagar). */
+function situacaoPagamento(l) {
+  if (l.encerrada) return { tom: "neutro", rotulo: "Encerrada (desligamento)", sub: l.naoPago > 0 ? `${brl(l.naoPago)} não conta` : "" };
+  if (l.quitada) return { tom: "ok", rotulo: "Paga (histórico)", sub: "" };
+  if (l.aPagar > 0) return { tom: "marca", rotulo: `Liberado ${brl(l.aPagar)}`, sub: l.semNF > 0 ? `+ ${brl(l.previsao)} quando faturar o resto` : "OS faturada, pode pagar" };
+  if (statusProposta(l) === "cancelada") return { tom: "ruim", rotulo: "Cancelada", sub: "" };
+  if (l.osGeradas === 0) return { tom: "neutro", rotulo: "Sem OS ainda", sub: "nada a pagar por enquanto" };
+  if (l.semNF > 0) return { tom: "alerta", rotulo: "Aguardando faturar", sub: `${brl(l.previsao)} libera com a NF` };
+  if (l.adiantado > 0) return { tom: "neutro", rotulo: `Pago adiantado ${brl(l.adiantado)}`, sub: "" };
+  if (l.pago > 0) return { tom: "ok", rotulo: "Pago", sub: "" };
+  return { tom: "neutro", rotulo: "—", sub: "" };
+}
 
 function Extrato({ conta, gravar, nomeDe }) {
   const { c, ex } = conta;
@@ -166,8 +181,13 @@ function Extrato({ conta, gravar, nomeDe }) {
   const pagaveis = ex.linhas.filter((l) => l.aPagar > 0 && !desmarcadas.has(l.numero));
   const totalSel = centavos(pagaveis.reduce((s, l) => s + l.aPagar, 0));
   const alternar = (n) => setDesmarcadas((d) => { const x = new Set(d); x.has(n) ? x.delete(n) : x.add(n); return x; });
-  const Num = ({ rot, v, forte, tom }) => (
-    <div style={{ minWidth: 120 }}><div className="suave peq">{rot}</div><div className="tnum" style={{ fontWeight: forte ? 700 : 600, fontSize: forte ? 18 : 15, color: tom ? `var(--${tom})` : undefined }}>{v}</div></div>
+  const linhaAberta = ex.linhas.find((l) => l.numero === aberta);
+  const Bloco = ({ rot, v, sub, tom }) => (
+    <div style={{ flex: "1 1 180px", borderRadius: 12, padding: "12px 14px", background: tom === "marca" ? "var(--marca-50)" : tom === "alerta" ? "#fffbeb" : "#f8fafa", border: `1px solid ${tom === "marca" ? "var(--marca-200)" : tom === "alerta" ? "#fde68a" : "var(--linha)"}` }}>
+      <div className="peq" style={{ fontWeight: 600 }}>{rot}</div>
+      <div className="tnum" style={{ fontWeight: 700, fontSize: 20, marginTop: 2 }}>{v}</div>
+      <div className="suave peq">{sub}</div>
+    </div>
   );
   return (
     <Card semPad>
@@ -175,45 +195,33 @@ function Extrato({ conta, gravar, nomeDe }) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
           <h2>{nomeCurto(c.nome)}</h2>
           <span className="suave peq">
-            {c.ativo === false ? "Só o histórico de pagas" : `Histórico de pagas + propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
+            {c.ativo === false ? "Só o histórico de pagas" : `Propostas aprovadas desde ${dataCurta(c.desde)}`} · taxa {pctTxt(taxaAtual(c, hojeBR()))}
           </span>
         </div>
         {c.desligadoEm && <div className="aviso marca" style={{ marginTop: 10 }}>Desligada em <b>{dataCurta(c.desligadoEm)}</b>{c.desligadoManual ? "" : " (data da ficha do RH)"}: a comissão está encerrada. Nada fica pendente nem previsto{t.naoPago > 0 ? <> ({brl(t.naoPago)} gerados e não pagos não contam)</> : null}; propostas aceitas depois do desligamento não entram.</div>}
-        <div style={{ display: "flex", gap: "14px 24px", flexWrap: "wrap", marginTop: 12 }}>
-          <Num rot="Propostas" v={t.propostas} />
-          <Num rot="Valor das propostas" v={brl(t.valorProposta)} />
-          <Num rot="Já virou OS" v={brl(t.geradas)} />
-          <Num rot="Faturado (NF)" v={brl(t.faturado)} />
-          <Num rot="OS sem NF" v={brl(t.semNF)} tom={t.semNF > 0 ? "alerta" : undefined} />
-          <Num rot="Cliente pagou" v={brl(t.pagoCliente)} />
-          <Num rot="Comissão gerada" v={brl(t.gerada)} />
-          <Num rot="Já pago" v={brl(t.pago)} />
-          <Num rot="Falta pagar" v={brl(t.aPagar)} forte tom={t.aPagar > 0 ? "alerta-tx" : undefined} />
-          {t.adiantado > 0 && <Num rot="Pago adiantado" v={brl(t.adiantado)} />}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          <Bloco tom="marca" rot="Liberado para pagar" v={brl(t.aPagar)} sub={`${ex.linhas.filter((l) => l.aPagar > 0).length} proposta(s) com OS faturada (NF emitida)`} />
+          <Bloco tom="alerta" rot="Aguardando faturar" v={brl(t.previsao)} sub="libera quando a NF for emitida" />
+          <Bloco rot="Já pago" v={brl(t.pago)} sub={t.adiantado > 0 ? `${brl(t.adiantado)} pago adiantado` : "histórico e sistema"} />
+          <Bloco rot="Propostas" v={t.propostas} sub={`${brl(t.valorProposta)} · ${brl(t.faturado)} já faturado`} />
         </div>
+        <p className="suave peq" style={{ margin: "10px 0 0" }}>A comissão ({pctTxt(taxaAtual(c, hojeBR()))}) só é liberada quando a OS fica <b>faturada, com NF emitida</b>, em Serviços gerados. Clique numa proposta para ver as OS dela.</p>
       </div>
       <div style={{ padding: "8px 20px 0" }}>
         <Abas valor={ver} aoMudar={setVer} abas={[["propostas", "Propostas", ex.linhas.length], ["os", "Todas as OS", ex.linhas.reduce((n, l) => n + l.os.length, 0)]]} />
       </div>
       {ver === "os" ? <ListaOS ex={ex} nome={nomeCurto(c.nome)} /> : <>
       <div style={{ display: "grid", gap: 8, padding: "12px 20px" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="rotulo" style={{ minWidth: 92 }}>Proposta</span>
-          <div className="pilulas" role="group" aria-label="Situação da proposta">
-            <button type="button" className={`pilula${!status ? " ativa" : ""}`} aria-pressed={!status} onClick={() => setStatus("")}>Todas ({ex.linhas.length})</button>
-            {STATUS_ORDEM.filter((id) => id !== "encerrada" || c.desligadoEm).map((id) => <button key={id} type="button" className={`pilula${status === id ? " ativa" : ""}`} aria-pressed={status === id} onClick={() => setStatus(id)}>{STATUS_PROPOSTA[id].rotulo} ({ex.linhas.filter((l) => statusProposta(l) === id).length})</button>)}
-          </div>
+        <div className="pilulas" role="group" aria-label="Situação do pagamento">
+          {FILTROS.filter(([id, , fx]) => id !== "adiantado" || ex.linhas.some(fx)).map(([id, rot, fx]) => <button key={id} type="button" className={`pilula${filtro === id ? " ativa" : ""}`} aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{rot} ({ex.linhas.filter(fx).length})</button>)}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="rotulo" style={{ minWidth: 92 }}>Comissão</span>
-          <div className="pilulas" role="group" aria-label="Situação da comissão">
-            {FILTROS.map(([id, rot, fx]) => <button key={id} type="button" className={`pilula${filtro === id ? " ativa" : ""}`} aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{rot} ({ex.linhas.filter(fx).length})</button>)}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="rotulo" style={{ minWidth: 92 }}>Pago em</span>
-          <select className="entrada" style={{ minHeight: 36, flex: "0 1 230px" }} value={mesPago} onChange={(e) => { setMesPago(e.target.value); if (e.target.value) setFiltro("todas"); }} aria-label="Pago no mês">
-            <option value="">Qualquer mês</option>
+          <select className="entrada" style={{ minHeight: 36, flex: "0 1 210px" }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Situação da proposta">
+            <option value="">Proposta: todas as situações</option>
+            {STATUS_ORDEM.filter((id) => id !== "encerrada" || c.desligadoEm).map((id) => <option key={id} value={id}>{STATUS_PROPOSTA[id].rotulo} ({ex.linhas.filter((l) => statusProposta(l) === id).length})</option>)}
+          </select>
+          <select className="entrada" style={{ minHeight: 36, flex: "0 1 210px" }} value={mesPago} onChange={(e) => { setMesPago(e.target.value); if (e.target.value) setFiltro("todas"); }} aria-label="Pago no mês">
+            <option value="">Pago em: qualquer mês</option>
             {mesesPagos.map((m) => <option key={m} value={m}>{rotMes(m)}</option>)}
           </select>
           <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar proposta ou cliente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar proposta ou cliente" />
@@ -225,34 +233,31 @@ function Extrato({ conta, gravar, nomeDe }) {
           <table>
             <thead><tr>
               <th style={{ width: 32 }} />
-              <th>Proposta</th><th style={D}>Valor</th><th style={D}>Virou OS</th><th style={D}>Saldo</th><th style={D}>Faturado</th><th style={D}>Comissão</th><th style={D}>{mesPago ? "Pago no mês" : "Pago"}</th><th style={D}>Falta pagar</th>
+              <th>Proposta</th><th style={D}>Valor</th><th style={D}>OS faturadas</th><th style={D}>Comissão liberada</th><th style={D}>{mesPago ? "Pago no mês" : "Já pago"}</th><th>Pagamento</th>
             </tr></thead>
             <tbody>
-              {pag.itens.map((l) => (
-                <Fragment key={l.numero}>
-                  <tr style={{ cursor: "pointer" }} onClick={() => setAberta(aberta === l.numero ? "" : l.numero)}>
+              {pag.itens.map((l) => {
+                const s = situacaoPagamento(l);
+                const vivas = l.os.filter((o) => !o.cancelada), fat = vivas.filter((o) => o.faturada).length;
+                return (
+                  <tr key={l.numero} style={{ cursor: "pointer" }} onClick={() => setAberta(l.numero)} title="Ver as OS e os pagamentos desta proposta">
                     <td onClick={(e) => e.stopPropagation()}>{l.aPagar > 0 && <input type="checkbox" aria-label={`Pagar a proposta ${l.numero}`} checked={!desmarcadas.has(l.numero)} onChange={() => alternar(l.numero)} />}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
-                        <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
-                        {l.quitada ? <Chip tom="ok">paga (histórico)</Chip> : l.origem === "planilha" && <Chip tom="neutro">histórico</Chip>}
-                        {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM · corrigir</Chip>}
-                        <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
+                        <b className="tnum" style={{ fontWeight: 600, color: "var(--marca)" }}>{l.numero}</b>
+                        <span className="suave peq">{STATUS_PROPOSTA[statusProposta(l)].rotulo.toLowerCase()}</span>
+                        {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM</Chip>}
                       </div>
-                      <div className="suave peq" title={l.cliente} style={{ maxWidth: 230, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.cliente || "—"}</div>
+                      <div className="suave peq" title={l.cliente} style={{ maxWidth: 260, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.cliente || "—"}</div>
                     </td>
                     <td className="tnum" style={D}>{brl(l.valorProposta)}</td>
-                    <td className="tnum" style={D}>− {brl(l.geradas)}<div className="suave peq">{l.osGeradas} OS</div></td>
-                    <td className="tnum" style={D}><Saldo l={l} /></td>
-                    <td className="tnum" style={D}>{brl(l.faturado)}{l.semNF > 0 && <div className="peq" style={{ color: "var(--alerta)" }}>falta NF {brl(l.semNF)}</div>}{l.pagoCliente > 0 && <div className="suave peq">cliente pagou {brl(l.pagoCliente)}</div>}</td>
+                    <td className="tnum" style={D}>{vivas.length ? <>{fat} de {vivas.length}<div className="suave peq">{brl(l.faturado)}</div></> : <span className="suave">—</span>}</td>
                     <td className="tnum" style={D}>{brl(l.gerada)}</td>
                     <td className="tnum" style={D}>{mesPago ? <>{brl(pagoNoMes(l))}<div className="suave peq">total {brl(l.pago)}</div></> : brl(l.pago)}</td>
-                    <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? brl(l.aPagar) : l.naoPago > 0 ? <Chip tom="neutro">encerrada · {brl(l.naoPago)} não conta</Chip> : l.adiantado > 0 ? <Chip tom="neutro">adiantado {brl(l.adiantado)}</Chip> : l.encerrada ? <Chip tom="neutro">encerrada</Chip> : <Chip tom="ok">em dia</Chip>}</td>
+                    <td><Chip tom={s.tom}>{s.rotulo}</Chip>{s.sub && <div className="suave peq" style={{ marginTop: 2 }}>{s.sub}</div>}</td>
                   </tr>
-                  {aberta === l.numero && <tr><td colSpan={9} style={{ background: "var(--marca-50)", padding: 0 }}><DetalheProposta l={l} nomeDe={nomeDe} /></td></tr>}
-                </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -263,105 +268,101 @@ function Extrato({ conta, gravar, nomeDe }) {
         <button type="button" className="btn" disabled={!pagaveis.length} onClick={() => setPagando(true)}>Registrar pagamento de {brl(totalSel)} ({pagaveis.length} proposta{pagaveis.length === 1 ? "" : "s"})</button>
       </div>
       </>}
+      {linhaAberta && <DetalheProposta l={linhaAberta} nomeDe={nomeDe} aoFechar={() => setAberta("")} />}
       {pagando && <RegistrarPagamento colab={c} linhas={pagaveis} total={totalSel} gravar={gravar} aoFechar={() => setPagando(false)} />}
     </Card>
   );
 }
 
-/** Saldo da proposta: valor − OS geradas. Recorrente passa do valor. */
-function Saldo({ l }) {
-  const saldo = centavos(l.valorProposta - l.geradas);
-  const pct = l.valorProposta > 0 ? Math.min(100, (l.geradas / l.valorProposta) * 100) : 100;
+/** Janela da proposta: pode pagar? quanto? por quê? (OS por OS e os pagamentos). */
+function DetalheProposta({ l, nomeDe, aoFechar }) {
+  const s = situacaoPagamento(l);
+  // O que já foi pago cobre as OS faturadas na ordem da nota (a mais antiga primeiro).
+  let resto = l.quitada ? Infinity : l.pago;
+  const pagamentoOS = new Map();
+  for (const o of [...l.os].filter((o) => o.faturada).sort((a, b) => String(a.emissao).localeCompare(String(b.emissao)))) {
+    if (resto >= o.comissao - 0.005) { pagamentoOS.set(o.id, "paga"); resto -= o.comissao; }
+    else if (resto > 0.005) { pagamentoOS.set(o.id, "parte"); resto = 0; }
+    else pagamentoOS.set(o.id, l.encerrada ? "encerrada" : "apagar");
+  }
+  const vivas = l.os.filter((o) => !o.cancelada);
+  const resposta = l.encerrada ? { tom: "neutro", txt: <>Comissão <b>encerrada</b> pelo desligamento{l.naoPago > 0 ? <>: {brl(l.naoPago)} não pagos não contam</> : null}.</> }
+    : l.quitada ? { tom: "ok", txt: <>Proposta <b>já paga</b> antes do sistema (histórico). Nada a pagar.</> }
+    : l.aPagar > 0 ? { tom: "marca", txt: <><b>Pode liberar o pagamento: {brl(l.aPagar)}.</b> {[...pagamentoOS.values()].filter((x) => x !== "paga").length} OS faturada(s), com NF emitida, ainda sem comissão paga.{l.semNF > 0 ? <> Outras OS ainda aguardam faturar ({brl(l.previsao)} quando a NF sair).</> : null}</> }
+    : l.osGeradas === 0 ? { tom: "neutro", txt: <>Ainda <b>não tem OS</b> gerada para esta proposta. A comissão só começa quando a OS for gerada e faturada.</> }
+    : l.semNF > 0 ? { tom: "alerta", txt: <><b>Ainda não.</b> As OS desta proposta estão aguardando faturar. Quando a NF for emitida, {brl(l.previsao)} fica liberado.</> }
+    : l.adiantado > 0 ? { tom: "neutro", txt: <>Foi pago {brl(l.adiantado)} a mais (adiantado); é descontado das próximas OS.</> }
+    : { tom: "ok", txt: <><b>Em dia:</b> toda a comissão liberada desta proposta já foi paga.</> };
+  const fundo = { marca: ["var(--marca-50)", "var(--marca-200)"], alerta: ["#fffbeb", "#fde68a"], ok: ["#f0fdf4", "#bbf7d0"], neutro: ["#f8fafa", "var(--linha)"] }[resposta.tom];
+  const Num = ({ rot, v, sub }) => <div style={{ minWidth: 130 }}><div className="suave peq">{rot}</div><div className="tnum" style={{ fontWeight: 700 }}>{v}</div>{sub && <div className="suave peq">{sub}</div>}</div>;
+  const faturamento = (o) => o.cancelada ? <Chip tom="ruim">Cancelada</Chip>
+    : o.faturada ? <><Chip tom="ok">Faturada</Chip><div className="suave peq">{o.nf ? `NF ${o.nf} · ` : ""}{dataCurta(o.emissao)}</div></>
+    : o.aFaturar ? <Chip tom="alerta">Pronta para faturar</Chip> : <Chip tom="neutro">{String(o.fat || "aguardando").toLowerCase()}</Chip>;
+  const pagamento = (o) => {
+    if (o.cancelada) return <span className="suave">—</span>;
+    if (!o.faturada) return <span className="suave peq">{l.quitada ? "paga (histórico)" : l.encerrada ? "encerrada" : "libera com a NF"}</span>;
+    const x = pagamentoOS.get(o.id);
+    return x === "paga" ? <Chip tom="ok">paga</Chip> : x === "parte" ? <Chip tom="alerta">parte paga</Chip> : x === "encerrada" ? <Chip tom="neutro">encerrada</Chip> : <Chip tom="marca">liberada · a pagar</Chip>;
+  };
   return (
-    <div style={{ minWidth: 96 }}>
-      {saldo > 0 ? <b>{brl(saldo)}</b> : saldo === 0 ? <Chip tom="ok">usada toda</Chip> : <span className="peq" title="Já gerou mais OS do que o valor da proposta (proposta recorrente)">passou {brl(-saldo)}</span>}
-      <div style={{ height: 5, borderRadius: 3, background: "var(--linha)", marginTop: 4, overflow: "hidden" }} title={`${Math.round(pct)}% da proposta já virou OS`}>
-        <div style={{ width: `${pct}%`, height: "100%", background: saldo < 0 ? "var(--alerta)" : "var(--marca)" }} />
-      </div>
-    </div>
-  );
-}
-
-function DetalheProposta({ l, nomeDe }) {
-  // Abatimento: cada OS (não cancelada) desconta do valor da proposta, na ordem em que foi gerada.
-  let resto = l.valorProposta;
-  const saldoApos = new Map();
-  for (const o of l.os) { if (!o.cancelada) resto = centavos(resto - o.valor); saldoApos.set(o.id, o.cancelada ? null : resto); }
-  const comTotal = centavos(l.valorProposta * 0.01);
-  const situacaoOS = (o) => o.cancelada ? <Chip tom="ruim">cancelada</Chip> : o.faturada ? <Chip tom="ok">faturada</Chip> : o.aFaturar ? <Chip tom="alerta">pronta para faturar</Chip> : <Chip>{String(o.fat || "—").toLowerCase()}</Chip>;
-  return (
-    <div style={{ padding: "12px 16px 16px", display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: "10px 24px", flexWrap: "wrap", background: "#fff", borderRadius: 10, padding: "10px 14px" }}>
-        <div><div className="suave peq">Situação</div><Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip></div>
-        <div><div className="suave peq">Valor da proposta</div><b className="tnum">{brl(l.valorProposta)}</b></div>
-        <div><div className="suave peq">Já virou OS</div><b className="tnum">− {brl(l.geradas)}</b></div>
-        <div><div className="suave peq">Saldo da proposta</div><Saldo l={l} /></div>
-        <div style={{ borderLeft: "1px solid var(--linha)", paddingLeft: 24 }}><div className="suave peq">Comissão da proposta toda (1%)</div><b className="tnum">{brl(comTotal)}</b></div>
-        <div><div className="suave peq">Liberada (OS com NF)</div><b className="tnum">{brl(l.gerada)}</b></div>
-        <div><div className="suave peq">Já paga</div><b className="tnum">{brl(l.pago)}</b></div>
-        <div><div className="suave peq">Falta pagar</div><b className="tnum" style={{ color: l.aPagar > 0 ? "var(--alerta-tx)" : undefined }}>{l.aPagar > 0 ? brl(l.aPagar) : l.naoPago > 0 ? `encerrada (${brl(l.naoPago)} não conta)` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</b></div>
-        <div><div className="suave peq">Ainda vai liberar</div><b className="tnum">{brl(Math.max(0, centavos(comTotal - l.gerada)))}</b></div>
-      </div>
-      <div className="peq">
-        <b>Como chegou nesta conta:</b> {l.osGeradas} OS geradas ({brl(l.geradas)}), {brl(l.faturado)} faturados → comissão {brl(l.gerada)} · já pago {brl(l.pago)} ·{" "}
-        {l.aPagar > 0 ? <b>falta pagar {brl(l.aPagar)}</b> : l.naoPago > 0 ? <>comissão encerrada pelo desligamento: {brl(l.naoPago)} não pagos não contam</> : l.adiantado > 0 ? <>pago adiantado {brl(l.adiantado)} (é descontado das próximas OS)</> : "em dia"}
-        {l.aceite ? <> · aceite em {dataCurta(l.aceite)}</> : null}
-      </div>
-      <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
-        <table>
-          <thead><tr><th>OS</th><th>Gerada em</th><th style={D}>Valor da OS</th><th style={D}>Saldo da proposta</th><th>Situação</th><th>NF</th><th>Cliente</th><th style={D}>Comissão</th></tr></thead>
-          <tbody>
-            <tr style={{ background: "var(--marca-50)" }}><td colSpan={3} className="peq"><b>Valor da proposta</b>{l.aceite ? ` · aceite em ${dataCurta(l.aceite)}` : ""}</td><td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(l.valorProposta)}</td><td colSpan={4} /></tr>
-            {l.os.length === 0 && <tr><td colSpan={8} className="suave">Nenhuma OS gerada ainda para esta proposta.</td></tr>}
-            {l.os.map((o) => (
-              <tr key={o.id} style={o.cancelada ? { opacity: 0.55 } : undefined}>
-                <td className="tnum peq">{o.os}</td>
-                <td className="tnum peq">{dataCurta(o.dataOs)}</td>
-                <td className="tnum" style={D}>− {brl(o.valor)}</td>
-                <td className="tnum" style={{ ...D, fontWeight: 600, color: saldoApos.get(o.id) < 0 ? "var(--alerta)" : undefined }}>{saldoApos.get(o.id) == null ? "não abate" : brl(saldoApos.get(o.id))}</td>
-                <td>{situacaoOS(o)}</td>
-                <td className="tnum peq">{o.faturada ? <>{o.nf ? `NF ${o.nf} · ` : ""}{dataCurta(o.emissao)}</> : "—"}</td>
-                <td className="peq">{o.clientePagou ? <Chip tom="ok">pagou</Chip> : o.faturada ? String(o.pag || "").toLowerCase() : "—"}</td>
-                <td className="tnum" style={D}>{o.faturada ? <>{brl(o.comissao)} <span className="suave peq">({pctTxt(o.pct)})</span></> : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="tabela-caixa" style={{ background: "#fff", borderRadius: 10 }}>
-        <table>
-          <thead><tr><th>Pago em</th><th>Mês da folha</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
-          <tbody>
-            {l.quitada && <tr><td colSpan={4} className="peq"><b>Quitada (já paga antes do sistema)</b>: toda a comissão desta proposta conta como paga.</td><td className="tnum" style={D}>{brl(l.pago)}</td></tr>}
-            {!l.quitada && l.pagamentos.length === 0 && <tr><td colSpan={5} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
-            {l.pagamentos.map((p, i) => (
-              <tr key={i}>
-                <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (histórico)" : dataCurta(p.pagoEm)}</td>
-                <td className="peq">{rotMes(mesDoPagamentoItem(p))}</td>
-                <td className="peq">{nomeDe(p.colaboradorId)}</td>
-                <td className="peq">{p.planilha ? "histórico (antes do sistema)" : "registrado no sistema"}</td>
-                <td className="tnum" style={D}>{brl(p.valor)}</td>
-              </tr>
-            ))}
-            <tr style={{ background: "var(--marca-50)" }}>
-              <td colSpan={4} className="peq"><b>Comissão liberada {brl(l.gerada)}</b> · já pago {brl(l.pago)}</td>
-              <td className="tnum" style={{ ...D, fontWeight: 700 }}>{l.aPagar > 0 ? `falta ${brl(l.aPagar)}` : l.naoPago > 0 ? `encerrada (${brl(l.naoPago)} não conta)` : l.adiantado > 0 ? `adiantado ${brl(l.adiantado)}` : "em dia"}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {l.planilha.length > 0 && (
-        <div className="suave peq">
-          No histórico: {l.planilha.map((x) => `${dataCurta(x.data)} · proposta ${brl(x.base)} · comissão ${brl(x.valor)} · ${x.pago ? "pago" : "não pago"}`).join("  |  ")}
+    <Modal titulo={`Proposta ${l.numero}`} aoFechar={aoFechar} largo>
+      <div style={{ display: "grid", gap: 14 }}>
+        <div className="peq" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <b>{l.cliente || "—"}</b>
+          <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
+          {l.aceite && <span className="suave">aceite em {dataCurta(l.aceite)}</span>}
+          {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM · corrigir</Chip>}
         </div>
-      )}
-    </div>
+        <div style={{ background: fundo[0], border: `1px solid ${fundo[1]}`, borderRadius: 12, padding: "12px 14px", lineHeight: 1.5 }}>{resposta.txt}</div>
+        <div style={{ display: "flex", gap: "12px 28px", flexWrap: "wrap" }}>
+          <Num rot="Valor da proposta" v={brl(l.valorProposta)} sub={l.faltaGerar > 0 ? `${brl(l.faltaGerar)} ainda não virou OS` : "toda já virou OS"} />
+          <Num rot="Virou OS" v={brl(l.geradas)} sub={`${vivas.length} OS`} />
+          <Num rot="Faturado (NF emitida)" v={brl(l.faturado)} sub={l.semNF > 0 ? `${brl(l.semNF)} aguardando faturar` : ""} />
+          <Num rot="Comissão liberada" v={brl(l.gerada)} sub={`já paga ${brl(l.pago)}`} />
+          <Num rot="Situação" v={<Chip tom={s.tom}>{s.rotulo}</Chip>} />
+        </div>
+        <div className="tabela-caixa tabela-comissao" style={{ border: "1px solid var(--linha)", borderRadius: 10 }}>
+          <table>
+            <thead><tr><th>OS</th><th>Gerada em</th><th style={D}>Valor</th><th>Faturamento</th><th style={D}>Comissão</th><th>Pagamento</th></tr></thead>
+            <tbody>
+              {l.os.length === 0 && <tr><td colSpan={6} className="suave">Nenhuma OS gerada ainda para esta proposta.</td></tr>}
+              {l.os.map((o) => (
+                <tr key={o.id} style={o.cancelada ? { opacity: 0.55 } : undefined}>
+                  <td className="tnum">{o.os}<div className="suave peq" style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={o.servico}>{o.servico}</div></td>
+                  <td className="tnum peq">{dataCurta(o.dataOs)}</td>
+                  <td className="tnum" style={D}>{brl(o.valor)}</td>
+                  <td>{faturamento(o)}</td>
+                  <td className="tnum" style={D}>{o.faturada ? brl(o.comissao) : o.cancelada ? "—" : <span className="suave">{brl(centavos((o.valor * (o.pct || 0)) / 100))} prevista</span>}</td>
+                  <td>{pagamento(o)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div className="peq" style={{ fontWeight: 600, marginBottom: 6 }}>Pagamentos desta proposta</div>
+          {l.quitada ? <div className="suave peq">Quitada antes do sistema (histórico): toda a comissão desta proposta conta como paga ({brl(l.pago)}).</div>
+            : l.pagamentos.length === 0 ? <div className="suave peq">Nenhuma comissão paga desta proposta ainda.</div>
+            : <div className="tabela-caixa tabela-comissao" style={{ border: "1px solid var(--linha)", borderRadius: 10 }}>
+              <table>
+                <thead><tr><th>Mês da folha</th><th>Pago em</th><th>Para</th><th style={D}>Valor</th></tr></thead>
+                <tbody>
+                  {l.pagamentos.map((p, i) => (
+                    <tr key={i}><td className="peq">{rotMes(mesDoPagamentoItem(p))}</td><td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data" : dataCurta(p.pagoEm)}{p.planilha ? <span className="suave"> · histórico</span> : null}</td><td className="peq">{nomeDe(p.colaboradorId)}</td><td className="tnum" style={D}>{brl(p.valor)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" className="btn" onClick={aoFechar}>Fechar</button></div>
+      </div>
+    </Modal>
   );
 }
 
 function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
-  const [pagoEm, setPagoEm] = useState(hojeBR());
   const [folha, setFolha] = useState(folhaSugerida(hojeBR()));
+  const [pagoEm, setPagoEm] = useState(fimDoMes(folhaSugerida(hojeBR())));
   const [obs, setObs] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -378,7 +379,7 @@ function RegistrarPagamento({ colab, linhas, total, gravar, aoFechar }) {
     <Modal titulo={`Pagamento · ${nomeCurto(colab.nome)}`} aoFechar={aoFechar}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="aviso marca">{linhas.length} proposta{linhas.length === 1 ? "" : "s"} · <b>{brl(total)}</b></div>
-        <div className="campo"><label htmlFor="pg-folha">Mês da folha</label><input id="pg-folha" type="month" className="entrada" value={folha} onChange={(e) => setFolha(e.target.value)} /></div>
+        <div className="campo"><label htmlFor="pg-folha">Mês da folha</label><input id="pg-folha" type="month" className="entrada" value={folha} onChange={(e) => { setFolha(e.target.value); if (/^\d{4}-\d{2}$/.test(e.target.value)) setPagoEm(fimDoMes(e.target.value)); }} /></div>
         <div className="campo"><label htmlFor="pg-data">Data do pagamento</label><input id="pg-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
         <div className="campo"><label htmlFor="pg-obs">Observação</label><input id="pg-obs" className="entrada" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex.: pago na folha de novembro" /></div>
         {erro && <div className="aviso ruim">{erro}</div>}
@@ -396,9 +397,11 @@ const mesDoPagamento = (p) => (semMes(p) ? "sem" : mesDaFolha(p));
 
 /** Fechar o mês: registra de uma vez o pagamento de tudo que está liberado (nota emitida), por colaborador. */
 function FecharMes({ contas, gravar, aoFechar }) {
-  const grupos = useMemo(() => fechamentoDoMes(contas), [contas]);
   const [folha, setFolha] = useState(folhaSugerida(hojeBR()));
-  const [pagoEm, setPagoEm] = useState(hojeBR());
+  const [pagoEm, setPagoEm] = useState(fimDoMes(folhaSugerida(hojeBR())));
+  const corte = /^\d{4}-\d{2}$/.test(folha) ? fimDoMes(folha) : "";
+  const grupos = useMemo(() => fechamentoDoMes(contas, corte), [contas, corte]);
+  const depois = useMemo(() => centavos(fechamentoDoMes(contas).reduce((s, g) => s + g.total, 0) - grupos.reduce((s, g) => s + g.total, 0)), [contas, grupos]);
   const [fora, setFora] = useState(() => new Set()); // colaborador fora deste fechamento
   const [foraProp, setForaProp] = useState(() => new Set()); // "colab|proposta" fora deste fechamento
   const [abertos, setAbertos] = useState(() => new Set());
@@ -442,12 +445,12 @@ function FecharMes({ contas, gravar, aoFechar }) {
   return (
     <Modal titulo="Fechar mês" aoFechar={aoFechar} largo>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {!grupos.length ? <div className="aviso marca">Nada liberado para pagar agora: nenhuma OS com nota emitida está sem comissão paga.</div> : <>
-          <p className="suave peq" style={{ margin: 0 }}>Entra tudo que já tem nota emitida e ainda não foi pago. O que é só previsto (OS sem nota) fica para o próximo fechamento. Clique em “ver propostas” para conferir e desmarcar alguma. Desligados não entram.</p>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-folha">Mês da folha</label><input id="fm-folha" type="month" className="entrada" value={folha} onChange={(e) => setFolha(e.target.value)} /></div>
-            <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-data">Data do pagamento</label><input id="fm-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
-          </div>
+        <p className="suave peq" style={{ margin: 0 }}>O fechamento é no último dia do mês: entra o que teve nota emitida até {corte ? dataCurta(corte) : "o fim do mês"} e ainda não foi pago. OS sem nota (prevista) e notas emitidas depois ficam para o próximo fechamento{depois > 0 ? ` (${brl(depois)} já emitidos depois de ${corte ? dataCurta(corte) : "o fim do mês"})` : ""}. Clique em “ver propostas” para conferir e desmarcar alguma. Desligados não entram.</p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-folha">Mês da folha</label><input id="fm-folha" type="month" className="entrada" value={folha} onChange={(e) => { setFolha(e.target.value); if (/^\d{4}-\d{2}$/.test(e.target.value)) setPagoEm(fimDoMes(e.target.value)); }} /></div>
+          <div className="campo" style={{ flex: 1, minWidth: 150 }}><label htmlFor="fm-data">Data do pagamento</label><input id="fm-data" type="date" className="entrada" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} /></div>
+        </div>
+        {!grupos.length ? <div className="aviso marca">Nada liberado para pagar até {corte ? dataCurta(corte) : "o fim do mês"}: nenhuma OS com nota emitida está sem comissão paga.</div> : <>
           <div className="tabela-caixa tabela-comissao">
             <table>
               <thead><tr><th></th><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>A pagar</th></tr></thead>

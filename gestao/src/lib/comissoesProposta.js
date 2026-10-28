@@ -252,18 +252,35 @@ export function mesDaFolha(p = {}) {
   return /^\d{4}-\d{2}$/.test(String(p.folha || "")) ? p.folha : String(p.pagoEm || "").slice(0, 7);
 }
 
-/** Mês da folha sugerido: até o dia 15 é a folha do mês anterior; depois, a do mês corrente. */
+/** Mês da folha sugerido: o fechamento é no último dia do mês; até o dia 5 ainda é a folha do mês anterior. */
 export function folhaSugerida(hoje) {
   const [a, m, d] = String(hoje).split("-").map(Number);
-  if (d > 15) return `${a}-${String(m).padStart(2, "0")}`;
+  if (d > 5) return `${a}-${String(m).padStart(2, "0")}`;
   return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`;
 }
 
-/** Fechamento do mês: quem tem comissão liberada (nota emitida) e ainda não paga. */
-export function fechamentoDoMes(contas) {
+/** Último dia do mês ("2026-10" → "2026-10-31"). */
+export function fimDoMes(mes) {
+  const [a, m] = String(mes).split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * Fechamento do mês: quem tem comissão liberada e ainda não paga, contando só
+ * as notas emitidas ATÉ o último dia do mês da folha (`ate`). Nota emitida
+ * depois fica para o fechamento seguinte.
+ */
+export function fechamentoDoMes(contas, ate = "") {
   return contas
     .map(({ c, ex }) => {
-      const linhas = ex.linhas.filter((l) => l.aPagar > 0);
+      const linhas = ex.linhas
+        .map((l) => {
+          if (!ate || l.aPagar <= 0) return l;
+          const liberada = centavos(l.os.filter((o) => o.faturada && String(o.emissao) <= ate).reduce((s, o) => s + o.comissao, 0));
+          const aPagar = Math.min(l.aPagar, Math.max(0, centavos(liberada - l.pago)));
+          return { ...l, aPagar, depois: centavos(l.aPagar - aPagar) };
+        })
+        .filter((l) => l.aPagar > 0);
       return { c, linhas, total: centavos(linhas.reduce((s, l) => s + l.aPagar, 0)) };
     })
     .filter((x) => x.linhas.length && x.total > 0);

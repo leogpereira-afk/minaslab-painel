@@ -160,3 +160,16 @@ test("desligado: comissão encerra, nada fica pendente nem previsto", () => {
   assert.equal(fora.totais.naoPago, 2.5);
   assert.equal(osDoExtrato(fora).find((o) => o.id === "y").sit.id, "encerrada");
 });
+
+test("fechamento no último dia do mês: nota emitida depois fica para o próximo", async () => {
+  const { fechamentoDoMes, fimDoMes, folhaSugerida } = await import("./comissoesProposta.js");
+  assert.equal(fimDoMes("2026-02"), "2026-02-28");
+  assert.equal(fimDoMes("2026-10"), "2026-10-31");
+  assert.equal(folhaSugerida("2026-10-31"), "2026-10");
+  assert.equal(folhaSugerida("2026-11-03"), "2026-10");
+  const l = { numero: "1", aPagar: 7.5, pago: 0, os: [{ faturada: true, emissao: "2026-10-20", comissao: 5 }, { faturada: true, emissao: "2026-11-02", comissao: 2.5 }] };
+  const contas = [{ c: { id: "a" }, ex: { linhas: [l] } }];
+  assert.equal(fechamentoDoMes(contas)[0].total, 7.5);
+  assert.equal(fechamentoDoMes(contas, "2026-10-31")[0].total, 5);
+  assert.equal(fechamentoDoMes(contas, "2026-09-30").length, 0);
+});
