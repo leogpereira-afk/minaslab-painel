@@ -8,14 +8,15 @@ import { Link } from 'react-router-dom'
 import { PageShell } from '../../components/ui/PageShell'
 import { supabase } from '../../services/supabase'
 
-type Sessao={id:string;lead_id:string|null;aberta:boolean|null;aberta_em:string|null;finalizada_em:string|null;responsavel_chatpro:string|null;finalizado_por_chatpro:string|null;motivo_id:string|null;nps:string|null;nps_nota:number|null}
+type Sessao={id:string;lead_id:string|null;aberta:boolean|null;aberta_em:string|null;finalizada_em:string|null;responsavel_chatpro:string|null;finalizado_por_chatpro:string|null;motivo_id:string|null;nps:string|null;nps_nota:number|null;departamento_id:string|null}
 type Usuario={id:string;nome:string|null;email:string|null;ativo:boolean|null}
 type Motivo={id:string;nome:string|null}
+type Departamento={id:string;nome:string|null}
 type Lead={id:string;nome:string|null;empresa_contato:string|null;telefone_whatsapp:string|null}
 type Linha={id:string;nome:string;inativo:boolean;recebidos:number;finalizados:number;abertosAgora:number;horas:number[];nps:number[];motivos:Record<string,number>}
 
 const SEM='__sem__'
-const CAMPOS='id,lead_id,aberta,aberta_em,finalizada_em,responsavel_chatpro,finalizado_por_chatpro,motivo_id,nps,nps_nota'
+const CAMPOS='id,lead_id,aberta,aberta_em,finalizada_em,responsavel_chatpro,finalizado_por_chatpro,motivo_id,nps,nps_nota,departamento_id'
 const hoje=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 const inicioMes=()=>hoje().slice(0,8)+'01'
 const quando=(v:string|null)=>v?new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(v)):'—'
@@ -36,20 +37,21 @@ function baixarCsv(nome:string,linhas:(string|number)[][]){
 export function AtendimentosRelatorio(){
  const[de,setDe]=useState(inicioMes),[ate,setAte]=useState(hoje)
  const[sessoes,setSessoes]=useState<Sessao[]>([]),[abertas,setAbertas]=useState<Sessao[]>([]),[usuarios,setUsuarios]=useState<Usuario[]>([]),[motivos,setMotivos]=useState<Motivo[]>([]),[leads,setLeads]=useState<Record<string,Lead>>({})
- const[carregando,setCarregando]=useState(true),[erro,setErro]=useState(''),[atendente,setAtendente]=useState('')
+ const[carregando,setCarregando]=useState(true),[erro,setErro]=useState(''),[atendente,setAtendente]=useState(''),[deps,setDeps]=useState<Departamento[]>([]),[setor,setSetor]=useState('')
 
  async function carregar(){
   setCarregando(true);setErro('')
   try{
    const ini=new Date(`${de}T00:00:00`).toISOString(),fim=new Date(`${ate}T23:59:59.999`).toISOString()
-   const[s,a,u,m]=await Promise.all([
+   const[sTodas,aTodas,u,m,d]=await Promise.all([
     todas((x,y)=>supabase.from('chatpro_sessoes').select(CAMPOS).or(`and(aberta_em.gte.${ini},aberta_em.lte.${fim}),and(finalizada_em.gte.${ini},finalizada_em.lte.${fim})`).order('id').range(x,y)),
     todas((x,y)=>supabase.from('chatpro_sessoes').select(CAMPOS).eq('aberta',true).order('id').range(x,y)),
     supabase.from('chatpro_usuarios').select('id,nome,email,ativo'),
     supabase.from('chatpro_motivos').select('id,nome'),
+    supabase.from('chatpro_departamentos').select('id,nome'),
    ])
    if(u.error)throw new Error(u.error.message);if(m.error)throw new Error(m.error.message)
-   setSessoes(s);setAbertas(a);setUsuarios((u.data??[]) as Usuario[]);setMotivos((m.data??[]) as Motivo[])
+   setSessoes(sTodas);setAbertas(aTodas);setDeps((d.data??[]) as Departamento[]);const s=sTodas;setUsuarios((u.data??[]) as Usuario[]);setMotivos((m.data??[]) as Motivo[])
    // Nome/empresa dos atendimentos finalizados no período, para a lista de detalhe.
    const ids=[...new Set(s.map(x=>x.lead_id).filter((x):x is string=>!!x))],mapa:Record<string,Lead>={}
    for(let i=0;i<ids.length;i+=200){const r=await supabase.from('leads').select('id,nome,empresa_contato,telefone_whatsapp').in('id',ids.slice(i,i+200));if(r.error)throw new Error(r.error.message);for(const l of (r.data??[]) as Lead[])mapa[l.id]=l}
@@ -60,19 +62,23 @@ export function AtendimentosRelatorio(){
  useEffect(()=>{void carregar()},[]) // eslint-disable-line react-hooks/exhaustive-deps
 
  const nomeUsuario=(id:string|null)=>{if(!id)return 'Sem atendente';const u=usuarios.find(x=>x.id===id);return u?.nome||u?.email||'Usuário removido do ChatPro'}
+ // Setor: departamento da conversa; sem ele, o setor de quem atende ("Financeiro - Ana").
+ const setorDe=(x:Sessao)=>deps.find(d=>d.id===x.departamento_id)?.nome||(()=>{const n=usuarios.find(u=>u.id===x.responsavel_chatpro)?.nome||'';return n.includes(' - ')?n.split(' - ')[0].trim():''})()||'Sem setor'
+ const setores=useMemo(()=>[...new Set([...sessoes,...abertas].map(setorDe))].sort(),[sessoes,abertas,deps,usuarios]) // eslint-disable-line react-hooks/exhaustive-deps
+ const doSetor=(x:Sessao)=>!setor||setorDe(x)===setor
  const nomeMotivo=(id:string|null)=>id?(motivos.find(x=>x.id===id)?.nome||'Outro'):'Sem motivo'
  const ini=+new Date(`${de}T00:00:00`),fim=+new Date(`${ate}T23:59:59.999`)
  const noPeriodo=(v:string|null)=>!!v&&+new Date(v)>=ini&&+new Date(v)<=fim
- const finalizadas=useMemo(()=>sessoes.filter(s=>s.aberta===false&&noPeriodo(s.finalizada_em)),[sessoes,de,ate]) // eslint-disable-line react-hooks/exhaustive-deps
+ const finalizadas=useMemo(()=>sessoes.filter(s=>s.aberta===false&&noPeriodo(s.finalizada_em)&&doSetor(s)),[sessoes,de,ate,setor,deps,usuarios]) // eslint-disable-line react-hooks/exhaustive-deps
 
  const linhas=useMemo(()=>{
   const m=new Map<string,Linha>()
   const pegar=(id:string|null)=>{const k=id||SEM;let l=m.get(k);if(!l){const u=usuarios.find(x=>x.id===id);l={id:k,nome:nomeUsuario(id),inativo:u?.ativo===false,recebidos:0,finalizados:0,abertosAgora:0,horas:[],nps:[],motivos:{}};m.set(k,l)}return l}
-  for(const s of sessoes)if(noPeriodo(s.aberta_em))pegar(s.responsavel_chatpro).recebidos++
+  for(const s of sessoes)if(noPeriodo(s.aberta_em)&&doSetor(s))pegar(s.responsavel_chatpro).recebidos++
   for(const s of finalizadas){const l=pegar(s.finalizado_por_chatpro||s.responsavel_chatpro);l.finalizados++;const mot=nomeMotivo(s.motivo_id);l.motivos[mot]=(l.motivos[mot]||0)+1;if(s.aberta_em&&s.finalizada_em){const h=(+new Date(s.finalizada_em)-+new Date(s.aberta_em))/36e5;if(h>=0)l.horas.push(h)}const n=notaNps(s);if(n!=null)l.nps.push(n)}
-  for(const s of abertas)pegar(s.responsavel_chatpro).abertosAgora++
+  for(const s of abertas)if(doSetor(s))pegar(s.responsavel_chatpro).abertosAgora++
   return [...m.values()].sort((a,b)=>(a.id===SEM?1:0)-(b.id===SEM?1:0)||b.finalizados-a.finalizados||b.recebidos-a.recebidos)
- },[sessoes,abertas,finalizadas,usuarios,motivos]) // eslint-disable-line react-hooks/exhaustive-deps
+ },[sessoes,abertas,finalizadas,usuarios,motivos,setor,deps]) // eslint-disable-line react-hooks/exhaustive-deps
 
  const nomesMotivos=useMemo(()=>[...new Set(linhas.flatMap(l=>Object.keys(l.motivos)))].sort(),[linhas])
  const total=linhas.reduce((t,l)=>({recebidos:t.recebidos+l.recebidos,finalizados:t.finalizados+l.finalizados,abertos:t.abertos+l.abertosAgora}),{recebidos:0,finalizados:0,abertos:0})
@@ -85,6 +91,7 @@ export function AtendimentosRelatorio(){
   <div className="rounded-xl border bg-white p-3 shadow-sm"><div className="flex flex-wrap items-end gap-2">
    <label className="text-[11px] font-semibold text-slate-500">De<input type="date" value={de} max={ate} onChange={e=>setDe(e.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-xs"/></label>
    <label className="text-[11px] font-semibold text-slate-500">Até<input type="date" value={ate} min={de} onChange={e=>setAte(e.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-xs"/></label>
+   <label className="text-[11px] font-semibold text-slate-500">Setor<select value={setor} onChange={e=>setSetor(e.target.value)} className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"><option value="">Todos</option>{setores.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
    <button onClick={()=>void carregar()} disabled={carregando||!de||!ate} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5"/>{carregando?'Carregando...':'Aplicar período'}</button>
    <button onClick={exportarResumo} disabled={carregando||!linhas.length} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"><Download className="h-3.5 w-3.5"/>Exportar resumo (CSV)</button>
   </div>
