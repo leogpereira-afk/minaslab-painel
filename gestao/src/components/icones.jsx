@@ -31,3 +31,8 @@ export const IcFrasco = I(<><path d="M9 3h6" /><path d="M10 3v6L4.5 18.5A1.7 1.7
 export const IcCadeado = I(<><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>);
 export const IcPulso = I(<path d="M3 12h4l2-6 4 12 2-6h6" />);
 export const IcMoeda = I(<><circle cx="12" cy="12" r="9" /><path d="M15 9.5a3 3 0 0 0-3-1.5c-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2a3 3 0 0 1-3-1.5" /><path d="M12 6v2" /><path d="M12 16v2" /></>);
+export const IcSair = I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>);
+export const IcRecolher = I(<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="m16 15-3-3 3-3" /></>);
+export const IcExpandir = I(<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="m14 9 3 3-3 3" /></>);
+export const IcCasa = I(<><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10" /></>);
+export const IcX = I(<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>);
