@@ -68,6 +68,7 @@ export function donosDasPropostas(colabs, registros, propostas) {
     if (c.ativo === false || !c.crmId || !c.desde) continue;
     for (const p of propostas) {
       if (dono.has(p.numero)) continue;
+      if (c.desligadoEm && p.aceite > c.desligadoEm) continue; // aceita depois do desligamento: não é mais dela
       if (p.responsavel === c.crmId && String(p.status || "APROVADA").toUpperCase() === "APROVADA" && p.aceite && p.aceite >= c.desde) dono.set(p.numero, { colabId: c.id, origem: "crm" });
     }
   }
@@ -119,18 +120,22 @@ export function extratoColaborador(colab, ctx) {
     // Proposta da planilha de pagas: 100% paga (tudo o que gerou e vier a gerar).
     const pago = quitada ? Math.max(gerada, centavos(pagamentos.reduce((s, p) => s + p.valor, 0))) : centavos(pagamentos.reduce((s, p) => s + p.valor, 0));
     const dif = quitada ? 0 : centavos(gerada - pago);
+    // Desligado: a comissão encerra. O que não foi pago até aqui não fica pendente nem previsto (só informativo).
+    const encerrada = !!colab.desligadoEm && !quitada;
     linhas.push({
       numero, origem: d.origem, cliente: prop?.cliente || pl[0]?.cliente || vivas[0]?.cliente || "", aceite: prop?.aceite || "", status: prop?.status || (pl.length ? "" : "APROVADA"),
       valorProposta: centavos(valorProposta), osGeradas: vivas.length, geradas, faltaGerar: centavos(Math.max(0, valorProposta - geradas)),
-      faturado, pagoCliente, semNF: quitada ? 0 : semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada ? 0 : previsao,
-      os, pagamentos, planilha: pl, quitada,
+      faturado, pagoCliente, semNF: quitada || encerrada ? 0 : semNF, gerada, pago,
+      aPagar: dif > 0 && !encerrada ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada || encerrada ? 0 : previsao,
+      naoPago: encerrada && dif > 0 ? dif : 0,
+      os, pagamentos, planilha: pl, quitada, encerrada,
     });
   }
   linhas.sort((a, b) => b.aPagar - a.aPagar || String(b.numero).localeCompare(String(a.numero)));
   const soma = (k) => centavos(linhas.reduce((s, l) => s + l[k], 0));
   return {
     linhas,
-    totais: { propostas: linhas.length, valorProposta: soma("valorProposta"), geradas: soma("geradas"), faltaGerar: soma("faltaGerar"), faturado: soma("faturado"), pagoCliente: soma("pagoCliente"), semNF: soma("semNF"), gerada: soma("gerada"), pago: soma("pago"), aPagar: soma("aPagar"), adiantado: soma("adiantado"), previsao: soma("previsao") },
+    totais: { propostas: linhas.length, valorProposta: soma("valorProposta"), geradas: soma("geradas"), faltaGerar: soma("faltaGerar"), faturado: soma("faturado"), pagoCliente: soma("pagoCliente"), semNF: soma("semNF"), gerada: soma("gerada"), pago: soma("pago"), aPagar: soma("aPagar"), adiantado: soma("adiantado"), previsao: soma("previsao"), naoPago: soma("naoPago") },
   };
 }
 
@@ -169,7 +174,9 @@ export function osDoExtrato(extrato) {
   return extrato.linhas.flatMap((l) => l.os.map((o) => {
     const s0 = situacaoOS(o);
     // Proposta do histórico de pagas: já quitada, não tem previsão (mesmo OS sem nota).
-    const sit = l.quitada && (s0.id === "faltaNF" || s0.id === "aguardando") ? { id: "quitada", rotulo: "Paga (histórico)", tom: "ok" } : s0;
+    const semNota = s0.id === "faltaNF" || s0.id === "aguardando";
+    const sit = l.quitada && semNota ? { id: "quitada", rotulo: "Paga (histórico)", tom: "ok" }
+      : l.encerrada && semNota ? { id: "encerrada", rotulo: "Encerrada (desligamento)", tom: "neutro" } : s0;
     const prevista = sit.id === "faltaNF" || sit.id === "aguardando" ? centavos((o.valor * (o.pct || 0)) / 100) : 0;
     return { ...o, proposta: l.numero, cliente: o.cliente || l.cliente, sit, prevista };
   })).sort((a, b) => String(b.dataOs).localeCompare(String(a.dataOs)));
@@ -223,6 +230,7 @@ export const STATUS_PROPOSTA = {
   andamento: { rotulo: "Em andamento", tom: "alerta" },
   finalizada: { rotulo: "Finalizada", tom: "ok" },
   cancelada: { rotulo: "Cancelada", tom: "ruim" },
+  encerrada: { rotulo: "Encerrada (desligamento)", tom: "neutro" },
 };
 export function statusProposta(l) {
   const st = String(l.status || "").toUpperCase();
@@ -230,6 +238,7 @@ export function statusProposta(l) {
   // Cancelada no CRM mas com OS de verdade: vale o que aconteceu (e a conferência avisa).
   if (["CANCELADA", "RECUSADA"].includes(st) && !temOSValida) return "cancelada";
   if (l.os.length && !temOSValida) return "cancelada";
+  if (l.encerrada) return "encerrada";
   if (!l.osGeradas) return "pendente";
   if (l.geradas >= l.valorProposta - 0.005 && l.semNF < 0.005) return "finalizada";
   return "andamento";
