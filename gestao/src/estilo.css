@@ -33,7 +33,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 h1, h2, h3 { font-family: Poppins, system-ui, sans-serif; color: var(--titulo); margin: 0; line-height: 1.25; }
-h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: #193f48; }
+h1 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; color: #0f172a; }
 h2 { font-size: 17px; font-weight: 600; color: #24464e; }
 h3 { font-size: 16px; font-weight: 600; }
 a { color: var(--marca); }
@@ -106,6 +106,8 @@ a:hover { color: var(--marca-escura); }
 
 .cabecalho { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; justify-content: space-between; }
 .sobretitulo { font: 600 10px Inter, sans-serif; color: #13977b; text-transform: uppercase; letter-spacing: .2em; }
+/* No cabeçalho das páginas o nome da seção já aparece na barra do topo (como no painel). */
+.ml-shell .cabecalho .sobretitulo { display: none; }
 
 @media (max-width: 1279px) and (min-width: 1024px) { .ml-sidebar { width: 230px; } .ml-brand { padding-inline: 20px; } .ml-brand img { width: 170px; } .ml-context-label { display: none; } }
 @media (max-width: 1023px) {
@@ -144,13 +146,13 @@ a:hover { color: var(--marca-escura); }
 .chip.neutro { background: var(--neutro-bg); color: var(--neutro-tx); }
 .chip.marca { background: var(--marca-100); color: var(--marca-900); }
 
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border: 0; border-radius: 10px; padding: 8px 16px; font: 600 14px Inter, sans-serif; cursor: pointer; background: var(--marca); color: #fff; text-decoration: none; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border: 0; border-radius: 12px; padding: 8px 16px; font: 600 13.5px Poppins, sans-serif; cursor: pointer; background: var(--marca); color: #fff; text-decoration: none; box-shadow: 0 1px 2px #0f766e30; transition: background .15s, border-color .15s, color .15s; }
 .btn:hover { background: var(--marca-escura); color: #fff; }
 .btn:disabled { opacity: .55; cursor: default; }
-.btn.claro { background: #fff; color: var(--marca); border: 1px solid var(--marca-200); }
-.btn.claro:hover { background: var(--marca-50); }
-.btn.perigo { background: #fff; color: var(--ruim); border: 1px solid #fecaca; }
-.btn.mini { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.btn.claro { background: #fff; color: #334155; border: 1px solid #dbe6e3; box-shadow: none; font-weight: 500; }
+.btn.claro:hover { background: var(--marca-50); border-color: var(--marca-200); color: var(--marca-escura); }
+.btn.perigo { background: #fff; color: var(--ruim); border: 1px solid #fecaca; box-shadow: none; font-weight: 500; }
+.btn.mini { min-height: 32px; padding: 4px 10px; font-size: 12.5px; border-radius: 10px; }
 
 .pilulas { display: flex; flex-wrap: wrap; gap: 6px; }
 .pilula { min-height: 34px; border: 1px solid #dbe6e3; background: #fff; border-radius: 999px; padding: 6px 14px; font: 500 13px Inter, sans-serif; color: var(--neutro-tx); cursor: pointer; }
@@ -158,9 +160,9 @@ a:hover { color: var(--marca-escura); }
 .pilula.ativa { background: #e8f5f0; border-color: #9fd8c6; color: #09594e; font-weight: 600; }
 
 .campo { display: flex; flex-direction: column; gap: 6px; }
-.campo label, .rotulo { font-size: 13px; font-weight: 600; color: var(--neutro-tx); }
-.entrada { min-height: 40px; border: 1px solid #cfdada; border-radius: 10px; padding: 8px 10px; font: 14px Inter, sans-serif; color: var(--texto); background: #fff; width: 100%; }
-.entrada:focus { outline: 2px solid var(--marca-400); outline-offset: 0; border-color: transparent; }
+.campo label, .rotulo { font: 600 12px Poppins, sans-serif; letter-spacing: .01em; color: #475569; }
+.entrada { min-height: 40px; border: 1px solid #c9d6d4; border-radius: 12px; padding: 8px 10px; font: 14px Inter, sans-serif; color: var(--texto); background: #fff; width: 100%; }
+.entrada:focus { outline: none; border-color: var(--marca); box-shadow: 0 0 0 4px #d5f3eeb3; }
 textarea.entrada { resize: vertical; }
 .entrada.num { width: 84px; text-align: center; }
 
@@ -214,7 +216,7 @@ tr:last-child td { border-bottom: 0; }
 .pag-btn.ativa { background: var(--marca); border-color: var(--marca); color: #fff; }
 .pag-btn:disabled { opacity: .35; cursor: default; }
 .abas { display: flex; gap: 2px; border-bottom: 1px solid var(--linha); overflow-x: auto; scrollbar-width: none; }
-.aba { position: relative; border: 0; background: none; padding: 10px 14px 12px; font: 600 14px Inter, sans-serif; color: var(--suave); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.aba { position: relative; border: 0; background: none; padding: 10px 14px 12px; font: 600 13.5px Poppins, sans-serif; color: var(--suave); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
 .aba:hover { color: var(--titulo); }
 .aba.ativa { color: var(--marca); }
 .aba.ativa::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--marca); }
