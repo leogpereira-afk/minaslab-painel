@@ -859,6 +859,7 @@ function GraficoComissao({ serie, media }) {
 
 function Resumo({ contas, pagamentos }) {
   const [quem, setQuem] = useState("");
+  const [todosMeses, setTodosMeses] = useState(false);
   const mes = mesAtual();
   const sel = quem ? contas.filter((x) => x.c.id === quem) : contas;
   const pgs = quem ? pagamentos.filter((p) => p.colaboradorId === quem) : pagamentos;
@@ -868,6 +869,17 @@ function Resumo({ contas, pagamentos }) {
   const porSit = (id) => todasOS.filter((o) => o.sit.id === id);
   const somaV = (xs, k = "valor") => centavos(xs.reduce((a, o) => a + (Number(o[k]) || 0), 0));
   const ultimos = s.serie.slice(-12);
+  const meses = [...s.serie].reverse();
+  const mesesVistos = todosMeses ? meses : meses.slice(0, 6);
+  const temAdiantado = sel.some((x) => x.ex.totais.adiantado > 0);
+  const SITUACOES = [
+    ["nf", "NF emitida", "ok", "comissao", "liberada"],
+    ["faltaNF", "Pronta para faturar", "alerta", "prevista", "prevista"],
+    ["aguardando", "Aguardando", "neutro", "prevista", "prevista"],
+    ["quitada", "Paga (histórico)", "ok", null, "já paga"],
+    ["encerrada", "Encerrada (desligamento)", "neutro", null, "não conta"],
+    ["cancelada", "Cancelada", "ruim", null, "sem comissão"],
+  ].map(([id, rot, tom, k, txt]) => ({ id, rot, tom, k, txt, xs: porSit(id) })).filter((x) => x.xs.length);
   return (
     <>
       <div className="pilulas" role="group" aria-label="Colaborador">
@@ -876,11 +888,34 @@ function Resumo({ contas, pagamentos }) {
       </div>
       <Conferencia contas={sel} />
       <div className="grade grade-kpi">
+        <Kpi rotulo="Liberado para pagar" valor={brl(tot("aPagar"))} sub={tot("adiantado") > 0 ? `${brl(tot("adiantado"))} pagos adiantado` : "OS faturadas, com NF emitida"} />
+        <Kpi rotulo="Aguardando faturar" valor={brl(somaV([...porSit("faltaNF"), ...porSit("aguardando")], "prevista"))} sub={`${porSit("faltaNF").length + porSit("aguardando").length} OS ainda sem nota`} />
         <Kpi rotulo="Média paga por mês" valor={brl(s.mediaPaga)} sub={`${s.mesesPagos} mês(es) com pagamento`} />
         <Kpi rotulo="Média gerada por mês" valor={brl(s.mediaGerada)} sub="1% das NF emitidas" />
-        <Kpi rotulo="Falta pagar" valor={brl(tot("aPagar"))} sub={tot("adiantado") > 0 ? `${brl(tot("adiantado"))} pagos adiantado` : "comissão já liberada"} />
-        <Kpi rotulo="Prevista (OS sem NF)" valor={brl(somaV([...porSit("faltaNF"), ...porSit("aguardando")], "prevista"))} sub={`${porSit("faltaNF").length + porSit("aguardando").length} OS ainda sem nota`} />
       </div>
+      {!quem && (
+        <Card semPad>
+          <div className="card-cab"><h2>Por colaborador</h2><span className="suave peq">clique no nome para ver só a pessoa</span></div>
+          <div className="tabela-caixa tabela-comissao">
+            <table>
+              <thead><tr><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>Liberado para pagar</th><th style={D}>Aguardando faturar</th><th style={D}>Já pago</th><th style={D}>Comissão gerada</th>{temAdiantado && <th style={D}>Adiantado</th>}</tr></thead>
+              <tbody>
+                {contas.map(({ c, ex }) => (
+                  <tr key={c.id}>
+                    <td><button type="button" className="link-nome" onClick={() => setQuem(c.id)}>{nomeCurto(c.nome)}</button>{c.desligadoEm ? <div className="suave peq">desligada em {dataCurta(c.desligadoEm)}</div> : c.ativo === false && <div className="suave peq">só histórico</div>}</td>
+                    <td className="tnum" style={D}>{ex.totais.propostas}</td>
+                    <td className="tnum" style={{ ...D, fontWeight: 700, color: ex.totais.aPagar > 0 ? "var(--marca-900)" : undefined }}>{brl(ex.totais.aPagar)}</td>
+                    <td className="tnum" style={D}>{brl(ex.totais.previsao)}</td>
+                    <td className="tnum" style={D}>{brl(ex.totais.pago)}</td>
+                    <td className="tnum" style={D}>{brl(ex.totais.gerada)}</td>
+                    {temAdiantado && <td className="tnum" style={D}>{ex.totais.adiantado > 0 ? brl(ex.totais.adiantado) : "—"}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
           <h2>Comissão por mês</h2>
@@ -888,56 +923,33 @@ function Resumo({ contas, pagamentos }) {
         </div>
         {ultimos.length ? <GraficoComissao serie={ultimos} media={s.mediaPaga} /> : <div className="vazio">Ainda não há comissão gerada nem paga.</div>}
       </Card>
-      <div className="grade grade-2" style={{ alignItems: "start" }}>
+      <div className="grade grade-2" style={{ alignItems: "stretch" }}>
         <Card semPad>
-          <div className="card-cab"><h2>Situação das OS</h2><span className="suave peq">{todasOS.length} OS das propostas com comissão</span></div>
-          <div className="tabela-caixa tabela-comissao">
-            <table>
-              <thead><tr><th>Situação</th><th style={D}>OS</th><th style={D}>Valor</th><th style={D}>Comissão</th></tr></thead>
-              <tbody>
-                {[["nf", "NF emitida", "ok", "comissao", "liberada"], ["faltaNF", "Falta emitir NF (pronto para faturar)", "alerta", "prevista", "prevista"], ["aguardando", "Aguardando / outras", "neutro", "prevista", "prevista"], ["quitada", "Paga (histórico, sem previsão)", "ok", null, ""], ["encerrada", "Encerrada (desligamento)", "neutro", null, ""], ["cancelada", "Canceladas", "ruim", null, ""]].map(([id, rot, tom, k, txt]) => {
-                  const xs = porSit(id);
-                  return <tr key={id}><td><Chip tom={tom}>{rot}</Chip></td><td className="tnum" style={D}>{xs.length}</td><td className="tnum" style={D}>{brl(somaV(xs))}</td><td className="tnum" style={D}>{k ? <>{brl(somaV(xs, k))} <span className="suave peq">{txt}</span></> : "—"}</td></tr>;
-                })}
-              </tbody>
-            </table>
+          <div className="card-cab"><h2>Situação das OS</h2><span className="suave peq">{todasOS.length} OS</span></div>
+          <div style={{ padding: "4px 20px 16px" }}>
+            {SITUACOES.map((x) => (
+              <div key={x.id} className="linha-situacao">
+                <Chip tom={x.tom}>{x.rot}</Chip>
+                <span className="tnum suave peq">{x.xs.length} OS · {brl(somaV(x.xs))}</span>
+                <span className="tnum" style={{ textAlign: "right" }}>{x.k ? <b>{brl(somaV(x.xs, x.k))}</b> : null}<div className="suave" style={{ fontSize: 11 }}>{x.txt}</div></span>
+              </div>
+            ))}
           </div>
         </Card>
         <Card semPad>
-          <div className="card-cab"><h2>Mês a mês</h2></div>
-          <div className="tabela-caixa tabela-comissao" style={{ maxHeight: 340, overflowY: "auto" }}>
+          <div className="card-cab"><h2>Mês a mês</h2><span className="suave peq">comissão gerada e paga</span></div>
+          <div className="tabela-caixa tabela-comissao">
             <table>
               <thead><tr><th>Mês</th><th style={D}>Gerada</th><th style={D}>Paga</th></tr></thead>
               <tbody>
-                {[...s.serie].reverse().map((x) => <tr key={x.mes}><td>{mesLongo(x.mes)}</td><td className="tnum" style={D}>{brl(x.gerada)}</td><td className="tnum" style={D}>{brl(x.paga)}</td></tr>)}
-                {s.pagoSemMes > 0 && <tr><td className="suave">Pago sem mês (histórico)</td><td /><td className="tnum" style={D}>{brl(s.pagoSemMes)}</td></tr>}
+                {mesesVistos.map((x) => <tr key={x.mes}><td>{mesLongo(x.mes)}</td><td className="tnum" style={D}>{brl(x.gerada)}</td><td className="tnum" style={D}>{brl(x.paga)}</td></tr>)}
+                {todosMeses && s.pagoSemMes > 0 && <tr><td className="suave">Pago sem mês (histórico)</td><td /><td className="tnum" style={D}>{brl(s.pagoSemMes)}</td></tr>}
               </tbody>
             </table>
           </div>
+          {meses.length > 6 && <div style={{ padding: "8px 20px 14px" }}><button type="button" className="btn claro mini" onClick={() => setTodosMeses((v) => !v)}>{todosMeses ? "Ver só os últimos 6 meses" : `Ver todos os meses (${meses.length})`}</button></div>}
         </Card>
       </div>
-      <Card semPad>
-        <div className="card-cab"><h2>Por colaborador</h2></div>
-        <div className="tabela-caixa tabela-comissao">
-          <table>
-            <thead><tr><th>Colaborador</th><th style={D}>Propostas</th><th style={D}>Faturado</th><th style={D}>OS sem NF</th><th style={D}>Gerada</th><th style={D}>Paga</th><th style={D}>Falta pagar</th><th style={D}>Adiantado</th></tr></thead>
-            <tbody>
-              {contas.map(({ c, ex }) => (
-                <tr key={c.id}>
-                  <td>{nomeCurto(c.nome)}{c.ativo === false && <div className="suave peq">só histórico</div>}</td>
-                  <td className="tnum" style={D}>{ex.totais.propostas}</td>
-                  <td className="tnum" style={D}>{brl(ex.totais.faturado)}</td>
-                  <td className="tnum" style={D}>{brl(ex.totais.semNF)}</td>
-                  <td className="tnum" style={D}>{brl(ex.totais.gerada)}</td>
-                  <td className="tnum" style={D}>{brl(ex.totais.pago)}</td>
-                  <td className="tnum" style={{ ...D, fontWeight: 700 }}>{brl(ex.totais.aPagar)}</td>
-                  <td className="tnum" style={D}>{ex.totais.adiantado > 0 ? brl(ex.totais.adiantado) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
     </>
   );
 }

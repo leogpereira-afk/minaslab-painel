@@ -805,3 +805,11 @@ tr:last-child td { border-bottom: 0; }
 .tabela-comissao td.tnum { white-space: nowrap; }
 .tabela-comissao td:nth-child(2) { white-space: normal; }
 .tabela-comissao td.tnum .peq { white-space: normal; }
+
+/* Comissões › Resumo */
+.linha-situacao { display: grid; grid-template-columns: minmax(0, 1fr) auto 110px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linha-fraca); }
+.linha-situacao:last-child { border-bottom: 0; }
+.linha-situacao .chip { justify-self: start; }
+.link-nome { border: 0; background: none; padding: 0; font: 600 14px Inter, sans-serif; color: var(--marca); cursor: pointer; text-align: left; }
+.link-nome:hover { text-decoration: underline; }
+@media (max-width: 600px) { .linha-situacao { grid-template-columns: 1fr auto; } .linha-situacao > span:nth-child(2) { grid-column: 1; } }
