@@ -17,6 +17,33 @@
 
 import { centavos, taxaEm, faturada, aFaturar } from "./comissoes.js";
 
+// Regra a partir de set/2026 (definida pela gestora em 27/10/2026):
+// - entram TODAS as propostas aprovadas no CRM com aceite a partir de
+//   DESDE_PADRAO, de cada responsável comercial (sem precisar cadastrar);
+// - OS com NF emitida libera a comissão para pagamento; sem NF fica prevista;
+// - propostas da planilha de pagas ficam 100% pagas (quitadas).
+export const DESDE_PADRAO = "2026-09-01";
+
+/**
+ * Quem recebe: os cadastros gravados + um cadastro automático para cada
+ * responsável comercial com proposta aprovada desde DESDE_PADRAO.
+ * O id automático é "auto_<id do CRM>" (editar grava com esse mesmo id).
+ */
+export function colaboradoresComAutomaticos(colabs, pessoas, propostas, desde = DESDE_PADRAO) {
+  const out = [...colabs];
+  const tem = new Set(colabs.map((c) => c.crmId).filter(Boolean));
+  const ids = new Set(colabs.map((c) => c.id));
+  for (const p of propostas || []) {
+    const id = p.responsavel;
+    if (!id || tem.has(id) || String(p.status || "").toUpperCase() !== "APROVADA" || !p.aceite || p.aceite < desde) continue;
+    const pessoa = (pessoas || []).find((x) => x.id === id);
+    tem.add(id);
+    if (ids.has(`auto_${id}`)) continue;
+    out.push({ id: `auto_${id}`, tipo: "colaborador", nome: String(pessoa?.nome || "Responsável do CRM").toLocaleUpperCase("pt-BR"), crmId: id, desde, taxas: [{ desde, pct: 1 }], ativo: true, automatico: true });
+  }
+  return out;
+}
+
 const CANCELADA = (o) => ["CANCELADO", "NAO FATURAR"].includes(String(o.fat || "").toUpperCase()) || String(o.pag || "").toUpperCase() === "CANCELADO";
 const clientePagou = (o) => String(o.pag || "").toUpperCase() === "PAGO";
 
@@ -88,13 +115,15 @@ export function extratoColaborador(colab, ctx) {
     const gerada = centavos(os.reduce((s, o) => s + o.comissao, 0));
     const previsao = centavos(os.filter((o) => o.aFaturar).reduce((s, o) => s + (o.valor * o.pct) / 100, 0));
     const pagamentos = (ctx.pagos.get(numero) || []).slice().sort((a, b) => String(a.pagoEm).localeCompare(String(b.pagoEm)));
-    const pago = centavos(pagamentos.reduce((s, p) => s + p.valor, 0));
-    const dif = centavos(gerada - pago);
+    const quitada = pl.some((x) => x.quitada);
+    // Proposta da planilha de pagas: 100% paga (tudo o que gerou e vier a gerar).
+    const pago = quitada ? Math.max(gerada, centavos(pagamentos.reduce((s, p) => s + p.valor, 0))) : centavos(pagamentos.reduce((s, p) => s + p.valor, 0));
+    const dif = quitada ? 0 : centavos(gerada - pago);
     linhas.push({
       numero, origem: d.origem, cliente: prop?.cliente || pl[0]?.cliente || vivas[0]?.cliente || "", aceite: prop?.aceite || "", status: prop?.status || (pl.length ? "" : "APROVADA"),
       valorProposta: centavos(valorProposta), osGeradas: vivas.length, geradas, faltaGerar: centavos(Math.max(0, valorProposta - geradas)),
-      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao,
-      os, pagamentos, planilha: pl,
+      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada ? 0 : previsao,
+      os, pagamentos, planilha: pl, quitada,
     });
   }
   linhas.sort((a, b) => b.aPagar - a.aPagar || String(b.numero).localeCompare(String(a.numero)));
@@ -229,7 +258,7 @@ export function conferencia(contas, hoje) {
           texto: "Está na planilha, mas não existe no CRM.",
           corrigir: "Confira o número na planilha; se a proposta existe, cadastre no CRM com o mesmo número." });
       }
-      if (statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
+      if (!l.quitada && statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
         out.push({ tipo: "semOS", colab: c, proposta: l.numero, cliente: l.cliente, valor: l.valorProposta,
           texto: `Aprovada em ${l.aceite.split("-").reverse().join("/")} e nenhuma OS gerada.`,
           corrigir: "Se o serviço foi feito, confira o Contrato (nº da proposta) da OS em Serviços gerados. Se não vai acontecer, cancele a proposta no CRM." });

@@ -10,7 +10,7 @@ import { brl, dataCurta, hojeBR, mesLongo, mesAtual, nomeProprio } from "../lib/
 import { validarColaborador, taxaAtual, centavos } from "../lib/comissoes.js";
 import {
   donosDasPropostas, pagosPorProposta, extratoColaborador, linhasPlanilha, geradaNoMes, itensPagamentoPropostas, csvExtrato,
-  osDoExtrato, serieMensal, statusProposta, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
+  osDoExtrato, serieMensal, statusProposta, colaboradoresComAutomaticos, DESDE_PADRAO, STATUS_PROPOSTA, mesDoPagamentoItem, conferencia, TIPOS_CONFERENCIA,
 } from "../lib/comissoesProposta.js";
 import { lerXlsx } from "../lib/xlsxLeve.js";
 import { lerLinhasPlanilha, planoImportacao } from "../lib/comissoesPlanilha.js";
@@ -35,12 +35,24 @@ export default function Comissoes() {
   const [quem, setQuem] = useState("");
 
   const registros = dados.comissoes || [];
-  const colabs = useMemo(() => registros.filter((r) => r.tipo === "colaborador").sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR")), [registros]);
+  const gravados = useMemo(() => registros.filter((r) => r.tipo === "colaborador"), [registros]);
   const pagamentos = useMemo(() => registros.filter((r) => r.tipo === "pagamento").sort((a, b) => String(b.pagoEm).localeCompare(String(a.pagoEm)) || String(b.criadoEm).localeCompare(String(a.criadoEm))), [registros]);
-  const ids = [...new Set(colabs.map((c) => c.crmId).filter(Boolean))].sort();
+  // 1º: a lista de responsáveis do CRM; 2º: as propostas aprovadas de todos eles + as da planilha.
+  const lista = useCRM("comissoes-pessoas", () => comissoesCRM([], []));
+  const ids = (lista.dados?.pessoas || []).map((p) => p.id).sort();
   const numeros = useMemo(() => [...new Set(registros.filter((r) => r.tipo === "planilha").flatMap((r) => (r.linhas || []).map((l) => l.proposta)))].sort(), [registros]);
-  const crm = useCRM(`comissoes:${ids.join(",")}:${numeros.length}`, () => comissoesCRM(ids, numeros));
-  const pessoasCRM = crm.dados?.pessoas || [];
+  const crmDados = useCRM(`comissoes:${ids.join(",")}:${numeros.length}`, () => (ids.length ? comissoesCRM(ids, numeros) : Promise.resolve(null)));
+  const crm = lista.dados ? crmDados : lista;
+  const pessoasCRM = crm.dados?.pessoas || lista.dados?.pessoas || [];
+  const colabs = useMemo(() => {
+    const todos = colaboradoresComAutomaticos(gravados, pessoasCRM, crm.dados?.propostas || []);
+    // Dono de proposta da planilha sem cadastro (ex.: id auto_ de quem não tem proposta nova).
+    for (const r of registros) if (r.tipo === "planilha" && !todos.some((c) => c.id === r.colaboradorId)) {
+      const crmId = String(r.colaboradorId).replace(/^auto_/, "");
+      todos.push({ id: r.colaboradorId, tipo: "colaborador", nome: String(r.nome || pessoasCRM.find((p) => p.id === crmId)?.nome || "Colaborador").toLocaleUpperCase("pt-BR"), crmId, desde: DESDE_PADRAO, taxas: [{ desde: DESDE_PADRAO, pct: 1 }], ativo: false, automatico: true });
+    }
+    return todos.sort((a, b) => (a.ativo === false) - (b.ativo === false) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+  }, [gravados, pessoasCRM, crm.dados, registros]);
 
   const contas = useMemo(() => {
     if (!crm.dados) return [];
@@ -51,8 +63,11 @@ export default function Comissoes() {
       propsPorNumero: new Map(crm.dados.propostas.map((p) => [p.numero, p])),
       osPorProposta, pagos: pagosPorProposta(pagamentos),
     };
-    return colabs.map((c) => ({ c, ex: extratoColaborador(c, { ...base, planilha: linhasPlanilha(registros, c.id) }) }));
-  }, [crm.dados, colabs, registros, pagamentos]);
+    // Quem não tem nenhuma proposta (nem pagamento) não aparece.
+    return colabs.map((c) => ({ c, ex: extratoColaborador(c, { ...base, planilha: linhasPlanilha(registros, c.id) }) }))
+      .filter((x) => x.ex.linhas.length || pagamentos.some((p) => p.colaboradorId === x.c.id) || gravados.some((g) => g.id === x.c.id));
+  }, [crm.dados, colabs, registros, pagamentos, gravados]);
+  const recarregar = () => { lista.recarregar(); crmDados.recarregar(); };
 
   const soma = (f) => centavos(contas.reduce((s, x) => s + f(x), 0));
   const mes = mesAtual();
@@ -63,9 +78,8 @@ export default function Comissoes() {
 
   return (
     <>
-      <Cabecalho sobre="Comissões" titulo="Comissões" sub="1% de cada OS com nota emitida, por proposta aprovada. OS sem nota aparecem como comissão prevista.">
-        <button type="button" className="btn claro" onClick={crm.recarregar}>Atualizar</button>
-        <button type="button" className="btn claro" disabled={!crm.dados} onClick={() => setImportando(true)}>Importar planilha antiga</button>
+      <Cabecalho sobre="Comissões" titulo="Comissões" sub={`1% de cada OS com nota emitida, das propostas aprovadas no CRM desde ${dataCurta(DESDE_PADRAO)} (por responsável comercial). OS sem nota aparece como prevista. Propostas da planilha de pagas ficam quitadas.`}>
+        <button type="button" className="btn claro" onClick={recarregar}>Atualizar</button>
         <button type="button" className="btn" onClick={() => setEditando({ novo: true })}>Novo colaborador</button>
       </Cabecalho>
       {crm.erro && <div className="aviso ruim">{crm.erro}</div>}
@@ -84,7 +98,7 @@ export default function Comissoes() {
             ["pagamentos", "Pagamentos", pagamentos.length || ""],
             ["colaboradores", "Colaboradores", colabs.length || ""],
           ]} />
-          {colabs.length === 0 && <div className="aviso marca">Cadastre quem recebe comissão em “Novo colaborador”, ou traga o histórico em “Importar planilha antiga”.</div>}
+          {colabs.length === 0 && <div className="aviso marca">Nenhuma proposta aprovada no CRM desde {dataCurta(DESDE_PADRAO)} ainda.</div>}
           {aba === "resumo" && <Resumo contas={contas} pagamentos={pagamentos} />}
           {aba === "propostas" && atual && (
             <>
@@ -208,7 +222,7 @@ function Extrato({ conta, gravar, nomeDe }) {
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <b className="tnum" style={{ fontWeight: 600 }}>{l.numero}</b>
                         <Chip tom={STATUS_PROPOSTA[statusProposta(l)].tom}>{STATUS_PROPOSTA[statusProposta(l)].rotulo}</Chip>
-                        {l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
+                        {l.quitada ? <Chip tom="ok">paga (planilha)</Chip> : l.origem === "planilha" && <Chip tom="neutro">planilha</Chip>}
                         {l.status && l.status !== "APROVADA" && <Chip tom="ruim">{l.status.toLowerCase()} no CRM · corrigir</Chip>}
                         <span className="suave peq">{aberta === l.numero ? "▾" : "▸"}</span>
                       </div>
@@ -304,7 +318,8 @@ function DetalheProposta({ l, nomeDe }) {
         <table>
           <thead><tr><th>Pago em</th><th>Mês da folha</th><th>Para</th><th>Origem</th><th style={D}>Valor</th></tr></thead>
           <tbody>
-            {l.pagamentos.length === 0 && <tr><td colSpan={5} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
+            {l.quitada && <tr><td colSpan={4} className="peq"><b>Quitada pela planilha de pagas</b>: toda a comissão desta proposta conta como paga.</td><td className="tnum" style={D}>{brl(l.pago)}</td></tr>}
+            {!l.quitada && l.pagamentos.length === 0 && <tr><td colSpan={5} className="suave">Nenhuma comissão paga desta proposta ainda.</td></tr>}
             {l.pagamentos.map((p, i) => (
               <tr key={i}>
                 <td className="tnum peq">{p.planilha && p.obs.includes("sem o mês") ? "sem data (planilha)" : dataCurta(p.pagoEm)}</td>
@@ -487,7 +502,7 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, remover, registros }) {
           <Card key={c.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
               <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
-              {c.ativo === false ? <Chip>só a planilha</Chip> : <Chip tom="ok">pega propostas novas</Chip>}
+              {c.ativo === false ? <Chip>só a planilha</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
             </div>
             <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
               {c.ativo === false ? "Só as propostas da planilha antiga" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
@@ -497,7 +512,7 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, remover, registros }) {
             </div>
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
               <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>
-              <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>
+              {!c.automatico && <button type="button" className="btn perigo mini" onClick={() => excluir(c)}>Excluir</button>}
             </div>
           </Card>
         ))}
