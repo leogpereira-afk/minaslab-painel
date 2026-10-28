@@ -63,8 +63,10 @@ export default function Comissoes() {
       propsPorNumero: new Map(crm.dados.propostas.map((p) => [p.numero, p])),
       osPorProposta, pagos: pagosPorProposta(pagamentos),
     };
-    return colabs.map((c) => ({ c, ex: extratoColaborador(c, { ...base, planilha: linhasPlanilha(registros, c.id) }) }));
-  }, [crm.dados, colabs, registros, pagamentos]);
+    // Quem não tem nenhuma proposta (nem pagamento) não aparece.
+    return colabs.map((c) => ({ c, ex: extratoColaborador(c, { ...base, planilha: linhasPlanilha(registros, c.id) }) }))
+      .filter((x) => x.ex.linhas.length || pagamentos.some((p) => p.colaboradorId === x.c.id) || gravados.some((g) => g.id === x.c.id));
+  }, [crm.dados, colabs, registros, pagamentos, gravados]);
   const recarregar = () => { lista.recarregar(); crmDados.recarregar(); };
 
   const soma = (f) => centavos(contas.reduce((s, x) => s + f(x), 0));

@@ -122,7 +122,7 @@ export function extratoColaborador(colab, ctx) {
     linhas.push({
       numero, origem: d.origem, cliente: prop?.cliente || pl[0]?.cliente || vivas[0]?.cliente || "", aceite: prop?.aceite || "", status: prop?.status || (pl.length ? "" : "APROVADA"),
       valorProposta: centavos(valorProposta), osGeradas: vivas.length, geradas, faltaGerar: centavos(Math.max(0, valorProposta - geradas)),
-      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao,
+      faturado, pagoCliente, semNF, gerada, pago, aPagar: dif > 0 ? dif : 0, adiantado: dif < 0 ? -dif : 0, previsao: quitada ? 0 : previsao,
       os, pagamentos, planilha: pl, quitada,
     });
   }
@@ -258,7 +258,7 @@ export function conferencia(contas, hoje) {
           texto: "Está na planilha, mas não existe no CRM.",
           corrigir: "Confira o número na planilha; se a proposta existe, cadastre no CRM com o mesmo número." });
       }
-      if (statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
+      if (!l.quitada && statusProposta(l) === "pendente" && l.aceite && diasEntre(l.aceite, hoje) > 30) {
         out.push({ tipo: "semOS", colab: c, proposta: l.numero, cliente: l.cliente, valor: l.valorProposta,
           texto: `Aprovada em ${l.aceite.split("-").reverse().join("/")} e nenhuma OS gerada.`,
           corrigir: "Se o serviço foi feito, confira o Contrato (nº da proposta) da OS em Serviços gerados. Se não vai acontecer, cancele a proposta no CRM." });
