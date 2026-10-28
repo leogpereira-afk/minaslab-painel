@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { login, motivoSaida } from "../lib/sessao.js";
-import { IcGrafico } from "../components/icones.jsx";
+import logoMinasLab from "../assets/logo-minaslab.webp";
 
 export default function Login() {
   const [usuario, setUsuario] = useState("");
@@ -27,9 +27,9 @@ export default function Login() {
     <div className="login">
       <div className="card">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center", marginBottom: 22 }}>
-          <span className="marca-icone" style={{ width: 52, height: 52, borderRadius: 16 }}><IcGrafico size={26} /></span>
+          <img src={logoMinasLab} alt="MinasLab, Laboratório de Controle de Qualidade" width="200" height="58" style={{ width: 200, height: "auto" }} />
           <div>
-            <h1 style={{ fontSize: 22 }}>Minas<span style={{ color: "var(--marca)" }}>Lab</span> · Gestão</h1>
+            <h1 style={{ fontSize: 20 }}>Gestão do setor</h1>
             <div className="suave peq">Entre com o mesmo usuário do Painel de Gestão</div>
           </div>
         </div>
