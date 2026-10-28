@@ -625,18 +625,24 @@ function Colaboradores({ contas, pessoasCRM, aoEditar, gravar, remover, registro
       <div className="grade grade-2">
         {contas.map(({ c, ex }) => (
           <Card key={c.id}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-              <div><h2>{nomeCurto(c.nome)}</h2><div className="suave peq">No CRM: {nomeCRM(c.crmId)}</div></div>
-              {c.desligadoEm ? <Chip tom="neutro">desligada em {dataCurta(c.desligadoEm)}{c.desligadoManual ? "" : " (RH)"}</Chip> : c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático (responsável no CRM)</Chip>}
-              {!c.desligadoEm && c.situacaoRH === "ambiguo" && <Chip tom="alerta">dois cadastros parecidos no RH: marque o desligamento em Editar, se for o caso</Chip>}
-              {!c.desligadoEm && c.situacaoRH === "nao_encontrado" && <Chip tom="neutro">não achei no RH pelo nome: desligamento só manual</Chip>}
-              {!c.desligadoEm && c.situacaoRH !== "nao_encontrado" && c.situacaoRH !== "ambiguo" && pessoasCRM.find((p) => p.id === c.crmId)?.ativo === false && <Chip tom="alerta">inativa no CRM: se saiu, marque o desligamento no RH</Chip>}
+            <h2 style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.nome}>{nomeCurto(c.nome)}</h2>
+            <div className="suave peq" style={{ marginTop: 2 }}>No CRM: {nomeCRM(c.crmId)}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {c.desligadoEm ? <Chip tom="neutro">desligada em {dataCurta(c.desligadoEm)}{c.desligadoManual ? "" : " (RH)"}</Chip> : c.ativo === false ? <Chip>só histórico</Chip> : <Chip tom="ok">pega propostas novas</Chip>}{c.automatico && <Chip tom="neutro">automático pelo CRM</Chip>}
+              {!c.desligadoEm && c.situacaoRH === "ambiguo" && <Chip tom="alerta" title="Há dois cadastros parecidos no RH. Se saiu, marque o desligamento em Editar.">dois nomes parecidos no RH</Chip>}
+              {!c.desligadoEm && c.situacaoRH === "nao_encontrado" && <Chip tom="alerta" title="O nome no RH está diferente do CRM. Corrija na ficha do RH para o desligamento ser automático.">nome diferente no RH</Chip>}
+              {!c.desligadoEm && c.situacaoRH !== "nao_encontrado" && c.situacaoRH !== "ambiguo" && pessoasCRM.find((p) => p.id === c.crmId)?.ativo === false && <Chip tom="alerta" title="Se saiu, marque o desligamento na ficha do RH.">inativa no CRM</Chip>}
             </div>
-            <div className="peq" style={{ marginTop: 10, lineHeight: 1.7 }}>
-              {c.ativo === false ? "Só o histórico de pagas" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · {ex.totais.propostas} propostas · gerada {brl(ex.totais.gerada)} · pago {brl(ex.totais.pago)} · falta {brl(ex.totais.aPagar)}
+            <div className="suave peq" style={{ marginTop: 10 }}>
+              {c.ativo === false ? "Só o histórico de pagas" : <>Propostas aprovadas a partir de <b>{dataCurta(c.desde)}</b></>} · taxa {[...(c.taxas || [])].sort((x, y) => String(x.desde).localeCompare(String(y.desde))).map((t) => `${pctTxt(t.pct)} desde ${dataCurta(t.desde)}`).join(", ")}
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-              {[...(c.taxas || [])].sort((a, b) => String(a.desde).localeCompare(String(b.desde))).map((t) => <Chip key={t.desde} tom="marca">{pctTxt(t.pct)} desde {dataCurta(t.desde)}</Chip>)}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+              {[["Propostas", ex.totais.propostas], ["Gerada", brl(ex.totais.gerada)], ["Pago", brl(ex.totais.pago)], ["Falta pagar", brl(ex.totais.aPagar)]].map(([r, v]) => (
+                <div key={r} style={{ background: "#f6faf9", border: "1px solid var(--linha)", borderRadius: 10, padding: "8px 10px", minWidth: 0 }}>
+                  <div className="suave" style={{ fontSize: 11 }}>{r}</div>
+                  <div className="tnum" style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v}</div>
+                </div>
+              ))}
             </div>
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
               <button type="button" className="btn claro mini" onClick={() => aoEditar(c)}>Editar</button>

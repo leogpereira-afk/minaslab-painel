@@ -56,8 +56,8 @@ export function Card({ className, semPad, children, ...r }) {
   return <section className={clsx("card", semPad && "sem-pad", className)} {...r}>{children}</section>;
 }
 
-export function Chip({ tom = "neutro", children }) {
-  return <span className={`chip ${tom}`}>{children}</span>;
+export function Chip({ tom = "neutro", title, children }) {
+  return <span className={`chip ${tom}`} title={title}>{children}</span>;
 }
 
 export function Kpi({ rotulo, valor, sub, tomSub }) {
