@@ -316,6 +316,12 @@ Deno.serve(async (req) => {
           || /bulk|list|junk/i.test(cabecalhos.get("precedence") || "") || cabecalhos.has("list-unsubscribe");
         const texto = (txt(m.text) || deHtml(m.html || "")) + (tamanho > MAX_BYTES ? "\n\n[E-mail grande demais para trazer ao CRM; abra no webmail.]" : "");
         const messageId = txt(m.messageId) || `<sem-id.${uid}.${validade}@${pasta}>`;
+        // Já gravado: só completa o html (se faltar), sem reenviar anexos.
+        const { data: ja } = await sb.from("email_mensagens").select("id,html").eq("message_id", messageId).maybeSingle();
+        if (ja) {
+          if (!ja.html && m.html) await sb.rpc("email_registrar", { p: { message_id: messageId, html: String(m.html).slice(0, 400000) } });
+          ultimo = uid; continue;
+        }
         const anexos: unknown[] = [];
         for (const a of (m.attachments || []) as any[]) {
           if (a.disposition === "inline" && a.contentId && /^image\//.test(a.mimeType || "")) continue; // assinatura/logo
@@ -334,7 +340,7 @@ Deno.serve(async (req) => {
           referencias: txt(m.references).split(/\s+/).filter(Boolean),
           direcao, de_email: de, de_nome: deNome,
           para: (m.to || []).map((x: any) => x.address).filter(Boolean), cc: (m.cc || []).map((x: any) => x.address).filter(Boolean),
-          assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), anexos, automatica, historico,
+          assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), html: m.html ? String(m.html).slice(0, 400000) : null, anexos, automatica, historico,
           recebido_em: (isNaN(quando.getTime()) ? new Date() : quando).toISOString(),
         } });
         if (error) { erros++; break; }
