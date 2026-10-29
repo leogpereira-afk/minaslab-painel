@@ -3,7 +3,7 @@
 // e ficam em email_mensagens; os enviados por aqui também vão para "Enviados" do webmail.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bot, Forward, Image as ImageIcon, Inbox, Link2, Mail, MailOpen, Paperclip, PenSquare, RefreshCw, Reply, ReplyAll, Search, Send, UserRoundPlus, X } from 'lucide-react'
+import { Bot, Folder, Forward, Image as ImageIcon, Inbox, Link2, Mail, MailOpen, Paperclip, PenSquare, RefreshCw, Reply, ReplyAll, Search, Send, UserRoundPlus, X } from 'lucide-react'
 import { PageShell } from '../../components/ui/PageShell'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -12,7 +12,9 @@ type Anexo = { nome: string; tipo?: string | null; tamanho?: number | null; cami
 type Resumo = { id: string; direcao: 'RECEIVED' | 'SENT'; de_email: string | null; de_nome: string | null; para: string[]; assunto: string | null; texto_resumido: string | null; anexos: Anexo[]; recebido_em: string; lido: boolean; lead_id: string | null; automatica: boolean }
 type Completo = Resumo & { message_id: string; cc: string[]; texto: string | null; html: string | null; referencias: string[] }
 type LeadMini = { id: string; nome: string | null; email_contato: string | null; empresa_contato: string | null; status: string | null }
-type Pasta = 'ENTRADA' | 'NAO_LIDOS' | 'SEM_ATENDIMENTO' | 'AUTOMATICOS' | 'ENVIADOS'
+// Pastas fixas do CRM; as pastas da caixa (criadas no webmail) entram como "P:<nome IMAP>".
+type Pasta = 'ENTRADA' | 'NAO_LIDOS' | 'SEM_ATENDIMENTO' | 'AUTOMATICOS' | 'ENVIADOS' | `P:${string}`
+type PastaCaixa = { nome: string; rotulo: string; especial: string | null; lida: boolean; ordem: number }
 type Rascunho = { para: string; cc: string; assunto: string; texto: string; responderA: string; leadId: string | null; titulo: string }
 
 const POR_PAGINA = 50
@@ -54,15 +56,17 @@ export function Email() {
   const [selId, setSelId] = useState<string | null>(null), [sel, setSel] = useState<Completo | null>(null), [lead, setLead] = useState<LeadMini | null>(null)
   const [imagens, setImagens] = useState(false), [textoPuro, setTextoPuro] = useState(false)
   const [rascunho, setRascunho] = useState<Rascunho | null>(null), [arquivo, setArquivo] = useState<File | null>(null), [enviando, setEnviando] = useState(false), [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
-  const [sincronizando, setSincronizando] = useState(false)
+  const [sincronizando, setSincronizando] = useState(false), [pastasCaixa, setPastasCaixa] = useState<PastaCaixa[]>([])
+  useEffect(() => { void supabase.from('email_pastas').select('nome,rotulo,especial,lida,ordem').order('ordem').then(({ data }) => setPastasCaixa(((data ?? []) as PastaCaixa[]).filter((x) => x.lida && x.especial !== 'inbox' && x.especial !== 'sent'))) }, [])
   const [ligando, setLigando] = useState(false), [buscaLead, setBuscaLead] = useState(''), [leadsAchados, setLeadsAchados] = useState<LeadMini[]>([])
 
   useEffect(() => { const t = setTimeout(() => { setBusca(q.trim().replace(/[,()%*]/g, ' ')); setPagina(0) }, 350); return () => clearTimeout(t) }, [q])
 
   const filtrar = useCallback((consulta: any, p: Pasta) => {
+    if (p.startsWith('P:')) return consulta.eq('pasta', p.slice(2))
     if (p === 'ENVIADOS') return consulta.eq('direcao', 'SENT')
     consulta = consulta.eq('direcao', 'RECEIVED')
-    if (p === 'ENTRADA') return consulta.eq('automatica', false)
+    if (p === 'ENTRADA') return consulta.eq('pasta', 'INBOX').eq('automatica', false)
     if (p === 'NAO_LIDOS') return consulta.eq('lido', false).eq('automatica', false)
     if (p === 'SEM_ATENDIMENTO') return consulta.is('lead_id', null).eq('automatica', false)
     return consulta.eq('automatica', true)
@@ -160,16 +164,18 @@ export function Email() {
   }
 
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA))
-  const tituloPasta = useMemo(() => PASTAS.find((p) => p.k === pasta)?.rotulo, [pasta])
+  const tituloPasta = useMemo(() => PASTAS.find((p) => p.k === pasta)?.rotulo || pastasCaixa.find((x) => `P:${x.nome}` === pasta)?.rotulo || 'pasta', [pasta, pastasCaixa])
 
   return <PageShell title="E-mail" description="Caixa contato@minaslab.net dentro do CRM. Tudo continua também no webmail da Hostinger." action={podeEscrever ? <button onClick={() => escrever('novo')} className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white"><PenSquare className="h-3.5 w-3.5" />Escrever</button> : undefined}>
     {erro && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{erro}</div>}
     <div className="grid min-h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100dvh-200px)] lg:grid-cols-[190px_minmax(280px,380px)_minmax(0,1fr)]">
       {/* Pastas */}
-      <nav className="flex gap-1 overflow-x-auto border-b p-2 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r" aria-label="Pastas">
+      <nav className="flex gap-1 overflow-x-auto border-b p-2 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:border-b-0 lg:border-r" aria-label="Pastas">
         {PASTAS.map(({ k, rotulo, Icone }) => <button key={k} onClick={() => { setPasta(k); setPagina(0); setSelId(null) }} className={`flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold ${pasta === k ? 'bg-sky-50 text-sky-800 ring-1 ring-sky-100' : 'text-slate-600 hover:bg-slate-50'}`}>
           <Icone className="h-4 w-4" /><span className="flex-1">{rotulo}</span>{contagens[k] ? <span className="rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] text-white">{contagens[k]}</span> : null}
         </button>)}
+        {pastasCaixa.length > 0 && <div className="hidden px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:block">Pastas da caixa</div>}
+        {pastasCaixa.map((x) => <button key={x.nome} onClick={() => { setPasta(`P:${x.nome}`); setPagina(0); setSelId(null) }} title={x.rotulo} className={`flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold ${pasta === `P:${x.nome}` ? 'bg-sky-50 text-sky-800 ring-1 ring-sky-100' : 'text-slate-600 hover:bg-slate-50'}`}><Folder className="h-4 w-4 shrink-0" /><span className="truncate">{x.rotulo}</span></button>)}
         <button onClick={() => void sincronizar()} disabled={sincronizando} className="mt-auto hidden items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 lg:flex"><RefreshCw className={`h-4 w-4 ${sincronizando ? 'animate-spin' : ''}`} />{sincronizando ? 'Lendo a caixa...' : 'Atualizar caixa'}</button>
       </nav>
 

@@ -18,7 +18,7 @@ const IMAP_HOST = "imap.hostinger.com", IMAP_PORT = 993;
 const SMTP_HOST = "smtp.hostinger.com", SMTP_PORT = 465;
 const BUCKET_ANEXOS = "email-anexos", BUCKET_ENVIO = "chatpro-envios";
 // O servidor de funções limita o tempo de CPU por chamada: poucos e-mails completos por rodada.
-const MAX_POR_RODADA = 60, MAX_COMPLETOS = 6, MAX_BYTES = 8 * 1024 * 1024; // completos por pasta
+const MAX_POR_RODADA = 60, MAX_COMPLETOS = 6, MAX_COMPLETOS_TOTAL = 14, MAX_BYTES = 8 * 1024 * 1024; // completos por pasta / por rodada
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, x-rotina-token, apikey, x-client-info" };
 
 function fromJson(name: string): string { try { return JSON.parse(Deno.env.get(name) ?? "{}")["default"] ?? ""; } catch { return ""; } }
@@ -94,16 +94,34 @@ class Imap {
 }
 const aspas = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 
+// Nomes de pasta IMAP vêm em "UTF-7 modificado" (ex.: "Or&AOc-amentos" = "Orçamentos").
+function utf7(nome: string) {
+  return nome.replace(/&([^-]*)-/g, (_, b: string) => {
+    if (!b) return "&";
+    const bin = atob(b.replace(/,/g, "/") + "===".slice((b.length + 3) % 4));
+    let out = "";
+    for (let i = 0; i + 1 < bin.length; i += 2) out += String.fromCharCode((bin.charCodeAt(i) << 8) | bin.charCodeAt(i + 1));
+    return out;
+  });
+}
+type PastaImap = { nome: string; rotulo: string; especial: "inbox" | "sent" | "trash" | "junk" | "drafts" | "archive" | null; selecionavel: boolean };
 async function pastas(imap: Imap) {
   const r = await imap.cmd('LIST "" "*"');
-  const nomes = r.linhas.filter((l) => l.startsWith("* LIST")).map((l) => {
+  const lista: PastaImap[] = r.linhas.filter((l) => l.startsWith("* LIST")).map((l) => {
     const flags = (l.match(/^\* LIST \(([^)]*)\)/)?.[1] || "").toLowerCase();
     const nome = (l.match(/"([^"]*)"\s*$/)?.[1] ?? l.split(" ").pop() ?? "").replace(/^"|"$/g, "");
-    return { nome, flags };
+    const curto = utf7(nome).replace(/^inbox[./]/i, "");
+    const especial = /^inbox$/i.test(nome) ? "inbox"
+      : flags.includes("\\sent") || /^(sent|enviad)/i.test(curto) ? "sent"
+      : flags.includes("\\trash") || /^(trash|lixeira|deleted)/i.test(curto) ? "trash"
+      : flags.includes("\\junk") || /^(junk|spam|lixo eletr)/i.test(curto) ? "junk"
+      : flags.includes("\\drafts") || /^(drafts|rascunho)/i.test(curto) ? "drafts"
+      : flags.includes("\\archive") || /^(archive|arquivo)/i.test(curto) ? "archive" : null;
+    const rotulo = especial === "inbox" ? "Entrada" : especial === "sent" ? "Enviados" : curto.replace(/[./]/g, " / ");
+    return { nome, rotulo, especial, selecionavel: !flags.includes("\\noselect") };
   });
-  const enviados = nomes.find((p) => p.flags.includes("\\sent"))?.nome
-    || nomes.find((p) => /^(inbox[./])?(sent|enviad)/i.test(p.nome))?.nome || "";
-  return { enviados };
+  const enviados = lista.find((p) => p.especial === "sent")?.nome || "";
+  return { enviados, lista };
 }
 
 // ---------------- SMTP mínimo (TLS 465, AUTH LOGIN) ----------------
@@ -266,7 +284,7 @@ Deno.serve(async (req) => {
   try { imap = await Imap.abrir(); } catch (e) { return json(200, { ok: false, erro: `Sem conexão com o e-mail: ${String(e).slice(0, 120)}` }); }
   const login = await imap.cmd(`LOGIN ${aspas(usuario)} ${aspas(senha)}`);
   if (!login.ok) { imap.fechar(); return json(200, { ok: false, erro: "Usuário ou senha do e-mail recusados pela Hostinger." }); }
-  const { enviados } = await pastas(imap);
+  const { enviados, lista: listaPastas } = await pastas(imap);
   if (acao === "testar") { await imap.cmd("LOGOUT").catch(() => null); imap.fechar(); return json(200, { ok: true, caixa: usuario, pasta_enviados: enviados || null }); }
 
   // Leitura em duas frentes por pasta:
@@ -278,7 +296,7 @@ Deno.serve(async (req) => {
   const lerUids = (r: Resposta) => (r.linhas.find((l) => l.startsWith("* SEARCH")) || "").replace("* SEARCH", "").trim().split(/\s+/).map(Number).filter((n) => n > 0);
 
   // Lê e grava um e-mail. "antigo" = data do e-mail fora da janela do histórico.
-  let completos = 0;
+  let completos = 0, completosTotal = 0;
   const processar = async (pasta: string, validade: number, uid: number, noHistorico: boolean): Promise<{ status: "ok" | "antigo" | "erro" | "pausa"; novo?: boolean }> => {
     // Primeiro só o cabeçalho (barato): data e Message-ID decidem se precisa baixar o resto.
     const cab = await imap.cmd(`UID FETCH ${uid} (RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE)])`);
@@ -288,11 +306,13 @@ Deno.serve(async (req) => {
     const dCab = dataCab ? new Date(dataCab) : null;
     if (noHistorico && dCab && !isNaN(dCab.getTime()) && Date.now() - dCab.getTime() > HISTORICO_DIAS * 864e5) return { status: "antigo" };
     if (idCab) {
-      const { data: jaCab } = await sb.from("email_mensagens").select("id,html").eq("message_id", idCab).maybeSingle();
+      const { data: jaCab } = await sb.from("email_mensagens").select("id,html,pasta").eq("message_id", idCab).maybeSingle();
+      // E-mail que chegou agora nesta pasta mas já existe: foi movido no webmail -> acompanha a pasta.
+      if (jaCab && !noHistorico && jaCab.pasta !== pasta) await sb.from("email_mensagens").update({ pasta, uid }).eq("id", jaCab.id);
       if (jaCab && (jaCab.html || noHistorico === false)) return { status: "ok" };
     }
-    if (completos >= MAX_COMPLETOS) return { status: "pausa" };
-    completos++;
+    if (completos >= MAX_COMPLETOS || completosTotal >= MAX_COMPLETOS_TOTAL) return { status: "pausa" };
+    completos++; completosTotal++;
     const tam = cab;
     const tamanho = Number(tam.linhas.join(" ").match(/RFC822\.SIZE (\d+)/)?.[1] || 0);
     const r = await imap.cmd(`UID FETCH ${uid} (INTERNALDATE ${tamanho > MAX_BYTES ? "BODY.PEEK[HEADER]" : "BODY.PEEK[]"})`);
@@ -336,7 +356,8 @@ Deno.serve(async (req) => {
       const up = await sb.storage.from(BUCKET_ANEXOS).upload(cam, bytes, { contentType: a.mimeType || "application/octet-stream", upsert: true });
       if (!up.error) anexos.push({ nome: a.filename || "anexo", tipo: a.mimeType, tamanho: bytes.length, caminho: `${BUCKET_ANEXOS}:${cam}` });
     }
-    const direcao = pasta === "INBOX" ? "RECEIVED" : "SENT";
+    // Enviados: a pasta de enviados ou, nas outras pastas, e-mail que saiu da própria caixa.
+    const direcao = pasta === enviados || (pasta !== "INBOX" && de === usuario.toLowerCase()) ? "SENT" : "RECEIVED";
     // E-mail antigo: só cria atendimento para remetente já cadastrado.
     const historico = Date.now() - quando.getTime() > 2 * 864e5;
     const { data: reg, error } = await sb.rpc("email_registrar", { p: {
@@ -351,7 +372,17 @@ Deno.serve(async (req) => {
     return { status: "ok", novo: Boolean((reg as any)?.atendimento_novo) };
   };
 
-  for (const pasta of ["INBOX", enviados].filter(Boolean)) {
+  // Pastas lidas: todas, menos Lixeira, Spam e Rascunhos. Entrada e Enviados primeiro;
+  // as demais em rodízio (cada rodada começa por uma), para nenhuma ficar parada.
+  const lidas = listaPastas.filter((p) => p.selecionavel && !["trash", "junk", "drafts"].includes(p.especial || ""));
+  const outras = lidas.filter((p) => p.especial !== "inbox" && p.especial !== "sent");
+  const giro = outras.length ? Math.floor(Date.now() / 300000) % outras.length : 0;
+  const ordem = [...lidas.filter((p) => p.especial === "inbox"), ...lidas.filter((p) => p.especial === "sent"), ...outras.slice(giro), ...outras.slice(0, giro)].map((p) => p.nome);
+  await sb.from("email_pastas").upsert(listaPastas.map((p, i) => ({ nome: p.nome, caixa: usuario, rotulo: p.rotulo, especial: p.especial, lida: lidas.some((l) => l.nome === p.nome), ordem: i, atualizado_em: new Date().toISOString() })), { onConflict: "nome" });
+  await sb.from("email_pastas").delete().lt("atualizado_em", new Date(Date.now() - 864e5).toISOString());
+
+  for (const pasta of ordem) {
+    if (Date.now() - inicio > LIMITE_MS) break;
     const chave = `${usuario}|${pasta}`;
     const sel = await imap.cmd(`EXAMINE ${aspas(pasta)}`);
     if (!sel.ok) { resultado[pasta] = { erro: sel.status }; continue; }
