@@ -17,7 +17,8 @@ import PostalMime from "https://esm.sh/postal-mime@2.4.4";
 const IMAP_HOST = "imap.hostinger.com", IMAP_PORT = 993;
 const SMTP_HOST = "smtp.hostinger.com", SMTP_PORT = 465;
 const BUCKET_ANEXOS = "email-anexos", BUCKET_ENVIO = "chatpro-envios";
-const MAX_POR_RODADA = 40, MAX_BYTES = 20 * 1024 * 1024;
+// O servidor de funções limita o tempo de CPU por chamada: poucos e-mails completos por rodada.
+const MAX_POR_RODADA = 60, MAX_COMPLETOS = 6, MAX_BYTES = 8 * 1024 * 1024; // completos por pasta
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, x-rotina-token, apikey, x-client-info" };
 
 function fromJson(name: string): string { try { return JSON.parse(Deno.env.get(name) ?? "{}")["default"] ?? ""; } catch { return ""; } }
@@ -268,88 +269,142 @@ Deno.serve(async (req) => {
   const { enviados } = await pastas(imap);
   if (acao === "testar") { await imap.cmd("LOGOUT").catch(() => null); imap.fechar(); return json(200, { ok: true, caixa: usuario, pasta_enviados: enviados || null }); }
 
-  const inicio = Date.now();
+  // Leitura em duas frentes por pasta:
+  //  1) novos: UIDs acima do maior já lido (ordem crescente) — chegam em até 5 minutos;
+  //  2) histórico: do maior para o menor, até achar e-mails com mais de 30 dias (pela data do e-mail;
+  //     a data interna do IMAP não serve: caixas migradas têm milhares de e-mails "recentes").
+  const inicio = Date.now(), LIMITE_MS = 100_000, HISTORICO_DIAS = 30;
   const resultado: Record<string, unknown> = {};
+  const lerUids = (r: Resposta) => (r.linhas.find((l) => l.startsWith("* SEARCH")) || "").replace("* SEARCH", "").trim().split(/\s+/).map(Number).filter((n) => n > 0);
+
+  // Lê e grava um e-mail. "antigo" = data do e-mail fora da janela do histórico.
+  let completos = 0;
+  const processar = async (pasta: string, validade: number, uid: number, noHistorico: boolean): Promise<{ status: "ok" | "antigo" | "erro" | "pausa"; novo?: boolean }> => {
+    // Primeiro só o cabeçalho (barato): data e Message-ID decidem se precisa baixar o resto.
+    const cab = await imap.cmd(`UID FETCH ${uid} (RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE)])`);
+    const cabTxt = cab.literais[0] ? dec.decode(cab.literais[0]).replace(/\r?\n[ \t]+/g, " ") : "";
+    const idCab = cabTxt.match(/^message-id:\s*(<[^>]+>)/im)?.[1] || "";
+    const dataCab = cabTxt.match(/^date:\s*(.+)$/im)?.[1]?.trim();
+    const dCab = dataCab ? new Date(dataCab) : null;
+    if (noHistorico && dCab && !isNaN(dCab.getTime()) && Date.now() - dCab.getTime() > HISTORICO_DIAS * 864e5) return { status: "antigo" };
+    if (idCab) {
+      const { data: jaCab } = await sb.from("email_mensagens").select("id,html").eq("message_id", idCab).maybeSingle();
+      if (jaCab && (jaCab.html || noHistorico === false)) return { status: "ok" };
+    }
+    if (completos >= MAX_COMPLETOS) return { status: "pausa" };
+    completos++;
+    const tam = cab;
+    const tamanho = Number(tam.linhas.join(" ").match(/RFC822\.SIZE (\d+)/)?.[1] || 0);
+    const r = await imap.cmd(`UID FETCH ${uid} (INTERNALDATE ${tamanho > MAX_BYTES ? "BODY.PEEK[HEADER]" : "BODY.PEEK[]"})`);
+    const bruto = r.literais[0];
+    if (!bruto) return { status: "ok" };
+    const internal = r.linhas.join(" ").match(/INTERNALDATE "([^"]+)"/)?.[1];
+    const m: any = await PostalMime.parse(bruto);
+    const quando = m.date && !isNaN(new Date(m.date).getTime()) ? new Date(m.date) : internal ? new Date(internal) : new Date();
+    if (noHistorico && Date.now() - quando.getTime() > HISTORICO_DIAS * 864e5) return { status: "antigo" };
+    const cabecalhos = new Map<string, string>((m.headers || []).map((h: any) => [String(h.key).toLowerCase(), String(h.value)]));
+    let de = txt(m.from?.address).toLowerCase(), deNome = txt(m.from?.name) || null;
+    // Formulário do site: chega "de" um endereço da MinasLab com o visitante no corpo
+    // ("De: Nome email@..."). Currículos ("Trabalhe no Minaslab") não viram atendimento.
+    let formularioRh = false;
+    const proprio = /@([a-z0-9-]+\.)*minaslab\./i.test(de);
+    if (proprio && pasta === "INBOX") {
+      const corpoForm = txt(m.text) || deHtml(m.html || "");
+      const v = corpoForm.match(/^\s*De:\s*(.*?)\s*<?([^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)>?\s*$/im);
+      formularioRh = /trabalhe|curr[ií]culo|vaga/i.test(txt(m.subject));
+      const resp = txt(m.replyTo?.[0]?.address).toLowerCase();
+      if (v && !/minaslab\./i.test(v[2])) { de = v[2].toLowerCase(); deNome = txt(v[1]) || deNome; }
+      else if (resp && !/minaslab\./i.test(resp)) { de = resp; deNome = txt(m.replyTo?.[0]?.name) || deNome; }
+    }
+    const automatica = formularioRh || /no-?reply|mailer-daemon|postmaster|notifica|newsletter/i.test(de)
+      || (cabecalhos.get("auto-submitted") || "no").toLowerCase() !== "no"
+      || /bulk|list|junk/i.test(cabecalhos.get("precedence") || "") || cabecalhos.has("list-unsubscribe");
+    const texto = (txt(m.text) || deHtml(m.html || "")) + (tamanho > MAX_BYTES ? "\n\n[E-mail grande demais para trazer ao CRM; abra no webmail.]" : "");
+    const messageId = txt(m.messageId) || `<sem-id.${uid}.${validade}@${pasta}>`;
+    // Já gravado: só completa o html (se faltar), sem reenviar anexos.
+    const { data: ja } = await sb.from("email_mensagens").select("id,html").eq("message_id", messageId).maybeSingle();
+    if (ja) {
+      if (!ja.html && m.html) await sb.rpc("email_registrar", { p: { message_id: messageId, html: String(m.html).slice(0, 400000) } });
+      return { status: "ok" };
+    }
+    const anexos: unknown[] = [];
+    for (const a of (m.attachments || []) as any[]) {
+      if (a.disposition === "inline" && a.contentId && /^image\//.test(a.mimeType || "")) continue; // assinatura/logo
+      const bytes = new Uint8Array(a.content as ArrayBuffer);
+      if (!bytes.length || bytes.length > 20 * 1024 * 1024) continue;
+      const cam = `${validade}/${uid}/${nomeArquivo(a.filename || "anexo")}`;
+      const up = await sb.storage.from(BUCKET_ANEXOS).upload(cam, bytes, { contentType: a.mimeType || "application/octet-stream", upsert: true });
+      if (!up.error) anexos.push({ nome: a.filename || "anexo", tipo: a.mimeType, tamanho: bytes.length, caminho: `${BUCKET_ANEXOS}:${cam}` });
+    }
+    const direcao = pasta === "INBOX" ? "RECEIVED" : "SENT";
+    // E-mail antigo: só cria atendimento para remetente já cadastrado.
+    const historico = Date.now() - quando.getTime() > 2 * 864e5;
+    const { data: reg, error } = await sb.rpc("email_registrar", { p: {
+      caixa: usuario, pasta, uid, message_id: messageId, in_reply_to: txt(m.inReplyTo) || null,
+      referencias: txt(m.references).split(/\s+/).filter(Boolean),
+      direcao, de_email: de, de_nome: deNome,
+      para: (m.to || []).map((x: any) => x.address).filter(Boolean), cc: (m.cc || []).map((x: any) => x.address).filter(Boolean),
+      assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), html: m.html ? String(m.html).slice(0, 400000) : null, anexos, automatica, historico,
+      recebido_em: quando.toISOString(),
+    } });
+    if (error) return { status: "erro" };
+    return { status: "ok", novo: Boolean((reg as any)?.atendimento_novo) };
+  };
+
   for (const pasta of ["INBOX", enviados].filter(Boolean)) {
     const chave = `${usuario}|${pasta}`;
     const sel = await imap.cmd(`EXAMINE ${aspas(pasta)}`);
     if (!sel.ok) { resultado[pasta] = { erro: sel.status }; continue; }
     const validade = Number(sel.linhas.join(" ").match(/UIDVALIDITY (\d+)/)?.[1] || 0);
-    const { data: est } = await sb.from("email_estado").select("uidvalidity,ultimo_uid").eq("chave", chave).maybeSingle();
-    let ultimo = est && Number(est.uidvalidity) === validade ? Number(est.ultimo_uid) : 0;
-    let busca: Resposta;
-    if (ultimo > 0) busca = await imap.cmd(`UID SEARCH UID ${ultimo + 1}:*`);
-    else {
-      // Primeira leitura: últimos 30 dias.
-      const d = new Date(Date.now() - 30 * 864e5);
-      const mes = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
-      busca = await imap.cmd(`UID SEARCH SINCE ${d.getUTCDate()}-${mes}-${d.getUTCFullYear()}`);
+    const { data: est } = await sb.from("email_estado").select("uidvalidity,ultimo_uid,piso_uid,historico_ok").eq("chave", chave).maybeSingle();
+    const mesma = !!est && Number(est.uidvalidity) === validade;
+    let ultimo = mesma ? Number(est!.ultimo_uid) : 0;
+    let piso = mesma && est!.piso_uid != null ? Number(est!.piso_uid) : null;
+    let historicoOk = mesma ? Boolean(est!.historico_ok) : false;
+    let gravados = 0, novos = 0, erros = 0, lidos = 0;
+    completos = 0;
+    const porRodada = MAX_POR_RODADA;
+
+    // Primeira vez: o histórico começa do e-mail mais novo e desce.
+    if (ultimo === 0) {
+      const todos = lerUids(await imap.cmd("UID SEARCH ALL"));
+      const topo = todos.length ? Math.max(...todos) : 0;
+      ultimo = topo; piso = topo + 1; historicoOk = topo === 0;
     }
-    const uids = (busca.linhas.find((l) => l.startsWith("* SEARCH")) || "").replace("* SEARCH", "").trim().split(/\s+/).map(Number).filter((n) => n > ultimo).sort((a, b) => a - b);
-    let gravados = 0, novos = 0, erros = 0;
-    for (const uid of uids.slice(0, MAX_POR_RODADA)) {
-      if (Date.now() - inicio > 100_000) break;
-      try {
-        const tam = await imap.cmd(`UID FETCH ${uid} (RFC822.SIZE)`);
-        const tamanho = Number(tam.linhas.join(" ").match(/RFC822\.SIZE (\d+)/)?.[1] || 0);
-        const r = await imap.cmd(`UID FETCH ${uid} (INTERNALDATE ${tamanho > MAX_BYTES ? "BODY.PEEK[HEADER]" : "BODY.PEEK[]"})`);
-        const bruto = r.literais[0];
-        if (!bruto) { ultimo = uid; continue; }
-        const internal = r.linhas.join(" ").match(/INTERNALDATE "([^"]+)"/)?.[1];
-        const m: any = await PostalMime.parse(bruto);
-        const cabecalhos = new Map<string, string>((m.headers || []).map((h: any) => [String(h.key).toLowerCase(), String(h.value)]));
-        let de = txt(m.from?.address).toLowerCase(), deNome = txt(m.from?.name) || null;
-        // Formulário do site: chega "de" um endereço da MinasLab com o visitante no corpo
-        // ("De: Nome email@..."). Currículos ("Trabalhe no Minaslab") não viram atendimento.
-        let formularioRh = false;
-        const proprio = /@([a-z0-9-]+\.)*minaslab\./i.test(de);
-        if (proprio && pasta === "INBOX") {
-          const corpoForm = txt(m.text) || deHtml(m.html || "");
-          const v = corpoForm.match(/^\s*De:\s*(.*?)\s*<?([^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)>?\s*$/im);
-          formularioRh = /trabalhe|curr[ií]culo|vaga/i.test(txt(m.subject));
-          const resp = txt(m.replyTo?.[0]?.address).toLowerCase();
-          if (v && !/minaslab\./i.test(v[2])) { de = v[2].toLowerCase(); deNome = txt(v[1]) || deNome; }
-          else if (resp && !/minaslab\./i.test(resp)) { de = resp; deNome = txt(m.replyTo?.[0]?.name) || deNome; }
-        }
-        const automatica = formularioRh || /no-?reply|mailer-daemon|postmaster|notifica|newsletter/i.test(de)
-          || (cabecalhos.get("auto-submitted") || "no").toLowerCase() !== "no"
-          || /bulk|list|junk/i.test(cabecalhos.get("precedence") || "") || cabecalhos.has("list-unsubscribe");
-        const texto = (txt(m.text) || deHtml(m.html || "")) + (tamanho > MAX_BYTES ? "\n\n[E-mail grande demais para trazer ao CRM; abra no webmail.]" : "");
-        const messageId = txt(m.messageId) || `<sem-id.${uid}.${validade}@${pasta}>`;
-        // Já gravado: só completa o html (se faltar), sem reenviar anexos.
-        const { data: ja } = await sb.from("email_mensagens").select("id,html").eq("message_id", messageId).maybeSingle();
-        if (ja) {
-          if (!ja.html && m.html) await sb.rpc("email_registrar", { p: { message_id: messageId, html: String(m.html).slice(0, 400000) } });
-          ultimo = uid; continue;
-        }
-        const anexos: unknown[] = [];
-        for (const a of (m.attachments || []) as any[]) {
-          if (a.disposition === "inline" && a.contentId && /^image\//.test(a.mimeType || "")) continue; // assinatura/logo
-          const bytes = new Uint8Array(a.content as ArrayBuffer);
-          if (!bytes.length || bytes.length > 20 * 1024 * 1024) continue;
-          const cam = `${validade}/${uid}/${nomeArquivo(a.filename || "anexo")}`;
-          const up = await sb.storage.from(BUCKET_ANEXOS).upload(cam, bytes, { contentType: a.mimeType || "application/octet-stream", upsert: true });
-          if (!up.error) anexos.push({ nome: a.filename || "anexo", tipo: a.mimeType, tamanho: bytes.length, caminho: `${BUCKET_ANEXOS}:${cam}` });
-        }
-        const direcao = pasta === "INBOX" ? "RECEIVED" : "SENT";
-        const quando = m.date ? new Date(m.date) : internal ? new Date(internal) : new Date();
-        // E-mail antigo (primeira leitura): só cria atendimento para remetente já cadastrado.
-        const historico = Date.now() - quando.getTime() > 2 * 864e5;
-        const { data: reg, error } = await sb.rpc("email_registrar", { p: {
-          caixa: usuario, pasta, uid, message_id: messageId, in_reply_to: txt(m.inReplyTo) || null,
-          referencias: txt(m.references).split(/\s+/).filter(Boolean),
-          direcao, de_email: de, de_nome: deNome,
-          para: (m.to || []).map((x: any) => x.address).filter(Boolean), cc: (m.cc || []).map((x: any) => x.address).filter(Boolean),
-          assunto: txt(m.subject), texto, texto_resumido: semCitacao(texto), html: m.html ? String(m.html).slice(0, 400000) : null, anexos, automatica, historico,
-          recebido_em: (isNaN(quando.getTime()) ? new Date() : quando).toISOString(),
-        } });
-        if (error) { erros++; break; }
-        gravados++; if ((reg as any)?.atendimento_novo) novos++;
-        ultimo = uid;
-      } catch { erros++; break; }
+
+    // 1) Novos.
+    const novosUids = lerUids(await imap.cmd(`UID SEARCH UID ${ultimo + 1}:*`)).filter((u) => u > ultimo).sort((a, b) => a - b);
+    for (const uid of novosUids) {
+      if (lidos >= porRodada || Date.now() - inicio > LIMITE_MS) break;
+      try { const r = await processar(pasta, validade, uid, false); lidos++; if (r.status === "pausa") break; if (r.status === "erro") { erros++; break; } gravados++; if (r.novo) novos++; ultimo = uid; }
+      catch { erros++; break; }
     }
-    await sb.from("email_estado").upsert({ chave, uidvalidity: validade, ultimo_uid: ultimo, atualizado_em: new Date().toISOString(), ultimo_erro: erros ? "falha ao ler uma mensagem" : null });
-    resultado[pasta] = { encontrados: uids.length, gravados, atendimentos_novos: novos, erros, restantes: Math.max(0, uids.filter((u) => u > ultimo).length) };
+
+    // 2) Histórico (mais novo -> mais antigo), pulando o que já está gravado com html.
+    let restanteHistorico = 0;
+    if (!historicoOk && piso != null && piso > 1) {
+      const abaixo = lerUids(await imap.cmd(`UID SEARCH UID 1:${piso - 1}`)).filter((u) => u < piso!).sort((a, b) => b - a);
+      const { data: ja } = await sb.from("email_mensagens").select("uid").eq("pasta", pasta).not("html", "is", null).in("uid", abaixo.slice(0, 600));
+      const prontos = new Set((ja ?? []).map((x: any) => Number(x.uid)));
+      let parou = false;
+      for (const uid of abaixo) {
+        if (lidos >= porRodada || Date.now() - inicio > LIMITE_MS) break;
+        if (prontos.has(uid)) { piso = uid; continue; }
+        try {
+          const r = await processar(pasta, validade, uid, true); lidos++;
+          if (r.status === "pausa") break;
+          if (r.status === "antigo") { historicoOk = true; parou = true; break; }
+          if (r.status === "erro") { erros++; break; }
+          gravados++; if (r.novo) novos++; piso = uid;
+        } catch { erros++; break; }
+      }
+      if (!parou && abaixo.length && piso === abaixo[abaixo.length - 1]) historicoOk = true;
+      if (!abaixo.length) historicoOk = true;
+      restanteHistorico = historicoOk ? 0 : abaixo.filter((u) => u < (piso ?? 0)).length;
+    } else historicoOk = true;
+
+    await sb.from("email_estado").upsert({ chave, uidvalidity: validade, ultimo_uid: ultimo, piso_uid: piso, historico_ok: historicoOk, atualizado_em: new Date().toISOString(), ultimo_erro: erros ? "falha ao ler uma mensagem" : null });
+    resultado[pasta] = { novos_na_caixa: novosUids.length, gravados, atendimentos_novos: novos, erros, historico_concluido: historicoOk, historico_restante: restanteHistorico };
   }
   await imap.cmd("LOGOUT").catch(() => null); imap.fechar();
   return json(200, { ok: true, caixa: usuario, pastas: resultado });
