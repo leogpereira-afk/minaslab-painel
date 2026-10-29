@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { BarChart3, BrainCircuit, CalendarDays, ChevronDown, ClipboardList, Columns3, FileText, FlaskConical, Gavel, Handshake, History, Import, LayoutDashboard, Layers3, LogOut, MapPinned, Menu, Repeat2, Settings, ShieldCheck, Smile, Users, X, ListTodo, Truck } from 'lucide-react'
+import { BarChart3, BrainCircuit, CalendarDays, ChevronDown, ClipboardList, Columns3, FileText, FlaskConical, Gavel, Handshake, History, Import, LayoutDashboard, Layers3, LogOut, Mail, MapPinned, Menu, Repeat2, Settings, ShieldCheck, Smile, Users, X, ListTodo, Truck } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import type { PermissionCode } from '../contexts/AuthContext'
 import { UserAvatar } from '../components/users/UserAvatar'
@@ -9,7 +9,7 @@ type MenuItem = readonly [string, string, typeof LayoutDashboard, PermissionCode
 type MenuGroup = readonly [string, MenuItem[]]
 const dashboard: MenuItem = ['Dashboard','/dashboard',LayoutDashboard,['crm.read','operational.read']]
 const groups: MenuGroup[] = [
- ['Comercial',[[ 'Atendimentos','/atendimentos',ClipboardList,['crm.read']],[ 'Oportunidades','/oportunidades',Handshake,['crm.read']],[ 'Pipeline','/pipeline',Columns3,['crm.read']],[ 'Propostas','/propostas',FileText,['crm.read']],[ 'Clientes','/clientes',Users,['crm.read']]]],
+ ['Comercial',[[ 'Atendimentos','/atendimentos',ClipboardList,['crm.read']],[ 'E-mail','/email',Mail,['crm.read']],[ 'Oportunidades','/oportunidades',Handshake,['crm.read']],[ 'Pipeline','/pipeline',Columns3,['crm.read']],[ 'Propostas','/propostas',FileText,['crm.read']],[ 'Clientes','/clientes',Users,['crm.read']]]],
  ['Operação',[[ 'Contratos','/contratos',FileText,['operational.read']],[ 'Ordens de Serviço','/ordens-servico',FlaskConical,['operational.read']],[ 'Coletas','/coletas',MapPinned,['crm.read']],[ 'Agenda','/agenda',CalendarDays,['crm.read']]]],
  ['Pós-venda',[[ 'Visão Geral','/pos-venda/visao-geral',BarChart3,['crm.read','operational.read']],[ 'Clientes Recorrentes','/pos-venda/clientes-recorrentes',Repeat2,['crm.read','operational.read']],[ 'Calendário','/pos-venda/calendario',CalendarDays,['crm.read']],[ 'Acompanhamentos','/pos-venda/acompanhamentos',ListTodo,['crm.read','operational.read']],[ 'Satisfação (NPS)','/pos-venda/nps',Smile,['crm.read']],[ 'Histórico','/pos-venda/historico',History,['crm.read','operational.read']]]],
  ['Gestão',[[ 'Licitações','/licitacoes',Gavel,['crm.read']],[ 'Acompanhamento de Provedores','/provedores',Truck,['crm.read','operational.read']],[ 'Tarefas','/tarefas',ListTodo,['crm.read']],[ 'Inteligência','/inteligencia',BrainCircuit,['crm.read']]]],
