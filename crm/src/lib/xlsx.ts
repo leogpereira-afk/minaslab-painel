@@ -155,7 +155,14 @@ function parseWorksheet(document: Document, sharedStrings: string[]): { headers:
   return { headers, rows }
 }
 
-export async function parseXlsxFirstDataSheet(file: File): Promise<XlsxParseResult> {
+type WorkbookSource = {
+  bytes: Uint8Array
+  entries: Map<string, ZipEntry>
+  sharedStrings: string[]
+  candidates: Array<{ name: string; path: string }>
+}
+
+async function openWorkbook(file: File): Promise<WorkbookSource> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const entries = readZipDirectory(bytes)
   const decoder = new TextDecoder('utf-8')
@@ -192,17 +199,43 @@ export async function parseXlsxFirstDataSheet(file: File): Promise<XlsxParseResu
   }
 
   if (!candidates.length) throw new Error('O arquivo .xlsx não possui planilhas legíveis.')
+  return { bytes, entries, sharedStrings, candidates }
+}
 
+async function readSheet(source: WorkbookSource, candidate: { name: string; path: string }): Promise<XlsxParseResult | null> {
+  const entry = source.entries.get(candidate.path)
+  if (!entry) return null
+  const worksheet = xml(new TextDecoder('utf-8').decode(await extractZipEntry(source.bytes, entry)), candidate.path)
+  return { ...parseWorksheet(worksheet, source.sharedStrings), sheetName: candidate.name }
+}
+
+/** Escolhe a primeira planilha com cabeçalho e linhas (ou, na falta, a primeira só com cabeçalho). */
+export function pickFirstDataSheet(sheets: XlsxParseResult[]): XlsxParseResult {
+  const withHeaders = sheets.filter(sheet => sheet.headers.length)
+  const result = withHeaders.find(sheet => sheet.rows.length) ?? withHeaders[0]
+  if (result) return result
+  throw new Error('Nenhuma planilha com cabeçalho legível foi encontrada no arquivo .xlsx.')
+}
+
+/** Lê todas as planilhas do arquivo (inclusive ocultas), na ordem do workbook. */
+export async function parseXlsxAllSheets(file: File): Promise<XlsxParseResult[]> {
+  const source = await openWorkbook(file)
+  const sheets: XlsxParseResult[] = []
+  for (const candidate of source.candidates) {
+    const parsed = await readSheet(source, candidate)
+    if (parsed) sheets.push(parsed)
+  }
+  return sheets
+}
+
+export async function parseXlsxFirstDataSheet(file: File): Promise<XlsxParseResult> {
+  const source = await openWorkbook(file)
   let firstNonEmpty: XlsxParseResult | null = null
-  for (const candidate of candidates) {
-    const entry = entries.get(candidate.path)
-    if (!entry) continue
-    const worksheet = xml(decoder.decode(await extractZipEntry(bytes, entry)), candidate.path)
-    const parsed = parseWorksheet(worksheet, sharedStrings)
-    if (parsed.headers.length) {
-      const result = { ...parsed, sheetName: candidate.name }
-      if (parsed.rows.length) return result
-      firstNonEmpty ??= result
+  for (const candidate of source.candidates) {
+    const parsed = await readSheet(source, candidate)
+    if (parsed?.headers.length) {
+      if (parsed.rows.length) return parsed
+      firstNonEmpty ??= parsed
     }
   }
 
