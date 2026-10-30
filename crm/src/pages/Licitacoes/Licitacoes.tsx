@@ -11,6 +11,10 @@ import { PeriodSelect } from '../../components/ui/PeriodFilter'
 import { currentPeriod, inPeriod, yearsFrom, type PeriodFilter } from '../../lib/period'
 
 type Option={value:string;label:string}
+type Tab='licitacoes'|'radar'|'consultas'|'pncp'
+const tabs:{key:Tab;label:string}[]=[{key:'licitacoes',label:'Licitações'},{key:'radar',label:'Radar de oportunidades'},{key:'consultas',label:'Consultas às fontes'},{key:'pncp',label:'Oportunidades PNCP'}]
+const TAB_KEY='licitacoes.aba'
+function initialTab():Tab{try{const v=localStorage.getItem(TAB_KEY);return tabs.some(t=>t.key===v)?v as Tab:'licitacoes'}catch{return 'licitacoes'}}
 type Bid={id:string;numero:string;orgao:string;modalidade:string|null;objeto:string;portal_url:string|null;municipio:string|null;uf:string|null;status:string;data_publicacao:string|null;data_sessao:string|null;valor_estimado:number|null;valor_proposta:number|null;valor_homologado:number|null;cliente_id:string|null;proposta_id:string|null;contrato_id:string|null;responsavel_id:string|null;resultado:string|null;motivo_perda:string|null;observacoes:string|null;data_consulta:string|null;created_at:string;updated_at:string}
 type Deadline={id:string;tipo:string;titulo:string;prazo:string;lembrete_em:string|null;status:string;responsavel_id:string|null;tarefa_id:string|null}
 type Competitor={id:string;nome:string;valor_proposta:number|null;classificacao:number|null;vencedora:boolean}
@@ -33,6 +37,8 @@ const bidDate=(x:Bid)=>x.data_sessao??x.data_publicacao??x.created_at
 
 export function Licitacoes(){
  const {hasPermission,session}=useAuth(),canWrite=hasPermission('crm.write')
+ const[tab,setTabState]=useState<Tab>(initialTab)
+ function setTab(t:Tab){setTabState(t);try{localStorage.setItem(TAB_KEY,t)}catch{/* sem armazenamento */}}
  const[rows,setRows]=useState<Bid[]>([]),[clients,setClients]=useState<Option[]>([]),[proposals,setProposals]=useState<Option[]>([]),[contracts,setContracts]=useState<Option[]>([]),[profiles,setProfiles]=useState<Option[]>([])
  const[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState('TODOS'),[responsibleFilter,setResponsibleFilter]=useState('TODOS'),[ymFilter,setYmFilter]=useState<PeriodFilter>(currentPeriod)
  const[formOpen,setFormOpen]=useState(false),[editing,setEditing]=useState<string|null>(null),[form,setForm]=useState<Form>(empty),[saving,setSaving]=useState(false)
@@ -64,11 +70,14 @@ export function Licitacoes(){
 
  return <PageShell title="Licitações" description="Fluxo MinasLab: cadastro, prazos, documentos, proposta, resultado e contrato." action={canWrite?<Button onClick={()=>{setEditing(null);setForm(empty);setFormOpen(true)}}><Plus className="h-4 w-4"/>Nova licitação</Button>:undefined}>
   {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+  <div role="tablist" aria-label="Seções de licitações" className="flex flex-wrap gap-2">{tabs.map(t=><button key={t.key} type="button" role="tab" aria-selected={tab===t.key} onClick={()=>setTab(t.key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab===t.key?'bg-teal-700 text-white':'border border-slate-200 bg-white text-slate-600 hover:border-teal-300'}`}>{t.label}</button>)}</div>
+  {tab==='licitacoes'&&<>
   <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={Gavel} label="Em andamento" value={String(stats.open)}/><Metric icon={Bell} label="Sessões nos próximos 7 dias" value={String(stats.next)}/><Metric icon={Trophy} label="Ganhas" value={String(stats.won)}/><Metric icon={Target} label="Valor homologado" value={brl.format(stats.value)}/></section>
-  <FontesConsultas canWrite={canWrite} profiles={profiles} userId={session?.user.id??null}/>
-  <PncpOpportunities onConverted={load}/>
   <Card><CardBody className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_200px_220px_auto_auto]"><Input aria-label="Buscar licitação" placeholder="Número, órgão, objeto ou modalidade..." value={query} onChange={e=>setQuery(e.target.value)}/><Select aria-label="Status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="TODOS">Todos os status</option>{statuses.map(s=><option key={s}>{s}</option>)}</Select><Options value={responsibleFilter} change={setResponsibleFilter} options={profiles} blank="Todos os responsáveis" blankValue="TODOS"/><PeriodSelect value={ymFilter} onChange={setYmFilter} years={years}/><Button variant="secondary" onClick={()=>void load()}><RefreshCw className={`h-4 w-4 ${loading?'animate-spin':''}`}/>Atualizar</Button></CardBody></Card>
   <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Licitação</th><th className="px-4 py-3">Órgão / objeto</th><th className="px-4 py-3">Sessão</th><th className="px-4 py-3">Responsável</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead><tbody>{!loading&&filtered.length===0?<tr><td colSpan={7} className="p-12 text-center text-slate-500">Nenhuma licitação encontrada.</td></tr>:filtered.map(x=><tr key={x.id} className="border-b border-slate-100 last:border-0"><td className="px-4 py-3 font-semibold">{x.numero}<div className="text-xs font-normal text-slate-500">{x.modalidade||'Sem modalidade'}</div></td><td className="max-w-md px-4 py-3"><div className="font-medium">{x.orgao}</div><div className="truncate text-xs text-slate-500">{x.objeto}</div></td><td className="whitespace-nowrap px-4 py-3">{when(x.data_sessao)}</td><td className="px-4 py-3">{profiles.find(p=>p.value===x.responsavel_id)?.label||'Não definido'}</td><td className="whitespace-nowrap px-4 py-3 font-semibold">{brl.format(x.valor_proposta??x.valor_estimado??0)}</td><td className="px-4 py-3"><Badge variant={variant(x.status)}>{x.status.replaceAll('_',' ')}</Badge></td><td className="px-4 py-3"><div className="flex justify-end gap-2"><IconButton title="Ver detalhes" onClick={()=>void detail(x)}><Eye className="h-4 w-4"/></IconButton>{canWrite&&<IconButton title="Editar" onClick={()=>edit(x)}><Edit3 className="h-4 w-4"/></IconButton>}</div></td></tr>)}</tbody></table></div></Card>
+  </>}
+  {(tab==='radar'||tab==='consultas')&&<FontesConsultas view={tab} canWrite={canWrite} profiles={profiles} userId={session?.user.id??null}/>}
+  {tab==='pncp'&&<PncpOpportunities onConverted={load}/>}
   <BidForm open={formOpen} close={()=>setFormOpen(false)} form={form} setForm={setForm} save={saveBid} saving={saving} clients={clients} proposals={proposals} contracts={contracts} profiles={profiles}/>
   <Detail bid={selected} close={()=>setSelected(null)} canWrite={canWrite} busy={busy} profiles={profiles} responsibles={responsibles} setTeam={setTeam} deadlines={deadlines} deadline={deadline} setDeadline={setDeadline} addDeadline={addDeadline} toggleDeadline={toggleDeadline} competitors={competitors} competitor={competitor} setCompetitor={setCompetitor} addCompetitor={addCompetitor} docs={docs} docCategory={docCategory} setDocCategory={setDocCategory} upload={upload} download={download} removeDoc={removeDoc}/>
  </PageShell>

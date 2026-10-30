@@ -21,7 +21,7 @@ function LastCheck({ c }: { c: Consulta | undefined }) {
 }
 
 /** Radar de fontes + registro das consultas feitas em cada fonte (data e resultado). */
-export function FontesConsultas({ canWrite, profiles, userId }: { canWrite: boolean; profiles: Option[]; userId: string | null }) {
+export function FontesConsultas({ canWrite, profiles, userId, view }: { canWrite: boolean; profiles: Option[]; userId: string | null; view: 'radar' | 'consultas' }) {
   const [rows, setRows] = useState<Consulta[]>([])
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
@@ -63,11 +63,11 @@ export function FontesConsultas({ canWrite, profiles, userId }: { canWrite: bool
   const consultadasHoje = sourceTargets.filter(t => last.get(t.label)?.data_consulta === today()).length
 
   return <>
-    <Card><CardBody><details>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+    {view === 'radar' && <Card><CardBody>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div><div className="font-bold text-slate-900">Radar de oportunidades públicas</div><p className="mt-1 text-sm text-slate-500">Atalhos para órgãos e entidades com potencial de contratação dos serviços da MinasLab, com a data da última consulta de cada fonte.</p></div>
-        <span className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-teal-700">Ver {total} fontes · {consultadasHoje} consultadas hoje</span>
-      </summary>
+        <span className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-teal-700">{total} fontes · {consultadasHoje} consultadas hoje</span>
+      </div>
       <div className="mt-5 grid gap-3 lg:grid-cols-2">{opportunitySources.map(source => {
         const badge = <span className={`mt-0.5 rounded-full px-2 py-1 text-[10px] font-bold ${source.priority === 'ALTA' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{source.priority === 'ALTA' ? 'ALTA' : 'MÉDIA'}</span>
         const links = source.links ?? (source.url ? [{ label: source.name, url: source.url }] : [])
@@ -81,9 +81,9 @@ export function FontesConsultas({ canWrite, profiles, userId }: { canWrite: bool
         </span></div>
       })}</div>
       <p className="mt-4 text-xs text-slate-500">Nos portais gerais, pesquise pelo nome do órgão e por termos como análise de água, potabilidade, efluentes, microbiologia e monitoramento ambiental.</p>
-    </details></CardBody></Card>
+    </CardBody></Card>}
 
-    <Card><CardBody>
+    {view === 'consultas' && <Card><CardBody>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-teal-50 text-teal-700"><ClipboardCheck className="h-5 w-5" /></span><div><div className="font-bold text-slate-900">Consultas às fontes</div><p className="text-sm text-slate-500">Registro de quando cada fonte foi olhada e o que foi encontrado.</p></div></div>
         <div className="flex flex-wrap gap-2">
@@ -104,7 +104,7 @@ export function FontesConsultas({ canWrite, profiles, userId }: { canWrite: bool
         </tr>)}</tbody>
       </table></div>
       {lista.length > limit && <div className="mt-3 text-center"><Button variant="secondary" onClick={() => setLimit(l => l + 20)}>Mostrar mais</Button></div>}
-    </CardBody></Card>
+    </CardBody></Card>}
 
     <Modal open={open} onClose={() => setOpen(false)} title="Registrar consulta">
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
