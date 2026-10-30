@@ -34,7 +34,10 @@ async function lerCopiaFinanceira({ atualizar = false } = {}) {
   try { anterior = await guardar(chave, null, 'readonly'); } catch { /* still allow online use */ }
   validarSessao();
   if (anterior?.versao !== 1) anterior = null;
-  if (anterior && !atualizar && anterior.revisao === versaoLocal) return { ...anterior, salvo: true };
+  // A Omie sincroniza sozinha a cada 15 min e isso não muda a revisão local: uma cópia com mais de
+  // 10 minutos é atualizada (só o que mudou vem do servidor), para o painel não mostrar valores velhos.
+  const recente = anterior && Date.now() - new Date(anterior.atualizadoEm || 0).getTime() < 10 * 60 * 1000;
+  if (anterior && !atualizar && recente && anterior.revisao === versaoLocal) return { ...anterior, salvo: true };
   try {
     const nova = await sincronizarCopia(anterior, async (action, corpo) => {
       const resp = await comCracha(FINANCEIRO, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...corpo }) });
