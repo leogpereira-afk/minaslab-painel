@@ -20,29 +20,57 @@ type CompetitorForm={nome:string;valor_proposta:string;classificacao:string;venc
 
 const statuses=['MONITORAMENTO','ANALISE','PREPARACAO','PROPOSTA_ENVIADA','SESSAO','HABILITACAO','ADJUDICADA','GANHA','PERDIDA','CANCELADA']
 const modalities=['Pregão eletrônico','Pregão presencial','Concorrência eletrônica','Concorrência presencial','Concurso','Leilão','Diálogo competitivo','Dispensa eletrônica','Dispensa de licitação','Inexigibilidade','Credenciamento','Chamamento público','Outra']
-const opportunitySources=[
+type SourceLink={label:string;url:string}
+type OpportunitySource={priority:'ALTA'|'MEDIA';name:string;scope:string;url?:string;links?:SourceLink[]}
+const opportunitySources:OpportunitySource[]=[
  {priority:'ALTA',name:'Prefeitura de Montes Claros',scope:'Água potável, poços, escolas, unidades de saúde, sedimentos e meio ambiente',url:'https://licitacoes.montesclaros.mg.gov.br/licitacoes'},
  {priority:'ALTA',name:'Copasa MG',scope:'Água bruta e tratada, efluentes, ETA/ETE e monitoramento',url:'https://www.copasa.com.br/wps/portal/internet/fornecedores'},
- {priority:'ALTA',name:'SAAEs de Minas Gerais',scope:'Potabilidade, microbiologia, físico-química e efluentes',url:'https://pncp.gov.br/app/editais'},
+ {priority:'ALTA',name:'SAAEs do Norte de Minas',scope:'Potabilidade, microbiologia, físico-química e efluentes — página de licitações de cada SAAE',links:[
+  {label:'SAAE Bocaiúva',url:'https://saaebocaiuva.com.br/licitacoes'},
+  {label:'SAAE Buritizeiro',url:'https://saaeburitizeiro.mg.gov.br/licitacoes/'},
+  {label:'SAAE Francisco Sá',url:'https://saaefranciscosa.com.br/licitacoes'},
+  {label:'SAAE Pirapora',url:'https://www.saaepirapora.com.br/compras'},
+  {label:'SAAE São João da Lagoa',url:'https://saaesaojoaodalagoa.com.br/licitacoes/'},
+ ]},
+ {priority:'MEDIA',name:'SAAEs de outras regiões de MG',scope:'Autarquias municipais de água e esgoto com licitações próprias',links:[
+  {label:'SAAE Itaúna',url:'https://www.saaeitauna.com.br/portal/editais/1'},
+  {label:'SAAE Formiga',url:'https://saaeformiga.com.br/portal/licitacao/lista'},
+  {label:'SAAE Passos',url:'https://saaepassos.com.br/licitacao'},
+  {label:'SAAE Boa Esperança',url:'https://www.saae.boaesperanca.mg.gov.br/licitacoes'},
+  {label:'SAAE Machado',url:'https://saaemachado.mg.gov.br/licitacoes/'},
+  {label:'SAAE Carmo da Mata',url:'https://saaecarmodamata.org.br/licitacoes/'},
+  {label:'SAAE Mariana',url:'https://saaemariana.mg.gov.br/licitacoes/'},
+  {label:'SAAE Guanhães',url:'https://saaeguanhaes.com.br/licitacoes/1'},
+  {label:'SAAE Itabira',url:'https://www.saaeitabira.com.br/licita%C3%A7%C3%B5es'},
+  {label:'DMAE Poços de Caldas',url:'https://dmaepc.mg.gov.br/licitacoes/'},
+  {label:'DMAE Uberlândia',url:'https://www.uberlandia.mg.gov.br/prefeitura/orgaos-municipais/dmae/licitacoes-dmae/'},
+  {label:'SAE Araguari',url:'https://ilai.memory.com.br/#/public/licitacoes/menu'},
+ ]},
  {priority:'ALTA',name:'Prefeituras do Norte de Minas',scope:'Água de escolas, hospitais, UBS, poços e comunidades rurais',url:'https://pncp.gov.br/app/editais'},
- {priority:'ALTA',name:'Consórcios intermunicipais',scope:'Programas ambientais e de saneamento',url:'https://pncp.gov.br/app/editais'},
- {priority:'ALTA',name:'IFNMG',scope:'Água, efluentes e serviços laboratoriais',url:'https://www.ifnmg.edu.br/licitacoes-e-contratos'},
- {priority:'ALTA',name:'Unimontes',scope:'Laboratórios, hospitais, água e monitoramento',url:'https://unimontes.br/editais/'},
- {priority:'ALTA',name:'Hospital Universitário Clemente de Faria',scope:'Qualidade da água e serviços relacionados',url:'https://unimontes.br/editais/'},
- {priority:'ALTA',name:'FUNORTE e instituições elegíveis',scope:'Contratações e oportunidades institucionais publicadas',url:'https://www.funorte.edu.br/'},
- {priority:'ALTA',name:'IMA/MG',scope:'Programas sanitários e ambientais',url:'https://compras.mg.gov.br/'},
- {priority:'ALTA',name:'IGAM',scope:'Monitoramento de recursos hídricos',url:'https://compras.mg.gov.br/'},
- {priority:'ALTA',name:'SEMAD/MG',scope:'Monitoramento ambiental',url:'https://compras.mg.gov.br/'},
- {priority:'ALTA',name:'FEAM',scope:'Água, efluentes e monitoramento ambiental',url:'https://compras.mg.gov.br/'},
- {priority:'MEDIA',name:'Cemig',scope:'Água, reservatórios e monitoramento ambiental',url:'https://pncp.gov.br/app/editais'},
+ {priority:'ALTA',name:'Consórcios intermunicipais',scope:'Programas ambientais e de saneamento',links:[
+  {label:'CODANORTE',url:'https://codanorte.mg.gov.br/licitacoes/'},
+  {label:'CIMAMS',url:'https://www.cimams.mg.gov.br/licitacoes/'},
+  {label:'Outros (PNCP)',url:'https://pncp.gov.br/app/editais'},
+ ]},
+ {priority:'ALTA',name:'CODEVASF — 1ª SR Montes Claros',scope:'Saneamento, irrigação, água e projetos ambientais',url:'https://editais2026.codevasf.gov.br/licitacoes/1a-superintendencia-regional-montes-claros-mg/pregao_eletronico/editais-publicados-em-2026'},
+ {priority:'ALTA',name:'IFNMG',scope:'Água, efluentes e serviços laboratoriais',url:'https://www.ifnmg.edu.br/compras-e-contratos/licitacoes'},
+ {priority:'ALTA',name:'Unimontes e Hospital Universitário Clemente de Faria',scope:'Laboratórios, hospital, água e monitoramento (o HUCF compra pelas licitações da Unimontes)',url:'https://unimontes.br/licitacao/'},
+ {priority:'ALTA',name:'Órgãos estaduais — IMA, IGAM, SEMAD, FEAM',scope:'Programas sanitários, recursos hídricos e monitoramento ambiental (Portal de Compras MG)',url:'https://compras.mg.gov.br/'},
+ {priority:'ALTA',name:'Escolas estaduais',scope:'Potabilidade quando contratada pela Caixa Escolar',links:[
+  {label:'Caixa Escolar (SGD)',url:'https://caixaescolar.educacao.mg.gov.br/selecionar-perfil'},
+  {label:'SRE Montes Claros — processos simplificados',url:'https://sremontesclaros.educacao.mg.gov.br/licitacoes/processo-simplificado/'},
+ ]},
+ {priority:'MEDIA',name:'Cemig',scope:'Água, reservatórios e monitoramento ambiental',url:'https://www.cemig.com.br/fornecedores/portal-de-compras/'},
  {priority:'MEDIA',name:'DNOCS',scope:'Barragens, reservatórios e qualidade da água',url:'https://www.gov.br/dnocs/pt-br/acesso-a-informacao/licitacoes-e-contratos'},
- {priority:'MEDIA',name:'CODEVASF',scope:'Saneamento, irrigação, água e projetos ambientais',url:'https://licitacoes.codevasf.gov.br/licitacoes'},
  {priority:'MEDIA',name:'FUNASA',scope:'Saneamento e qualidade da água',url:'https://www.gov.br/funasa/pt-br/acesso-a-informacao/licitacoes-e-contratos'},
  {priority:'MEDIA',name:'Consórcios de saúde',scope:'Controle de qualidade de água',url:'https://pncp.gov.br/app/editais'},
- {priority:'MEDIA',name:'Universidades e Institutos Federais',scope:'Análises laboratoriais e ambientais',url:'https://pncp.gov.br/app/editais'},
- {priority:'MEDIA',name:'Presídios e unidades públicas',scope:'Potabilidade e reservatórios',url:'https://compras.mg.gov.br/'},
- {priority:'MEDIA',name:'Escolas estaduais',scope:'Potabilidade quando contratada externamente',url:'https://caixaescolar.educacao.mg.gov.br/selecionar-perfil'},
-] as const
+ {priority:'MEDIA',name:'Universidades federais',scope:'Análises laboratoriais e ambientais',links:[
+  {label:'UFMG — ICA Montes Claros',url:'https://www.ufmg.br/montesclaros/secao-de-compras-e-licitacoes/'},
+  {label:'UFVJM',url:'https://portal.ufvjm.edu.br/proad/licitacoes-e-contratos'},
+  {label:'Outras (PNCP)',url:'https://pncp.gov.br/app/editais'},
+ ]},
+ {priority:'MEDIA',name:'Presídios e unidades públicas estaduais',scope:'Potabilidade e reservatórios',url:'https://compras.mg.gov.br/'},
+]
 const empty:Form={numero:'',orgao:'',modalidade:'Pregão eletrônico',objeto:'',portal_url:'',municipio:'',uf:'MG',status:'MONITORAMENTO',data_publicacao:'',data_sessao:'',valor_estimado:'',valor_proposta:'',valor_homologado:'',cliente_id:'',proposta_id:'',contrato_id:'',responsavel_id:'',resultado:'',motivo_perda:'',observacoes:''}
 const emptyDeadline:DeadlineForm={tipo:'PRAZO',titulo:'',prazo:'',lembrete_em:'',responsavel_id:'',criar_tarefa:true}
 const emptyCompetitor:CompetitorForm={nome:'',valor_proposta:'',classificacao:'',vencedora:false}
@@ -97,7 +125,7 @@ export function Licitacoes(){
 }
 
 function Metric({icon:Icon,label,value}:{icon:typeof Gavel;label:string;value:string}){return <Card className="h-20"><CardBody className="flex h-full items-center gap-3 p-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-teal-50 text-teal-700"><Icon className="h-5 w-5"/></span><div className="min-w-0"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 truncate text-xl font-bold">{value}</div></div></CardBody></Card>}
-function OpportunitySources(){return <Card><CardBody><details><summary className="flex cursor-pointer list-none items-center justify-between gap-4"><div><div className="font-bold text-slate-900">Radar de oportunidades públicas</div><p className="mt-1 text-sm text-slate-500">Atalhos para órgãos e entidades com potencial de contratação dos serviços da MinasLab.</p></div><span className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-teal-700">Ver {opportunitySources.length} fontes</span></summary><div className="mt-5 grid gap-3 lg:grid-cols-2">{opportunitySources.map(source=><a key={source.name} href={source.url} target="_blank" rel="noreferrer" className="group flex items-start gap-3 rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50"><span className={`mt-0.5 rounded-full px-2 py-1 text-[10px] font-bold ${source.priority==='ALTA'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'}`}>{source.priority==='ALTA'?'ALTA':'MÉDIA'}</span><span className="min-w-0 flex-1"><b className="flex items-center gap-1 text-sm text-slate-900">{source.name}<ExternalLink className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-teal-700"/></b><span className="mt-1 block text-xs leading-relaxed text-slate-500">{source.scope}</span></span></a>)}</div><p className="mt-4 text-xs text-slate-500">Nos portais gerais, pesquise pelo nome do órgão e por termos como análise de água, potabilidade, efluentes, microbiologia e monitoramento ambiental.</p></details></CardBody></Card>}
+function OpportunitySources(){return <Card><CardBody><details><summary className="flex cursor-pointer list-none items-center justify-between gap-4"><div><div className="font-bold text-slate-900">Radar de oportunidades públicas</div><p className="mt-1 text-sm text-slate-500">Atalhos para órgãos e entidades com potencial de contratação dos serviços da MinasLab.</p></div><span className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-teal-700">Ver {opportunitySources.reduce((n,x)=>n+(x.links?.length??1),0)} fontes</span></summary><div className="mt-5 grid gap-3 lg:grid-cols-2">{opportunitySources.map(source=>{const badge=<span className={`mt-0.5 rounded-full px-2 py-1 text-[10px] font-bold ${source.priority==='ALTA'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'}`}>{source.priority==='ALTA'?'ALTA':'MÉDIA'}</span>;if(source.links)return <div key={source.name} className="flex items-start gap-3 rounded-xl border border-slate-200 p-3">{badge}<span className="min-w-0 flex-1"><b className="text-sm text-slate-900">{source.name}</b><span className="mt-1 block text-xs leading-relaxed text-slate-500">{source.scope}</span><span className="mt-2 flex flex-wrap gap-1.5">{source.links.map(link=><a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">{link.label}<ExternalLink className="h-3 w-3"/></a>)}</span></span></div>;return <a key={source.name} href={source.url} target="_blank" rel="noreferrer" className="group flex items-start gap-3 rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50">{badge}<span className="min-w-0 flex-1"><b className="flex items-center gap-1 text-sm text-slate-900">{source.name}<ExternalLink className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-teal-700"/></b><span className="mt-1 block text-xs leading-relaxed text-slate-500">{source.scope}</span></span></a>})}</div><p className="mt-4 text-xs text-slate-500">Nos portais gerais, pesquise pelo nome do órgão e por termos como análise de água, potabilidade, efluentes, microbiologia e monitoramento ambiental.</p></details></CardBody></Card>}
 function IconButton({title,onClick,children}:{title:string;onClick:()=>void;children:React.ReactNode}){return <button type="button" title={title} aria-label={title} onClick={onClick} className="rounded-lg border border-slate-200 p-2 text-slate-600">{children}</button>}
 function Label({text,children,className=''}:{text:string;children:React.ReactNode;className?:string}){return <label className={className}><FieldLabel>{text}</FieldLabel>{children}</label>}
 function Options({value,change,options,blank,blankValue=''}:{value:string;change:(v:string)=>void;options:Option[];blank:string;blankValue?:string}){return <Select value={value} onChange={e=>change(e.target.value)}><option value={blankValue}>{blank}</option>{options.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</Select>}
