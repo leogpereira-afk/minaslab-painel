@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, CalendarClock, ClipboardCheck, Gavel, Radar, SearchX, Target, Trophy } from 'lucide-react'
+import { Bell, CalendarClock, ClipboardCheck, Eye, Gavel, SearchX, Target, Trophy } from 'lucide-react'
 import { Badge, Card, CardBody } from '../../components/ui/DesignSystem'
 import { supabase } from '../../services/supabase'
 import { periodLabel, type PeriodFilter } from '../../lib/period'
@@ -24,7 +24,7 @@ function Kpi({ icon: Icon, label, value, hint, onClick }: { icon: typeof Gavel; 
 }
 
 /** Primeira aba de Licitações: visão geral do período, próximas sessões e situação das consultas às fontes. */
-export function PainelLicitacoes({ rows, periodRows, period, profiles, openTab, openBid }: { rows: Bid[]; periodRows: Bid[]; period: PeriodFilter; profiles: Option[]; openTab: (t: 'licitacoes' | 'radar' | 'consultas' | 'pncp') => void; openBid: (b: Bid) => void }) {
+export function PainelLicitacoes<T extends Bid>({ rows, periodRows, period, profiles, openTab, openBid }: { rows: T[]; periodRows: T[]; period: PeriodFilter; profiles: Option[]; openTab: (t: 'licitacoes' | 'radar' | 'consultas' | 'pncp') => void; openBid: (b: T) => void }) {
   const [consultas, setConsultas] = useState<Consulta[]>([])
   useEffect(() => {
     void supabase.from('licitacao_consultas').select('fonte,data_consulta,status').order('data_consulta', { ascending: false }).limit(2000)
@@ -96,7 +96,7 @@ export function PainelLicitacoes({ rows, periodRows, period, profiles, openTab, 
       </CardBody></Card>
 
       <Card><CardBody>
-        <div className="mb-3 flex items-center justify-between gap-2"><span className="flex items-center gap-2"><Radar className="h-5 w-5 text-teal-700" /><h3 className="font-bold text-slate-900">Fontes com licitação na semana</h3></span><button type="button" onClick={() => openTab('consultas')} className="text-xs font-semibold text-teal-700 hover:underline">Ver consultas</button></div>
+        <div className="mb-3 flex items-center justify-between gap-2"><span className="flex items-center gap-2"><Eye className="h-5 w-5 text-teal-700" /><h3 className="font-bold text-slate-900">Fontes com licitação na semana</h3></span><button type="button" onClick={() => openTab('consultas')} className="text-xs font-semibold text-teal-700 hover:underline">Ver consultas</button></div>
         {comLicitacao.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Nenhuma consulta com licitação encontrada nos últimos 7 dias.</p> :
           <ul className="divide-y divide-slate-100">{comLicitacao.map(f => <li key={f.url + f.label} className="flex items-center justify-between gap-2 py-2 text-sm"><a href={f.url} target="_blank" rel="noreferrer" className="font-medium text-teal-700 hover:underline">{f.label}</a><span className="text-xs text-slate-500">{f.last ? dateBr(f.last.data_consulta) : ''} · Verificado</span></li>)}</ul>}
       </CardBody></Card>
