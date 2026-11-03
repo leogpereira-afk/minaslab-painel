@@ -130,7 +130,7 @@ export function AtendimentosInbox(){
  const messages=selected?.chatpro?conversationMessages:legacyMessages
  const history=selected?interacoes.filter(x=>(selected.lead&&x.lead_id===selected.lead.id)||(selectedClientId&&x.cliente_id===selectedClientId)).sort((x,y)=>+new Date(y.ocorrido_em)-+new Date(x.ocorrido_em)):[]
  const companyPending=(t:Thread)=>!t.lead?.cliente_convertido_id&&!t.cliente&&String(t.lead?.assunto||'').toLowerCase().includes('selecionar empresa')
- const periodThreads=useMemo(()=>threads.filter(t=>inPeriod(t.quando,period)),[threads,period]),years=useMemo(()=>yearsFrom(threads.map(t=>t.quando)),[threads])
+ const periodThreads=useMemo(()=>threads.filter(t=>t.situacao==='ABERTO'||inPeriod(t.quando,period)),[threads,period]),years=useMemo(()=>yearsFrom(threads.map(t=>t.quando)),[threads])
  const matchTab=(t:Thread,kind:string)=>{const status=t.status.toUpperCase(),clientId=t.lead?.cliente_convertido_id||t.cliente?.id,hasProposal=!!clientId&&propostas.some(p=>p.cliente_id===clientId);if(kind==='TODOS')return true;if(kind==='ABERTOS')return t.situacao==='ABERTO';if(kind==='FINALIZADOS')return t.situacao==='FINALIZADO';if(kind==='EMAIL')return t.email
   // Abas comerciais: só atendimentos do Comercial (Financeiro, Qualidade etc. ficam de fora).
   if(!ehComercial(t.setor))return false
