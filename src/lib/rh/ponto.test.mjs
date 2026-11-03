@@ -411,7 +411,7 @@ test("TIPOS_AUSENCIA: a regra do dinheiro mora na lista, para a tela não repeti
   // tela e a régua da conta passariam a discordar sem ninguém ver.
   assert.deepEqual(
     TIPOS_AUSENCIA.map((t) => t.tipo),
-    ["falta", "atestado", "justificada", "ferias", "folga"]
+    ["falta", "atestado", "justificada", "ferias", "folga", "banco_horas"]
   );
   for (const t of TIPOS_AUSENCIA) {
     assert.equal(typeof t.rotulo, "string", t.tipo);

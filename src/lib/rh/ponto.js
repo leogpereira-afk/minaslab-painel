@@ -748,6 +748,14 @@ export const TIPOS_AUSENCIA = [
     chip: "chip",
     ajuda: "Folga ou compensação combinada: não desconta.",
   },
+  {
+    tipo: "banco_horas",
+    rotulo: "Banco de Horas / Compensação",
+    curto: "banco de horas",
+    desconta: false,
+    chip: "chip",
+    ajuda: "Compensa o dia com horas do banco: não desconta do salário e debita do banco de horas as horas previstas do dia.",
+  },
 ];
 
 const TIPO_AUSENCIA_POR_CHAVE = new Map(TIPOS_AUSENCIA.map((t) => [t.tipo, t]));

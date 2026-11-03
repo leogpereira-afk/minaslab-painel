@@ -85,7 +85,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { CalendarOff, CircleAlert, Clock, Download, Search, Trash2 } from "lucide-react";
-import { lerCfg } from "../../services/dados.js";
+import { lerCfg, rhBancoListar, rhBancoRegistrar } from "../../services/dados.js";
+import { ajusteCompensacaoPonto, marcaCompensacaoPonto } from "../../lib/rh/bancoHoras.js";
 import { dataLonga, moedaCheia, MESES_LONGOS } from "../../lib/format.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import {
@@ -1035,6 +1036,22 @@ export default function Faltas({
     });
   };
 
+  /* Banco de Horas / Compensação: o dia sai do banco. `alvoMin` = o que o dia deve ter debitado (0 quando a
+     ausência saiu). Idempotente: olha o que já foi lançado para o dia antes de debitar ou estornar. */
+  const acertarBancoDoDia = async (pessoa, data, alvoMin) => {
+    const { movimentos } = await rhBancoListar({ pessoaId: pessoa.id });
+    const ajuste = ajusteCompensacaoPonto(movimentos, data, alvoMin);
+    if (!ajuste) return;
+    const debito = ajuste.tipo === "debito";
+    await rhBancoRegistrar({
+      pessoaId: pessoa.id, empresa: pessoa.empresa || "", competencia: data.slice(0, 7), dataMovimento: data,
+      tipo: debito ? "Horas compensadas" : "Correção/Ajuste",
+      creditoMinutos: debito ? 0 : ajuste.minutos, debitoMinutos: debito ? ajuste.minutos : 0,
+      motivo: `${debito ? "Compensação lançada no Ponto" : "Estorno: compensação do Ponto removida"} ${marcaCompensacaoPonto(data)}`,
+      observacao: "", origem: debito ? "APURACAO_PONTO" : "ESTORNO",
+    });
+  };
+
   const gravarAusencia = () => {
     if (!form) return;
     const ano = anoRuim(form.data);
@@ -1075,7 +1092,9 @@ export default function Faltas({
           ? "conta como falta e sugere desconto de 1/30 do salário."
           : "não desconta."
       }`,
-      () => setForm(null)
+      () => setForm(null),
+      // Compensação debita as horas previstas do dia (8h quando a escala não prevê nada); outro tipo estorna o que houver.
+      () => acertarBancoDoDia(pessoa, form.data, form.tipo === "banco_horas" ? (form.previstoMin > 0 ? form.previstoMin : 480) : 0)
     );
   };
 
@@ -1083,6 +1102,8 @@ export default function Faltas({
     const base = form?.base;
     if (!base) return;
     const pessoaNome = form.pessoaNome;
+    const pessoaDaAusencia = pessoas.find((p) => p.id === form.pessoaId);
+    const estornarBancoDoDia = () => (pessoaDaAusencia ? acertarBancoDoDia(pessoaDaAusencia, form.data, 0) : Promise.resolve());
 
     /* DUAS SAÍDAS, e a diferença importa.
        (a) O registro só existe POR CAUSA da ausência (nasceu à mão, sem batida
@@ -1101,7 +1122,7 @@ export default function Faltas({
 
     if (!temBatida) {
       if (!window.confirm(`Remover a ausência de ${pessoaNome} em ${dataLonga(form.data)}? O dia volta a não ter registro nenhum.`)) return;
-      return apagarReg(COL_DIA, base.id, `Ausência de ${pessoaNome} em ${dataLonga(form.data)} removida.`)
+      return apagarReg(COL_DIA, base.id, `Ausência de ${pessoaNome} em ${dataLonga(form.data)} removida.`, () => estornarBancoDoDia())
         .then(() => setForm(null));
     }
 
@@ -1115,7 +1136,8 @@ export default function Faltas({
         corrigido: base.origem === "jibble" ? houveCorrecaoDeBatida : true,
       },
       `Ausência de ${pessoaNome} em ${dataLonga(form.data)} removida. A batida do dia continua como estava.`,
-      () => setForm(null)
+      () => setForm(null),
+      () => estornarBancoDoDia()
     );
   };
 
