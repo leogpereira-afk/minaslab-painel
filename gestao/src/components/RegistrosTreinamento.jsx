@@ -5,7 +5,7 @@
 //     plano de ação quando não for eficaz.
 import { useState } from "react";
 import { useBase } from "../hooks/base.jsx";
-import { Card, Chip, Cabecalho, Modal } from "./ui.jsx";
+import { Card, Chip, Cabecalho, Modal, Paginacao, usePaginacao } from "./ui.jsx";
 import { JanelaDocumento, DocREQT, DocRT, DocAVET } from "./FormulariosTreinamento.jsx";
 import { Registro } from "../pages/Treinamentos.jsx";
 import { useUsuariosTarefas, criarTarefaDaAplicacao, concluirSeTodosAvaliados } from "./TarefaEficacia.jsx";
@@ -36,8 +36,8 @@ export function RegistrosTreinamento() {
   const [aplicando, setAplicando] = useState(null); // requisição a registrar
   const [doc, setDoc] = useState(null); // { tipo, ... }
   const [avaliando, setAvaliando] = useState(null); // linha de avaliação
-  const [verTodas, setVerTodas] = useState(false);
-  const [verRegistros, setVerRegistros] = useState(10);
+  const [filtroAv, setFiltroAv] = useState("pendentes");
+  const [buscaAv, setBuscaAv] = useState("");
   const abertas = avs.filter((x) => ["atrasada", "plano", "proxima"].includes(x.situacao));
   const contas = useUsuariosTarefas();
   const [respTarefa, setRespTarefa] = useState("");
@@ -45,13 +45,33 @@ export function RegistrosTreinamento() {
   const [msgTarefa, setMsgTarefa] = useState("");
   const nomeConta = (u) => contas.usuarios.find((x) => x.usuario === u)?.nome || "";
   const todosAvaliados2 = (a) => (a.participantes || []).filter((p) => p.presente !== false).every((p) => resultadoEficacia(a.eficacia?.[p.pessoaId] || {}));
+  const semTarefa = aplicacoes.filter((a) => !a.tarefaEficacia?.id && !todosAvaliados2(a));
+  const criarTodas = async () => {
+    if (!window.confirm(`Criar ${semTarefa.length} tarefa(s) de avaliação da eficácia no painel para ${nomeConta(respTarefa || contas.eu) || "você"}?`)) return;
+    setCriando("todas"); setMsgTarefa("");
+    let ok = 0;
+    for (const a of semTarefa) { try { await criarTarefaDaAplicacao(a, respTarefa || contas.eu, gravar); ok++; } catch (e) { setMsgTarefa(`Parou em “${a.titulo}”: ${e.message}`); break; } }
+    if (ok === semTarefa.length) setMsgTarefa(`${ok} tarefa(s) criada(s) no painel.`);
+    setCriando("");
+  };
   const criarTarefa = async (a) => {
     setCriando(a.id); setMsgTarefa("");
     try { await criarTarefaDaAplicacao(a, respTarefa || contas.eu, gravar); setMsgTarefa(`Tarefa criada no painel: “${a.titulo}”.`); }
     catch (e) { setMsgTarefa(`Não consegui criar a tarefa: ${e.message}`); }
     setCriando("");
   };
-  const listaAv = verTodas ? avs : avs.filter((x) => x.situacao !== "eficaz" && x.situacao !== "reavaliada");
+  const FILTROS_AV = [
+    ["pendentes", "Para fazer", (x) => !x.avaliacao || x.situacao === "plano"],
+    ["feitas", "Feitas (reimprimir)", (x) => !!x.avaliacao],
+    ["todas", "Todas", () => true],
+  ];
+  const fAv = FILTROS_AV.find((f) => f[0] === filtroAv)[2];
+  const qAv = norm(buscaAv.trim());
+  const listaAv = avs.filter((x) => fAv(x) && (!qAv || norm(x.participante.nome).includes(qAv) || norm(x.aplicacao.titulo).includes(qAv)))
+    .sort((a, b) => (filtroAv === "feitas" ? String(b.avaliacao?.data || "").localeCompare(String(a.avaliacao?.data || "")) : 0));
+  const pagAv = usePaginacao(listaAv, 10, `${filtroAv}|${qAv}`);
+  const pagReq = usePaginacao(reqs, 10);
+  const pagRT = usePaginacao(aplicacoes, 10);
 
   return (
     <>
@@ -68,29 +88,35 @@ export function RegistrosTreinamento() {
 
       <Card semPad>
         <div className="card-cab"><h2>Avaliação da eficácia (AVET)</h2>
-          <label className="peq" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={verTodas} onChange={(e) => setVerTodas(e.target.checked)} /> mostrar as já avaliadas</label>
         </div>
-        {listaAv.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhuma avaliação pendente. Elas aparecem aqui {DIAS_EFICACIA} dias depois de cada treinamento registrado.</div> : (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "0 20px 12px" }}>
+          <div className="pilulas" role="group" aria-label="Filtrar avaliações">
+            {FILTROS_AV.map(([id, rot, f]) => <button key={id} type="button" className={`pilula${filtroAv === id ? " ativa" : ""}`} aria-pressed={filtroAv === id} onClick={() => setFiltroAv(id)}>{rot} ({avs.filter(f).length})</button>)}
+          </div>
+          <input className="entrada" style={{ flex: "1 1 200px", minHeight: 36 }} placeholder="Buscar participante ou treinamento" value={buscaAv} onChange={(e) => setBuscaAv(e.target.value)} aria-label="Buscar avaliação" />
+        </div>
+        {listaAv.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>{filtroAv === "feitas" ? "Nenhuma avaliação feita ainda." : `Nenhuma avaliação pendente. Elas aparecem aqui ${DIAS_EFICACIA} dias depois de cada treinamento registrado.`}</div> : (<>
           <div className="tabela-caixa tabela-comissao"><table>
-            <thead><tr><th>Participante</th><th>Treinamento</th><th>Realizado em</th><th>Avaliar até</th><th>Situação</th><th /></tr></thead>
-            <tbody>{listaAv.map((x) => {
+            <thead><tr><th>Participante</th><th>Treinamento</th><th>Realizado em</th><th>{filtroAv === "feitas" ? "Avaliado em" : "Avaliar até"}</th><th>Situação</th><th /></tr></thead>
+            <tbody>{pagAv.itens.map((x) => {
               const [tom, rot] = SITUACAO[x.situacao];
               return (
                 <tr key={`${x.aplicacao.id}-${x.participante.pessoaId}`}>
                   <td><b>{nomeProprio(x.participante.nome)}</b>{x.participante.funcao && <div className="suave peq">{x.participante.funcao}</div>}</td>
                   <td className="peq">{x.aplicacao.titulo || trilhaDe(x.aplicacao.trilhaId)?.nome || "—"}</td>
                   <td className="tnum peq">{periodo(x.aplicacao.data, x.aplicacao.dataFim)}</td>
-                  <td className="tnum peq">{dataCurta(x.prevista)}</td>
+                  <td className="tnum peq">{x.avaliacao?.data && filtroAv === "feitas" ? dataCurta(x.avaliacao.data) : dataCurta(x.prevista)}</td>
                   <td><Chip tom={tom}>{rot}</Chip></td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button type="button" className={x.avaliacao ? "btn claro mini" : "btn mini"} onClick={() => setAvaliando(x)}>{x.avaliacao ? "Editar" : "Avaliar"}</button>{" "}
-                    {x.avaliacao && <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "AVET", x })}>AVET</button>}
+                    {x.avaliacao && <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "AVET", x })}>Imprimir AVET</button>}
                   </td>
                 </tr>
               );
             })}</tbody>
           </table></div>
-        )}
+          <Paginacao pag={pagAv} rotulo="avaliações" />
+        </>)}
       </Card>
 
       <Card semPad>
@@ -98,7 +124,7 @@ export function RegistrosTreinamento() {
         {reqs.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhuma requisição ainda. Use “Nova requisição” para planejar um treinamento e imprimir para a aprovação do gerente.</div> : (
           <div className="tabela-caixa tabela-comissao"><table>
             <thead><tr><th>Treinamento</th><th>Tipo</th><th>Participantes</th><th>Previsto para</th><th>Situação</th><th /></tr></thead>
-            <tbody>{reqs.map((r) => (
+            <tbody>{pagReq.itens.map((r) => (
               <tr key={r.id}>
                 <td><b>{r.titulo}</b><div className="suave peq">pedida em {dataCurta(r.data)} · {r.responsavel || "—"}</div></td>
                 <td className="peq">{nomeTipo(r.tipoTreinamento) || "—"}</td>
@@ -114,6 +140,7 @@ export function RegistrosTreinamento() {
             ))}</tbody>
           </table></div>
         )}
+        <Paginacao pag={pagReq} rotulo="requisições" />
       </Card>
 
       <Card semPad>
@@ -123,6 +150,7 @@ export function RegistrosTreinamento() {
               {!contas.usuarios.length && <option value="">(eu)</option>}
               {contas.usuarios.map((u) => <option key={u.usuario} value={u.usuario}>{u.nome}</option>)}
             </select>
+            {semTarefa.length > 1 && <button type="button" className="btn claro mini" disabled={!!criando} onClick={criarTodas}>{criando === "todas" ? "Criando…" : `Criar as que faltam (${semTarefa.length})`}</button>}
           </span>
         </div>
         {msgTarefa && <div className="aviso marca peq" style={{ margin: "0 20px 10px" }}>{msgTarefa}</div>}
@@ -130,7 +158,7 @@ export function RegistrosTreinamento() {
           <>
             <div className="tabela-caixa tabela-comissao"><table>
               <thead><tr><th>Data</th><th>Treinamento</th><th>Instrutor</th><th>Participantes</th><th>Tarefa da eficácia</th><th /></tr></thead>
-              <tbody>{aplicacoes.slice(0, verRegistros).map((a) => (
+              <tbody>{pagRT.itens.map((a) => (
                 <tr key={a.id}>
                   <td className="tnum peq">{periodo(a.data, a.dataFim)}</td>
                   <td><b>{a.titulo || trilhaDe(a.trilhaId)?.nome || "—"}</b>{a.tipoTreinamento && <div className="suave peq">{nomeTipo(a.tipoTreinamento)}</div>}</td>
@@ -144,7 +172,7 @@ export function RegistrosTreinamento() {
                 </tr>
               ))}</tbody>
             </table></div>
-            {aplicacoes.length > verRegistros && <div style={{ padding: "8px 20px 14px" }}><button type="button" className="btn claro mini" onClick={() => setVerRegistros((n) => n + 20)}>Ver mais</button></div>}
+            <Paginacao pag={pagRT} rotulo="registros" />
           </>
         )}
       </Card>
