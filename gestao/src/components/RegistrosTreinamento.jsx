@@ -8,6 +8,7 @@ import { useBase } from "../hooks/base.jsx";
 import { Card, Chip, Cabecalho, Modal } from "./ui.jsx";
 import { JanelaDocumento, DocREQT, DocRT, DocAVET } from "./FormulariosTreinamento.jsx";
 import { Registro } from "../pages/Treinamentos.jsx";
+import { useUsuariosTarefas, criarTarefaDaAplicacao, concluirSeTodosAvaliados } from "./TarefaEficacia.jsx";
 import { catalogo } from "../lib/catalogo.js";
 import { pessoasParaTreinamento } from "../lib/treinamentosPessoa.js";
 import { dataCurta, hojeBR, nomeProprio } from "../lib/format.js";
@@ -38,11 +39,23 @@ export function RegistrosTreinamento() {
   const [verTodas, setVerTodas] = useState(false);
   const [verRegistros, setVerRegistros] = useState(10);
   const abertas = avs.filter((x) => ["atrasada", "plano", "proxima"].includes(x.situacao));
+  const contas = useUsuariosTarefas();
+  const [respTarefa, setRespTarefa] = useState("");
+  const [criando, setCriando] = useState("");
+  const [msgTarefa, setMsgTarefa] = useState("");
+  const nomeConta = (u) => contas.usuarios.find((x) => x.usuario === u)?.nome || "";
+  const todosAvaliados2 = (a) => (a.participantes || []).filter((p) => p.presente !== false).every((p) => resultadoEficacia(a.eficacia?.[p.pessoaId] || {}));
+  const criarTarefa = async (a) => {
+    setCriando(a.id); setMsgTarefa("");
+    try { await criarTarefaDaAplicacao(a, respTarefa || contas.eu, gravar); setMsgTarefa(`Tarefa criada no painel: “${a.titulo}”.`); }
+    catch (e) { setMsgTarefa(`Não consegui criar a tarefa: ${e.message}`); }
+    setCriando("");
+  };
   const listaAv = verTodas ? avs : avs.filter((x) => x.situacao !== "eficaz" && x.situacao !== "reavaliada");
 
   return (
     <>
-      <Cabecalho sobre="Treinamentos" titulo="Requisição, registro e eficácia" sub={`Os formulários do ${"PT 001"} gerados pelo sistema: a REQT antes do treinamento, o RT com a lista para assinatura no dia e a AVET de cada participante ${DIAS_EFICACIA} dias depois.`}>
+      <Cabecalho sobre="Treinamentos" titulo="Requisição, registro e eficácia" sub={`Os formulários do PT 001 gerados pelo sistema: a REQT antes do treinamento, o RT com a lista para assinatura no dia e a AVET de cada participante ${DIAS_EFICACIA} dias depois. Ao registrar, a avaliação vira tarefa no painel, com aviso no sino e lembrete 1 dia antes.`}>
         <button type="button" className="btn" onClick={() => setEditando({})}>Nova requisição (REQT)</button>
       </Cabecalho>
 
@@ -104,17 +117,26 @@ export function RegistrosTreinamento() {
       </Card>
 
       <Card semPad>
-        <div className="card-cab"><h2>Registros de treinamento (RT)</h2><span className="suave peq">lista de presença para assinatura</span></div>
+        <div className="card-cab"><h2>Registros de treinamento (RT)</h2>
+          <span className="suave peq" style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>tarefas para
+            <select className="entrada" style={{ minHeight: 30, maxWidth: 200, padding: "2px 8px" }} value={respTarefa || contas.eu} onChange={(e) => setRespTarefa(e.target.value)} aria-label="Responsável das tarefas">
+              {!contas.usuarios.length && <option value="">(eu)</option>}
+              {contas.usuarios.map((u) => <option key={u.usuario} value={u.usuario}>{u.nome}</option>)}
+            </select>
+          </span>
+        </div>
+        {msgTarefa && <div className="aviso marca peq" style={{ margin: "0 20px 10px" }}>{msgTarefa}</div>}
         {aplicacoes.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Nenhum treinamento registrado ainda.</div> : (
           <>
             <div className="tabela-caixa tabela-comissao"><table>
-              <thead><tr><th>Data</th><th>Treinamento</th><th>Instrutor</th><th>Participantes</th><th /></tr></thead>
+              <thead><tr><th>Data</th><th>Treinamento</th><th>Instrutor</th><th>Participantes</th><th>Tarefa da eficácia</th><th /></tr></thead>
               <tbody>{aplicacoes.slice(0, verRegistros).map((a) => (
                 <tr key={a.id}>
                   <td className="tnum peq">{periodo(a.data, a.dataFim)}</td>
                   <td><b>{a.titulo || trilhaDe(a.trilhaId)?.nome || "—"}</b>{a.tipoTreinamento && <div className="suave peq">{nomeTipo(a.tipoTreinamento)}</div>}</td>
                   <td className="peq">{a.instrutor || "—"}</td>
                   <td className="peq">{(a.participantes || []).filter((p) => p.presente !== false).length}</td>
+                  <td>{a.tarefaEficacia?.id ? <Chip tom="ok">criada{nomeConta(a.tarefaEficacia.responsavel) ? ` · ${nomeConta(a.tarefaEficacia.responsavel)}` : ""}</Chip> : todosAvaliados2(a) ? <span className="suave peq">avaliado</span> : <button type="button" className="btn claro mini" disabled={criando === a.id} onClick={() => criarTarefa(a)}>{criando === a.id ? "Criando…" : "Criar tarefa"}</button>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "RT", reg: a })}>RT</button>{" "}
                     <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "dadosRT", reg: a })}>Completar dados</button>
@@ -257,6 +279,7 @@ function AvaliarEficacia({ linha, aoFechar, aoSalvo }) {
     try {
       const limpo = res === "nao-eficaz" ? av : { ...av, plano: undefined };
       const salvo = await gravar("treinamentos", { ...a, eficacia: { ...(a.eficacia || {}), [p.pessoaId]: limpo } });
+      await concluirSeTodosAvaliados(salvo);
       aoSalvo({ ...linha, aplicacao: salvo, avaliacao: limpo, resultado: res });
     } catch (e) { setErro(e.message); setSalvando(false); }
   };
