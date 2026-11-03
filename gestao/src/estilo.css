@@ -813,3 +813,39 @@ tr:last-child td { border-bottom: 0; }
 .link-nome { border: 0; background: none; padding: 0; font: 600 14px Inter, sans-serif; color: var(--marca); cursor: pointer; text-align: left; }
 .link-nome:hover { text-decoration: underline; }
 @media (max-width: 600px) { .linha-situacao { grid-template-columns: 1fr auto; } .linha-situacao > span:nth-child(2) { grid-column: 1; } }
+
+/* ---------- formulários do PT 001 (REQT, RT, AVET) ---------- */
+.fm-previa { background: #eef2f2; padding: 14px; border-radius: 12px; max-height: 70vh; overflow: auto; }
+.fm-previa .fm-folha { box-shadow: 0 2px 12px #0002; margin: 0 auto 14px; }
+.fm-folha { background: #fff; width: 190mm; max-width: 100%; min-height: 270mm; padding: 6mm; box-sizing: border-box; color: #000; font: 11px/1.35 Arial, Helvetica, sans-serif; display: flex; flex-direction: column; gap: 3mm; }
+.fm-folha table { border-collapse: collapse; width: 100%; }
+.fm-folha th, .fm-folha td { border: 1px solid #000; padding: 3px 5px; text-align: left; vertical-align: top; font: inherit; color: #000; text-transform: none; letter-spacing: 0; white-space: normal; }
+.fm-folha th { background: #d9d9d9; font-weight: 700; }
+.fm-cab td { vertical-align: middle; }
+.fm-logo { width: 26%; text-align: center !important; }
+.fm-logo img { width: 120px; height: auto; }
+.fm-titulo { text-align: center !important; font: 700 14px Arial, sans-serif !important; }
+.fm-cod { text-align: center !important; width: 13%; font-size: 10px !important; }
+.fm-sec { background: #bfbfbf !important; text-transform: uppercase !important; }
+.fm-num { width: 22px; text-align: center !important; }
+.fm-marca { width: 34px; text-align: center !important; font-weight: 700; }
+.fm-x { font-weight: 700; }
+.fm-texto { min-height: 40px; height: 44px; white-space: pre-wrap !important; }
+.fm-tipos { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.fm-escala { display: flex; align-items: flex-end; justify-content: center; gap: 0; padding: 4px 0; }
+.fm-escala > span:first-child, .fm-escala > span:last-child { padding: 0 10px 4px; }
+.fm-esc-cel { display: inline-flex; flex-direction: column; align-items: center; width: 34px; border: 1px solid #000; margin-left: -1px; }
+.fm-esc-cel small { border-bottom: 1px solid #000; width: 100%; text-align: center; }
+.fm-esc-cel .fm-x { min-height: 15px; }
+.fm-presenca td { height: 26px; }
+.fm-nota { margin: 0; font-size: 9.5px; color: #333; }
+.fm-assins { display: flex; justify-content: flex-end; margin-top: 8mm; }
+.fm-assin { width: 75mm; font-size: 10.5px; }
+.fm-linha { border-top: 1px solid #000; margin-bottom: 3px; }
+@media print {
+  .fm-impressao .fm-folha { width: 100%; min-height: 0; padding: 0; break-after: page; page-break-after: always; }
+  .fm-impressao .fm-folha:last-child { break-after: auto; page-break-after: auto; }
+  .fm-folha th, .fm-sec { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.fm-folha tr:last-child td, .fm-folha tr:last-child th { border-bottom: 1px solid #000; }
+.fm-folha td { height: 18px; }

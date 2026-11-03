@@ -11,6 +11,9 @@ import { Orientacao } from "../components/Orientacao.jsx";
 import { Slides } from "../components/Slides.jsx";
 import { Apresentador } from "../components/Deck.jsx";
 import { BotaoCertificado } from "../components/CertificadoTreinamento.jsx";
+import { JanelaDocumento, DocRT } from "../components/FormulariosTreinamento.jsx";
+import { RegistrosTreinamento } from "../components/RegistrosTreinamento.jsx";
+import { TIPOS_TREINAMENTO, DIAS_EFICACIA, somarDias } from "../lib/formulariosTreinamento.js";
 import { slidesDoModelo, modeloPorId } from "../lib/modelosApresentacao.js";
 import { npsCRM, licitacoesCRM } from "../services/crm.js";
 import { TEMAS } from "../lib/trilhas.js";
@@ -86,8 +89,8 @@ export default function Treinamentos() {
   const [aba, setAba] = useState("apresentacoes");
   return (
     <>
-      <Abas valor={aba} aoMudar={setAba} abas={[["apresentacoes", "Apresentações de treinamento"], ["trilhas", "Trilhas de treinamento"], ["reciclagem", "Plano e calendário"]]} />
-      {aba === "reciclagem" ? <Reciclagem irParaTrilha={() => setAba("trilhas")} /> : aba === "trilhas" ? <Trilhas /> : (
+      <Abas valor={aba} aoMudar={setAba} abas={[["apresentacoes", "Apresentações de treinamento"], ["trilhas", "Trilhas de treinamento"], ["reciclagem", "Plano e calendário"], ["registros", "Requisição, registro e eficácia"]]} />
+      {aba === "registros" ? <RegistrosTreinamento /> : aba === "reciclagem" ? <Reciclagem irParaTrilha={() => setAba("trilhas")} /> : aba === "trilhas" ? <Trilhas /> : (
         <>
           <Cabecalho sobre="Treinamentos" titulo="Apresentações de treinamento" sub="Todas as apresentações de treinamento, dos dois setores, no estilo colorido com quiz. Crie a sua a partir de um modelo para editar, baixar em PowerPoint e gerar a ata." />
           <Estudio categoria="treinamento" />
@@ -112,7 +115,7 @@ function Trilhas() {
   const [guardados, setGuardados] = useState(false);
   const [todosSug, setTodosSug] = useState(false);
   const grupos = porTema(cat.ativos);
-  const aplicados = (id) => dados.treinamentos.filter((a) => a.trilhaId === id && a.tipo !== "agenda").length;
+  const aplicados = (id) => dados.treinamentos.filter((a) => a.trilhaId === id && !a.tipo).length;
   const abrir = (t) => { setTema(t.tema || "proprios"); setSel(t.id); };
   const achados = busca.trim() ? cat.ativos.filter((t) => norm(`${t.nome} ${t.publico} ${t.documento || ""} ${nomeTema(t.tema)}`).includes(norm(busca))) : [];
   const sugeridos = cat.ativos.filter((t) => sug[t.id]);
@@ -217,7 +220,8 @@ function DetalheTrilha({ t, sug, aoEditar, cat, salvarCat }) {
   const { resumo, equipeAtual: equipe, dados, remover } = useBase();
   const [modo, setModo] = useState("guia");
   const [msg, setMsg] = useState("");
-  const aplicacoes = dados.treinamentos.filter((x) => x.trilhaId === t.id && x.tipo !== "agenda").sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const [rt, setRT] = useState(null);
+  const aplicacoes = dados.treinamentos.filter((x) => x.trilhaId === t.id && !x.tipo).sort((a, b) => String(b.data).localeCompare(String(a.data)));
   const mudar = async (parte, aviso) => { setMsg(""); try { await salvarCat(parte); if (aviso) setMsg(aviso); } catch (e) { setMsg(e.message); } };
   const alternarObrigatorio = () => mudar({ obrigatorio: { ...cat.cfg.obrigatorio, [t.id]: !t.obrigatorio } }, t.obrigatorio ? "Agora é opcional: sai do plano de reciclagem." : "Agora é obrigatório: entra no plano.");
   const arquivar = () => window.confirm(`Arquivar “${t.nome}”? Ele sai das trilhas e do plano, mas o histórico de aplicações continua. Você pode restaurar depois.`) && mudar({ arquivadas: [...new Set([...cat.cfg.arquivadas, t.id])] });
@@ -273,6 +277,7 @@ function DetalheTrilha({ t, sug, aoEditar, cat, salvarCat }) {
         </div>
       )}
 
+      {rt && <JanelaDocumento titulo="RT · Registro de treinamento" aoFechar={() => setRT(null)}><DocRT reg={rt} trilha={t} /></JanelaDocumento>}
       {modo === "slides" && <SlidesDaTrilha t={t} />}
       {modo === "registro" && <Registro trilha={t} />}
 
@@ -302,7 +307,7 @@ function DetalheTrilha({ t, sug, aoEditar, cat, salvarCat }) {
                   </td>
                   <td className="tnum">{media == null ? "—" : fmtNota(media)}</td>
                   <td className="peq">{ef.texto || `${ef.rotulo}: ${ef.antes} → ${ef.depois}`}</td>
-                  <td><button type="button" className="btn perigo mini" onClick={() => window.confirm("Apagar este registro de aplicação? Ele sai também do perfil dos participantes.") && remover("treinamentos", a.id)}>Apagar</button></td>
+                  <td style={{ whiteSpace: "nowrap" }}><button type="button" className="btn claro mini" onClick={() => setRT(a)}>RT</button> <button type="button" className="btn perigo mini" onClick={() => window.confirm("Apagar este registro de aplicação? Ele sai também do perfil dos participantes.") && remover("treinamentos", a.id)}>Apagar</button></td>
                 </tr>
               );
             })}</tbody>
@@ -652,59 +657,101 @@ function Pergunta({ q, n }) {
   );
 }
 
-/** Registro de aplicação: todos os colaboradores para marcar, nota de 0 a 10. */
-export function Registro({ trilha, dataInicial, instrutorInicial = "", aoSalvar }) {
-  const { equipeAtual: equipe, elenco, gravar } = useBase();
+/** Registro de aplicação (RT): todos os colaboradores para marcar, função, nota de 0 a 10 e os dados do registro. */
+export function Registro({ trilha, dataInicial, instrutorInicial = "", requisicao = null, aoSalvar }) {
+  const { equipeAtual: equipe, elenco, gravar, funcaoDe } = useBase();
   const pessoas = pessoasParaTreinamento(equipe, elenco);
-  const [data, setData] = useState(dataInicial || hojeBR());
-  const [instrutor, setInstrutor] = useState(instrutorInicial);
-  const [sel, setSel] = useState({}); // id -> nota ("" = sem nota)
+  const req = requisicao || {};
+  const data0 = req.inicio || dataInicial || hojeBR();
+  const [data, setData] = useState(data0);
+  const [dataFim, setDataFim] = useState(req.fim && req.fim !== data0 ? req.fim : "");
+  const [instrutor, setInstrutor] = useState(req.instrutor || instrutorInicial);
+  const [tipoTreinamento, setTipo] = useState(req.tipoTreinamento || "");
+  const [cargaHoraria, setCarga] = useState(req.cargaHoraria || (trilha?.minutos ? String(Math.round((trilha.minutos / 60) * 100) / 100).replace(".", ",") : ""));
+  const [local, setLocal] = useState(req.local || "MinasLab");
+  const [objetivo, setObjetivo] = useState(req.objetivo || trilha?.objetivo || "");
+  const [material, setMaterial] = useState(trilha?.documento || "");
+  const [eficacia, setEficacia] = useState(req.eficaciaPrevista || "");
+  const funcaoInicial = (id) => {
+    const m = equipe.find((x) => x.id === id || (x.rhPessoaId && x.rhPessoaId === id));
+    return (req.pessoas || []).find((x) => x.pessoaId === id)?.funcao || funcaoDe(m)?.nome || "";
+  };
+  const [sel, setSel] = useState(() => Object.fromEntries((req.pessoas || []).map((x) => [x.pessoaId, ""]))); // id -> nota ("" = sem nota)
+  const [funcoes, setFuncoes] = useState(() => Object.fromEntries((req.pessoas || []).map((x) => [x.pessoaId, x.funcao || funcaoInicial(x.pessoaId)])));
   const [busca, setBusca] = useState("");
   const [obs, setObs] = useState("");
   const [msg, setMsg] = useState("");
-  const marcados = pessoas.filter((p) => p.id in sel);
-  const visiveis = pessoas.filter((p) => !busca || norm(p.nome).includes(norm(busca)));
-  const alternar = (id) => setSel((x) => { const n = { ...x }; if (id in n) delete n[id]; else n[id] = ""; return n; });
+  const [salvo, setSalvo] = useState(null);
+  const [vendoRT, setVendoRT] = useState(false);
+  const extras = (req.pessoas || []).filter((x) => !pessoas.some((p) => p.id === x.pessoaId)).map((x) => ({ id: x.pessoaId, nome: x.nome, rhPessoaId: x.rhPessoaId || "", daEquipe: false }));
+  const todas = [...pessoas, ...extras];
+  const marcados = todas.filter((p) => p.id in sel);
+  const visiveis = todas.filter((p) => !busca || norm(p.nome).includes(norm(busca)));
+  const alternar = (id) => {
+    setSel((x) => { const n = { ...x }; if (id in n) delete n[id]; else n[id] = ""; return n; });
+    setFuncoes((f) => (id in f ? f : { ...f, [id]: funcaoInicial(id) }));
+  };
   const invalida = marcados.find((p) => sel[p.id] !== "" && (Number(sel[p.id]) < 0 || Number(sel[p.id]) > 10));
+  const fimReal = dataFim && dataFim > data ? dataFim : "";
+  const eficaciaReal = eficacia || somarDias(fimReal || data, DIAS_EFICACIA);
   const salvar = async () => {
     if (!marcados.length) { setMsg("Marque quem participou."); return; }
     if (invalida) { setMsg(`A nota de ${nomeProprio(invalida.nome)} precisa ser de 0 a 10.`); return; }
     try {
-      const salvo = await gravar("treinamentos", {
-        trilhaId: trilha.id, titulo: trilha.nome, data, obs, instrutor: instrutor.trim(),
-        participantes: marcados.map((p) => ({ pessoaId: p.id, rhPessoaId: p.rhPessoaId || "", nome: p.nome, presente: true, nota: sel[p.id] === "" ? null : Number(String(sel[p.id]).replace(",", ".")) })),
+      const reg = await gravar("treinamentos", {
+        trilhaId: trilha?.id || "", titulo: trilha?.nome || req.titulo || "", data, dataFim: fimReal, obs, instrutor: instrutor.trim(),
+        tipoTreinamento, cargaHoraria: String(cargaHoraria).trim(), local: local.trim(), objetivo: objetivo.trim(), material: material.trim(), eficaciaPrevista: eficaciaReal,
+        ...(req.id ? { requisicaoId: req.id } : {}),
+        participantes: marcados.map((p) => ({ pessoaId: p.id, rhPessoaId: p.rhPessoaId || "", nome: p.nome, funcao: String(funcoes[p.id] || "").trim(), presente: true, nota: sel[p.id] === "" ? null : Number(String(sel[p.id]).replace(",", ".")) })),
       });
-      setMsg(`Aplicação registrada para ${marcados.length} pessoa(s). Já aparece no perfil de cada uma.`); setObs(""); setSel({});
-      if (aoSalvar) await aoSalvar(salvo);
+      setMsg(`Aplicação registrada para ${marcados.length} pessoa(s). Já aparece no perfil de cada uma. Imprima o RT para colher as assinaturas.`); setObs(""); setSel({});
+      setSalvo(reg);
+      if (aoSalvar) await aoSalvar(reg);
     } catch (e) { setMsg(e.message); }
   };
   return (
     <Card>
       <h3>Registrar aplicação</h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+        {req.id && <div className="aviso marca peq">Dados trazidos da requisição de {dataCurta(req.data)} (REQT). Confira e marque quem realmente participou.</div>}
+        <div className="grade" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+          <div className="campo"><label htmlFor="t-data">Data</label><input id="t-data" type="date" className="entrada" value={data} onChange={(e) => setData(e.target.value)} /></div>
+          <div className="campo"><label htmlFor="t-fim">Até (se durou mais de um dia)</label><input id="t-fim" type="date" className="entrada" value={dataFim} onChange={(e) => setDataFim(e.target.value)} /></div>
+          <div className="campo"><label htmlFor="t-instrutor">Quem aplicou</label><input id="t-instrutor" className="entrada" value={instrutor} onChange={(e) => setInstrutor(e.target.value)} placeholder="Vai no RT e no certificado" /></div>
+          <div className="campo"><label htmlFor="t-carga">Carga horária (horas)</label><input id="t-carga" className="entrada" inputMode="decimal" value={cargaHoraria} onChange={(e) => setCarga(e.target.value)} placeholder="Ex.: 1,5" /></div>
+          <div className="campo"><label htmlFor="t-local">Local</label><input id="t-local" className="entrada" value={local} onChange={(e) => setLocal(e.target.value)} /></div>
+          <div className="campo"><label htmlFor="t-tipo">Tipo</label><select id="t-tipo" className="entrada" value={tipoTreinamento} onChange={(e) => setTipo(e.target.value)}><option value="">Escolha…</option>{TIPOS_TREINAMENTO.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select></div>
+          <div className="campo"><label htmlFor="t-material">Material / procedimento</label><input id="t-material" className="entrada" value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Ex.: PG 012 rev. 02" /></div>
+          <div className="campo"><label htmlFor="t-efic">Avaliação da eficácia em</label><input id="t-efic" type="date" className="entrada" value={eficaciaReal} onChange={(e) => setEficacia(e.target.value)} /></div>
+        </div>
+        <div className="campo"><label htmlFor="t-obj">Objetivo</label><textarea id="t-obj" className="entrada" rows={2} value={objetivo} onChange={(e) => setObjetivo(e.target.value)} /></div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="campo" style={{ maxWidth: 180 }}><label htmlFor="t-data">Data</label><input id="t-data" type="date" className="entrada" value={data} onChange={(e) => setData(e.target.value)} /></div>
-          <div className="campo" style={{ flex: "1 1 180px" }}><label htmlFor="t-instrutor">Quem aplicou</label><input id="t-instrutor" className="entrada" value={instrutor} onChange={(e) => setInstrutor(e.target.value)} placeholder="Vai na assinatura do certificado" /></div>
           <div className="campo" style={{ flex: "1 1 180px" }}><label htmlFor="t-busca">Buscar colaborador</label><input id="t-busca" className="entrada" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome" /></div>
-          <button type="button" className="btn claro mini" onClick={() => setSel((x) => ({ ...Object.fromEntries(pessoas.filter((p) => p.daEquipe).map((p) => [p.id, ""])), ...x }))}>Marcar a equipe do setor</button>
+          <button type="button" className="btn claro mini" onClick={() => { const ids = pessoas.filter((p) => p.daEquipe).map((p) => p.id); setSel((x) => ({ ...Object.fromEntries(ids.map((id) => [id, ""])), ...x })); setFuncoes((f) => ({ ...Object.fromEntries(ids.map((id) => [id, funcaoInicial(id)])), ...f })); }}>Marcar a equipe do setor</button>
           <button type="button" className="btn claro mini" onClick={() => setSel({})}>Limpar</button>
         </div>
-        <div className="suave peq">{marcados.length} selecionado(s) de {pessoas.length}. Aparecem todos os colaboradores ativos da MinasLab; a equipe do setor vem primeiro.</div>
+        <div className="suave peq">{marcados.length} selecionado(s) de {todas.length}. Aparecem todos os colaboradores ativos da MinasLab; a equipe do setor vem primeiro.</div>
         <div className="tabela-caixa" style={{ maxHeight: 420, overflow: "auto" }}>
-          <table><thead><tr><th style={{ width: 40 }} /><th>Colaborador</th><th>Nota do teste (0 a 10)</th></tr></thead><tbody>
+          <table><thead><tr><th style={{ width: 40 }} /><th>Colaborador</th><th>Função</th><th>Nota do teste (0 a 10)</th></tr></thead><tbody>
             {visiveis.map((p) => (
               <tr key={p.id} style={p.id in sel ? { background: "var(--marca-50)" } : undefined}>
                 <td><input type="checkbox" aria-label={`${p.nome} participou`} checked={p.id in sel} onChange={() => alternar(p.id)} style={{ width: 18, height: 18 }} /></td>
                 <td onClick={() => alternar(p.id)} style={{ cursor: "pointer" }}>{nomeProprio(p.nome)}{p.daEquipe && <span className="suave peq"> · equipe do setor</span>}</td>
+                <td>{p.id in sel && <input className="entrada" style={{ minWidth: 150 }} aria-label={`Função de ${p.nome}`} value={funcoes[p.id] || ""} onChange={(e) => setFuncoes({ ...funcoes, [p.id]: e.target.value })} placeholder="Função" />}</td>
                 <td>{p.id in sel && <input className="entrada num" type="number" min="0" max="10" step="0.5" style={{ width: 100 }} aria-label={`Nota de ${p.nome}`} value={sel[p.id]} onChange={(e) => setSel({ ...sel, [p.id]: e.target.value })} />}</td>
               </tr>
             ))}
           </tbody></table>
         </div>
-        <div className="campo"><label htmlFor="t-obs">Observações</label><textarea id="t-obs" className="entrada" rows={2} value={obs} onChange={(e) => setObs(e.target.value)} /></div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><button type="button" className="btn" onClick={salvar}>Salvar ({marcados.length})</button>{msg && <span className="peq">{msg}</span>}</div>
-        <div className="suave peq">Nota de 0 a 10 (em branco se não houve teste). Com nota {NOTA_MINIMA} ou mais, o certificado fica liberado. Fica como registro de treinamento por pessoa (evidência de competência para a ISO/IEC 17025) em Pessoas e feedback › Treinamentos.</div>
+        <div className="campo"><label htmlFor="t-obs">Observações (conteúdo abordado)</label><textarea id="t-obs" className="entrada" rows={2} value={obs} onChange={(e) => setObs(e.target.value)} /></div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn" onClick={salvar}>Salvar ({marcados.length})</button>
+          {salvo && <button type="button" className="btn claro" onClick={() => setVendoRT(true)}>Imprimir RT para assinatura</button>}
+          {msg && <span className="peq">{msg}</span>}
+        </div>
+        <div className="suave peq">Nota de 0 a 10 (em branco se não houve teste). Com nota {NOTA_MINIMA} ou mais, o certificado fica liberado. Fica como registro de treinamento por pessoa (evidência de competência para a ISO/IEC 17025) em Pessoas e feedback › Treinamentos, e a avaliação da eficácia entra nas pendências na data marcada.</div>
       </div>
+      {vendoRT && salvo && <JanelaDocumento titulo="RT · Registro de treinamento" aoFechar={() => setVendoRT(false)}><DocRT reg={salvo} trilha={trilha} /></JanelaDocumento>}
     </Card>
   );
 }
