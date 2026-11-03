@@ -9,7 +9,7 @@ export const servicosGeradosListar=(filtros={})=>chamarUrl(FINANCEIRO_SERVICOS_L
 export const servicoGeradoSalvar=registro=>chamar("salvar",{registro}).then(r=>r.item);
 export const servicoParticularidadeSalvar=registro=>chamar("particularidadeSalvar",{registro}).then(r=>r.item);
 export const servicosGeradosSincronizar=()=>chamarUrl(FINANCEIRO_SERVICOS_SYNC,{});
-export const servicosGeradosAgrupar=(servicoIds,referenciaPagamento="")=>chamarUrl(FINANCEIRO_SERVICOS_GRUPAR,{servicoIds,referenciaPagamento});
+export const servicosGeradosAgrupar=(servicoIds,referenciaPagamento="",principalServicoId="")=>chamarUrl(FINANCEIRO_SERVICOS_GRUPAR,{servicoIds,referenciaPagamento,principalServicoId});
 export const servicoGeradoDesagrupar=(servicoId)=>chamarUrl(FINANCEIRO_SERVICOS_GRUPAR,{action:"desagruparItem",servicoId});
 export const servicoGeradoHistorico=id=>chamar("historico",{id}).then(r=>r.itens||[]);
 export const servicoGeradoRegistrarTratamento=(servicoIds,justificativa)=>chamar("registrarTratamento",{servicoIds,justificativa});
