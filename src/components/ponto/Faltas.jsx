@@ -1048,7 +1048,7 @@ export default function Faltas({
       tipo: debito ? "Horas compensadas" : "Correção/Ajuste",
       creditoMinutos: debito ? 0 : ajuste.minutos, debitoMinutos: debito ? ajuste.minutos : 0,
       motivo: `${debito ? "Compensação lançada no Ponto" : "Estorno: compensação do Ponto removida"} ${marcaCompensacaoPonto(data)}`,
-      observacao: "", origem: debito ? "APURACAO_PONTO" : "ESTORNO",
+      observacao: "", origem: debito ? "MANUAL" : "ESTORNO", // a Folha ignora APURACAO_PONTO (recalcula do relógio); MANUAL e ESTORNO entram no saldo
     });
   };
 
