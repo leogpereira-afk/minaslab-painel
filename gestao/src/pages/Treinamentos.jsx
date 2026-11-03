@@ -13,6 +13,7 @@ import { Apresentador } from "../components/Deck.jsx";
 import { BotaoCertificado } from "../components/CertificadoTreinamento.jsx";
 import { JanelaDocumento, DocRT } from "../components/FormulariosTreinamento.jsx";
 import { RegistrosTreinamento } from "../components/RegistrosTreinamento.jsx";
+import { useUsuariosTarefas, OpcaoTarefa, criarTarefaDaAplicacao } from "../components/TarefaEficacia.jsx";
 import { TIPOS_TREINAMENTO, DIAS_EFICACIA, somarDias } from "../lib/formulariosTreinamento.js";
 import { slidesDoModelo, modeloPorId } from "../lib/modelosApresentacao.js";
 import { npsCRM, licitacoesCRM } from "../services/crm.js";
@@ -683,6 +684,10 @@ export function Registro({ trilha, dataInicial, instrutorInicial = "", requisica
   const [msg, setMsg] = useState("");
   const [salvo, setSalvo] = useState(null);
   const [vendoRT, setVendoRT] = useState(false);
+  const contas = useUsuariosTarefas();
+  const [comTarefa, setComTarefa] = useState(true);
+  const [respTarefa, setRespTarefa] = useState("");
+  const responsavelTarefa = respTarefa || contas.eu;
   const extras = (req.pessoas || []).filter((x) => !pessoas.some((p) => p.id === x.pessoaId)).map((x) => ({ id: x.pessoaId, nome: x.nome, rhPessoaId: x.rhPessoaId || "", daEquipe: false }));
   const todas = [...pessoas, ...extras];
   const marcados = todas.filter((p) => p.id in sel);
@@ -704,9 +709,14 @@ export function Registro({ trilha, dataInicial, instrutorInicial = "", requisica
         ...(req.id ? { requisicaoId: req.id } : {}),
         participantes: marcados.map((p) => ({ pessoaId: p.id, rhPessoaId: p.rhPessoaId || "", nome: p.nome, funcao: String(funcoes[p.id] || "").trim(), presente: true, nota: sel[p.id] === "" ? null : Number(String(sel[p.id]).replace(",", ".")) })),
       });
-      setMsg(`Aplicação registrada para ${marcados.length} pessoa(s). Já aparece no perfil de cada uma. Imprima o RT para colher as assinaturas.`); setObs(""); setSel({});
-      setSalvo(reg);
-      if (aoSalvar) await aoSalvar(reg);
+      let final = reg, avisoTarefa = "";
+      if (comTarefa) {
+        try { final = await criarTarefaDaAplicacao(reg, responsavelTarefa, gravar); avisoTarefa = ` Tarefa da avaliação da eficácia criada no painel para ${dataCurta(eficaciaReal)}.`; }
+        catch (e) { avisoTarefa = ` Não consegui criar a tarefa no painel (${e.message}); crie em Requisição, registro e eficácia.`; }
+      }
+      setMsg(`Aplicação registrada para ${marcados.length} pessoa(s). Já aparece no perfil de cada uma. Imprima o RT para colher as assinaturas.${avisoTarefa}`); setObs(""); setSel({});
+      setSalvo(final);
+      if (aoSalvar) await aoSalvar(final);
     } catch (e) { setMsg(e.message); }
   };
   return (
@@ -744,6 +754,7 @@ export function Registro({ trilha, dataInicial, instrutorInicial = "", requisica
           </tbody></table>
         </div>
         <div className="campo"><label htmlFor="t-obs">Observações (conteúdo abordado)</label><textarea id="t-obs" className="entrada" rows={2} value={obs} onChange={(e) => setObs(e.target.value)} /></div>
+        <OpcaoTarefa ativo={comTarefa} aoAtivar={setComTarefa} responsavel={responsavelTarefa} aoResponsavel={setRespTarefa} usuarios={contas.usuarios} erro={contas.erro} />
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button type="button" className="btn" onClick={salvar}>Salvar ({marcados.length})</button>
           {salvo && <button type="button" className="btn claro" onClick={() => setVendoRT(true)}>Imprimir RT para assinatura</button>}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resultadoEficacia, avaliacoesEficacia, ehAplicacao, folhasRT, textoCarga, somarDias, requisicoes } from "./formulariosTreinamento.js";
+import { tarefaEficacia, todosAvaliados, resultadoEficacia, avaliacoesEficacia, ehAplicacao, folhasRT, textoCarga, somarDias, requisicoes } from "./formulariosTreinamento.js";
 
 test("critério de eficácia: IV 4 ou 5 e nenhuma nota I a III abaixo de 3", () => {
   assert.equal(resultadoEficacia({ i: 4, ii: 4, iii: 3, iv: 4 }), "eficaz");
@@ -45,4 +45,15 @@ test("folhas do RT e carga horária", () => {
   assert.equal(textoCarga("1,5"), "1h30");
   assert.equal(textoCarga("0.5"), "30 minutos");
   assert.equal(somarDias("2026-09-04", 30), "2026-10-04");
+});
+
+test("tarefa da eficácia no painel", () => {
+  const reg = { titulo: "5S", data: "2026-09-01", dataFim: "2026-09-04", participantes: [{ pessoaId: "a", nome: "Pessoa A" }, { pessoaId: "b", nome: "Pessoa B", presente: false }] };
+  const t = tarefaEficacia(reg, { responsavel: "ana" });
+  assert.equal(t.prazo, "2026-10-04T09:00:00-03:00");
+  assert.equal(t.lembrete, 1440);
+  assert.equal(t.checklist.length, 1);
+  assert.match(t.titulo, /5S \(01\/09\/2026\)/);
+  assert.equal(todosAvaliados(reg), false);
+  assert.equal(todosAvaliados({ ...reg, eficacia: { a: { i: 4, ii: 4, iii: 4, iv: 4 } } }), true);
 });

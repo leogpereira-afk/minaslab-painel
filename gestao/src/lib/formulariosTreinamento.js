@@ -2,9 +2,12 @@
 //  REQT · Requisição de treinamento (antes)
 //  RT   · Registro de treinamento (no dia, com a lista para assinatura)
 //  AVET · Avaliação da eficácia do treinamento (depois, por participante)
+// (nomes no formato próprio: nomeProprio)
 // Os dados ficam na coleção de treinamentos: a requisição é um registro
 // tipo "requisicao" (campos próprios, para não contar como aplicação), o RT
 // é a própria aplicação e a avaliação fica dentro dela (eficacia[pessoaId]).
+
+import { nomeProprio } from "./format.js";
 
 export const ORIGEM = "PT 001";
 // Revisões em vigor (mudou o formulário, sobe a revisão e a emissão).
@@ -121,3 +124,28 @@ export function textoCarga(horas) {
   if (!min) return `${int} hora${int === 1 ? "" : "s"}`;
   return int ? `${int}h${String(min).padStart(2, "0")}` : `${min} minutos`;
 }
+
+/**
+ * Tarefa do painel para a avaliação da eficácia de uma aplicação: prazo no
+ * dia previsto às 9h (Brasília), lembrete 1 dia antes e um item por participante.
+ */
+export function tarefaEficacia(reg, { responsavel = "", link = "" } = {}) {
+  const prevista = reg.eficaciaPrevista || somarDias(reg.dataFim || reg.data, DIAS_EFICACIA);
+  const presentes = (reg.participantes || []).filter((p) => p.presente !== false);
+  const [a, m, d] = String(reg.data).split("-");
+  return {
+    titulo: `Avaliar a eficácia: ${reg.titulo || "treinamento"} (${d}/${m}/${a})`.slice(0, 200),
+    descricao: [
+      `Avaliação da eficácia do treinamento (AVET · PT 001) de ${presentes.length} participante(s).`,
+      `Faça em Gestão › Treinamentos › Requisição, registro e eficácia › Avaliar, imprima a AVET e colha a assinatura.`,
+      link ? `Abrir: ${link}` : "",
+    ].filter(Boolean).join("\n\n"),
+    responsavel,
+    prazo: `${prevista}T09:00:00-03:00`,
+    lembrete: 1440,
+    checklist: presentes.map((p) => ({ grupo: "Participantes", texto: `AVET de ${nomeProprio(p.nome)}` })),
+  };
+}
+
+/** Todos os presentes da aplicação já foram avaliados? */
+export const todosAvaliados = (reg) => (reg.participantes || []).filter((p) => p.presente !== false).every((p) => resultadoEficacia(reg.eficacia?.[p.pessoaId] || {}));
