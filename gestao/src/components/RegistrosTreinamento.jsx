@@ -9,6 +9,7 @@ import { Card, Chip, Cabecalho, Modal, Paginacao, usePaginacao } from "./ui.jsx"
 import { JanelaDocumento, DocREQT, DocRT, DocAVET } from "./FormulariosTreinamento.jsx";
 import { Registro } from "../pages/Treinamentos.jsx";
 import { useUsuariosTarefas, criarTarefaDaAplicacao, concluirSeTodosAvaliados } from "./TarefaEficacia.jsx";
+import { atualizarPrazoTarefa } from "../services/tarefasPainel.js";
 import { catalogo } from "../lib/catalogo.js";
 import { pessoasParaTreinamento } from "../lib/treinamentosPessoa.js";
 import { dataCurta, hojeBR, nomeProprio } from "../lib/format.js";
@@ -167,7 +168,7 @@ export function RegistrosTreinamento() {
                   <td>{a.tarefaEficacia?.id ? <Chip tom="ok">criada{nomeConta(a.tarefaEficacia.responsavel) ? ` · ${nomeConta(a.tarefaEficacia.responsavel)}` : ""}</Chip> : todosAvaliados2(a) ? <span className="suave peq">avaliado</span> : <button type="button" className="btn claro mini" disabled={criando === a.id} onClick={() => criarTarefa(a)}>{criando === a.id ? "Criando…" : "Criar tarefa"}</button>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "RT", reg: a })}>RT</button>{" "}
-                    <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "dadosRT", reg: a })}>Completar dados</button>
+                    <button type="button" className="btn claro mini" onClick={() => setDoc({ tipo: "dadosRT", reg: a })}>Editar</button>
                   </td>
                 </tr>
               ))}</tbody>
@@ -190,7 +191,7 @@ export function RegistrosTreinamento() {
       {doc?.tipo === "REQT" && <JanelaDocumento titulo="REQT · Requisição de treinamento" aoFechar={() => setDoc(null)}><DocREQT req={doc.req} /></JanelaDocumento>}
       {doc?.tipo === "RT" && <JanelaDocumento titulo="RT · Registro de treinamento" aoFechar={() => setDoc(null)}><DocRT reg={doc.reg} trilha={trilhaDe(doc.reg.trilhaId)} /></JanelaDocumento>}
       {doc?.tipo === "AVET" && <JanelaDocumento titulo={`AVET · ${nomeProprio(doc.x.participante.nome)}`} aoFechar={() => setDoc(null)}><DocAVET reg={doc.x.aplicacao} participante={doc.x.participante} av={doc.x.avaliacao || {}} trilha={trilhaDe(doc.x.aplicacao.trilhaId)} /></JanelaDocumento>}
-      {doc?.tipo === "dadosRT" && <DadosRT reg={doc.reg} trilha={trilhaDe(doc.reg.trilhaId)} aoFechar={() => setDoc(null)} aoSalvo={(r) => setDoc({ tipo: "RT", reg: r })} />}
+      {doc?.tipo === "dadosRT" && <EditarAplicacao reg={doc.reg} trilha={trilhaDe(doc.reg.trilhaId)} aoFechar={() => setDoc(null)} aoSalvo={(r) => setDoc({ tipo: "RT", reg: r })} />}
     </>
   );
 }
@@ -376,42 +377,91 @@ function AvaliarEficacia({ linha, aoFechar, aoSalvo }) {
   );
 }
 
-// ---------------------------------------------------------------- completar RT (registros antigos)
-function DadosRT({ reg, trilha, aoFechar, aoSalvo }) {
-  const { gravar } = useBase();
+// ---------------------------------------------------------------- editar a aplicação (RT)
+/** Edita tudo da aplicação: data, instrutor, dados do RT e participantes (nota, função, incluir, tirar). */
+export function EditarAplicacao({ reg, trilha, aoFechar, aoSalvo }) {
+  const { gravar, equipeAtual: equipe, elenco, funcaoDe } = useBase();
+  const pessoas = pessoasParaTreinamento(equipe, elenco);
+  const padraoEfic = (d, fim) => somarDias(fim || d, DIAS_EFICACIA);
   const [f, setF] = useState({
-    dataFim: reg.dataFim || "", cargaHoraria: reg.cargaHoraria || (trilha?.minutos ? String(Math.round((trilha.minutos / 60) * 100) / 100).replace(".", ",") : ""),
+    data: reg.data || hojeBR(), dataFim: reg.dataFim || "", instrutor: reg.instrutor || "",
+    cargaHoraria: reg.cargaHoraria || (trilha?.minutos ? String(Math.round((trilha.minutos / 60) * 100) / 100).replace(".", ",") : ""),
     local: reg.local || "MinasLab", tipoTreinamento: reg.tipoTreinamento || "", objetivo: reg.objetivo ?? trilha?.objetivo ?? "", material: reg.material ?? trilha?.documento ?? "",
-    eficaciaPrevista: reg.eficaciaPrevista || somarDias(reg.dataFim || reg.data, DIAS_EFICACIA), instrutor: reg.instrutor || "", obs: reg.obs || "",
-    participantes: (reg.participantes || []).map((p) => ({ ...p })),
+    eficaciaPrevista: reg.eficaciaPrevista || padraoEfic(reg.data, reg.dataFim), obs: reg.obs || "",
+    participantes: (reg.participantes || []).filter((p) => p.presente !== false).map((p) => ({ ...p, nota: p.nota == null ? "" : String(p.nota).replace(".", ",") })),
   });
+  const [busca, setBusca] = useState("");
   const [erro, setErro] = useState("");
-  const muda = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const [salvando, setSalvando] = useState(false);
+  const muda = (k, v) => setF((x) => {
+    const n = { ...x, [k]: v };
+    // Mudou a data e a eficácia estava no padrão (30 dias): acompanha.
+    if ((k === "data" || k === "dataFim") && x.eficaciaPrevista === padraoEfic(x.data, x.dataFim)) n.eficaciaPrevista = padraoEfic(n.data, n.dataFim);
+    return n;
+  });
+  const mudaP = (id, campo, v) => setF((x) => ({ ...x, participantes: x.participantes.map((p) => (p.pessoaId === id ? { ...p, [campo]: v } : p)) }));
+  const tirar = (p) => {
+    if (reg.eficacia?.[p.pessoaId] && !window.confirm(`${nomeProprio(p.nome)} já tem avaliação da eficácia. Tirar mesmo assim?`)) return;
+    setF((x) => ({ ...x, participantes: x.participantes.filter((y) => y.pessoaId !== p.pessoaId) }));
+  };
+  const incluir = (p) => {
+    const m = equipe.find((x) => x.id === p.id || (x.rhPessoaId && x.rhPessoaId === p.id));
+    setF((x) => ({ ...x, participantes: [...x.participantes, { pessoaId: p.id, rhPessoaId: p.rhPessoaId || "", nome: p.nome, funcao: funcaoDe(m)?.nome || "", presente: true, nota: "" }] }));
+    setBusca("");
+  };
+  const candidatos = busca.trim().length >= 2 ? pessoas.filter((p) => norm(p.nome).includes(norm(busca)) && !f.participantes.some((x) => x.pessoaId === p.id)).slice(0, 8) : [];
   const salvar = async () => {
-    try { const r = await gravar("treinamentos", { ...reg, ...f }); aoSalvo(r); } catch (e) { setErro(e.message); }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.data)) return setErro("Informe a data.");
+    if (f.dataFim && f.dataFim < f.data) return setErro("A data final é antes da inicial.");
+    if (!f.participantes.length) return setErro("Precisa de ao menos um participante.");
+    const notas = f.participantes.map((p) => (String(p.nota).trim() === "" ? null : Number(String(p.nota).replace(",", "."))));
+    const ruim = notas.findIndex((n) => n != null && (Number.isNaN(n) || n < 0 || n > 10));
+    if (ruim >= 0) return setErro(`A nota de ${nomeProprio(f.participantes[ruim].nome)} precisa ser de 0 a 10.`);
+    setSalvando(true); setErro("");
+    try {
+      const fora = (reg.participantes || []).filter((p) => p.presente === false);
+      const participantes = [...f.participantes.map((p, k) => ({ ...p, funcao: String(p.funcao || "").trim(), nota: notas[k] })), ...fora];
+      const ids = new Set(participantes.map((p) => p.pessoaId));
+      const eficacia = Object.fromEntries(Object.entries(reg.eficacia || {}).filter(([id]) => ids.has(id)));
+      const r = await gravar("treinamentos", { ...reg, ...f, dataFim: f.dataFim && f.dataFim > f.data ? f.dataFim : "", instrutor: f.instrutor.trim(), participantes, eficacia });
+      if (reg.tarefaEficacia?.id && r.eficaciaPrevista !== reg.eficaciaPrevista) await atualizarPrazoTarefa(reg.tarefaEficacia.id, r.eficaciaPrevista).catch(() => {});
+      aoSalvo(r);
+    } catch (e) { setErro(e.message); setSalvando(false); }
   };
   return (
-    <Modal titulo={`Dados do RT · ${reg.titulo || trilha?.nome || ""}`} aoFechar={aoFechar} largo>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <Modal titulo={`Editar aplicação · ${reg.titulo || trilha?.nome || ""}`} aoFechar={aoFechar} largo>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="grade" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-          <div className="campo"><label>Data</label><input className="entrada" value={dataCurta(reg.data)} disabled /></div>
-          <div className="campo"><label htmlFor="d-fim">Até</label><input id="d-fim" type="date" className="entrada" value={f.dataFim} onChange={(e) => muda("dataFim", e.target.value)} /></div>
-          <div className="campo"><label htmlFor="d-inst">Instrutor</label><input id="d-inst" className="entrada" value={f.instrutor} onChange={(e) => muda("instrutor", e.target.value)} /></div>
-          <div className="campo"><label htmlFor="d-carga">Carga horária (horas)</label><input id="d-carga" className="entrada" value={f.cargaHoraria} onChange={(e) => muda("cargaHoraria", e.target.value)} /></div>
+          <div className="campo"><label htmlFor="d-data">Data</label><input id="d-data" type="date" className="entrada" value={f.data} onChange={(e) => muda("data", e.target.value)} /></div>
+          <div className="campo"><label htmlFor="d-fim">Até (se durou mais de um dia)</label><input id="d-fim" type="date" className="entrada" value={f.dataFim} onChange={(e) => muda("dataFim", e.target.value)} /></div>
+          <div className="campo"><label htmlFor="d-inst">Quem aplicou</label><input id="d-inst" className="entrada" value={f.instrutor} onChange={(e) => muda("instrutor", e.target.value)} /></div>
+          <div className="campo"><label htmlFor="d-carga">Carga horária (horas)</label><input id="d-carga" className="entrada" inputMode="decimal" value={f.cargaHoraria} onChange={(e) => muda("cargaHoraria", e.target.value)} /></div>
           <div className="campo"><label htmlFor="d-local">Local</label><input id="d-local" className="entrada" value={f.local} onChange={(e) => muda("local", e.target.value)} /></div>
           <div className="campo"><label htmlFor="d-tipo">Tipo</label><select id="d-tipo" className="entrada" value={f.tipoTreinamento} onChange={(e) => muda("tipoTreinamento", e.target.value)}><option value="">Escolha…</option>{TIPOS_TREINAMENTO.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select></div>
           <div className="campo"><label htmlFor="d-mat">Material / procedimento</label><input id="d-mat" className="entrada" value={f.material} onChange={(e) => muda("material", e.target.value)} /></div>
           <div className="campo"><label htmlFor="d-efic">Avaliação da eficácia em</label><input id="d-efic" type="date" className="entrada" value={f.eficaciaPrevista} onChange={(e) => muda("eficaciaPrevista", e.target.value)} /></div>
         </div>
         <div className="campo"><label htmlFor="d-obj">Objetivo</label><textarea id="d-obj" className="entrada" rows={2} value={f.objetivo} onChange={(e) => muda("objetivo", e.target.value)} /></div>
-        <div className="campo"><span className="rotulo">Função de cada participante</span>
-          {f.participantes.filter((p) => p.presente !== false).map((p) => (
-            <div key={p.pessoaId} style={{ display: "flex", gap: 8, alignItems: "center" }}><b style={{ minWidth: 200 }}>{nomeProprio(p.nome)}</b><input className="entrada" aria-label={`Função de ${p.nome}`} value={p.funcao || ""} onChange={(e) => muda("participantes", f.participantes.map((y) => (y.pessoaId === p.pessoaId ? { ...y, funcao: e.target.value } : y)))} /></div>
-          ))}
+        <div className="campo">
+          <span className="rotulo">Participantes ({f.participantes.length})</span>
+          <div className="tabela-caixa"><table>
+            <thead><tr><th>Colaborador</th><th>Função</th><th style={{ width: 120 }}>Nota (0 a 10)</th><th style={{ width: 70 }} /></tr></thead>
+            <tbody>{f.participantes.map((p) => (
+              <tr key={p.pessoaId}>
+                <td>{nomeProprio(p.nome)}{reg.eficacia?.[p.pessoaId] && <div className="suave peq">já avaliado(a)</div>}</td>
+                <td><input className="entrada" aria-label={`Função de ${p.nome}`} value={p.funcao || ""} onChange={(e) => mudaP(p.pessoaId, "funcao", e.target.value)} /></td>
+                <td><input className="entrada num" inputMode="decimal" aria-label={`Nota de ${p.nome}`} value={p.nota} onChange={(e) => mudaP(p.pessoaId, "nota", e.target.value)} style={{ width: 90 }} /></td>
+                <td><button type="button" className="btn perigo mini" onClick={() => tirar(p)}>Tirar</button></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+          <input className="entrada" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Incluir participante: digite o nome" aria-label="Incluir participante" />
+          {candidatos.length > 0 && <div className="pilulas">{candidatos.map((p) => <button key={p.id} type="button" className="pilula" onClick={() => incluir(p)}>+ {nomeProprio(p.nome)}</button>)}</div>}
         </div>
-        <div className="campo"><label htmlFor="d-obs">Observações</label><textarea id="d-obs" className="entrada" rows={2} value={f.obs} onChange={(e) => muda("obs", e.target.value)} /></div>
+        <div className="campo"><label htmlFor="d-obs">Observações (conteúdo abordado)</label><textarea id="d-obs" className="entrada" rows={2} value={f.obs} onChange={(e) => muda("obs", e.target.value)} /></div>
+        {reg.tarefaEficacia?.id && <div className="suave peq">Se mudar a data da avaliação da eficácia, o prazo da tarefa no painel muda junto.</div>}
         {erro && <div className="aviso ruim">{erro}</div>}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" className="btn claro" onClick={aoFechar}>Cancelar</button><button type="button" className="btn" onClick={salvar}>Salvar e ver o RT</button></div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" className="btn claro" onClick={aoFechar}>Cancelar</button><button type="button" className="btn" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></div>
       </div>
     </Modal>
   );

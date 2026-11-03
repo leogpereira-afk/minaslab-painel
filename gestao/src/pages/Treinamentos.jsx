@@ -12,7 +12,7 @@ import { Slides } from "../components/Slides.jsx";
 import { Apresentador } from "../components/Deck.jsx";
 import { BotaoCertificado } from "../components/CertificadoTreinamento.jsx";
 import { JanelaDocumento, DocRT } from "../components/FormulariosTreinamento.jsx";
-import { RegistrosTreinamento } from "../components/RegistrosTreinamento.jsx";
+import { RegistrosTreinamento, EditarAplicacao } from "../components/RegistrosTreinamento.jsx";
 import { useUsuariosTarefas, OpcaoTarefa, criarTarefaDaAplicacao } from "../components/TarefaEficacia.jsx";
 import { TIPOS_TREINAMENTO, DIAS_EFICACIA, somarDias } from "../lib/formulariosTreinamento.js";
 import { slidesDoModelo, modeloPorId } from "../lib/modelosApresentacao.js";
@@ -222,6 +222,7 @@ function DetalheTrilha({ t, sug, aoEditar, cat, salvarCat }) {
   const [modo, setModo] = useState("guia");
   const [msg, setMsg] = useState("");
   const [rt, setRT] = useState(null);
+  const [editandoApl, setEditandoApl] = useState(null);
   const aplicacoes = dados.treinamentos.filter((x) => x.trilhaId === t.id && !x.tipo).sort((a, b) => String(b.data).localeCompare(String(a.data)));
   const mudar = async (parte, aviso) => { setMsg(""); try { await salvarCat(parte); if (aviso) setMsg(aviso); } catch (e) { setMsg(e.message); } };
   const alternarObrigatorio = () => mudar({ obrigatorio: { ...cat.cfg.obrigatorio, [t.id]: !t.obrigatorio } }, t.obrigatorio ? "Agora é opcional: sai do plano de reciclagem." : "Agora é obrigatório: entra no plano.");
@@ -285,36 +286,44 @@ function DetalheTrilha({ t, sug, aoEditar, cat, salvarCat }) {
       <Card semPad>
         <div className="card-cab"><h3>Aplicações</h3><span className="suave peq">{aplicacoes.length}</span></div>
         {aplicacoes.length === 0 ? <div className="vazio" style={{ padding: "0 20px 20px" }}>Ainda não aplicado.</div> : (
-          <div className="tabela-caixa"><table>
-            <thead><tr><th>Data</th><th>Participantes e certificados</th><th>Nota média</th><th>Efeito no indicador</th><th /></tr></thead>
-            <tbody>{aplicacoes.map((a) => {
+          <div className="aplicacoes">
+            {aplicacoes.map((a) => {
               const ef = eficacia(t, a, { resumo, dados });
               const media = mediaNotas(a.participantes);
+              const presentes = (a.participantes || []).filter((p) => p.presente !== false);
               return (
-                <tr key={a.id}>
-                  <td className="tnum">{dataCurta(a.data)}{a.instrutor && <div className="suave peq">{a.instrutor}</div>}</td>
-                  <td className="peq">
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {(a.participantes || []).filter((p) => p.presente !== false).map((p) => {
-                        const nome = nomeProprio(p.nome || equipe.find((m) => m.id === p.pessoaId)?.nome || "—");
-                        return (
-                          <div key={p.pessoaId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <span>{nome}</span><span className="suave tnum">{p.nota != null ? `nota ${fmtNota(p.nota)}` : "sem nota"}</span>
-                            {aprovado(p) ? <BotaoCertificado dados={{ nome, treinamento: t.nome, documento: t.documento, data: a.data, minutos: t.minutos, nota: p.nota, instrutor: a.instrutor }} /> : <Chip tom="alerta">Refazer</Chip>}
-                          </div>
-                        );
-                      })}
+                <div key={a.id} className="aplicacao">
+                  <div className="aplicacao-topo">
+                    <div>
+                      <b className="tnum">{dataCurta(a.data)}{a.dataFim ? ` a ${dataCurta(a.dataFim)}` : ""}</b>
+                      <div className="suave peq">{[a.instrutor && `por ${a.instrutor}`, `${presentes.length} participante(s)`, media != null && `nota média ${fmtNota(media)}`].filter(Boolean).join(" · ")}</div>
+                      <div className="suave peq">{ef.texto || `${ef.rotulo}: ${ef.antes} → ${ef.depois}`}</div>
                     </div>
-                  </td>
-                  <td className="tnum">{media == null ? "—" : fmtNota(media)}</td>
-                  <td className="peq">{ef.texto || `${ef.rotulo}: ${ef.antes} → ${ef.depois}`}</td>
-                  <td style={{ whiteSpace: "nowrap" }}><button type="button" className="btn claro mini" onClick={() => setRT(a)}>RT</button> <button type="button" className="btn perigo mini" onClick={() => window.confirm("Apagar este registro de aplicação? Ele sai também do perfil dos participantes.") && remover("treinamentos", a.id)}>Apagar</button></td>
-                </tr>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button type="button" className="btn claro mini" onClick={() => setEditandoApl(a)}>Editar</button>
+                      <button type="button" className="btn claro mini" onClick={() => setRT(a)}>Imprimir RT</button>
+                      <button type="button" className="btn perigo mini" onClick={() => window.confirm("Apagar este registro de aplicação? Ele sai também do perfil dos participantes.") && remover("treinamentos", a.id)}>Apagar</button>
+                    </div>
+                  </div>
+                  <div className="aplicacao-pessoas">
+                    {presentes.map((p) => {
+                      const nome = nomeProprio(p.nome || equipe.find((m) => m.id === p.pessoaId)?.nome || "—");
+                      return (
+                        <div key={p.pessoaId} className="aplicacao-pessoa">
+                          <span className="aplicacao-nome" title={p.funcao || nome}>{nome}</span>
+                          <span className="tnum suave peq">{p.nota != null ? `nota ${fmtNota(p.nota)}` : "sem nota"}</span>
+                          {aprovado(p) ? <BotaoCertificado dados={{ nome, treinamento: t.nome, documento: t.documento, data: a.data, minutos: t.minutos, nota: p.nota, instrutor: a.instrutor }} /> : <Chip tom="alerta">Refazer</Chip>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               );
-            })}</tbody>
-          </table></div>
+            })}
+          </div>
         )}
       </Card>
+      {editandoApl && <EditarAplicacao reg={editandoApl} trilha={t} aoFechar={() => setEditandoApl(null)} aoSalvo={() => setEditandoApl(null)} />}
     </div>
   );
 }
