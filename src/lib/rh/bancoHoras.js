@@ -43,22 +43,3 @@ export function formatarBanco(totalMinutos) {
   const absoluto = Math.abs(total);
   return `${sinal}${String(Math.floor(absoluto / 60)).padStart(2, "0")}:${String(absoluto % 60).padStart(2, "0")}`;
 }
-
-// Compensação lançada no Ponto: o dia sai do banco de horas. O motivo leva uma marca com a data, e é por ela que
-// se sabe o que já foi lançado para o dia: regravar a mesma ausência não debita duas vezes, e tirá-la estorna.
-export const marcaCompensacaoPonto = (data) => `[ponto:${data}]`;
-
-/**
- * O que falta lançar no banco para o dia ficar como a ausência manda.
- * `alvoMin` = minutos que o dia deve ter debitados (0 quando a ausência saiu ou mudou de tipo).
- * Devolve { tipo: "debito" | "credito", minutos } ou null quando já está certo.
- */
-export function ajusteCompensacaoPonto(movimentos = [], data, alvoMin = 0) {
-  const marca = marcaCompensacaoPonto(data);
-  const jaDebitado = movimentos
-    .filter((m) => String(m.motivo || "").includes(marca))
-    .reduce((n, m) => n + minutos(m.debito_minutos) - minutos(m.credito_minutos), 0);
-  const diferenca = minutos(alvoMin) - jaDebitado;
-  if (diferenca === 0) return null;
-  return diferenca > 0 ? { tipo: "debito", minutos: diferenca } : { tipo: "credito", minutos: -diferenca };
-}

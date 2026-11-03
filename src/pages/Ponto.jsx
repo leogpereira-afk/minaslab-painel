@@ -724,18 +724,11 @@ export default function Ponto() {
   /* A ÚNICA PORTA DE ESCRITA do módulo: nenhuma aba fala com services/dados.js
      por conta própria. Aviso no SUCESSO e no ERRO, e recarga depois — gravação
      que só avisa quando dá certo ensina a confiar no silêncio. */
-  const gravarRegistro = async (colecao, registro, fraseOk, fechar, depois) => {
+  const gravarRegistro = async (colecao, registro, fraseOk, fechar) => {
     setSalvando(true);
     try {
       await salvar(colecao, registro);
       fechar?.();
-      try {
-        await depois?.();
-      } catch (e) {
-        recarregar();
-        setAviso({ tipo: "erro", texto: `Gravado, mas o banco de horas não foi atualizado: ${e.message}` });
-        return;
-      }
       setAviso({ tipo: "ok", texto: fraseOk });
       recarregar();
     } catch (e) {
@@ -747,16 +740,9 @@ export default function Ponto() {
 
   // O window.confirm fica em quem chama, junto do texto que faz sentido para
   // aquele registro.
-  const apagarRegistro = async (colecao, id, fraseOk, depois) => {
+  const apagarRegistro = async (colecao, id, fraseOk) => {
     try {
       await apagar(colecao, id);
-      try {
-        await depois?.();
-      } catch (e) {
-        recarregar();
-        setAviso({ tipo: "erro", texto: `Removido, mas o banco de horas não foi atualizado: ${e.message}` });
-        return;
-      }
       setAviso({ tipo: "ok", texto: fraseOk });
       recarregar();
     } catch (e) {

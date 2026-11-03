@@ -754,7 +754,7 @@ export const TIPOS_AUSENCIA = [
     curto: "banco de horas",
     desconta: false,
     chip: "chip",
-    ajuda: "Compensa o dia com horas do banco: não desconta do salário e debita do banco de horas as horas previstas do dia.",
+    ajuda: "Compensa o dia com horas do banco: não desconta do salário, e o dia fica negativo no banco de horas (horas previstas sem trabalho). Vem do Jibble quando a política tem esse nome.",
   },
 ];
 

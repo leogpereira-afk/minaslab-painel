@@ -56,17 +56,20 @@ export function previstoCheio(d) {
   return dia >= 1 && dia <= 4 ? 480 : dia === 5 ? 420 : 0;
 }
 
+/* Ausência que abona o dia (previsto zero). Falta não abona (desconta), e "Banco de Horas / Compensação" também
+   não: o dia fica com o previsto e sem trabalho, então sai NEGATIVO no banco de horas. Sem desconto no salário. */
+const abona = (a) => Boolean(a) && !a.desconta && a.tipo !== "banco_horas";
+
 /* O previsto que a folha mostra: zero no dia abonado e no feriado. */
 export function previstoDoDia(d) {
-  const a = ausenciaDoDia(d);
-  return a && !a.desconta ? 0 : previstoCheio(d);
+  return abona(ausenciaDoDia(d)) ? 0 : previstoCheio(d);
 }
 
 /* Abonado = ausência que NÃO desconta, num dia que não é feriado. Feriado tem
    regra própria (quem trabalha nele faz extra). */
 export function diaAbonado(d) {
   const a = ausenciaDoDia(d);
-  return !ehFeriado(d) && Boolean(a) && !a.desconta;
+  return !ehFeriado(d) && abona(a);
 }
 
 export const linhaSemRegistro = (d) => String(d?.id || "").startsWith("vazio_");

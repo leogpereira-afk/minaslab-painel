@@ -184,6 +184,16 @@ function duracaoISO(v: unknown): number | null {
    pelo Jibble, o dia vem sem batidas e payrollHours já contém as horas pagas,
    enquanto o nome da política aparece em um objeto aninhado. */
 function ausenciaPagaDoJibble(d: Record<string, any>) {
+  /* "Banco de Horas / Compensação": política criada no Jibble para o dia compensado com horas do banco.
+     O Jibble paga o dia (payrollHours cheio), mas aqui o dia fica com as horas das batidas e sai NEGATIVO no
+     banco de horas. Vira a ausência `banco_horas`, sem horas de afastamento. */
+  if (/banco de horas|compensa[cç][aã]o/.test(JSON.stringify(d).toLocaleLowerCase("pt-BR"))) {
+    return {
+      horas: null,
+      banco: true,
+      ausencia: { tipo: "banco_horas", motivo: "Banco de Horas / Compensação lançado no Jibble", origem: "jibble" },
+    };
+  }
   const explicita = duracaoISO(
     d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff,
   );
@@ -572,7 +582,7 @@ Deno.serve(async (req) => {
             /* DIA SEM MOVIMENTO NÃO VIRA REGISTRO. Gravar o dia vazio encheria
                a tela de zeros e faria "sem batida" parecer "trabalhou 0h" — e
                falta quem decide é a escala, não a ausência de linha aqui. */
-            if (!d.firstIn && !tracked && !horasAtestado) continue;
+            if (!d.firstIn && !tracked && !horasAtestado && !afastamento.ausencia) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -593,7 +603,7 @@ Deno.serve(async (req) => {
               )),
               horasAtestadoMin: horasAtestado,
               ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
-              trabalhadoMin: trabalhado,
+              trabalhadoMin: afastamento.banco ? Math.max(0, (tracked ?? 0) - (duracaoISO(d.unpaidBreak) ?? 0)) : trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
               extraDobroMin:
@@ -788,7 +798,7 @@ Deno.serve(async (req) => {
             const tracked = duracaoISO(d.tracked);
             const afastamento = ausenciaPagaDoJibble(d);
             const horasAtestado = afastamento.horas;
-            if (!d.firstIn && !tracked && !horasAtestado) continue;
+            if (!d.firstIn && !tracked && !horasAtestado && !afastamento.ausencia) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -810,7 +820,7 @@ Deno.serve(async (req) => {
               )),
               horasAtestadoMin: horasAtestado,
               ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
-              trabalhadoMin: trabalhado,
+              trabalhadoMin: afastamento.banco ? Math.max(0, (tracked ?? 0) - (duracaoISO(d.unpaidBreak) ?? 0)) : trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
               extraDobroMin:

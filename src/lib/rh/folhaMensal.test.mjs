@@ -121,3 +121,16 @@ test("feriado trabalhado continua sendo extra (regra própria, não é abono)", 
 test("dia em aberto não conta horas", () => {
   assert.equal(minutosDaFolha(jibble({ trabalhadoMin: 480, emAberto: true })), 0);
 });
+
+test('Banco de Horas / Compensação não abona o dia: previsto fica cheio e o saldo do dia sai negativo; folga continua abonando', async () => {
+  const { previstoDoDia, diaAbonado, saldoDoDia } = await import('./folhaMensal.js');
+  const quinta = { id: 'pd_x_2026-10-01', data: '2026-10-01', trabalhadoMin: 0, origem: 'jibble' };
+  const compensacao = { ...quinta, ausencia: { tipo: 'banco_horas' } };
+  assert.equal(previstoDoDia(compensacao), 480);
+  assert.equal(diaAbonado(compensacao), false);
+  assert.equal(saldoDoDia(compensacao), -480);
+  const folga = { ...quinta, ausencia: { tipo: 'folga' } };
+  assert.equal(previstoDoDia(folga), 0);
+  assert.equal(diaAbonado(folga), true);
+  assert.equal(saldoDoDia(folga), 0);
+});
