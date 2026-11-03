@@ -13,3 +13,4 @@ export function usuariosTarefas() {
 }
 export const criarTarefa = (dados) => chamar("criar", dados);
 export const concluirTarefa = (id) => chamar("status", { id, acao: "concluir" });
+export const atualizarPrazoTarefa = (id, dia) => chamar("atualizar", { id, prazo: `${dia}T09:00:00-03:00` });
