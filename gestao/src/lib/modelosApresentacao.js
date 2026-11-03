@@ -10,6 +10,7 @@
 
 import { novoId } from "./format.js";
 import { MODELOS_PG } from "./treinamentosPG.js";
+import { MODELOS_QUALIDADE } from "./treinamentosQualidade.js";
 import { MODELOS_TRILHAS } from "./treinamentosTrilhas.js";
 import { MODELO_VISUAL } from "./treinamentoVisual.js";
 import { MODELO_PAINEL } from "./treinamentoPainel.js";
@@ -198,6 +199,7 @@ export const MODELOS = [
   { id: "integracao", categoria: "treinamento", tema: "colorido", nome: "Integração de novos colaboradores", desc: "Módulo 1: ISO/IEC 17025, escopo CRL 1943, matrizes e recepção de amostras. Módulo 2: Declaração de Ética. Com teste no final.", titulo: "Integração e Capacitação Técnica", slides: INTEGRACAO },
   { id: "analise-critica", categoria: "treinamento", setor: "comercial", tema: "colorido", nome: "Análise crítica de propostas (ISO 17025)", desc: "PG 006 e requisito 7.1 da ISO/IEC 17025: checklist, fluxo da proposta, aceite do cliente e casos reais em quiz. Estilo colorido.", titulo: "Análise Crítica de Propostas · PG 006", slides: ANALISE_CRITICA },
   ...MODELOS_PG,
+  ...MODELOS_QUALIDADE,
   ...MODELOS_TRILHAS,
   MODELO_VISUAL,
   MODELO_PAINEL,
