@@ -1,21 +1,21 @@
 // O menu do LIMS é o do GerenciaLab, na mesma ordem e com os mesmos nomes.
 // Cada item é [rótulo, tela, pronto?]. As telas usam os caminhos do
 // GerenciaLab (customers, proposedlist...). Item ainda não construído abre
-// "Tela em construção". Gestão da qualidade fica por último na construção.
+// "Tela em construção".
 //
 // MENU É UMA LISTA SÓ: tela nova entra aqui e em TELAS do App.jsx.
 
 export const MENU = [
-  ["Relatórios", [["Relatórios de amostras", "report-sample"], ["Relatórios de centro de custos", "report-cost-center"], ["Dashboard Financeiro", "dashboard-financeiro"]]],
-  ["Gestão da qualidade", [["Gestão de não conformidades", "occurrence"], ["Gestão de arquivos", "filemanagement"], ["Amostras Controle de Qualidade", "samples-cq"], ["Carta controle", "carta-controle"], ["Homologação", "homologation"], ["Gestão de Capacitação", "training-management"]]],
-  ["Financeiro", [["Contas a receber", "bills-to-receive"], ["Contas a pagar", "bills-to-pay"], ["Fluxo de Caixa", "extract"], ["Notas fiscais de Serviços", "notas-fiscais"], ["Notas fiscais de Entrada", "nota-fiscal-entrada"], ["Centro de custos", "costcenter"]]],
+  ["Relatórios", [["Relatórios de amostras", "report-sample", true], ["Relatórios de centro de custos", "report-cost-center", true], ["Dashboard Financeiro", "dashboard-financeiro", true]]],
+  ["Gestão da qualidade", [["Gestão de não conformidades", "occurrence", true], ["Gestão de arquivos", "filemanagement", true], ["Amostras Controle de Qualidade", "samples-cq", true], ["Carta controle", "carta-controle", true], ["Homologação", "homologation", true], ["Gestão de Capacitação", "training-management", true]]],
+  ["Financeiro", [["Contas a receber", "bills-to-receive", true], ["Contas a pagar", "bills-to-pay", true], ["Fluxo de Caixa", "extract", true], ["Notas fiscais de Serviços", "notas-fiscais", true], ["Notas fiscais de Entrada", "nota-fiscal-entrada", true], ["Centro de custos", "costcenter", true]]],
   ["Cadastro", [["Solicitantes", "solicitantes", true], ["Cliente / Fornecedor", "customers", true]]],
   ["Propostas", [["Criar Proposta", "criar-proposta", true], ["Listar Propostas", "proposedlist", true]]],
   ["Contratos", [["Contratos Pendentes", "notification-pedents", true], ["Contratos", "contracts", true]]],
   ["Ordem serviços", [["Ordem serviços", "service-order", true], ["Rastreabilidade", "traceability", true]]],
-  ["Coletas", [["Logística", "logistics"], ["Coletas", "collections"], ["Agenda", "calendar"], ["Descarte amostras", "discardsamples"]]],
-  ["Laboratório", [["Inspeção técnica de amostra", "technical-inspection"], ["Análise por Amostra", "laboratory-order-services"], ["Análise por Parâmetro", "analysis-methods"]]],
-  ["Revisão", [["Resultado", "list-revisions-result"], ["Certificado", "list-revisions"]]],
+  ["Coletas", [["Logística", "logistics", true], ["Coletas", "collections", true], ["Agenda", "calendar", true], ["Descarte amostras", "discardsamples", true]]],
+  ["Laboratório", [["Inspeção técnica de amostra", "technical-inspection", true], ["Análise por Amostra", "laboratory-order-services", true], ["Análise por Parâmetro", "analysis-methods", true]]],
+  ["Revisão", [["Resultado", "list-revisions-result", true], ["Certificado", "list-revisions", true]]],
   // Configurações em grupos, como no GerenciaLab ("## " abre um grupo).
   // Ficam de fora de propósito: Configuração Estoque (o painel já tem a
   // Gestão de Estoque), CQ - Configuração e CQ - Não Conformidades.

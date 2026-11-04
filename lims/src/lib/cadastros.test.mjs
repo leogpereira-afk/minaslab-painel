@@ -20,14 +20,16 @@ test("toda coluna existe nos campos (ou é calculada, com _)", () => {
 test("toda referência aponta para um cadastro que existe", () => {
   for (const s of secoes) for (const f of s.campos) {
     if (f.t !== "ref" && f.t !== "refmulti") continue;
-    assert.ok(colecoes.has(f.ref.colecao), `${s.colecao}.${f.c} → ${f.ref.colecao} não existe`);
+    assert.ok(colecoes.has(f.ref.colecao) || ["clientes"].includes(f.ref.colecao), `${s.colecao}.${f.c} → ${f.ref.colecao} não existe`);
     if (f.ref.filtroPor) assert.ok(s.campos.some((x) => x.c === f.ref.filtroPor[0]), `${s.colecao}.${f.c}: filtroPor sem campo`);
   }
 });
 
-test("todo cadastro tem item no menu Configurações", () => {
-  const telas = new Set(MENU.find(([m]) => m === "Configurações")[1].filter((i) => !ehGrupo(i)).map((i) => i[1]));
-  for (const t of Object.keys(CADASTROS)) assert.ok(telas.has(t), `${t} fora do menu`);
+test("todo cadastro tem item no menu (Configurações ou o menu indicado)", () => {
+  for (const [t, def] of Object.entries(CADASTROS)) {
+    const menu = MENU.find(([m]) => m === (def.menu || "Configurações"));
+    assert.ok(menu && menu[1].filter((i) => !ehGrupo(i)).some((i) => i[1] === t), `${t} fora do menu`);
+  }
 });
 
 test("formulário: obrigatório, número, e-mail e único", () => {

@@ -25,6 +25,7 @@ export const ABAS_SISTEMA = [
     sel("coletaInlocoStatus", "Coleta Inloco Status", ["Status Revisão", "Status Laboratório"]), sel("coletaStatusFinal", "Coleta Status Após finalizar", ["Status Aguardando Inspeção", "Status Laboratório"]),
     sn("coletaSoColetador", "Coleta apenas por coletador"), sn("alterarParametroColeta", "Alterar parâmetro na coleta"),
     sn("liberarInspecaoSemColeta", "Liberar inspeção sem coleta"), sn("permitirInspecaoSemColeta", "Permitir inspeção sem coleta"), sn("permitirInspecaoSemInloco", "Permitir Inspeção sem Inloco"),
+    num("diasDescarte", "Guarda da amostra antes do descarte (dias)", 30),
   ] },
   { aba: "Ordem de serviço", campos: [
     { c: "numeroInicialOS", r: "Numeração da OS começa em", t: "number", larg: "s4", dica: "Para seguir o GerenciaLab, informe o próximo número de OS de lá." },
@@ -52,7 +53,7 @@ export const ABAS_SISTEMA = [
   ] },
   { aba: "Financeiro", campos: [sn("sistemaFaturamento", "Sistema de Faturamento", "Sim"), sn("sistemaParcelamento", "Sistema de Parcelamento", "Sim"), sn("pagamentoSemEntrada", "Confirmar pagamento sem entrada da amostra")] },
   { aba: "Laboratório", campos: [
-    sn("converterUnidade", "Converter unidade medida", "Sim"), sn("marcaInlocoRevisao", "Marca Inloco na revisão"), num("diasProximoVencimento", "Dias próximo ao vencimento análise", 2),
+    sn("converterUnidade", "Converter unidade medida", "Sim"), sn("revisaoIndependente", "Revisor deve ser diferente do analista", "Sim"), sn("marcaInlocoRevisao", "Marca Inloco na revisão"), num("diasProximoVencimento", "Dias próximo ao vencimento análise", 2),
     cor("corProximoVencimento", "Cor próximo ao vencimento análise", "#d97706"), cor("corAposVencimento", "Cor após o vencimento análise", "#dc2626"),
   ] },
 ];

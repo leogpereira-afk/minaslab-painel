@@ -4,9 +4,11 @@
 // As regras ficam em lib/grade.js (testadas); aqui é só a tela.
 
 import { useMemo, useState } from "react";
-import { filtrarColunas, ordenar, paginar, pesquisar } from "../lib/grade.js";
+import { filtrarColunas, ordenar, paginar, paraCSV, pesquisar } from "../lib/grade.js";
+import { baixar } from "../lib/arquivo.js";
+import { isoDia } from "../lib/formato.js";
 
-export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"], filtrosColuna = false, opcoesFiltro = {}, selecao, aoSelecionar, aoAbrir, multipla = false, porPaginaInicial = 25, rotuloPorPagina }) {
+export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"], filtrosColuna = false, opcoesFiltro = {}, selecao, aoSelecionar, aoAbrir, multipla = false, porPaginaInicial = 25, rotuloPorPagina, exportar }) {
   const [q, setQ] = useState("");
   const [filtros, setFiltros] = useState({});
   const [[si, sd], setOrdem] = useState(ordemInicial);
@@ -34,6 +36,7 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
     <>
       <div className="dt-top">
         <div className="dt-btns">
+          {exportar && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, colunas))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
           {botoes.map((b) => <button key={b.rotulo} type="button" className="dbtn" disabled={b.desativado} onClick={b.acao}>{b.rotulo}</button>)}
         </div>
         {!filtrosColuna && (

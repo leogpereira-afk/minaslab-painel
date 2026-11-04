@@ -36,7 +36,7 @@ const T_REG = "ml_lims_registros";
 const T_AUD = "ml_lims_auditoria";
 const COLECAO_OK = /^[a-z][a-z0-9_]{1,40}$/;
 const ID_OK = /^[A-Za-z0-9][\w.:-]{0,79}$/;
-const CHAVE_OK = /^(proposta|contrato|os|amostra|laudo|certificado|nc|cliente|solicitante):\d{4}$|^(proposta|contrato|os|amostra|laudo|certificado|nc|cliente|solicitante)$/;
+const CHAVE_OK = /^(proposta|contrato|os|amostra|laudo|certificado|nc|cliente|solicitante|lote|fatura):\d{4}$|^(proposta|contrato|os|amostra|laudo|certificado|nc|cliente|solicitante|lote|fatura)$/;
 const MAX_REGISTRO = 200_000;
 const ehSenha = (k: string) => /^senha/i.test(k);
 

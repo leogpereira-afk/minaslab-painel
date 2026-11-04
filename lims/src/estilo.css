@@ -239,3 +239,42 @@ svg.ch text { font-size: 10px; fill: #7d939b; font-family: var(--f); }
   .etiqueta { border: 1px solid #000; }
   body, main.wrap, main .inner { background: #fff !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
 }
+
+/* Agenda (calendário do mês) */
+.cal { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); min-width: 770px; }
+.cal-dia-sem { padding: 6px; font-weight: 600; font-size: 12px; background: var(--crumb); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; }
+.cal-cel { min-height: 92px; padding: 4px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.cal-cel.vazia { background: var(--crumb); }
+.cal-cel.hoje { background: #ecfdf8; }
+.cal-num { font-size: 12px; font-weight: 600; color: #64748b; }
+.cal-ev { font-size: 11px; text-align: left; border: 0; border-radius: 3px; padding: 2px 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev.coleta { background: #d5f3ee; color: #0f5f57; }
+.cal-ev.agenda { background: #e0e7ff; color: #3730a3; }
+
+/* Documentos impressos (cadeia de custódia, protocolo, certificado) */
+.doc { background: #fff; color: #111; border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; margin-bottom: 16px; break-after: page; }
+.doc-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 2px solid #0f766e; padding-bottom: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.doc-tab { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+.doc-tab th, .doc-tab td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: left; vertical-align: top; }
+.doc-tab thead th { background: #f1f5f9; }
+.doc .detail { margin: 0; }
+.doc-rodape { font-size: 11px; color: #475569; border-top: 1px solid #cbd5e1; margin-top: 12px; padding-top: 8px; }
+.assinatura { margin-top: 26px; display: flex; gap: 40px; flex-wrap: wrap; }
+.assinatura div { border-top: 1px solid #111; padding-top: 4px; min-width: 220px; font-size: 12px; }
+.nc { color: #b91c1c; font-weight: 600; }
+@media print {
+  .dt-top, .dt-bottom, .acoes { display: none !important; }
+  .doc { border: 0; padding: 0; }
+}
+.box + .acoes { margin-top: 16px; }
+.aviso.ok { background: #ecfdf5; color: #065f46; }
+.btn-warning { background: #d97706; border-color: #d97706; color: #fff; }
+.btn-warning:hover { background: #b45309; }
+.progresso { position: relative; display: inline-block; width: 110px; height: 16px; background: var(--line-soft); border-radius: 8px; overflow: hidden; vertical-align: middle; }
+.progresso i { position: absolute; inset: 0 auto 0 0; background: #16a897; }
+.progresso b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: var(--ink); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--box); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.kpi span { display: block; font-size: 12px; color: #64748b; }
+.kpi b { display: block; font-size: 20px; margin-top: 4px; color: var(--ink); }
+.kpi.ruim b { color: #b91c1c; } .kpi.bom b { color: #047857; }

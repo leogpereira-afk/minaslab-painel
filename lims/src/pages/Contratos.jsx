@@ -20,7 +20,6 @@ import { gerarOS } from "../lib/gerarOS.js";
 import { numeroOS } from "../lib/ordens.js";
 import { getSessao } from "../lib/sessao.js";
 
-const AVISO_EXPORTAR = "A exportação em Excel, PDF e impressão entra numa próxima etapa.";
 const feriadosAtivos = (dados) => dados.feriados.filter(estaAtivo).map((f) => f.data).filter(Boolean);
 const quandoBR = (s) => (s ? new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "");
 
@@ -126,10 +125,9 @@ export function ListaContratos() {
   const exigir = (fn) => () => (c ? fn() : avisar("Selecione um contrato.", "err"));
   return (
     <Caixa titulo="Contratos">
-      <Grade key={chave} id="contratos" linhas={dados.contratos} colunas={colunas} filtrosColuna opcoesFiltro={{ 4: ["Ativo", "Inativo"] }}
+      <Grade key={chave} id="contratos" exportar="contratos" linhas={dados.contratos} colunas={colunas} filtrosColuna opcoesFiltro={{ 4: ["Ativo", "Inativo"] }}
         selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("contract", r.id)}
         botoes={[
-          { rotulo: "Criar Excel", acao: () => avisar(AVISO_EXPORTAR) }, { rotulo: "Criar PDF", acao: () => avisar(AVISO_EXPORTAR) }, { rotulo: "Imprimir", acao: () => avisar(AVISO_EXPORTAR) },
           { rotulo: "Visualizar", acao: exigir(() => navegar("contract", c.id)) },
           { rotulo: "Status", acao: exigir(async () => { try { await salvar("contratos", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" }); avisar(`Contrato ${c.status === "Ativo" ? "inativado" : "ativado"}.`, "ok"); } catch (e) { avisar(e.message, "err"); } }) },
           { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },

@@ -19,7 +19,6 @@ import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 
-const AVISO_EXPORTAR = "A exportação em Excel e PDF entra numa próxima etapa.";
 const quandoBR = (s) => (s ? (String(s).length > 10 ? new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : dataBR(s)) : "");
 export const RotuloOS = ({ s }) => <span className={`lbl ${COR_STATUS_OS[s] || "default"}`}>{s}</span>;
 
@@ -131,12 +130,11 @@ export function ListaOS({ sessao }) {
   const exigir = (fn) => () => (selecionadas.length ? fn() : avisar("Selecione ao menos uma amostra.", "err"));
   return (
     <Caixa titulo="Ordem serviços">
-      <Grade key={`${chave}-${ocultas.size}`} id="os" linhas={dados.amostras} colunas={colunas} filtrosColuna multipla
+      <Grade key={`${chave}-${ocultas.size}`} id="os" exportar="ordens-servico" linhas={dados.amostras} colunas={colunas} filtrosColuna multipla
         opcoesFiltro={{ [iStatus]: STATUS_AMOSTRA, [iAm]: STATUS_AMOSTRA, [iPri]: PRIORIDADES }}
         selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("ordem", r.osId)}
         botoes={[
           { rotulo: "Criar Ordem de serviço", acao: () => setJanela("criar") },
-          { rotulo: "Criar Excel", acao: () => avisar(AVISO_EXPORTAR) }, { rotulo: "Criar PDF", acao: () => avisar(AVISO_EXPORTAR) },
           { rotulo: "Visualizar Colunas", acao: () => setJanela("colunas") },
           { rotulo: "Documentos", acao: exigirUma((a) => navegar("ordem", a.osId)) },
           { rotulo: "Coleta", acao: exigir(async () => {
@@ -246,7 +244,7 @@ export function FichaOS({ param }) {
 
 /* ---------- Etiquetas ---------- */
 
-function CodigoBarras({ texto, altura = 40 }) {
+export function CodigoBarras({ texto, altura = 40 }) {
   const larguras = code128(texto);
   const total = larguras.reduce((s, x) => s + x, 0) + 20;
   let x = 10;
@@ -316,7 +314,7 @@ export function Rastreabilidade() {
   return (
     <Caixa titulo="Rastreabilidade">
       <p className="suave" style={{ marginTop: -6 }}>Cada linha é um parâmetro de uma amostra, com toda a cadeia até o cliente. Dois cliques abrem a OS.</p>
-      <Grade id="rastro" linhas={linhas} colunas={colunas} filtrosColuna ordemInicial={[0, "desc"]} aoAbrir={(r) => navegar("ordem", r.a.osId)} botoes={[]} />
+      <Grade id="rastro" exportar="rastreabilidade" linhas={linhas} colunas={colunas} filtrosColuna ordemInicial={[0, "desc"]} aoAbrir={(r) => navegar("ordem", r.a.osId)} botoes={[]} />
     </Caixa>
   );
 }

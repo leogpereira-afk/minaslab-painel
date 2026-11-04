@@ -9,7 +9,6 @@ import { erroCliente, normalizarCliente, TIPOS_CADASTRO, UFS } from "../lib/clie
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, RotuloStatus, opcoes, useAviso } from "../components/ui.jsx";
 
-const AVISO_EXPORTAR = "A exportação em Excel, PDF e impressão entra numa próxima etapa.";
 const quando = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "");
 
 const COLUNAS = [
@@ -37,14 +36,11 @@ export function ListaClientes() {
   };
   return (
     <Caixa titulo="Clientes e Fornecedores">
-      <Grade id="cli" linhas={dados.clientes} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla
+      <Grade id="cli" exportar="clientes" linhas={dados.clientes} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla
         aoAbrir={(l) => navegar("cliente", l.id)}
         botoes={[
           { rotulo: "Selecionar todos", acao: () => setSel(new Set(dados.clientes.map((c) => c.id))) },
           { rotulo: "Deselecionar todos", acao: () => setSel(new Set()), desativado: !sel.size },
-          { rotulo: "Criar Excel", acao: () => avisar(AVISO_EXPORTAR) },
-          { rotulo: "Criar PDF", acao: () => avisar(AVISO_EXPORTAR) },
-          { rotulo: "Imprimir", acao: () => avisar(AVISO_EXPORTAR) },
           { rotulo: "Visualizar", acao: () => navegar("cliente", [...sel][0]), desativado: sel.size !== 1 },
           { rotulo: "Novo Cliente", acao: () => navegar("customer-register") },
           { rotulo: "Status", acao: alternarStatus, desativado: !sel.size },

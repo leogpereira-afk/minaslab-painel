@@ -55,8 +55,21 @@ supabase functions deploy ml-lims --project-ref reoghclxripktzpdwhiy --no-verify
 | Configurações (todos os grupos, menos Estoque e CQ) | pronto |
 | Contratos (Pendentes, Contratos, ficha, parcelas, Plano de Coleta manual e automático) | pronto |
 | Ordem serviços (lista por amostra, Criar OS, ficha da OS, Gerar OS pelo Plano de Coleta, Etiquetas Code 128, Rastreabilidade) | pronto |
-| Coletas, Laboratório, Revisão, Financeiro, Relatórios | depois |
-| Gestão da qualidade | por último |
+| Coletas (Logística, Coletas com ficha e in loco, Agenda, Descarte, Cadeia de custódia) | pronto |
+| Laboratório (Inspeção técnica com protocolo, Análise por Amostra, Análise por Parâmetro/lote) | pronto |
+| Revisão (Resultado com retorno ao laboratório, Certificado com assinatura e reemissão) | pronto |
+| Financeiro (Contas a receber/pagar, Fluxo de Caixa, NFs de serviço e de entrada, Centro de custos) | pronto |
+| Relatórios (amostras, centro de custos, Dashboard Financeiro) | pronto |
+| Gestão da qualidade (Ocorrências, Arquivos, Amostras CQ, Carta controle, Homologação, Capacitação) | pronto |
+
+### Caminho da amostra
+
+OS → Logística (agendar coletor) → Coletas (registrar coleta) → Inspeção técnica
+(recebimento, 17025 7.4) → Análise (resultados, equipamento com calibração
+válida) → Revisão de resultado (outra pessoa, configurável) → Certificado
+(signatário de Funcionários; reemissão com motivo, 7.8.8) → Faturamento
+(fatura por amostra, exceto contrato parcelado) → Concluída. Toda mudança fica
+na Auditoria LOG.
 
 Em Configurações ficam de fora, de propósito: Configuração Estoque (o painel
 já tem a Gestão de Estoque), CQ – Configuração e CQ – Não Conformidades.

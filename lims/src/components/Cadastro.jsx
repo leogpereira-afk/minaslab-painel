@@ -264,7 +264,7 @@ function SecaoCadastro({ secao, titulo }) {
       {secao.padroes && !lista.length && (
         <p className="aviso alerta" style={{ marginBottom: 12 }}>Nenhum cadastro ainda. <button type="button" className="btn btn-default btn-sm" disabled={carregandoPadrao} onClick={carregarPadroes}>{carregandoPadrao ? "Incluindo…" : `Incluir os padrões (${secao.padroes.map((p) => p.nome).join(", ")})`}</button></p>
       )}
-      <Grade id={secao.colecao} linhas={lista} colunas={colunas} ordemInicial={[1, "asc"]} aoAbrir={(r) => setJanela({ registro: r })}
+      <Grade id={secao.colecao} exportar={secao.colecao} linhas={lista} colunas={colunas} ordemInicial={[1, "asc"]} aoAbrir={(r) => setJanela({ registro: r })}
         botoes={[{ rotulo: secao.botao, acao: () => setJanela({ registro: null }) }]} />
       {janela && <JanelaCadastro secao={secao} registro={janela.registro} onFechar={() => setJanela(null)} />}
     </Caixa>

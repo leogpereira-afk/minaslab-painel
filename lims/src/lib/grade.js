@@ -54,3 +54,11 @@ export function paginar(total, pagina, porPagina) {
   const ate = Math.min(total, (atual + 1) * porPagina);
   return { paginas, atual, botoes, de, ate, inicio: atual * porPagina, fim: atual * porPagina + porPagina };
 }
+
+// Planilha das linhas visíveis (CSV com ";" e BOM, que o Excel em português
+// abre direto). Usa o texto que a tela mostra (fv) quando existe.
+export function paraCSV(linhas, colunas) {
+  const cel = (s) => { const t = String(s ?? "").replace(/\r?\n/g, " "); return /[";]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const corpo = [colunas.map((c) => cel(c.t)), ...linhas.map((l) => colunas.map((c) => cel((c.fv || c.v)(l))))];
+  return "﻿" + corpo.map((r) => r.join(";")).join("\r\n");
+}

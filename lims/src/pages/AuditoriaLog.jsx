@@ -8,7 +8,7 @@ import { Caixa, opcoes, useAviso } from "../components/ui.jsx";
 
 const NOMES = {
   ...Object.fromEntries(Object.values(CADASTROS).flatMap((d) => d.secoes.map((s) => [s.colecao, s.titulo || d.titulo]))),
-  config: "Configuração do sistema", permissoes: "Permissões de acesso", clientes: "Clientes / Fornecedores", solicitantes: "Solicitantes", propostas: "Propostas", alertas: "Alertas", contratos: "Contratos", contas_receber: "Contas a receber", ordens: "Ordens de serviço", amostras: "Amostras",
+  config: "Configuração do sistema", permissoes: "Permissões de acesso", clientes: "Clientes / Fornecedores", solicitantes: "Solicitantes", propostas: "Propostas", alertas: "Alertas", contratos: "Contratos", contas_receber: "Contas a receber", ordens: "Ordens de serviço", amostras: "Amostras", agenda: "Agenda", certificados: "Certificados", contas_pagar: "Contas a pagar", cq_resultados: "Carta controle (resultados)",
 };
 
 export default function AuditoriaLog() {

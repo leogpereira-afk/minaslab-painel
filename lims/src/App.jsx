@@ -19,6 +19,12 @@ import ConfigSistema from "./pages/ConfigSistema.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
 import AuditoriaLog from "./pages/AuditoriaLog.jsx";
 import { ListaOS, FichaOS, Etiquetas, Rastreabilidade } from "./pages/Ordens.jsx";
+import { Logistica, Coletas, RegistrarColeta, FichaCustodia, Agenda, Descarte } from "./pages/Coletas.jsx";
+import { Inspecao, Protocolo, AnalisePorAmostra, AnaliseAmostra, AnalisePorParametro } from "./pages/Laboratorio.jsx";
+import { RevisaoResultado, RevisaoCertificado, CertificadoOS } from "./pages/Revisao.jsx";
+import { ContasReceber, BoletimMedicao, ContasPagar, FluxoCaixa, NotasServico } from "./pages/Financeiro.jsx";
+import { RelatorioAmostras, RelatorioCentroCusto, DashboardFinanceiro } from "./pages/Relatorios.jsx";
+import { CartaControle } from "./pages/Qualidade.jsx";
 import { ContratosPendentes, ListaContratos, FichaContrato, DetalhesContrato, PlanoColeta, PlanoColetaAutomatico } from "./pages/Contratos.jsx";
 
 // Tela → [componente, migalhas]. Telas do menu ainda não construídas abrem
@@ -43,12 +49,35 @@ const TELAS = {
   ordem: [FichaOS, () => [["Ordem serviços", link("service-order")], ["Ordem de serviço"]]],
   etiquetas: [Etiquetas, () => [["Ordem serviços", link("service-order")], ["Etiqueta"]]],
   traceability: [Rastreabilidade, () => [["Rastreabilidade"]]],
+  logistics: [Logistica, () => [["Coletas"], ["Logística"]]],
+  collections: [Coletas, () => [["Coletas"], ["Coletas"]]],
+  coleta: [RegistrarColeta, () => [["Coletas", link("collections")], ["Registrar coleta"]]],
+  "ficha-coleta": [FichaCustodia, () => [["Coletas", link("collections")], ["Cadeia de custódia"]]],
+  calendar: [Agenda, () => [["Coletas"], ["Agenda"]]],
+  discardsamples: [Descarte, () => [["Coletas"], ["Descarte amostras"]]],
+  "technical-inspection": [Inspecao, () => [["Laboratório"], ["Inspeção técnica de amostra"]]],
+  protocolo: [Protocolo, () => [["Laboratório", link("technical-inspection")], ["Protocolo de recebimento"]]],
+  "laboratory-order-services": [AnalisePorAmostra, () => [["Laboratório"], ["Análise por Amostra"]]],
+  analise: [AnaliseAmostra, () => [["Laboratório", link("laboratory-order-services")], ["Análise da amostra"]]],
+  "analysis-methods": [AnalisePorParametro, () => [["Laboratório"], ["Análise por Parâmetro"]]],
+  "list-revisions-result": [RevisaoResultado, () => [["Revisão"], ["Resultado"]]],
+  "list-revisions": [RevisaoCertificado, () => [["Revisão"], ["Certificado"]]],
+  certificado: [CertificadoOS, () => [["Revisão", link("list-revisions")], ["Certificado"]]],
+  "bills-to-receive": [ContasReceber, () => [["Financeiro"], ["Contas a receber"]]],
+  boletim: [BoletimMedicao, () => [["Financeiro", link("bills-to-receive")], ["Boletim de Medição"]]],
+  "bills-to-pay": [ContasPagar, () => [["Financeiro"], ["Contas a pagar"]]],
+  extract: [FluxoCaixa, () => [["Financeiro"], ["Fluxo de Caixa"]]],
+  "notas-fiscais": [NotasServico, () => [["Financeiro"], ["Notas fiscais de Serviços"]]],
+  "report-sample": [RelatorioAmostras, () => [["Relatórios"], ["Relatórios de amostras"]]],
+  "report-cost-center": [RelatorioCentroCusto, () => [["Relatórios"], ["Relatórios de centro de custos"]]],
+  "dashboard-financeiro": [DashboardFinanceiro, () => [["Relatórios"], ["Dashboard Financeiro"]]],
+  "carta-controle": [CartaControle, () => [["Gestão da qualidade"], ["Carta controle"]]],
   "collection-plan-auto": [PlanoColetaAutomatico, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta automático"]]],
   configs: [ConfigSistema, () => [["Configurações"], ["Configuração do sistema"]]],
   "permissoes-de-acesso": [Permissoes, () => [["Configurações"], ["Permissões de acesso"]]],
   auditoria: [AuditoriaLog, () => [["Configurações"], ["Auditoria LOG"]]],
   // Todos os cadastros de Configurações usam o mesmo motor (lib/cadastros.js).
-  ...Object.fromEntries(Object.entries(CADASTROS).map(([tela, def]) => [tela, [TelaCadastro, () => [["Configurações"], [def.titulo]]]])),
+  ...Object.fromEntries(Object.entries(CADASTROS).map(([tela, def]) => [tela, [TelaCadastro, () => [[def.menu || "Configurações"], [def.titulo]]]])),
 };
 
 function EmConstrucao({ tela }) {
