@@ -53,13 +53,18 @@ export function ehFeriado(d) {
   return diaDeFeriado(d);
 }
 
-/* Régua confirmada pela MinasLab para esta folha: almoço fora do trabalho;
-   8h líquidas de segunda a quinta e 7h na sexta. O dia "cheio" da escala, sem
-   olhar ausência: é o que o abono cobre. */
+/* O dia "cheio" da escala, sem olhar ausência (é o que o abono cobre): a MESMA
+   escala do Jibble e do Fechamento (JORNADA_PADRAO): 08:00–18:00 de segunda a
+   quinta e 08:00–17:00 na sexta, com 1h de almoço fora do trabalho = 9h líquidas
+   de segunda a quinta e 8h na sexta (44h na semana).
+   Até 04/11/2026 a folha usava 8h/7h. Era 1h a menos que a escala, e isso só
+   "fechava" porque o Jibble também tirava 1h a mais de cada dia (dedução
+   automática somada ao almoço batido). Com a folha pelas batidas e a dedução
+   removida do Jibble, o previsto volta a ser o da escala. */
 export function previstoCheio(d) {
   if (ehFeriado(d)) return 0;
   const dia = new Date(String(d?.data || "") + "T12:00:00").getDay();
-  return dia >= 1 && dia <= 4 ? 480 : dia === 5 ? 420 : 0;
+  return dia >= 1 && dia <= 4 ? 540 : dia === 5 ? 480 : 0;
 }
 
 /* O previsto que a folha mostra: zero no dia abonado e no feriado. */

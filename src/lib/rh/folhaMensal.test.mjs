@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { minutosDaFolha, previstoDoDia, diaAbonado, normaisDoDia, extraDoDia, saldoDoDia } from "./folhaMensal.js";
 
-// 29/09/2026 é terça (previsto 8h); 02/10/2026 é sexta (previsto 7h).
+// 29/09/2026 é terça (previsto 9h); 02/10/2026 é sexta (previsto 8h). Escala 08–18 / 08–17, 1h de almoço.
 const jibble = (extra) => ({ data: "2026-09-29", origem: "jibble", ...extra });
 
 test("O DEFEITO: atestado de dia inteiro NÃO vira 8h de hora extra", () => {
@@ -15,23 +15,23 @@ test("O DEFEITO: atestado de dia inteiro NÃO vira 8h de hora extra", () => {
 });
 
 test("atestado parcial pago pelo relógio: a conta contra o dia cheio mostra o que faltou", () => {
-  // 1h14 de batida + 4h de atestado pagas pelo relógio = 5h14 na folha, contra 8h
+  // 1h14 de batida + 4h de atestado pagas pelo relógio = 5h14 na folha, contra 9h
   const d = jibble({ trabalhadoMin: 314, trackedMin: 74, pausaMin: 0, horasAtestadoMin: 240, ausencia: { tipo: "atestado" } });
   assert.equal(extraDoDia(d), 0, "era 5h14 de extra antes do conserto");
-  assert.equal(saldoDoDia(d), -166, "2h46 sem cobertura (a revisão pegou o 0 que o teste antigo fixava)");
+  assert.equal(saldoDoDia(d), -226, "3h46 sem cobertura (a revisão pegou o 0 que o teste antigo fixava)");
 });
 
-test("atestado de 1h pago pelo relógio e 9h de batida: +2h, não zero", () => {
-  const d = jibble({ trabalhadoMin: 600, trackedMin: 540, pausaMin: 0, horasAtestadoMin: 60, ausencia: { tipo: "atestado" } });
+test("atestado de 1h pago pelo relógio e 10h de batida: +2h, não zero", () => {
+  const d = jibble({ trabalhadoMin: 660, trackedMin: 600, pausaMin: 0, horasAtestadoMin: 60, ausencia: { tipo: "atestado" } });
   assert.equal(saldoDoDia(d), 120);
   assert.equal(extraDoDia(d), 120);
 });
 
 test("folga lançada, mas a pessoa trabalhou o dia: a hora conta como normal, igual ao Fechamento", () => {
-  const d = jibble({ trabalhadoMin: 480, trackedMin: 540, pausaMin: 60, ausencia: { tipo: "folga" } });
-  assert.equal(normaisDoDia(d), 480, "as 8h aparecem, não somem da folha");
+  const d = jibble({ trabalhadoMin: 480, trackedMin: 600, pausaMin: 60, ausencia: { tipo: "folga" } });
+  assert.equal(normaisDoDia(d), 540, "as 9h aparecem, não somem da folha");
   assert.equal(saldoDoDia(d), 0);
-  const aMais = jibble({ trabalhadoMin: 600, trackedMin: 660, pausaMin: 60, ausencia: { tipo: "folga" } });
+  const aMais = jibble({ trabalhadoMin: 600, trackedMin: 720, pausaMin: 60, ausencia: { tipo: "folga" } });
   assert.equal(extraDoDia(aMais), 120, "o que passa do dia cheio é extra");
 });
 
@@ -54,7 +54,7 @@ test("anotar o documento do atestado no painel (corrigido) não muda a conta do 
   const anotado = jibble({ ...base, corrigido: true });
   assert.equal(minutosDaFolha(anotado), 314, "as 4h pagas continuam na coluna de horas pagas");
   assert.equal(saldoDoDia(anotado), saldoDoDia(jibble(base)), "era 0 depois de anotar, e −2h46 antes");
-  assert.equal(saldoDoDia(anotado), -166);
+  assert.equal(saldoDoDia(anotado), -226);
 });
 
 test("atestado de dia inteiro anotado: sem batida, o total gravado vale uma vez só", () => {
@@ -89,26 +89,26 @@ test("férias, folga e justificada seguem a mesma regra de abono", () => {
 test("FALTA continua descontando — o conserto não abona o que não é abonado", () => {
   const d = { data: "2026-09-29", ausencia: { tipo: "falta" } };
   assert.equal(diaAbonado(d), false);
-  assert.equal(previstoDoDia(d), 480);
-  assert.equal(saldoDoDia(d), -480);
+  assert.equal(previstoDoDia(d), 540);
+  assert.equal(saldoDoDia(d), -540);
 });
 
 test("dia comum: a conta de antes continua igual", () => {
-  const cheio = jibble({ trabalhadoMin: 480 });
+  const cheio = jibble({ trabalhadoMin: 540 });
   assert.equal(extraDoDia(cheio), 0);
   assert.equal(saldoDoDia(cheio), 0);
-  const comExtra = jibble({ trabalhadoMin: 540 });
+  const comExtra = jibble({ trabalhadoMin: 600 });
   assert.equal(extraDoDia(comExtra), 60);
   assert.equal(saldoDoDia(comExtra), 60);
-  assert.equal(normaisDoDia(comExtra), 480);
-  const curto = jibble({ trabalhadoMin: 420 });
+  assert.equal(normaisDoDia(comExtra), 540);
+  const curto = jibble({ trabalhadoMin: 480 });
   assert.equal(extraDoDia(curto), 0);
   assert.equal(saldoDoDia(curto), -60);
 });
 
-test("sexta tem previsto de 7h", () => {
-  const d = { data: "2026-10-02", origem: "jibble", trabalhadoMin: 480 };
-  assert.equal(previstoDoDia(d), 420);
+test("sexta tem previsto de 8h", () => {
+  const d = { data: "2026-10-02", origem: "jibble", trabalhadoMin: 540 };
+  assert.equal(previstoDoDia(d), 480);
   assert.equal(extraDoDia(d), 60);
 });
 
@@ -127,14 +127,20 @@ test("falta lançada no painel por cima de afastamento do relógio não vira hor
   const d = { data: "2026-10-01", origem: "jibble", corrigido: true, trackedMin: 0, pausaMin: 0, trabalhadoMin: 600, horasAtestadoMin: 600, ausencia: { tipo: "falta" } };
   assert.equal(minutosDaFolha(d), 0, "eram 600 antes do conserto");
   assert.equal(extraDoDia(d), 0, "eram +2h de extra");
-  assert.equal(saldoDoDia(d), -480, "falta de quinta desconta o dia cheio");
+  assert.equal(saldoDoDia(d), -540, "falta de quinta desconta o dia cheio (9h)");
 });
 
 test("Banco de Horas / Compensação: não é falta, mas o dia previsto sai do saldo", () => {
-  // 01/10/2026 (quinta, previsto 8h): folga combinada paga com o banco, sem batida.
+  // 01/10/2026 (quinta, previsto 9h): folga combinada paga com o banco, sem batida.
   const d = { data: "2026-10-01", origem: "jibble", corrigido: true, trackedMin: 0, pausaMin: 0, trabalhadoMin: 600, horasAtestadoMin: 600, ausencia: { tipo: "banco_horas" } };
   assert.equal(minutosDaFolha(d), 0);
   assert.equal(extraDoDia(d), 0);
-  assert.equal(saldoDoDia(d), -480, "as 8h saem do banco de horas");
+  assert.equal(saldoDoDia(d), -540, "as 9h saem do banco de horas");
   assert.equal(diaAbonado(d), false);
+});
+
+test("dia real da Ana Claudia (05/10/2026, segunda): 07:53–12:07 e 13:23–18:20 = 9h11, +11min", () => {
+  const d = { data: "2026-10-05", origem: "jibble", entrada: "07:53", saida: "18:20", trackedMin: 627, pausaMin: 75, trabalhadoMin: 492 };
+  assert.equal(minutosDaFolha(d), 552, "pelas batidas, não os 8h12 do Jibble com a dedução a mais");
+  assert.equal(extraDoDia(d), 12);
 });
