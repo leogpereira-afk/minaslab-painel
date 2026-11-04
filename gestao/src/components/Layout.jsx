@@ -6,7 +6,7 @@ import { mesAtual, mesCurto } from "../lib/format.js";
 import {
   IcGrafico, IcLupa, IcBussola, IcFunil, IcPessoas, IcMedalha, IcAviso, IcAlvo, IcEngrenagem,
   IcCarteira, IcEstrela, IcMartelo, IcApresentacao, IcLivro, IcMenu, IcBalanca, IcPasta, IcTrofeu,
-  IcFrasco, IcCadeado, IcPulso, IcCalendario, IcMoeda, IcSair, IcRecolher, IcExpandir, IcCasa, IcX,
+  IcFrasco, IcCadeado, IcPulso, IcCalendario, IcMoeda, IcSair, IcRecolher, IcExpandir, IcCasa, IcX, IcEscada,
 } from "./icones.jsx";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 
@@ -14,7 +14,7 @@ import logoMinasLab from "../assets/logo-minaslab.webp";
 // setor escolhido (acessos.mjs), na ordem e nos grupos de lá.
 export const ICONES = {
   cockpit: IcBussola, visao: IcGrafico, funil: IcFunil, dado: IcLupa,
-  pessoas: IcPessoas, avaliacao: IcMedalha, comissoes: IcMoeda, destaque: IcTrofeu, ocorrencias: IcAviso,
+  pessoas: IcPessoas, avaliacao: IcMedalha, comissoes: IcMoeda, carreira: IcEscada, destaque: IcTrofeu, ocorrencias: IcAviso,
   carteira: IcCarteira, satisfacao: IcEstrela, licitacoes: IcMartelo,
   estrategias: IcAlvo, decisoes: IcBalanca, funcoes: IcPasta, equipe: IcEngrenagem,
   agenda: IcCalendario, reunioes: IcApresentacao, treinamentos: IcLivro,
@@ -24,7 +24,7 @@ export const ICONES = {
 // Cor de cada página no menu (mesmo estilo de ladrilho do painel MinasLab).
 const CORES = {
   cockpit: ["#0f766e", "#d9f4ef"], visao: ["#2563eb", "#e5edff"], funil: ["#7c3aed", "#eee7ff"], dado: ["#0891b2", "#dcf5fc"],
-  pessoas: ["#7c3aed", "#eee7ff"], avaliacao: ["#b45309", "#fff0cf"], comissoes: ["#15803d", "#dcf5e4"], destaque: ["#c2410c", "#ffeadc"], ocorrencias: ["#b91c1c", "#fde4e4"],
+  pessoas: ["#7c3aed", "#eee7ff"], avaliacao: ["#b45309", "#fff0cf"], comissoes: ["#15803d", "#dcf5e4"], carreira: ["#4f46e5", "#e9e7ff"], destaque: ["#c2410c", "#ffeadc"], ocorrencias: ["#b91c1c", "#fde4e4"],
   carteira: ["#0369a1", "#e0f2fe"], satisfacao: ["#db2777", "#fce5f1"], licitacoes: ["#b45309", "#fff0cf"],
   estrategias: ["#0f766e", "#d9f4ef"], decisoes: ["#4f46e5", "#e9e7ff"], funcoes: ["#475569", "#e6edf5"], equipe: ["#0e7490", "#cffafe"],
   agenda: ["#2563eb", "#e5edff"], reunioes: ["#db2777", "#fce5f1"], treinamentos: ["#16803d", "#dcf5e4"],

@@ -19,11 +19,11 @@ export const SETORES = {
 export const CHAVES = [
   "equipe", "config", "ocorrencias", "avaliacoes", "feedbacks", "estrategias", "funcoes", "pdi",
   "treinamentos", "reunioes", "decisoes", "objetivos", "acoes", "nps", "destaque", "apresentacoes",
-  "fotos", "ncs", "produtividade", "agenda", "comissoes",
+  "fotos", "ncs", "produtividade", "agenda", "comissoes", "carreira",
 ];
 
-// A agenda de reuniões e compromissos é uma só para os dois setores.
-const COMPARTILHADAS = { destaque: "rh_comercial_destaque", fotos: "rh_comercial_fotos", agenda: "rh_comercial_agenda" };
+// A agenda de reuniões e compromissos e o plano de carreira são um só para os dois setores.
+const COMPARTILHADAS = { destaque: "rh_comercial_destaque", fotos: "rh_comercial_fotos", agenda: "rh_comercial_agenda", carreira: "rh_comercial_carreira" };
 const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 export const colecaoDe = (setor, chave) => (tem(COMPARTILHADAS, chave) ? COMPARTILHADAS[chave] : `${SETORES[setor].prefixo}${chave}`);
 
@@ -36,6 +36,9 @@ const COM = (setor, ...acoes) => (setor === "comercial" ? acoes : []);
 const PESSOAS = (s) => [
   P("pessoas", "Pessoas e feedback", "Pessoas", ["feedbacks", "pdi", "ocorrencias", "avaliacoes", "treinamentos"], COM(s, "resumo")),
   P("avaliacao", "Avaliação e bônus", "Pessoas", ["avaliacoes", "ocorrencias"], COM(s, "resumo")),
+  // Plano de carreira: lê avaliação, ocorrências, PDI e treinamentos para os
+  // critérios; grava a carreira, o PDI e a função da pessoa (promoção).
+  P("carreira", "Plano de carreira", "Pessoas", ["carreira", "avaliacoes", "ocorrencias", "pdi", "treinamentos", "equipe"], COM(s, "resumo")),
   P("destaque", "Destaque do mês", "Pessoas", ["destaque", "fotos", "config"], ["pesquisa", "convite"]),
   P("ocorrencias", "Ocorrências", "Pessoas", ["ocorrencias"]),
 ];
