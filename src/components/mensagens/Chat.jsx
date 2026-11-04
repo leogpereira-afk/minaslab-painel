@@ -22,7 +22,7 @@ import { avisarContador, conversaApagarMensagem, conversaEditarMensagem, convers
 const INTERVALO = 4000;
 let contadorLocal = 0;
 
-export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo }) {
+export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, compacto = false }) {
   const [dados, setDados] = useState(null);
   const [mensagens, setMensagens] = useState([]);
   const [maisAntigas, setMaisAntigas] = useState(false);
@@ -233,15 +233,28 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
   if (!dados) return <div className="grid h-full place-items-center text-sm text-slate-500"><Loader2 className="animate-spin" size={20} aria-label="Carregando" /></div>;
 
   const c = dados.conversa;
+  // No balão (compacto) o anexo e o emoji vão para a fileira de formatação, para o campo de texto ganhar a largura toda.
+  const tamBotao = compacto ? "h-9 w-9" : "h-11 w-11";
+  const tamIcone = compacto ? 16 : 19;
+  const anexarEmoji = (
+    <>
+      <button type="button" className={clsx("btn-ghost shrink-0 p-0 text-slate-500", compacto ? "h-7 w-7" : tamBotao)} onClick={() => entradaArquivo.current?.click()} disabled={enviando || !!editando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={tamIcone} /></button>
+      <span className="relative">
+        <button type="button" className={clsx("btn-ghost shrink-0 p-0 text-slate-500", compacto ? "h-7 w-7" : tamBotao)} onClick={() => setEmojiAberto((v) => !v)} aria-expanded={emojiAberto} aria-label="Escolher emoji" title="Emojis"><Smile size={tamIcone} /></button>
+        {emojiAberto && <SeletorEmoji aoEscolher={poremEmoji} aoFechar={() => setEmojiAberto(false)} className={clsx("absolute bottom-full mb-2", compacto ? "right-0" : "left-0")} />}
+      </span>
+    </>
+  );
+
   return (
     <div className="relative flex h-full min-h-0">
     <section className={clsx("flex h-full min-h-0 min-w-0 flex-1 flex-col", arrastando && "ring-2 ring-inset ring-sky-400")} aria-label={`Conversa com ${c.titulo}`} onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); setArrastando(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setArrastando(false); }} onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setArrastando(false); void enviarArquivos(e.dataTransfer.files); } }}>
-      <header className="flex items-center gap-3 border-b px-3 py-2.5" style={{ borderColor: "var(--hairline)" }}>
+      <header className={clsx("flex items-center border-b px-3", compacto ? "gap-2 py-1.5" : "gap-3 py-2.5")} style={{ borderColor: "var(--hairline)" }}>
         <button type="button" className="btn-ghost h-9 w-9 shrink-0 p-0 lg:hidden" onClick={aoVoltar} aria-label="Voltar para as conversas"><ArrowLeft size={18} /></button>
         <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setPainel(true)} aria-label={grupo ? "Ver sobre o grupo" : "Ver sobre a conversa"}>
-          {grupo ? <FotoGrupo foto={c.foto} tamanho={40} /> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={40} />}
+          {grupo ? <FotoGrupo foto={c.foto} tamanho={compacto ? 32 : 40} /> : <Avatar usuario={c.outro} nome={c.titulo} tamanho={compacto ? 32 : 40} />}
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-display text-base font-semibold text-slate-900">{c.titulo}</span>
+            <span className={clsx("block truncate font-display font-semibold text-slate-900", compacto ? "text-sm" : "text-base")}>{c.titulo}</span>
             {grupo && <span className="block truncate text-xs text-slate-500">{dados.membros.length} participantes</span>}
           </span>
         </button>
@@ -293,23 +306,21 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo })
           <button type="button" className="rounded p-1 hover:bg-sky-100" onClick={cancelarEdicao} aria-label="Cancelar edição" title="Cancelar edição"><X size={14} /></button>
         </div>
       )}
-      <form className="relative flex items-end gap-2 border-t bg-white p-2.5" style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+      <form className={clsx("relative flex items-end border-t bg-white", compacto ? "gap-1.5 p-2" : "gap-2 p-2.5")} style={{ borderColor: "var(--hairline)" }} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
         {gravando ? <GravadorAudio aoEnviar={enviarAudio} aoCancelar={() => setGravando(false)} aoErro={setErro} /> : (
           <>
             <input ref={entradaArquivo} type="file" multiple accept={ACEITAR_NO_INPUT_MENSAGEM} className="sr-only" aria-label="Escolher arquivos para enviar" onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; void enviarArquivos(l); }} />
-            <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => entradaArquivo.current?.click()} disabled={enviando || !!editando} aria-label="Anexar arquivo" title="Anexar arquivo ou imagem"><Paperclip size={19} /></button>
-            <span className="relative">
-              <button type="button" className="btn-ghost h-11 w-11 shrink-0 p-0 text-slate-500" onClick={() => setEmojiAberto((v) => !v)} aria-expanded={emojiAberto} aria-label="Escolher emoji" title="Emojis"><Smile size={19} /></button>
-              {emojiAberto && <SeletorEmoji aoEscolher={poremEmoji} aoFechar={() => setEmojiAberto(false)} className="absolute bottom-full left-0 mb-2" />}
-            </span>
+            {!compacto && anexarEmoji}
             <EditorMensagem campo={campo} texto={texto} setTexto={setTexto} aoEnviar={() => void enviar()} aoColarArquivos={(f) => void enviarArquivos(f)}
-              pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando}
-              aoCancelar={editando ? cancelarEdicao : null} aoSetaCima={() => comecarEdicao(ultimaEditavel(mensagens, eu))} />
+              pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando} compacto={compacto}
+              aoCancelar={editando ? cancelarEdicao : null} aoSetaCima={() => comecarEdicao(ultimaEditavel(mensagens, eu))}>
+              {compacto && <><span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />{anexarEmoji}</>}
+            </EditorMensagem>
             {editando
-              ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando || (!texto.trim() && !editando.anexo)} aria-label="Salvar edição" title="Salvar edição (Enter)"><Check size={18} /></button>
+              ? <button type="submit" className={clsx("btn-primary shrink-0 p-0", tamBotao)} disabled={enviando || (!texto.trim() && !editando.anexo)} aria-label="Salvar edição" title="Salvar edição (Enter)"><Check size={18} /></button>
               : texto.trim()
-              ? <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
-              : <button type="button" className="btn-primary h-11 w-11 shrink-0 p-0" onClick={() => { setErro(""); setGravando(true); }} disabled={enviando} aria-label="Gravar mensagem de voz" title="Gravar mensagem de voz"><Mic size={18} /></button>}
+              ? <button type="submit" className={clsx("btn-primary shrink-0 p-0", tamBotao)} disabled={enviando} aria-label="Enviar mensagem" title="Enviar (Enter)"><Send size={18} /></button>
+              : <button type="button" className={clsx("btn-primary shrink-0 p-0", tamBotao)} onClick={() => { setErro(""); setGravando(true); }} disabled={enviando} aria-label="Gravar mensagem de voz" title="Gravar mensagem de voz"><Mic size={18} /></button>}
           </>
         )}
       </form>

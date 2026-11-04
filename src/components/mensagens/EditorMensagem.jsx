@@ -9,7 +9,7 @@ import Avatar from "../tarefas/Avatar.jsx";
 import TextoRico from "./TextoRico.jsx";
 import { MARCAS, completarMencao, envolver, enderecoValido, inserirLink, mencaoEmDigitacao, sugestoesMencao, temFormatacao } from "../../lib/textoRico.js";
 
-export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoColarArquivos, pessoas, grupo, nomeDe, ehUsuario, eu, desabilitado, aoCancelar, aoSetaCima, children }) {
+export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoColarArquivos, pessoas, grupo, nomeDe, ehUsuario, eu, desabilitado, aoCancelar, aoSetaCima, children, compacto = false }) {
   const [mencao, setMencao] = useState(null); // { inicio, busca }
   const [ativo, setAtivo] = useState(0);
   const [link, setLink] = useState(null); // { ini, fim, url }
@@ -132,7 +132,7 @@ export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoCol
         ))}
         {children}
       </div>
-      <textarea ref={campo} className="input max-h-32 min-h-[44px] w-full resize-none py-2.5 text-sm" rows={1} placeholder="Escreva uma mensagem (@ para marcar alguém)" aria-label="Escreva uma mensagem" value={texto} maxLength={5000}
+      <textarea ref={campo} className={clsx("input w-full resize-none text-sm", compacto ? "max-h-28 min-h-[36px] py-1.5" : "max-h-32 min-h-[44px] py-2.5")} rows={1} placeholder={compacto ? "Mensagem (@ marca alguém)" : "Escreva uma mensagem (@ para marcar alguém)"} style={compacto ? { minHeight: 36 } : undefined} aria-label="Escreva uma mensagem" value={texto} maxLength={5000}
         onChange={(e) => { setTexto(e.target.value); olharMencao(e.target.value, e.target.selectionStart); }}
         onClick={(e) => olharMencao(e.currentTarget.value, e.currentTarget.selectionStart)}
         onKeyUp={(e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) olharMencao(e.currentTarget.value, e.currentTarget.selectionStart); }}
