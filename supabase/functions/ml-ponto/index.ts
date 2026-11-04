@@ -743,8 +743,15 @@ Deno.serve(async (req) => {
           const k = chaveNome(f.nome);
           if (k) fichasSemRelogio.set(k, [...(fichasSemRelogio.get(k) ?? []), f]);
         }
+        /* CADASTRO REMOVIDO NO RELÓGIO NÃO DISPUTA O NOME (04/11/2026). A Maria
+           Clara foi cadastrada duas vezes no Jibble e uma foi removida; as duas
+           contavam aqui, o nome ficava "ambíguo", a ficha do RH não era casada e
+           nasciam DUAS fichas novas (uma ativa, uma desligada). Só quem está
+           ativo no relógio entra na contagem e pode casar pelo nome. */
+        const nomesComFicha = new Set((fichasBrutas ?? []).map((l) => chaveNome((l.registro as Record<string, any>)?.nome)).filter(Boolean));
         const relogioSemFicha = new Map<string, number>();
         for (const p of doRelogio) {
+          if (!p.ativoNoRelogio) continue;
           if (fichaPorJibble.has(p.jibbleId)) continue;
           const k = chaveNome(p.nome);
           relogioSemFicha.set(k, (relogioSemFicha.get(k) ?? 0) + 1);
@@ -760,11 +767,14 @@ Deno.serve(async (req) => {
           if (!ficha) {
             const k = chaveNome(p.nome);
             const candidatas = fichasSemRelogio.get(k) ?? [];
-            if (candidatas.length === 1 && relogioSemFicha.get(k) === 1) {
+            if (p.ativoNoRelogio && candidatas.length === 1 && relogioSemFicha.get(k) === 1) {
               ficha = candidatas[0];
               fichaPorJibble.set(p.jibbleId, ficha); // o de-para abaixo carimba o vínculo na ficha do RH
             }
           }
+          // Removido no relógio com o mesmo nome de uma ficha que já existe: é o
+          // cadastro duplicado/apagado no Jibble, não uma pessoa nova.
+          if (!ficha && !p.ativoNoRelogio && nomesComFicha.has(chaveNome(p.nome))) continue;
           if (!ficha) {
             novas.push({
               id: `pes_${p.jibbleId}`,
