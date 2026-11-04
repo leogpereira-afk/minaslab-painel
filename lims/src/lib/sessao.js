@@ -3,9 +3,8 @@
 // (gestao/src/lib/sessao.js): o LIMS é publicado dentro do painel, no mesmo
 // endereço, então adota o crachá de quem já entrou no painel.
 //
-// Esconder telas aqui é conforto; quem tranca de verdade é o servidor. Nesta
-// primeira etapa as telas usam dados de demonstração guardados no navegador;
-// a porta própria do LIMS no Supabase entra na etapa seguinte.
+// Esconder telas aqui é conforto; quem tranca de verdade é o servidor
+// (Edge Function ml-lims), que confere o crachá e a conta em toda chamada.
 
 import { SYNC } from "./api.js";
 
@@ -108,4 +107,31 @@ export async function login(usuario, senha) {
   gravar(K_SESSAO, JSON.stringify({ usuario: corpo.usuario, nome: corpo.nome, papel: corpo.papel, visto: Date.now() }));
   avisar();
   return corpo;
+}
+
+// Toda chamada com crachá passa por aqui: crachá vencido derruba a sessão com
+// o motivo dito, em vez de a tela virar login sem explicação.
+export async function comCracha(url, corpo) {
+  const token = getToken();
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(corpo),
+    });
+  } catch {
+    throw new Error(SEM_REDE);
+  }
+  const dados = await resp.json().catch(() => null);
+  if (resp.status === 401 && dados?.semSessao) {
+    sair("Sua sessão expirou (o crachá vale 12 horas). Entre de novo.");
+    throw new Error("Sua sessão expirou. Entre de novo.");
+  }
+  if (!resp.ok) {
+    const erro = new Error(dados?.erro || mensagemDoStatus(resp.status));
+    erro.status = resp.status;
+    throw erro;
+  }
+  return dados;
 }

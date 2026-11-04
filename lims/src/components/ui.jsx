@@ -21,23 +21,28 @@ export function AvisoProvider({ children }) {
 export const useAviso = () => useContext(AvisoCtx);
 
 /* Janela modal. aoConfirmar devolve false para manter a janela aberta (erro). */
-export function Modal({ titulo, onFechar, rotuloOk, aoConfirmar, largo, children }) {
+export function Modal({ titulo, onFechar, rotuloOk, aoConfirmar, largo, children, extra, ocupado }) {
   const caixa = useRef(null);
+  const fechar = useRef(onFechar);
+  fechar.current = onFechar;
+  // Foco no primeiro campo só ao abrir (senão cada tecla devolveria o foco).
   useEffect(() => {
-    const kd = (e) => { if (e.key === "Escape") onFechar(); };
+    const kd = (e) => { if (e.key === "Escape") fechar.current(); };
     document.addEventListener("keydown", kd);
-    caixa.current?.querySelector("input,textarea,select,button")?.focus();
+    caixa.current?.querySelector(".mb input,.mb textarea,.mb select,.mb button")?.focus();
     return () => document.removeEventListener("keydown", kd);
-  }, [onFechar]);
-  const confirmar = () => { if (aoConfirmar() !== false) onFechar(); };
+  }, []);
+  // aoConfirmar pode ser assíncrono; devolver false mantém a janela aberta.
+  const confirmar = async () => { if ((await aoConfirmar()) !== false) onFechar(); };
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <div className={`modal${largo ? " largo" : ""}`} role="dialog" aria-modal="true" aria-label={titulo} ref={caixa}>
         <header><h3>{titulo}</h3><button type="button" className="xbtn" onClick={onFechar} aria-label="Fechar">×</button></header>
         <div className="mb">{children}</div>
         <footer>
+          {extra && <div style={{ marginRight: "auto", display: "flex", gap: 8 }}>{extra}</div>}
           <button type="button" className="btn btn-default" onClick={onFechar}>Fechar</button>
-          {rotuloOk && <button type="button" className="btn btn-primary" onClick={confirmar}>{rotuloOk}</button>}
+          {rotuloOk && <button type="button" className="btn btn-primary" onClick={confirmar} disabled={ocupado}>{ocupado ? "Gravando…" : rotuloOk}</button>}
         </footer>
       </div>
     </div>

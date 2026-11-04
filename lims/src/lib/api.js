@@ -5,3 +5,7 @@ export const API = "https://reoghclxripktzpdwhiy.supabase.co/functions/v1";
 // Porta de dados do painel MinasLab: login e contas. O LIMS entra por aqui
 // (ação "entrar"), com o mesmo usuário e o mesmo crachá de 12 h do painel.
 export const SYNC = `${API}/ml-sync`;
+
+// Porta própria do LIMS (supabase/functions/ml-lims): tabelas ml_lims_*,
+// trilha de auditoria e numeração.
+export const LIMS = `${API}/ml-lims`;

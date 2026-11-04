@@ -62,10 +62,9 @@ function Menu({ tela }) {
 }
 
 export default function Layout({ sessao, tela, migalhas, children }) {
-  const { dados, restaurar } = useDados();
+  const { dados } = useDados();
   const avisar = useAviso();
   const [verAlertas, setVerAlertas] = useState(false);
-  const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
   const alertas = dados.alertas || [];
   return (
     <>
@@ -73,7 +72,6 @@ export default function Layout({ sessao, tela, migalhas, children }) {
         <div className="inner">
           <a className="logo" href={link("dashboard")}><img src={logoBranca} alt="MinasLab, Laboratório de Controle de Qualidade" width="117" height="35" /></a>
           <div className="topright">
-            <button type="button" className="demo-tag linkbranco" onClick={() => setConfirmarRestaurar(true)} title="Os dados desta etapa são de demonstração e ficam só neste navegador">Dados de demonstração</button>
             <button type="button" className="ico" aria-label="Mensagens" onClick={() => avisar("Nenhuma mensagem nova.")}>
               <svg width="15" height="12" viewBox="0 0 15 12" fill="none" aria-hidden="true"><rect x=".75" y=".75" width="13.5" height="10.5" rx="1" stroke="#fff" strokeWidth="1.3" /><path d="M1 1.5l6.5 5 6.5-5" stroke="#fff" strokeWidth="1.3" /></svg><span className="badge">0</span>
             </button>
@@ -96,12 +94,6 @@ export default function Layout({ sessao, tela, migalhas, children }) {
               return <tr key={i}><td>{dataBR(a.data)}</td><td>{p ? <a href={link("proposta", p.id)} onClick={() => setVerAlertas(false)}>{numeroProposta(p)}</a> : "—"}</td><td className="quebra">{a.desc}</td></tr>;
             })}
           </tbody></table></div>
-        </Modal>
-      )}
-      {confirmarRestaurar && (
-        <Modal titulo="Dados de demonstração" onFechar={() => setConfirmarRestaurar(false)} rotuloOk="Restaurar dados de exemplo" aoConfirmar={() => { restaurar(); avisar("Dados de exemplo restaurados.", "ok"); }}>
-          <p style={{ margin: 0 }}>Nesta etapa o LIMS usa dados fictícios, guardados só neste navegador. Nada é gravado no servidor e ninguém mais vê o que você cadastra aqui.</p>
-          <p style={{ margin: 0 }}>Você pode voltar aos dados de exemplo originais. O que foi cadastrado neste navegador será apagado.</p>
         </Modal>
       )}
     </>

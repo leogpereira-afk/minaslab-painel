@@ -3,15 +3,15 @@
 // GerenciaLab. Regras (revisão, cópia) em lib/propostas.js, testadas.
 
 import { useState } from "react";
-import { useDados } from "../lib/dados.jsx";
+import { useDados, configSistema } from "../lib/dados.jsx";
 import { navegar } from "../lib/rota.js";
 import { brl, dataBR, isoDia } from "../lib/formato.js";
-import { STATUS_PROPOSTA, numeroProposta, totalProposta, podeEditar, criarRevisao, copiarProposta } from "../lib/propostas.js";
+import { STATUS_PROPOSTA, numeroProposta, totalProposta, podeEditar, criarRevisao, copiarProposta, chaveNumero, minimoNumero } from "../lib/propostas.js";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, RotuloProposta, useAviso } from "../components/ui.jsx";
 
 export default function ListaPropostas({ sessao }) {
-  const { dados, mudar } = useDados();
+  const { dados, salvar, proximo } = useDados();
   const avisar = useAviso();
   const [sel, setSel] = useState(new Set());
   const [janela, setJanela] = useState(null);
@@ -24,7 +24,7 @@ export default function ListaPropostas({ sessao }) {
   const quem = sessao.nome || sessao.usuario;
 
   const colunas = [
-    { t: "ID", v: (r) => r.id, filtro: true },
+    { t: "ID", v: (r) => Number(r.cod) || 0, filtro: true },
     { t: "Status", v: (r) => r.status, h: (r) => <RotuloProposta status={r.status} />, filtro: "lista" },
     { t: "Responsável", v: (r) => r.resp, filtro: true },
     { t: "Proposta", v: (r) => numeroProposta(r), filtro: true },
@@ -42,10 +42,10 @@ export default function ListaPropostas({ sessao }) {
   ];
 
   const exigir = (fn) => () => { if (!p) { avisar("Selecione uma proposta na lista.", "err"); return; } fn(); };
-  const trocar = (np) => mudar((d) => { d.propostas = d.propostas.map((x) => (x.id === np.id ? np : x)); return d; });
+  const trocar = (np) => salvar("propostas", np);
 
   const botoes = [
-    { rotulo: "Exportar", acao: () => avisar("Exportar fica disponível quando o LIMS estiver ligado ao servidor, na próxima etapa.") },
+    { rotulo: "Exportar", acao: () => avisar("A exportação em Excel e PDF entra numa próxima etapa.") },
     { rotulo: "Criar Proposta", acao: () => navegar("criar-proposta") },
     { rotulo: "Editar Proposta", acao: exigir(() => (podeEditar(p) ? navegar("criar-proposta", p.id) : avisar("Proposta aceita não pode ser editada. Use Criar revisão.", "err"))) },
     { rotulo: "Visualizar", acao: exigir(() => navegar("proposta", p.id)) },
@@ -65,34 +65,37 @@ export default function ListaPropostas({ sessao }) {
             selecao={sel} aoSelecionar={setSel} aoAbrir={(l) => navegar("proposta", l.id)} botoes={botoes} porPaginaInicial={10} rotuloPorPagina="resultados por página" />
 
       {janela === "revisao" && p && (
-        <Modal titulo="Motivo da Revisão" onFechar={fechar} rotuloOk="Criar revisão" aoConfirmar={() => {
-          try { const r = criarRevisao(p, motivo, quem, isoDia(0)); trocar(r); avisar(`Revisão criada: ${numeroProposta(r)}.`, "ok"); }
+        <Modal titulo="Motivo da Revisão" onFechar={fechar} rotuloOk="Criar revisão" aoConfirmar={async () => {
+          try { const r = criarRevisao(p, motivo, quem, isoDia(0)); await salvar("propostas", r, { motivo: `Revisão ${r.ver}: ${motivo.trim()}` }); avisar(`Revisão criada: ${numeroProposta(r)}.`, "ok"); }
           catch (e) { avisar(e.message, "err"); return false; }
         }}>
           <div className="fg"><label htmlFor="mRev">Motivo da revisão da proposta {numeroProposta(p)}</label><textarea id="mRev" rows={4} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></div>
         </Modal>
       )}
       {janela === "copiar" && p && (
-        <Modal titulo="Copiar Proposta" onFechar={fechar} rotuloOk="Copiar" aoConfirmar={() => {
-          const n = copiarProposta(p, dados.propostas, quem, isoDia(0), isoDia(30));
-          mudar((d) => { d.propostas.push(n); return d; });
-          setSel(new Set([n.id]));
-          avisar(`Proposta copiada: ${numeroProposta(n)}.`, "ok");
+        <Modal titulo="Copiar Proposta" onFechar={fechar} rotuloOk="Copiar" aoConfirmar={async () => {
+          try {
+            const ano = new Date().getFullYear();
+            const num = await proximo(chaveNumero(ano), minimoNumero(configSistema(dados)));
+            const n = await salvar("propostas", copiarProposta(p, num, quem, isoDia(0), isoDia(30)), { numerar: true, motivo: `Cópia de ${numeroProposta(p)}` });
+            setSel(new Set([n.id]));
+            avisar(`Proposta copiada: ${numeroProposta(n)}.`, "ok");
+          } catch (e) { avisar(e.message, "err"); return false; }
         }}>
           <p style={{ margin: 0 }}>Criar uma nova proposta com os mesmos dados de <b>{numeroProposta(p)}</b>?</p>
         </Modal>
       )}
-      {janela === "docs" && p && <Documentos p={p} onFechar={fechar} aoAnexar={(doc) => { trocar({ ...p, docs: [...(p.docs || []), doc] }); avisar("Documento anexado.", "ok"); }} />}
+      {janela === "docs" && p && <Documentos p={p} onFechar={fechar} aoAnexar={async (doc) => { try { await trocar({ ...p, docs: [...(p.docs || []), doc] }); avisar("Documento registrado.", "ok"); } catch (e) { avisar(e.message, "err"); return false; } }} />}
       {janela === "cliente" && p && (
         <Modal titulo="Dados do Cliente" onFechar={fechar} rotuloOk="Abrir perfil" aoConfirmar={() => navegar("cliente", c.id)}>
           <dl className="detail uma">{[["Razão Social", c.razao], ["Nome Fantasia", c.fantasia || "—"], ["CNPJ", c.doc], ["Responsável", c.resp], ["E-mail", c.email], ["Telefone", c.tel], ["Celular", c.cel], ["Cidade", `${c.cidade || ""} / ${c.uf || ""}`]].map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
         </Modal>
       )}
       {janela === "alerta" && p && (
-        <Modal titulo="Adicionar Alertas" onFechar={fechar} rotuloOk="Adicionar" aoConfirmar={() => {
+        <Modal titulo="Adicionar Alertas" onFechar={fechar} rotuloOk="Adicionar" aoConfirmar={async () => {
           if (!alerta.desc.trim()) { avisar("Descreva o alerta.", "err"); return false; }
-          mudar((d) => { d.alertas = [...(d.alertas || []), { pid: p.id, data: alerta.data, desc: alerta.desc.trim() }]; return d; });
-          avisar("Alerta adicionado.", "ok");
+          try { await salvar("alertas", { pid: p.id, data: alerta.data, desc: alerta.desc.trim(), feito: false }); avisar("Alerta adicionado.", "ok"); }
+          catch (e) { avisar(e.message, "err"); return false; }
         }}>
           <div className="fg"><label htmlFor="mAD">Data do alerta</label><input id="mAD" type="date" value={alerta.data} onChange={(e) => setAlerta({ ...alerta, data: e.target.value })} /></div>
           <div className="fg"><label htmlFor="mAT">Descrição</label><textarea id="mAT" rows={3} placeholder="Ex.: ligar para o cliente sobre o aceite" value={alerta.desc} onChange={(e) => setAlerta({ ...alerta, desc: e.target.value })} /></div>
@@ -108,13 +111,13 @@ function Documentos({ p, onFechar, aoAnexar }) {
   return (
     <Modal titulo="Documentos" onFechar={onFechar} rotuloOk="Anexar" aoConfirmar={() => {
       if (!arq) { avisar("Escolha um arquivo.", "err"); return false; }
-      aoAnexar({ nome: arq.name, kb: Math.max(1, Math.round(arq.size / 1024)), em: isoDia(0) });
+      return aoAnexar({ nome: arq.name, kb: Math.max(1, Math.round(arq.size / 1024)), em: isoDia(0) });
     }}>
       <div className="tw"><table><thead><tr><th>Documento</th><th>Tamanho</th><th>Anexado em</th></tr></thead><tbody>
         {(p.docs || []).length ? p.docs.map((d, i) => <tr key={i}><td>{d.nome}</td><td>{d.kb} KB</td><td>{dataBR(d.em)}</td></tr>) : <tr><td colSpan={3} className="vazio">Nenhum documento anexado.</td></tr>}
       </tbody></table></div>
       <div className="fg"><label htmlFor="mDoc">Anexar documento</label><input id="mDoc" type="file" onChange={(e) => setArq(e.target.files?.[0] || null)} /></div>
-      <p className="suave" style={{ margin: 0 }}>Nesta etapa só o nome do arquivo fica registrado. O arquivo em si passa a ser guardado quando o LIMS estiver ligado ao servidor.</p>
+      <p className="suave" style={{ margin: 0 }}>Por enquanto fica registrado o nome do arquivo. A guarda do arquivo em si entra numa próxima etapa.</p>
     </Modal>
   );
 }

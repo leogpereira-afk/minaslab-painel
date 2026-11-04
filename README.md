@@ -84,8 +84,9 @@ com o painel em `/minaslab-painel/lims/`. O item "MinasLab LIMS" do menu aponta
 para lá. Piloto: só a direção vê o item e abre o app.
 
 - **Login único**: aproveita o crachá do painel, como a Gestão.
-- **Dados**: nesta etapa, demonstração guardada só no navegador; a porta
-  própria no Supabase (coleções `lims_*`) entra junto com Configurações.
+- **Dados**: tabelas próprias `ml_lims_registros`, `ml_lims_auditoria` (só
+  inserção) e `ml_lims_contadores`, sempre pela Edge Function `ml-lims`
+  (crachá do painel). Fora de `ml_registros` de propósito — ver `lims/README.md`.
 - **Build**: o `deploy.yml` roda `npm install` + `npm test` + `build` em
   `lims/` com `BASE_PATH=/minaslab-painel/lims/` e copia `lims/dist` para
   `dist/lims`. Rotas por `#`, sem 404 especial.

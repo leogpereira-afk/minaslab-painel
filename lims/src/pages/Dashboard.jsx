@@ -49,7 +49,7 @@ export default function Dashboard() {
     <>
       <div className="callout">
         <p><b>Transforme seus dados em decisões.</b></p>
-        <p>Os indicadores abaixo são calculados a partir das propostas e cadastros. Nesta etapa os números vêm dos dados de demonstração.</p>
+        <p>Os indicadores abaixo são calculados em tempo real a partir das propostas e cadastros do LIMS.</p>
       </div>
       <div className="sec-title">Comercial</div>
       <div className="cards">

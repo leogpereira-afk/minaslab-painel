@@ -15,17 +15,36 @@ campos — com a logo e a paleta do painel MinasLab. As melhorias da ISO/IEC
 - **Rotas por `#`**, com os mesmos nomes de caminho do GerenciaLab
   (`#/customers`, `#/proposedlist`, `#/proposta/941`...). Cada tela tem link próprio.
 - **Piloto:** só a direção abre o LIMS (no app e no menu do painel, via
-  `SO_DIRECAO`). A equipe é liberada quando a porta do servidor existir.
+  `SO_DIRECAO`). A equipe será liberada em Configurações → Permissões de acesso.
 
-## Etapa atual: dados de demonstração
+## Dados (Supabase "Projetos Léo")
 
-Os dados desta etapa são **fictícios e ficam só no navegador** de quem usa
-(`localStorage`, chave `lims_demo_v1`). Nada vai para o servidor. O selo
-"Dados de demonstração" no topo explica isso e permite restaurar os exemplos.
+Tudo passa pela Edge Function **`ml-lims`** (`supabase/functions/ml-lims`),
+que confere o crachá e a conta em toda chamada. Tabelas próprias, criadas pela
+migração `supabase/migrations/20261104150000_lims_registros_auditoria.sql`:
 
-As telas falam só com `src/lib/dados.jsx`. Na próxima etapa esse arquivo passa
-a ler e gravar pela porta própria do LIMS no Supabase (coleções `lims_*` em
-`ml_registros`), sem mexer nas telas.
+- **`ml_lims_registros`** — os dados por coleção (catálogo, cadastros,
+  propostas). Fora de `ml_registros` de propósito: o `ml-sync` deixa equipe sem
+  matriz ler e gravar qualquer coleção de lá. RLS ligado, sem política: só o
+  `service_role` da função acessa.
+- **`ml_lims_auditoria`** — trilha de auditoria (quem, quando, o quê, antes e
+  depois). Só inserção: um gatilho bloqueia alterar e apagar. Aparece em
+  Configurações → Auditoria LOG e no "Histórico" de cada cadastro.
+- **`ml_lims_contadores`** + função `ml_lims_proximo` — numeração atômica
+  (proposta por ano, código sequencial de cada cadastro).
+
+Regras do servidor: exclusão é lápide (o registro some das listas e fica na
+trilha, com o motivo); campos `senha*` são só de escrita (nunca voltam para a
+tela); a numeração da proposta pode continuar a do GerenciaLab (Configuração do
+sistema → Proposta → "Numeração da proposta começa em").
+
+As telas falam só com `src/lib/dados.jsx`.
+
+Publicar a função:
+
+```
+supabase functions deploy ml-lims --project-ref reoghclxripktzpdwhiy --no-verify-jwt
+```
 
 ## Construção, menu por menu
 
@@ -33,7 +52,7 @@ a ler e gravar pela porta própria do LIMS no Supabase (coleções `lims_*` em
 | --- | --- |
 | Cadastro (Cliente / Fornecedor, Solicitantes) | pronto |
 | Propostas (Criar, Listar, Serviços, Visualizar) | pronto |
-| Configurações | próximo, já gravando no Supabase |
+| Configurações (todos os grupos, menos Estoque e CQ) | pronto |
 | Contratos, Ordem serviços, Coletas, Laboratório, Revisão, Financeiro, Relatórios | depois |
 | Gestão da qualidade | por último |
 
@@ -46,6 +65,8 @@ proposta alimentando o CRM e o financeiro alimentando as Finanças do painel.
 ## Onde fica cada coisa
 
 - `src/lib/menu.js` — o menu (lista única; tela nova entra aqui e em `TELAS` do `App.jsx`).
+- `src/lib/cadastros.js` — os cadastros de Configurações (35 telas, 37 cadastros; campos, colunas, referências),
+  desenhados pelo motor `src/components/Cadastro.jsx`. `src/lib/configSistema.js` — as 10 abas.
 - `src/lib/propostas.js`, `clientes.js`, `grade.js` — regras puras, com testes `*.test.mjs`.
 - `src/components/Grade.jsx` — a grade estilo DataTables usada em todas as listas.
 - `src/pages/` — uma tela por arquivo.
@@ -55,7 +76,7 @@ proposta alimentando o CRM e o financeiro alimentando as Finanças do painel.
 ```
 npm install
 npm run dev     # http://localhost:5177
-npm test        # regras de propostas, clientes e grade
+npm test        # regras de propostas, clientes, grade e cadastros
 npm run build
 ```
 

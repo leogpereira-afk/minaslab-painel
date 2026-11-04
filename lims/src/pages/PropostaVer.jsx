@@ -1,29 +1,27 @@
 // Propostas → Visualizar: o documento que vai para o cliente, respeitando a
 // "Exibição de preços", com o Aceitar proposta e o histórico de revisões.
 
-import { useEffect, useState } from "react";
-import { useDados } from "../lib/dados.jsx";
+import { useState } from "react";
+import { useDados, configSistema } from "../lib/dados.jsx";
 import { link } from "../lib/rota.js";
 import { brl, dataBR, isoDia } from "../lib/formato.js";
-import { numeroProposta, parametro, servico, precoUnitario, totalItem, exibicao, aceitarProposta, podeEditar } from "../lib/propostas.js";
+import { numeroProposta, precoUnitario, totalItem, exibicao, aceitarProposta, podeEditar } from "../lib/propostas.js";
 import { Modal, RotuloProposta, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 
 export default function PropostaVer({ param }) {
-  const { dados, mudar } = useDados();
+  const { dados, salvar } = useDados();
   const avisar = useAviso();
-  const p = dados.propostas.find((x) => x.id === Number(param));
+  const p = dados.propostas.find((x) => x.id === param);
   const [aceite, setAceite] = useState(null);
-  // Conta a abertura (coluna "Visualização" da lista), uma vez por visita.
-  useEffect(() => {
-    if (!p) return;
-    mudar((d) => { const x = d.propostas.find((y) => y.id === p.id); if (x) x.views = (x.views || 0) + 1; return d; });
-  }, [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A coluna "Visualização" conta aberturas pelo cliente (portal), não as
+  // internas: abrir aqui não grava nada (senão a Auditoria LOG viraria ruído).
   if (!p) return <NaoAchou />;
   const c = dados.clientes.find((x) => x.id === p.clienteId) || {};
   const sol = dados.solicitantes.find((s) => s.id === p.solicitanteId);
   const ex = exibicao(p);
+  const cfg = configSistema(dados);
 
   return (
     <>
@@ -37,8 +35,8 @@ export default function PropostaVer({ param }) {
       </div>
       <article className="doc">
         <div className="hd">
-          <div><img src={logoMinasLab} alt="MinasLab, Laboratório de Controle de Qualidade" width="200" height="60" /><div className="suave">Montes Claros · MG</div></div>
-          <div style={{ textAlign: "right" }}><b>PROPOSTA COMERCIAL</b><br />Nº {numeroProposta(p)}<br />Identificação {p.ident}</div>
+          <div><img src={logoMinasLab} alt="MinasLab, Laboratório de Controle de Qualidade" width="200" height="60" /><div className="suave">{[cfg.empresa, cfg.cnpj && `CNPJ ${cfg.cnpj}`, cfg.endereco, [cfg.cidade, cfg.estado].filter(Boolean).join(" · "), cfg.telefone].filter(Boolean).join(" · ") || "Montes Claros · MG"}</div></div>
+          <div style={{ textAlign: "right" }}><b>{(cfg.tituloProposta || "PROPOSTA COMERCIAL").toUpperCase()}</b><br />Nº {numeroProposta(p)}<br />Identificação {p.ident}</div>
         </div>
         <h4>Dados do cliente</h4>
         <dl className="detail">
@@ -50,13 +48,13 @@ export default function PropostaVer({ param }) {
         <div className="tw"><table>
           <thead><tr><th>Serviço / Matriz</th><th>Parâmetros</th><th>Qtd.</th>{ex.valores && <><th>Valor unit.</th><th>Total</th></>}</tr></thead>
           <tbody>
-            {p.itens.map((it, i) => { const sv = servico(it.sid); return (
+            {p.itens.map((it, i) => (
               <tr key={i}>
-                <td><b>{sv.nome}</b><br />{sv.matriz} · {sv.la}</td>
-                <td className="quebra">{it.params.map((cd) => { const x = parametro(cd); return `${x.nome}${x.acred ? " *" : ""}${ex.porParametro ? ` (${brl(x.preco)})` : ""}`; }).join("; ")}</td>
+                <td><b>{it.descricao}</b><br />{[it.matriz, it.legislacao].filter(Boolean).join(" · ")}</td>
+                <td className="quebra">{it.params.map((x) => `${x.nome}${x.acred ? " *" : ""}${x.metodo ? ` (${x.metodo})` : ""}${ex.porParametro ? ` ${brl(x.preco)}` : ""}`).join("; ")}</td>
                 <td>{it.qtd}</td>{ex.valores && <><td>{brl(precoUnitario(it))}</td><td>{brl(totalItem(it))}</td></>}
               </tr>
-            ); })}
+            ))}
             {ex.outros && Number(p.outros) > 0 && <tr><td colSpan={4}>Outros custos (coleta, frete)</td><td>{brl(p.outros)}</td></tr>}
           </tbody>
         </table></div>
@@ -78,8 +76,8 @@ export default function PropostaVer({ param }) {
         </>}
       </article>
       {aceite && (
-        <Modal titulo="Aceitar proposta" onFechar={() => setAceite(null)} rotuloOk="Aceitar" aoConfirmar={() => {
-          try { const np = aceitarProposta(p, aceite); mudar((d) => { d.propostas = d.propostas.map((x) => (x.id === p.id ? np : x)); return d; }); avisar("Proposta aceita.", "ok"); }
+        <Modal titulo="Aceitar proposta" onFechar={() => setAceite(null)} rotuloOk="Aceitar" aoConfirmar={async () => {
+          try { await salvar("propostas", aceitarProposta(p, aceite), { motivo: `Aceite de ${aceite.nome}` }); avisar("Proposta aceita.", "ok"); }
           catch (e) { avisar(e.message, "err"); return false; }
         }}>
           <div className="fg"><label htmlFor="mAcD">Data do aceite</label><input id="mAcD" type="date" value={aceite.data} onChange={(e) => setAceite({ ...aceite, data: e.target.value })} /></div>

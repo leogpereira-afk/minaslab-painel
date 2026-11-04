@@ -4,33 +4,36 @@
 import { useState } from "react";
 import { useDados } from "../lib/dados.jsx";
 import { link, navegar } from "../lib/rota.js";
-import { agoraBR } from "../lib/formato.js";
+
 import { erroCliente, normalizarCliente, TIPOS_CADASTRO, UFS } from "../lib/clientes.js";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, RotuloStatus, opcoes, useAviso } from "../components/ui.jsx";
 
-const AVISO_EXPORTAR = "Exportar fica disponível quando o LIMS estiver ligado ao servidor, na próxima etapa.";
+const AVISO_EXPORTAR = "A exportação em Excel, PDF e impressão entra numa próxima etapa.";
+const quando = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "");
 
 const COLUNAS = [
-  { t: "ID", v: (r) => r.id },
+  { t: "ID", v: (r) => Number(r.cod) || 0 },
   { t: "Status", v: (r) => r.status, h: (r) => <RotuloStatus status={r.status} /> },
   { t: "Nome responsável", v: (r) => r.resp },
   { t: "Razão social", v: (r) => r.razao },
   { t: "Nome fantasia", v: (r) => r.fantasia },
   { t: "CNPJ", v: (r) => r.doc },
   { t: "E-mail", v: (r) => r.email },
-  { t: "Criado", v: (r) => r.criado },
-  { t: "Modificado", v: (r) => r.mod },
+  { t: "Criado", v: (r) => r.criadoEm || "", h: (r) => quando(r.criadoEm), fv: (r) => quando(r.criadoEm) },
+  { t: "Modificado", v: (r) => r.atualizadoEm || "", h: (r) => quando(r.atualizadoEm), fv: (r) => quando(r.atualizadoEm) },
   { t: "Observações", v: (r) => r.obs },
 ];
 
 export function ListaClientes() {
-  const { dados, mudar } = useDados();
+  const { dados, salvar } = useDados();
   const avisar = useAviso();
   const [sel, setSel] = useState(new Set());
-  const alternarStatus = () => {
-    mudar((d) => { d.clientes.forEach((c) => { if (sel.has(c.id)) { c.status = c.status === "Ativo" ? "Inativo" : "Ativo"; c.mod = agoraBR(); } }); return d; });
-    avisar(`Status alterado em ${sel.size} registro(s).`, "ok");
+  const alternarStatus = async () => {
+    try {
+      for (const c of dados.clientes.filter((x) => sel.has(x.id))) await salvar("clientes", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" });
+      avisar(`Status alterado em ${sel.size} registro(s).`, "ok");
+    } catch (e) { avisar(e.message, "err"); }
   };
   return (
     <Caixa titulo="Clientes e Fornecedores">
@@ -53,9 +56,10 @@ export function ListaClientes() {
 const VAZIO = { pessoa: "PJ", tipo: "Cliente", resp: "", tel: "", cel: "", doc: "", razao: "", fantasia: "", ie: "", im: "", cep: "", end: "", num: "", comp: "", bairro: "", cidade: "", uf: "MG", email: "" };
 
 export function FormCliente({ param }) {
-  const { dados, mudar } = useDados();
+  const { dados, salvar } = useDados();
   const avisar = useAviso();
-  const existente = param ? dados.clientes.find((c) => c.id === Number(param)) : null;
+  const existente = param ? dados.clientes.find((c) => c.id === param) : null;
+  const [ocupado, setOcupado] = useState(false);
   const [f, setF] = useState(() => ({ ...VAZIO, ...(existente || {}) }));
   const [boasVindas, setBoasVindas] = useState(!existente);
   if (param && !existente) return <NaoAchou />;
@@ -64,23 +68,20 @@ export function FormCliente({ param }) {
   const Campo = (id, rotulo, cls, tipo = "text", ph) => (
     <div className={`fg ${cls}`}><label htmlFor={id}>{rotulo}</label><input id={id} type={tipo} placeholder={ph || rotulo} value={f[id] || ""} onChange={muda(id)} /></div>
   );
-  const salvar = (e) => {
+  const gravar = async (e) => {
     e.preventDefault();
     const erro = erroCliente(f);
     if (erro) { avisar(erro[1], "err"); document.getElementById(erro[0])?.focus(); return; }
-    const d = normalizarCliente(f);
-    let id = existente?.id;
-    mudar((db) => {
-      if (existente) Object.assign(db.clientes.find((c) => c.id === id), d, { mod: agoraBR() });
-      else { id = Math.max(0, ...db.clientes.map((c) => c.id)) + 1; db.clientes.push({ ...d, id, status: "Ativo", criado: agoraBR(), mod: agoraBR(), obs: "" }); }
-      return db;
-    });
-    avisar(existente ? "Cliente atualizado." : boasVindas ? "Cliente cadastrado. O e-mail de boas-vindas sai quando o LIMS estiver ligado ao servidor." : "Cliente cadastrado.", "ok");
-    setTimeout(() => navegar("cliente", id), 0);
+    setOcupado(true);
+    try {
+      const r = await salvar("clientes", { ...normalizarCliente(f), status: existente?.status || "Ativo", obs: existente?.obs || "" }, { numerar: !existente });
+      avisar(existente ? "Cliente atualizado." : boasVindas ? "Cliente cadastrado. O e-mail de boas-vindas entra quando a Configuração Email estiver ligada." : "Cliente cadastrado.", "ok");
+      navegar("cliente", r.id);
+    } catch (ex) { avisar(ex.message, "err"); } finally { setOcupado(false); }
   };
   return (
     <Caixa titulo={existente ? "Editar Cliente" : "Adicionar Cliente"}>
-      <form className="frm" onSubmit={salvar} noValidate>
+      <form className="frm" onSubmit={gravar} noValidate>
         <div className="s12 radios" role="radiogroup" aria-label="Tipo de pessoa">
           <label><input type="radio" name="pessoa" checked={!pf} onChange={() => setF((x) => ({ ...x, pessoa: "PJ" }))} /> Pessoa Jurídica</label>
           <label><input type="radio" name="pessoa" checked={pf} onChange={() => setF((x) => ({ ...x, pessoa: "PF" }))} /> Pessoa Física</label>
@@ -100,26 +101,26 @@ export function FormCliente({ param }) {
         <div className="quebra-linha" />
         {Campo("email", "E-mail", "s5", "email")}
         <div className="fg s5"><span className="rot">Enviar email de boas vindas?</span><label className="radios"><input type="checkbox" checked={boasVindas} onChange={(e) => setBoasVindas(e.target.checked)} /> Sim</label></div>
-        <div className="s12 acoes" style={{ marginTop: 8 }}><button type="submit" className="btn btn-primary">Salvar</button><a className="btn btn-default" href={existente ? link("cliente", existente.id) : link("customers")}>Voltar</a></div>
+        <div className="s12 acoes" style={{ marginTop: 8 }}><button type="submit" className="btn btn-primary" disabled={ocupado}>{ocupado ? "Salvando…" : "Salvar"}</button><a className="btn btn-default" href={existente ? link("cliente", existente.id) : link("customers")}>Voltar</a></div>
       </form>
     </Caixa>
   );
 }
 
 export function VerCliente({ param }) {
-  const { dados, mudar } = useDados();
+  const { dados, salvar } = useDados();
   const avisar = useAviso();
-  const c = dados.clientes.find((x) => x.id === Number(param));
+  const c = dados.clientes.find((x) => x.id === param);
   if (!c) return <NaoAchou />;
-  const campos = [["ID", c.id], ["Status", <RotuloStatus key="s" status={c.status} />], ["Tipo de cadastro", c.tipo], ["Pessoa", c.pessoa === "PJ" ? "Pessoa Jurídica" : "Pessoa Física"],
+  const campos = [["ID", c.cod], ["Status", <RotuloStatus key="s" status={c.status} />], ["Tipo de cadastro", c.tipo], ["Pessoa", c.pessoa === "PJ" ? "Pessoa Jurídica" : "Pessoa Física"],
     ["Nome do Responsável", c.resp], [c.pessoa === "PJ" ? "CNPJ" : "CPF", c.doc], ["Razão Social", c.razao], ["Nome Fantasia", c.fantasia || "—"], ["Telefone", c.tel], ["Celular", c.cel],
     ["E-mail", c.email], ["CEP", c.cep], ["Endereço", `${c.end}, ${c.num}${c.comp ? ` - ${c.comp}` : ""}`], ["Bairro", c.bairro], ["Cidade / Estado", `${c.cidade} / ${c.uf}`],
-    ["Criado", c.criado], ["Modificado", c.mod], ["Observações", c.obs || "—"]];
+    ["Criado", `${quando(c.criadoEm)} por ${c.criadoPor || ""}`], ["Modificado", `${quando(c.atualizadoEm)} por ${c.atualizadoPor || ""}`], ["Observações", c.obs || "—"]];
   const solic = dados.solicitantes.filter((s) => s.cliente === c.razao);
   const propostas = dados.propostas.filter((p) => p.clienteId === c.id);
-  const alternar = () => {
-    mudar((d) => { const x = d.clientes.find((y) => y.id === c.id); x.status = x.status === "Ativo" ? "Inativo" : "Ativo"; x.mod = agoraBR(); return d; });
-    avisar(c.status === "Ativo" ? "Cliente inativado." : "Cliente ativado.", "ok");
+  const alternar = async () => {
+    try { await salvar("clientes", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" }); avisar(c.status === "Ativo" ? "Cliente inativado." : "Cliente ativado.", "ok"); }
+    catch (e) { avisar(e.message, "err"); }
   };
   return (
     <>
