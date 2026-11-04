@@ -11,7 +11,7 @@ export const MENU = [
   ["Financeiro", [["Contas a receber", "bills-to-receive"], ["Contas a pagar", "bills-to-pay"], ["Fluxo de Caixa", "extract"], ["Notas fiscais de Serviços", "notas-fiscais"], ["Notas fiscais de Entrada", "nota-fiscal-entrada"], ["Centro de custos", "costcenter"]]],
   ["Cadastro", [["Solicitantes", "solicitantes", true], ["Cliente / Fornecedor", "customers", true]]],
   ["Propostas", [["Criar Proposta", "criar-proposta", true], ["Listar Propostas", "proposedlist", true]]],
-  ["Contratos", [["Contratos Pendentes", "notification-pedents"], ["Contratos", "contracts"]]],
+  ["Contratos", [["Contratos Pendentes", "notification-pedents", true], ["Contratos", "contracts", true]]],
   ["Ordem serviços", [["Ordem serviços", "service-order"], ["Rastreabilidade", "traceability"]]],
   ["Coletas", [["Logística", "logistics"], ["Coletas", "collections"], ["Agenda", "calendar"], ["Descarte amostras", "discardsamples"]]],
   ["Laboratório", [["Inspeção técnica de amostra", "technical-inspection"], ["Análise por Amostra", "laboratory-order-services"], ["Análise por Parâmetro", "analysis-methods"]]],

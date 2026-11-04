@@ -18,6 +18,7 @@ import TelaCadastro from "./components/Cadastro.jsx";
 import ConfigSistema from "./pages/ConfigSistema.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
 import AuditoriaLog from "./pages/AuditoriaLog.jsx";
+import { ContratosPendentes, ListaContratos, FichaContrato, DetalhesContrato, PlanoColeta, PlanoColetaAutomatico } from "./pages/Contratos.jsx";
 
 // Tela → [componente, migalhas]. Telas do menu ainda não construídas abrem
 // "Tela em construção". Tela nova entra aqui e em lib/menu.js.
@@ -32,6 +33,12 @@ const TELAS = {
   "criar-proposta": [PropostaForm, (param) => [["Propostas", link("proposedlist")], [param ? "Editar Proposta" : "Criar Proposta"]]],
   "proposta-servicos": [PropostaServicos, () => [["Propostas", link("proposedlist")], ["Serviços e amostras"]]],
   proposta: [PropostaVer, () => [["Propostas", link("proposedlist")], ["Visualizar Proposta"]]],
+  "notification-pedents": [ContratosPendentes, () => [["Contratos"], ["Contratos Pendentes"]]],
+  contracts: [ListaContratos, () => [["Contratos"]]],
+  contract: [FichaContrato, () => [["Contratos", link("contracts")], ["Contrato"]]],
+  "services-contract": [DetalhesContrato, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Detalhes do contrato"]]],
+  "collection-plan": [PlanoColeta, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta"]]],
+  "collection-plan-auto": [PlanoColetaAutomatico, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta automático"]]],
   configs: [ConfigSistema, () => [["Configurações"], ["Configuração do sistema"]]],
   "permissoes-de-acesso": [Permissoes, () => [["Configurações"], ["Permissões de acesso"]]],
   auditoria: [AuditoriaLog, () => [["Configurações"], ["Auditoria LOG"]]],
@@ -43,7 +50,7 @@ function EmConstrucao({ tela }) {
   const it = ITEM_DA_TELA[tela];
   return (
     <Caixa titulo={it.rotulo}>
-      <div className="soonbox"><b>Tela em construção</b>Este item do menu {it.menu} entra numa próxima etapa. Já estão prontos: Dashboard, Cadastro, Propostas e Configurações.</div>
+      <div className="soonbox"><b>Tela em construção</b>Este item do menu {it.menu} entra numa próxima etapa. Já estão prontos: Dashboard, Cadastro, Propostas, Contratos e Configurações.</div>
     </Caixa>
   );
 }
