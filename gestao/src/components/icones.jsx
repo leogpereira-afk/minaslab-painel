@@ -35,4 +35,5 @@ export const IcSair = I(<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><p
 export const IcRecolher = I(<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="m16 15-3-3 3-3" /></>);
 export const IcExpandir = I(<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="m14 9 3 3-3 3" /></>);
 export const IcCasa = I(<><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10" /></>);
+export const IcEscada = I(<><path d="M4 20h5v-5h5v-5h5V5" /><path d="m15 5 4 0 0 4" /></>);
 export const IcX = I(<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>);

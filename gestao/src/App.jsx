@@ -29,10 +29,11 @@ import Produtividade from "./pages/Produtividade.jsx";
 import Acessos from "./pages/Acessos.jsx";
 import Agenda from "./pages/Agenda.jsx";
 import Comissoes from "./pages/Comissoes.jsx";
+import Carreira from "./pages/Carreira.jsx";
 
 const TELAS = {
   cockpit: Cockpit, visao: VisaoMes, funil: Funil, dado: QualidadeDado,
-  pessoas: Pessoas, avaliacao: Avaliacao, comissoes: Comissoes, ocorrencias: Ocorrencias,
+  pessoas: Pessoas, avaliacao: Avaliacao, comissoes: Comissoes, carreira: Carreira, ocorrencias: Ocorrencias,
   carteira: Carteira, satisfacao: Satisfacao, licitacoes: Licitacoes,
   estrategias: Estrategias, decisoes: Decisoes, funcoes: Funcoes, equipe: Equipe,
   agenda: Agenda, reunioes: Reunioes, treinamentos: Treinamentos, destaque: Destaque,
