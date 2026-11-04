@@ -139,7 +139,7 @@ export default function BalaoMensagens() {
       )}
 
       {aberto && (
-        <section className="fixed inset-x-2 bottom-24 top-16 z-40 flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 sm:inset-x-auto sm:right-6 sm:top-auto sm:h-[min(640px,calc(100dvh-8rem))] sm:w-[400px]" aria-label="Mensagens">
+        <section className="fixed inset-x-2 bottom-24 top-16 z-40 flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 sm:inset-x-auto sm:right-6 sm:top-auto sm:h-[min(640px,calc(100dvh-8rem))] sm:w-[420px]" aria-label="Mensagens">
           <header className="flex items-center gap-2 bg-brand-700 px-3 py-2.5 text-white">
             {conversa
               ? <button type="button" onClick={() => setConversa(null)} className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/15" aria-label="Voltar para as conversas"><ArrowLeft size={18} /></button>
@@ -152,7 +152,7 @@ export default function BalaoMensagens() {
             <button type="button" onClick={() => setAberto(false)} className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/15" aria-label="Fechar mensagens" title="Fechar"><X size={18} /></button>
           </header>
           {conversa
-            ? <div className="min-h-0 flex-1"><Chat key={conversa} id={conversa} usuarios={usuarios} aoVoltar={() => setConversa(null)} aoMudou={conferir} aoSairDoGrupo={() => setConversa(null)} /></div>
+            ? <div className="min-h-0 flex-1"><Chat key={conversa} compacto id={conversa} usuarios={usuarios} aoVoltar={() => setConversa(null)} aoMudou={conferir} aoSairDoGrupo={() => setConversa(null)} /></div>
             : <ListaConversas aoAbrir={setConversa} />}
         </section>
       )}
