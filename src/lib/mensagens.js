@@ -119,3 +119,13 @@ export function alternarReacaoLocal(reacoes, mensagemId, emoji, eu) {
   if (resto.length) todas[mensagemId] = resto; else delete todas[mensagemId];
   return todas;
 }
+
+/** Marca das mensagens novas que a pessoa já dispensou no balão: muda quando chega mensagem nova, e aí as prévias voltam. */
+export const assinaturaDasNovas = (novas) => (novas || []).map((c) => `${c.id}@${c.em}`).sort().join("|");
+
+/** Prévias que o balão mostra no canto (até `limite`, a mais recente primeiro), ou nenhuma se a pessoa ocultou estas mesmas. */
+export function previasDoBalao(novas, ocultadas = "", limite = 3) {
+  const lista = (novas || []).filter((c) => c.naoLidas > 0);
+  if (!lista.length || (ocultadas && ocultadas === assinaturaDasNovas(lista))) return [];
+  return [...lista].sort((a, b) => String(b.em).localeCompare(String(a.em))).slice(0, limite);
+}

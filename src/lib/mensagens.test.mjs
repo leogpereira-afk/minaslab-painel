@@ -101,3 +101,25 @@ test("editadas/apagadas chegam pelo id; última editável é a minha mais recent
   assert.equal(ultimaEditavel(lista, "eu").id, "a"); // pula o áudio
   assert.equal(ultimaEditavel(lista, "ninguem"), null);
 });
+
+test("balão: prévias das novas, mais recente primeiro, até o limite", async () => {
+  const { previasDoBalao } = await import("./mensagens.js");
+  const novas = [
+    { id: "a", naoLidas: 1, em: "2026-11-04T10:00:00Z" },
+    { id: "b", naoLidas: 2, em: "2026-11-04T12:00:00Z" },
+    { id: "c", naoLidas: 0, em: "2026-11-04T13:00:00Z" },
+    { id: "d", naoLidas: 1, em: "2026-11-04T09:00:00Z" },
+    { id: "e", naoLidas: 1, em: "2026-11-04T08:00:00Z" },
+  ];
+  assert.deepEqual(previasDoBalao(novas).map((c) => c.id), ["b", "a", "d"]);
+  assert.deepEqual(previasDoBalao([]), []);
+});
+
+test("balão: ocultar some até chegar mensagem nova", async () => {
+  const { previasDoBalao, assinaturaDasNovas } = await import("./mensagens.js");
+  const novas = [{ id: "a", naoLidas: 1, em: "2026-11-04T10:00:00Z" }];
+  const ocultadas = assinaturaDasNovas(novas);
+  assert.deepEqual(previasDoBalao(novas, ocultadas), []);
+  const depois = [{ id: "a", naoLidas: 2, em: "2026-11-04T10:05:00Z" }];
+  assert.deepEqual(previasDoBalao(depois, ocultadas).map((c) => c.id), ["a"]);
+});
