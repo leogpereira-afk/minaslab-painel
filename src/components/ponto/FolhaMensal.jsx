@@ -15,11 +15,10 @@ const periodo=c=>{const[a,m]=String(c).split("-").map(Number);if(!a||!m)return c
 const hms=min=>{const n=Math.round(Number(min)||0),s=n<0?"-":"";const a=Math.abs(n);return `${s}${String(Math.floor(a/60)).padStart(2,"0")}:${String(a%60).padStart(2,"0")}:00`};
 const dataBR=s=>{const p=String(s||"").split("-");return p.length===3?`${p[2]}/${p[1]}`:"—"};
 const hora=(...vs)=>vs.find(v=>v!=null&&String(v).trim())||"—";
-// Na folha mensal, "HRS FOLHA PAG." precisa repetir o fechamento do Jibble:
-// batidas menos almoço e também menos as deduções automáticas configuradas no
-// relógio. `trabalhadoMin` é o payrollHours final importado. Dia corrigido à
-// mão volta à conta pelas batidas, pois o total antigo do relógio não descreve
-// mais a correção feita pelo RH.
+// "HRS FOLHA PAG." sai PELAS BATIDAS: entrada→saída menos o almoço registrado
+// (lib/rh/folhaMensal.js, minutosDaFolha). Decisão da Ana em 04/11/2026: o
+// payrollHours do Jibble descontava 1h automática além do almoço batido, e a
+// folha ficava 1h por dia abaixo das batidas e do Fechamento.
 
 const semana=iso=>Math.floor((Number(String(iso||"").slice(8,10))-1)/7)+1;
 const diaSemana=iso=>{const d=new Date(String(iso||"")+"T12:00:00");return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("pt-BR",{weekday:"long"})};

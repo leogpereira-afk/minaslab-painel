@@ -26,19 +26,25 @@
 
 import { ausenciaDoDia, diaDeFeriado, minutosTrabalhados } from "./ponto.js";
 
-/* Horas do dia na folha: o payrollHours importado do relógio; dia corrigido à
-   mão volta à conta pelas batidas (o total antigo do relógio não descreve mais
-   a correção). As horas de atestado que o relógio PAGOU continuam na folha:
-   lançar a ausência no painel também marca `corrigido` (só para a importação
-   não apagar o lançamento), e sem esta soma o atestado anotado sumia da coluna
-   de horas pagas. Sem batida nenhuma, o total gravado já traz o que foi pago. */
+/* Horas do dia na folha: PELAS BATIDAS (entrada→saída menos o almoço registrado),
+   a mesma conta do Fechamento (ponto.js, apurarCompetencia) e do Período.
+   Até 04/11/2026 a folha usava o payrollHours do Jibble, e o Jibble desconta 1h
+   automática ALÉM do almoço batido: todo dia saía 1h a menos (Ana Claudia,
+   02/10: 08:00–12:00 e 13:00–17:41 = 8h41, e a folha mostrava 7h41), e a folha
+   não batia com o Fechamento. As horas de afastamento que o relógio PAGOU
+   (horasAtestadoMin) continuam somando — menos quando o dia virou FALTA. Sem
+   batida nenhuma e sem tracked, o total gravado já traz o que foi pago. */
 export function minutosDaFolha(d) {
   if (d?.emAberto === true) return 0;
-  const folha = Number(d?.trabalhadoMin);
-  if (d?.corrigido !== true && d?.origem === "jibble" && Number.isFinite(folha) && folha >= 0) return Math.round(folha);
   const pelasBatidas = minutosTrabalhados({ ...d, trabalhadoMin: undefined });
   if (pelasBatidas === null) return minutosTrabalhados(d) ?? 0;
-  return pelasBatidas + (d?.origem === "jibble" ? Math.max(0, Number(d?.horasAtestadoMin) || 0) : 0);
+  /* FALTA NÃO LEVA AS HORAS PAGAS DO RELÓGIO. Quando o RH troca no painel um
+     afastamento pago pelo Jibble por "falta", o dia guarda o horasAtestadoMin
+     antigo; somá-lo fazia a falta virar horas pagas e até HORA EXTRA (Ana
+     Claudia, 01/10/2026: falta com 10h na folha e +2h de saldo). */
+  const a = ausenciaDoDia(d);
+  const somaAbono = d?.origem === "jibble" && !(a && a.desconta);
+  return pelasBatidas + (somaAbono ? Math.max(0, Number(d?.horasAtestadoMin) || 0) : 0);
 }
 
 /* Feriado: o nacional pela data (lei federal) e o municipal pela marca do relógio. A mesma

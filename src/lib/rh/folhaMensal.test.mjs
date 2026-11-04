@@ -121,3 +121,11 @@ test("feriado trabalhado continua sendo extra (regra própria, não é abono)", 
 test("dia em aberto não conta horas", () => {
   assert.equal(minutosDaFolha(jibble({ trabalhadoMin: 480, emAberto: true })), 0);
 });
+
+test("falta lançada no painel por cima de afastamento do relógio não vira horas pagas nem extra", () => {
+  // 01/10/2026 (quinta): o Jibble mandou 10h pagas sem batida; o RH trocou para falta.
+  const d = { data: "2026-10-01", origem: "jibble", corrigido: true, trackedMin: 0, pausaMin: 0, trabalhadoMin: 600, horasAtestadoMin: 600, ausencia: { tipo: "falta" } };
+  assert.equal(minutosDaFolha(d), 0, "eram 600 antes do conserto");
+  assert.equal(extraDoDia(d), 0, "eram +2h de extra");
+  assert.equal(saldoDoDia(d), -480, "falta de quinta desconta o dia cheio");
+});
