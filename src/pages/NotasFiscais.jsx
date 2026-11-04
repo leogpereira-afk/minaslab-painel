@@ -1039,13 +1039,18 @@ export default function NotasFiscais() {
               <span className="label">E-mail do destinatário</span>
               <input
                 className="input"
-                type="email"
+                type="text"
+                inputMode="email"
+                placeholder="cliente@empresa.com; financeiro@empresa.com"
                 required
                 value={emailForm.email}
                 onChange={(e) =>
                   setEmailForm({ ...emailForm, email: e.target.value })
                 }
               />
+              <span className="mt-1 block text-xs text-slate-500">
+                Para mandar a mais de um, separe os e-mails com ponto e vírgula.
+              </span>
             </label>
             <label className="block">
               <span className="label">Assunto</span>
