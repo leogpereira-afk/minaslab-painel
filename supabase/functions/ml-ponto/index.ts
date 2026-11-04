@@ -209,9 +209,14 @@ function ausenciaPagaDoJibble(d: Record<string, any>) {
      5h14 de folha. A diferença positiva é o afastamento; num dia comum a
      folha é menor que o rastreado por causa da pausa, então não há falso
      positivo. */
-  const parcial = folha !== null && liquidoDasBatidas !== null && folha > liquidoDasBatidas
-    ? folha - liquidoDasBatidas
-    : null;
+  /* ARREDONDAMENTO NÃO É AFASTAMENTO (04/11/2026). Cada duração vem em
+     segundos e vira minuto separadamente, então folha e batidas podem diferir
+     em 1 min sem nada lançado. Enquanto o Jibble tirava 1h automática a mais,
+     a folha nunca passava das batidas; sem a dedução, 12 dias de outubro
+     viraram "justificada" de 1 minuto (Giovanna). Só conta afastamento a
+     partir de 5 min — abaixo disso é a mesma tolerância da CLT, art. 58 §1º. */
+  const sobra = folha !== null && liquidoDasBatidas !== null ? folha - liquidoDasBatidas : 0;
+  const parcial = sobra >= 5 ? sobra : null;
   const horas = explicita ?? parcial ?? (!temBatida && folha ? folha : null);
   if (!horas) return { horas: null, ausencia: null };
   return {
