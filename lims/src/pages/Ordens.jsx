@@ -91,7 +91,6 @@ export function ListaOS({ sessao }) {
   const [sel, setSel] = useState(new Set());
   const [chave, setChave] = useState(0);
   const [janela, setJanela] = useState(null);
-  const [ocultas, setOcultas] = useState(() => new Set(COLUNAS_OPCIONAIS.slice(4)));
   const osDe = useMemo(() => Object.fromEntries(dados.ordens.map((o) => [o.id, o])), [dados.ordens]);
   const statusOS = useMemo(() => {
     const por = {};
@@ -122,7 +121,7 @@ export function ListaOS({ sessao }) {
     { t: "Centro Serviço", v: (r) => osDe[r.osId]?.centro || "", filtro: true },
     ...[0, 1, 2, 3, 4, 5].map((i) => ({ t: `Campo ${i + 1}`, v: (r) => r.campos?.[i] || "", filtro: true })),
   ];
-  const colunas = todas.filter((c) => !ocultas.has(c.t));
+  const colunas = todas;
   const iStatus = colunas.findIndex((c) => c.t === "Status O.S"), iAm = colunas.findIndex((c) => c.t === "Status Amostra"), iPri = colunas.findIndex((c) => c.t === "Prioridade");
   const selecionadas = dados.amostras.filter((a) => sel.has(a.id));
   const uma = selecionadas.length === 1 ? selecionadas[0] : null;
@@ -130,12 +129,11 @@ export function ListaOS({ sessao }) {
   const exigir = (fn) => () => (selecionadas.length ? fn() : avisar("Selecione ao menos uma amostra.", "err"));
   return (
     <Caixa titulo="Ordem serviços">
-      <Grade key={`${chave}-${ocultas.size}`} id="os" exportar="ordens-servico" linhas={dados.amostras} colunas={colunas} filtrosColuna multipla
+      <Grade key={chave} id="os" ocultasPadrao={COLUNAS_OPCIONAIS.slice(4)} exportar="ordens-servico" linhas={dados.amostras} colunas={colunas} filtrosColuna multipla
         opcoesFiltro={{ [iStatus]: STATUS_AMOSTRA, [iAm]: STATUS_AMOSTRA, [iPri]: PRIORIDADES }}
         selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("ordem", r.osId)}
         botoes={[
           { rotulo: "Criar Ordem de serviço", acao: () => setJanela("criar") },
-          { rotulo: "Visualizar Colunas", acao: () => setJanela("colunas") },
           { rotulo: "Documentos", acao: exigirUma((a) => navegar("ordem", a.osId)) },
           { rotulo: "Coleta", acao: exigir(async () => {
             try {
@@ -152,11 +150,6 @@ export function ListaOS({ sessao }) {
         ]} />
       {janela === "criar" && <CriarOS sessao={sessao} onFechar={() => setJanela(null)} />}
       {janela?.ver && <VerAmostra a={janela.ver} onFechar={() => setJanela(null)} />}
-      {janela === "colunas" && (
-        <Modal titulo="Visualizar Colunas" onFechar={() => setJanela(null)}>
-          <div className="multi-lista">{COLUNAS_OPCIONAIS.map((t) => <label key={t}><input type="checkbox" checked={!ocultas.has(t)} onChange={(e) => setOcultas((o) => { const n = new Set(o); e.target.checked ? n.delete(t) : n.add(t); return n; })} /> {t}</label>)}</div>
-        </Modal>
-      )}
     </Caixa>
   );
 }
