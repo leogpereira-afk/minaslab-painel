@@ -129,3 +129,12 @@ test("falta lançada no painel por cima de afastamento do relógio não vira hor
   assert.equal(extraDoDia(d), 0, "eram +2h de extra");
   assert.equal(saldoDoDia(d), -480, "falta de quinta desconta o dia cheio");
 });
+
+test("Banco de Horas / Compensação: não é falta, mas o dia previsto sai do saldo", () => {
+  // 01/10/2026 (quinta, previsto 8h): folga combinada paga com o banco, sem batida.
+  const d = { data: "2026-10-01", origem: "jibble", corrigido: true, trackedMin: 0, pausaMin: 0, trabalhadoMin: 600, horasAtestadoMin: 600, ausencia: { tipo: "banco_horas" } };
+  assert.equal(minutosDaFolha(d), 0);
+  assert.equal(extraDoDia(d), 0);
+  assert.equal(saldoDoDia(d), -480, "as 8h saem do banco de horas");
+  assert.equal(diaAbonado(d), false);
+});

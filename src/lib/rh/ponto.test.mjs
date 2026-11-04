@@ -411,7 +411,7 @@ test("TIPOS_AUSENCIA: a regra do dinheiro mora na lista, para a tela não repeti
   // tela e a régua da conta passariam a discordar sem ninguém ver.
   assert.deepEqual(
     TIPOS_AUSENCIA.map((t) => t.tipo),
-    ["falta", "atestado", "justificada", "ferias", "folga"]
+    ["falta", "atestado", "justificada", "ferias", "folga", "banco_horas"]
   );
   for (const t of TIPOS_AUSENCIA) {
     assert.equal(typeof t.rotulo, "string", t.tipo);
@@ -1066,4 +1066,18 @@ test("cfgDoPonto: o que não presta cai no padrão da casa, e 'definida' conta a
   assert.equal(escolhida.jornada.semanaMin, 40 * 60);
   assert.equal(minutosPrevistosDoDia(SEXTA, escolhida.jornada), 480);
   assert.equal(divisorDaJornada(escolhida.jornada), 200); // e o divisor bate
+});
+
+test("apurarCompetencia: folga paga com o Banco de Horas sai das extras e não desconta salário", () => {
+  // Segunda 03/08 com 2h de extra (11h de folha, escala 9h) e quarta 05/08 de folga pelo banco.
+  const r = apurarCompetencia(
+    [
+      { data: "2026-08-03", entrada: "07:00", saida: "18:00", pausaMin: 0 },
+      { data: "2026-08-05", ausencia: { tipo: "banco_horas", motivo: "folga combinada" } },
+    ],
+    JORNADA_PADRAO
+  );
+  assert.equal(r.faltasQueDescontam, 0, "não é falta");
+  assert.equal(r.compensadoBancoMin, 540, "o dia previsto (9h) foi pago com o banco");
+  assert.equal(r.extrasMin, 0, "as 2h de extra foram usadas na folga; o resto fica no saldo, não vira desconto");
 });

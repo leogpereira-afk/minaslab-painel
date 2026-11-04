@@ -43,7 +43,7 @@ export function minutosDaFolha(d) {
      antigo; somá-lo fazia a falta virar horas pagas e até HORA EXTRA (Ana
      Claudia, 01/10/2026: falta com 10h na folha e +2h de saldo). */
   const a = ausenciaDoDia(d);
-  const somaAbono = d?.origem === "jibble" && !(a && a.desconta);
+  const somaAbono = d?.origem === "jibble" && !(a && (a.desconta || a.compensaBanco));
   return pelasBatidas + (somaAbono ? Math.max(0, Number(d?.horasAtestadoMin) || 0) : 0);
 }
 
@@ -65,14 +65,15 @@ export function previstoCheio(d) {
 /* O previsto que a folha mostra: zero no dia abonado e no feriado. */
 export function previstoDoDia(d) {
   const a = ausenciaDoDia(d);
-  return a && !a.desconta ? 0 : previstoCheio(d);
+  // Folga paga com o banco: o dia continua previsto, e o que faltou sai do saldo/extras.
+  return a && !a.desconta && !a.compensaBanco ? 0 : previstoCheio(d);
 }
 
 /* Abonado = ausência que NÃO desconta, num dia que não é feriado. Feriado tem
    regra própria (quem trabalha nele faz extra). */
 export function diaAbonado(d) {
   const a = ausenciaDoDia(d);
-  return !ehFeriado(d) && Boolean(a) && !a.desconta;
+  return !ehFeriado(d) && Boolean(a) && !a.desconta && !a.compensaBanco;
 }
 
 export const linhaSemRegistro = (d) => String(d?.id || "").startsWith("vazio_");
