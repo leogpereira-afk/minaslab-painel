@@ -85,6 +85,7 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /minaslab-painel/gestao/
+      - run: cp -r gestao/dist dist/gestao
 
       # MinasLab LIMS (pasta lims/): app próprio (React 19 + Vite), publicado
       # dentro do painel em /minaslab-painel/lims/, com o layout do GerenciaLab.
