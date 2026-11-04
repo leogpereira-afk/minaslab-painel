@@ -184,6 +184,16 @@ function duracaoISO(v: unknown): number | null {
    pelo Jibble, o dia vem sem batidas e payrollHours já contém as horas pagas,
    enquanto o nome da política aparece em um objeto aninhado. */
 function ausenciaPagaDoJibble(d: Record<string, any>) {
+  /* "Banco de Horas / Compensação": política criada no Jibble para o dia compensado com horas do banco.
+     O Jibble paga o dia (payrollHours cheio), mas aqui o dia fica com as horas das batidas e sai NEGATIVO no
+     banco de horas. Vira a ausência `banco_horas`, sem horas de afastamento. */
+  if (/banco de horas|compensa[cç][aã]o/.test(JSON.stringify(d).toLocaleLowerCase("pt-BR"))) {
+    return {
+      horas: null,
+      banco: true,
+      ausencia: { tipo: "banco_horas", motivo: "Banco de Horas / Compensação lançado no Jibble", origem: "jibble" },
+    };
+  }
   const explicita = duracaoISO(
     d.paidTimeOff ?? d.timeOffPaid ?? d.paidLeave ?? d.leaveHours ?? d.timeOff,
   );
@@ -355,6 +365,39 @@ async function diasJaGravados(ids: string[]): Promise<Map<string, Record<string,
     for (const l of data ?? []) mapa.set(String(l.id), l.registro as Record<string, any>);
   }
   return mapa;
+}
+
+/* O DIA QUE SUMIU DO RELÓGIO SAI DAQUI TAMBÉM. A importação só grava dia com
+   movimento; quando o RH tirava no Jibble uma justificativa, um atestado ou uma
+   batida lançada por engano, o dia voltava VAZIO, era pulado — e a cópia antiga
+   ficava aqui para sempre, com a justificativa que não existe mais. Foi o caso
+   da Ana Claudia em 01/10/2026 ("sincronizei e continua"). Agora, para cada
+   pessoa que o relógio devolveu nesta janela, todo dia do período que NÃO
+   gerou linha é conferido: se havia cópia vinda do Jibble, ela é apagada.
+   Dia corrigido à mão pelo RH continua intocável, como na gravação. */
+function diasDoPeriodo(de: string, ate: string): string[] {
+  const out: string[] = [];
+  const d = new Date(`${de}T12:00:00Z`), fim = new Date(`${ate}T12:00:00Z`);
+  while (d <= fim && out.length < 400) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+async function apagarDiasSumidos(jibbleIds: string[], de: string, ate: string, comLinha: Set<string>): Promise<number> {
+  const dias = diasDoPeriodo(de, ate);
+  const candidatos = jibbleIds.flatMap((j) => dias.map((dia) => `pd_${j}_${dia}`)).filter((id) => !comLinha.has(id));
+  if (!candidatos.length) return 0;
+  const existentes = await diasJaGravados(candidatos);
+  const apagar = [...existentes.entries()]
+    .filter(([, r]) => r?.origem === "jibble" && r?.corrigido !== true)
+    .map(([id]) => id);
+  if (!apagar.length) return 0;
+  const agora = new Date().toISOString();
+  for (let i = 0; i < apagar.length; i += 200) {
+    const { error } = await sb.from(T_REG).update({ apagado: true, atualizado_em: agora })
+      .eq("colecao", "rh_ponto_dia").in("id", apagar.slice(i, i + 200));
+    if (error) throw error;
+  }
+  await bump("rh_ponto_dia");
+  return apagar.length;
 }
 
 // ---------------------------------------------------------------- serviço
@@ -572,7 +615,7 @@ Deno.serve(async (req) => {
             /* DIA SEM MOVIMENTO NÃO VIRA REGISTRO. Gravar o dia vazio encheria
                a tela de zeros e faria "sem batida" parecer "trabalhou 0h" — e
                falta quem decide é a escala, não a ausência de linha aqui. */
-            if (!d.firstIn && !tracked && !horasAtestado) continue;
+            if (!d.firstIn && !tracked && !horasAtestado && !afastamento.ausencia) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -593,7 +636,7 @@ Deno.serve(async (req) => {
               )),
               horasAtestadoMin: horasAtestado,
               ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
-              trabalhadoMin: trabalhado,
+              trabalhadoMin: afastamento.banco ? Math.max(0, (tracked ?? 0) - (duracaoISO(d.unpaidBreak) ?? 0)) : trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
               extraDobroMin:
@@ -621,11 +664,16 @@ Deno.serve(async (req) => {
         }
 
         const gravados = await gravarVarios("rh_ponto_dia", dias);
+        const removidos = await apagarDiasSumidos(
+          pessoas.map((p) => String(p.personId ?? "")).filter(Boolean), de, ate,
+          new Set(linhas.map((l) => String(l.id))),
+        );
         const proximaSkip = pessoas.length === tamanho ? skip + tamanho : null;
         return resp({
           lidos: pessoas.length,
           dias: dias.length,
           gravados,
+          removidos,
           preservados,
           skip,
           proximaSkip,
@@ -788,7 +836,7 @@ Deno.serve(async (req) => {
             const tracked = duracaoISO(d.tracked);
             const afastamento = ausenciaPagaDoJibble(d);
             const horasAtestado = afastamento.horas;
-            if (!d.firstIn && !tracked && !horasAtestado) continue;
+            if (!d.firstIn && !tracked && !horasAtestado && !afastamento.ausencia) continue;
             linhas.push({
               id: `pd_${jibbleId}_${dia}`,
               jibbleId,
@@ -810,7 +858,7 @@ Deno.serve(async (req) => {
               )),
               horasAtestadoMin: horasAtestado,
               ...(afastamento.ausencia ? { ausencia: afastamento.ausencia } : {}),
-              trabalhadoMin: trabalhado,
+              trabalhadoMin: afastamento.banco ? Math.max(0, (tracked ?? 0) - (duracaoISO(d.unpaidBreak) ?? 0)) : trabalhado,
               trackedMin: tracked,
               extraMin: duracaoISO(d.dailyOvertime) ?? 0,
               extraDobroMin:
@@ -833,6 +881,10 @@ Deno.serve(async (req) => {
           dias.push(l);
         }
         const diasGravados = await gravarVarios("rh_ponto_dia", dias);
+        const diasRemovidos = await apagarDiasSumidos(
+          pessoasResumo.map((p) => String(p.personId ?? "")).filter(Boolean), de, ate,
+          new Set(linhas.map((l) => String(l.id))),
+        );
 
         /* ---- 4. carimba o vínculo nos dias que JÁ estavam importados sem ele.
            Sem este passo, os 120 dias trazidos antes de existirem as fichas
@@ -853,7 +905,7 @@ Deno.serve(async (req) => {
         const proximaSkip = pessoasResumo.length === tamanho ? skip + tamanho : null;
         await gravarMeta("jibble:ultimaImportacao", {
           em: agora, por: String(cracha?.sub ?? "maquina"), de, ate,
-          fichasCriadas, diasGravados, vinculados,
+          fichasCriadas, diasGravados, diasRemovidos, vinculados,
         });
 
         return resp({
@@ -864,6 +916,7 @@ Deno.serve(async (req) => {
           fichasCriadas,
           fichasCompletadas,
           diasGravados,
+          diasRemovidos,
           preservados,
           vinculados,
           divergencias,

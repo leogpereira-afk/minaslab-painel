@@ -128,6 +128,7 @@ export async function sincronizarPeriodo(de, ate, aoAndar) {
     fichasCriadas: 0,
     fichasCompletadas: 0,
     diasGravados: 0,
+    diasRemovidos: 0,
     preservados: 0,
     vinculados: 0,
     pessoasLidas: 0,
@@ -144,6 +145,7 @@ export async function sincronizarPeriodo(de, ate, aoAndar) {
     total.fichasCriadas += r?.fichasCriadas || 0;
     total.fichasCompletadas += r?.fichasCompletadas || 0;
     total.diasGravados += r?.diasGravados || 0;
+    total.diasRemovidos += r?.diasRemovidos || 0;
     total.preservados += r?.preservados || 0;
     total.vinculados += r?.vinculados || 0;
 
