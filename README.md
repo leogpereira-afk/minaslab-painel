@@ -76,6 +76,21 @@ aparece para quem tem acesso liberado na tela Acessos da própria Gestão.
   para `dist/gestao`. Rotas por `#`, sem 404 especial.
 - **Rodar local**: `cd gestao && npm install && npm run dev`.
 
+## MinasLab LIMS (`lims/`)
+
+O LIMS (propostas, amostras, análises, laudos — no layout do GerenciaLab) é um
+app à parte (React 19 + Vite), com `package.json` próprio, publicado **junto**
+com o painel em `/minaslab-painel/lims/`. O item "MinasLab LIMS" do menu aponta
+para lá. Piloto: só a direção vê o item e abre o app.
+
+- **Login único**: aproveita o crachá do painel, como a Gestão.
+- **Dados**: nesta etapa, demonstração guardada só no navegador; a porta
+  própria no Supabase (coleções `lims_*`) entra junto com Configurações.
+- **Build**: o `deploy.yml` roda `npm install` + `npm test` + `build` em
+  `lims/` com `BASE_PATH=/minaslab-painel/lims/` e copia `lims/dist` para
+  `dist/lims`. Rotas por `#`, sem 404 especial.
+- **Rodar local**: `cd lims && npm install && npm run dev`. Detalhes em `lims/README.md`.
+
 ## Segredos (Supabase → Edge Functions → Secrets)
 
 - `ML_JWT_SECRET` — assina os crachás.

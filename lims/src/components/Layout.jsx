@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import logoBranca from "../assets/logo-branca.png";
-import { MENU, ITEM_DA_TELA } from "../lib/menu.js";
+import { MENU, ITEM_DA_TELA, ehGrupo } from "../lib/menu.js";
 import { link } from "../lib/rota.js";
 import { sair } from "../lib/sessao.js";
 import { useDados } from "../lib/dados.jsx";
@@ -48,7 +48,9 @@ function Menu({ tela }) {
               <button type="button" aria-haspopup="true" aria-expanded={aberto === i} onClick={() => setAberto((a) => (a === i ? null : i))}>{nome}<span className="caret" /></button>
               {aberto === i && (
                 <ul className={`dd${itens.length > 12 ? " cols" : ""}`}>
-                  {itens.map(([rotulo, t, pronto]) => <li key={t}><a href={link(t)} className={pronto ? "" : "soon"}>{rotulo}</a></li>)}
+                  {itens.map((item) => ehGrupo(item)
+                    ? <li key={item[0]} className="dd-grupo">{item[0].slice(3)}</li>
+                    : <li key={item[1]}><a href={link(item[1])} className={item[2] ? "" : "soon"}>{item[0]}</a></li>)}
                 </ul>
               )}
             </li>

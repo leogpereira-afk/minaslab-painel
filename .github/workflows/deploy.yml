@@ -85,7 +85,23 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /minaslab-painel/gestao/
-      - run: cp -r gestao/dist dist/gestao
+
+      # MinasLab LIMS (pasta lims/): app próprio (React 19 + Vite), publicado
+      # dentro do painel em /minaslab-painel/lims/, com o layout do GerenciaLab.
+      # Mesmo crachá do painel. Rotas por # (hash), então não precisa de 404.
+      # Testes do LIMS também travam o deploy.
+      - name: LIMS · instalar
+        working-directory: lims
+        run: npm install --no-audit --no-fund
+      - name: LIMS · testes
+        working-directory: lims
+        run: npm test
+      - name: LIMS · build
+        working-directory: lims
+        run: npm run build
+        env:
+          BASE_PATH: /minaslab-painel/lims/
+      - run: cp -r lims/dist dist/lims
 
       # SPA no Pages: não há rewrite de servidor. O 404.html é o index do
       # painel (refresh/bookmark de subpágina funciona; o Router com basename

@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowUpRight, BarChart3, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Microscope, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
@@ -47,6 +47,9 @@ const MODULOS = [
   /* Gestão (Comercial e Laboratório): app à parte (pasta gestao/), em <base>/gestao/.
      Aparece só para quem tem acesso liberado na tela Acessos da própria Gestão. */
   { id: "gestao", rotulo: "Gestão", caminho: `${import.meta.env.BASE_URL}gestao/`, icone: Briefcase, grupo: "Negócios", externo: true },
+  /* MinasLab LIMS: app à parte (pasta lims/), em <base>/lims/, com o layout do
+     GerenciaLab. Piloto só para a direção (SO_DIRECAO em lib/sessao.js). */
+  { id: "lims", rotulo: "MinasLab LIMS", caminho: `${import.meta.env.BASE_URL}lims/`, icone: Microscope, grupo: "Operação", externo: true },
   { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3, grupo: "Negócios" },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound, grupo: "Administração" },
 ];
@@ -59,6 +62,7 @@ const CORES_MODULO = {
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
   laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
   ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"], gestao: ["#0e7c66", "#d1fae5"],
+  lims: ["#24444f", "#d5f3ee"],
   "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
 };
 

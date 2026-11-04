@@ -16,7 +16,22 @@ export const MENU = [
   ["Coletas", [["Logística", "logistics"], ["Coletas", "collections"], ["Agenda", "calendar"], ["Descarte amostras", "discardsamples"]]],
   ["Laboratório", [["Inspeção técnica de amostra", "technical-inspection"], ["Análise por Amostra", "laboratory-order-services"], ["Análise por Parâmetro", "analysis-methods"]]],
   ["Revisão", [["Resultado", "list-revisions-result"], ["Certificado", "list-revisions"]]],
-  ["Configurações", [["Configuração do sistema", "configs"], ["Funcionários", "employees"], ["Plano de Amostragem", "configuracao-plano-amostragem"], ["Coleta", "configuracao-coleta"], ["Proposta", "configuracao-proposta"], ["Proposta Análises Críticas", "configuracao-proposta-analise-critica"], ["Áreas de Serviço", "servicearea"], ["Unidade de medida", "configuracao-unidade-de-medida"], ["Inspeção técnica", "configuracao-inspecao-tecnica"], ["Controle de Equipamentos", "equipamentos"], ["Grupo regional", "gruporeginal"], ["Permissões de acesso", "permissoes-de-acesso"], ["Configuração email", "config-email"], ["Configuração Centro de serviços", "config-centro-servico"], ["Auditoria LOG", "auditoria"], ["Whatsapp", "whatsapp"], ["Motivos de Alteração", "reasonschange"], ["Plugins", "plugins"], ["Feriados", "holidays"], ["Centro de custo", "config-costcenter"], ["Centro de custo componentes", "config-costcomponents"], ["Diagrama", "configuracao-nao-conformidade-diagrama"], ["Local", "configuracao-nao-conformidade-local"], ["Tipo", "configuracao-nao-conformidade-tipo"], ["Tipo de amostra", "tipo-amostra"], ["Rotina Controle de qualidade", "rotina-cq"], ["Serviços / Matriz", "servicos-produtos"], ["Legislação Aplicável / Coleta", "lacoleta"], ["Especificação Serviços", "parameters"], ["Resultado Legislação Aplicável", "configuracao-resultado-la"], ["Métodos", "methods"], ["Tabela de preço", "tabela-preco"], ["Pacote de Serviços", "service-package"], ["Configuração Revisão", "config-revisao"], ["Setores", "sector"], ["Embalagens", "embalagens"]]],
+  // Configurações em grupos, como no GerenciaLab ("## " abre um grupo).
+  // Ficam de fora de propósito: Configuração Estoque (o painel já tem a
+  // Gestão de Estoque), CQ - Configuração e CQ - Não Conformidades.
+  ["Configurações", [
+    ["## Configurações"],
+    ["Configuração do sistema", "configs"], ["Funcionários", "employees"], ["Plano de Amostragem", "configuracao-plano-amostragem"], ["Coleta", "configuracao-coleta"], ["Proposta", "configuracao-proposta"], ["Proposta Análises Críticas", "configuracao-proposta-analise-critica"], ["Áreas de Serviço", "servicearea"], ["Unidade de medida", "configuracao-unidade-de-medida"], ["Inspeção técnica", "configuracao-inspecao-tecnica"], ["Controle de Equipamentos", "equipamentos"], ["Grupo regional", "gruporeginal"], ["Permissões de acesso", "permissoes-de-acesso"], ["Configuração email", "config-email"], ["Configuração Centro de serviços", "config-centro-servico"], ["Auditoria LOG", "auditoria"], ["Whatsapp", "whatsapp"], ["Motivos de Alteração", "reasonschange"], ["Plugins", "plugins"], ["Configuração Email (SMTP)", "listsmtp"], ["Feriados", "holidays"], ["Centro de custo", "config-costcenter"], ["Centro de custo componentes", "config-costcomponents"],
+    ["## Configuração Serviços"],
+    ["Serviços / Matriz", "servicos-produtos"], ["Legislação Aplicável / Coleta", "lacoleta"], ["Especificação Serviços", "parameters"], ["Resultado Legislação Aplicável", "configuracao-resultado-la"], ["Métodos", "methods"], ["Tabela de preço", "tabela-preco"], ["Pacote de Serviços", "service-package"], ["Configuração Revisão", "config-revisao"], ["Setores", "sector"],
+    ["## Configuração Preservante"], ["Preservante", "preservante"],
+    ["## Configuração Templates"], ["Modelos", "config-templates"],
+    ["## Configuração Subcontratado"], ["Subcontratados", "subcontratados"],
+    ["## Configuração financeiro"], ["Configuração NFs", "config-nfs"], ["Configuração forma de pagamento", "config-formapagamento"],
+    ["## Configuração Gestão"], ["Formulários de lista de verificação", "formularios-verificacao"], ["Gestão Frequência", "gestao-frequencia"],
+  ]],
 ];
 
-export const ITEM_DA_TELA = Object.fromEntries(MENU.flatMap(([menu, itens]) => itens.map(([rotulo, tela, pronto]) => [tela, { menu, rotulo, pronto: !!pronto }])));
+export const ehGrupo = (item) => item[0].startsWith("## ");
+
+export const ITEM_DA_TELA = Object.fromEntries(MENU.flatMap(([menu, itens]) => itens.filter((i) => !ehGrupo(i)).map(([rotulo, tela, pronto]) => [tela, { menu, rotulo, pronto: !!pronto }])));
