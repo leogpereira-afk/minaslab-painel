@@ -48,17 +48,23 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
           <thead>
             <tr>
               {colunas.map((c, i) => (
-                <th key={c.t} className={`sortable${filtrosColuna ? " fh" : ""}${i === si ? ` ${sd}` : ""}`} onClick={(e) => { if (!e.target.closest("input,select")) ordenarPor(i); }} aria-sort={i === si ? (sd === "asc" ? "ascending" : "descending") : "none"}>
-                  <div>{c.t}</div>
-                  {filtrosColuna && c.filtro === "lista" && (
-                    <select aria-label={`Filtrar por ${c.t}`} value={filtros[i] || "Todos"} onChange={(e) => filtrar(i, e.target.value)}>
-                      <option>Todos</option>{(opcoesFiltro[i] || []).map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                  )}
-                  {filtrosColuna && c.filtro === true && <input type="text" aria-label={`Filtrar por ${c.t}`} value={filtros[i] || ""} onChange={(e) => filtrar(i, e.target.value)} />}
-                </th>
+                <th key={c.t} className={`sortable${i === si ? ` ${sd}` : ""}`} onClick={() => ordenarPor(i)} aria-sort={i === si ? (sd === "asc" ? "ascending" : "descending") : "none"}>{c.t}</th>
               ))}
             </tr>
+            {filtrosColuna && (
+              <tr className="filtros">
+                {colunas.map((c, i) => (
+                  <th key={c.t}>
+                    {c.filtro === "lista" && (
+                      <select aria-label={`Filtrar por ${c.t}`} value={filtros[i] || "Todos"} onChange={(e) => filtrar(i, e.target.value)}>
+                        <option>Todos</option>{(opcoesFiltro[i] || []).map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    )}
+                    {c.filtro === true && <input type="text" className="com-funil" placeholder={c.t} aria-label={`Filtrar por ${c.t}`} value={filtros[i] || ""} onChange={(e) => filtrar(i, e.target.value)} />}
+                  </th>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody>
             {fatia.length ? fatia.map((l) => (
@@ -68,7 +74,6 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
               </tr>
             )) : <tr><td colSpan={colunas.length} className="vazio">Nenhum registro encontrado</td></tr>}
           </tbody>
-          <tfoot><tr>{colunas.map((c) => <th key={c.t}>{c.t}</th>)}</tr></tfoot>
         </table>
       </div>
       <div className="dt-bottom">
