@@ -209,9 +209,14 @@ function ausenciaPagaDoJibble(d: Record<string, any>) {
      5h14 de folha. A diferença positiva é o afastamento; num dia comum a
      folha é menor que o rastreado por causa da pausa, então não há falso
      positivo. */
-  const parcial = folha !== null && liquidoDasBatidas !== null && folha > liquidoDasBatidas
-    ? folha - liquidoDasBatidas
-    : null;
+  /* ARREDONDAMENTO NÃO É AFASTAMENTO (04/11/2026). Cada duração vem em
+     segundos e vira minuto separadamente, então folha e batidas podem diferir
+     em 1 min sem nada lançado. Enquanto o Jibble tirava 1h automática a mais,
+     a folha nunca passava das batidas; sem a dedução, 12 dias de outubro
+     viraram "justificada" de 1 minuto (Giovanna). Só conta afastamento a
+     partir de 5 min — abaixo disso é a mesma tolerância da CLT, art. 58 §1º. */
+  const sobra = folha !== null && liquidoDasBatidas !== null ? folha - liquidoDasBatidas : 0;
+  const parcial = sobra >= 5 ? sobra : null;
   const horas = explicita ?? parcial ?? (!temBatida && folha ? folha : null);
   if (!horas) return { horas: null, ausencia: null };
   return {
@@ -738,8 +743,15 @@ Deno.serve(async (req) => {
           const k = chaveNome(f.nome);
           if (k) fichasSemRelogio.set(k, [...(fichasSemRelogio.get(k) ?? []), f]);
         }
+        /* CADASTRO REMOVIDO NO RELÓGIO NÃO DISPUTA O NOME (04/11/2026). A Maria
+           Clara foi cadastrada duas vezes no Jibble e uma foi removida; as duas
+           contavam aqui, o nome ficava "ambíguo", a ficha do RH não era casada e
+           nasciam DUAS fichas novas (uma ativa, uma desligada). Só quem está
+           ativo no relógio entra na contagem e pode casar pelo nome. */
+        const nomesComFicha = new Set((fichasBrutas ?? []).map((l) => chaveNome((l.registro as Record<string, any>)?.nome)).filter(Boolean));
         const relogioSemFicha = new Map<string, number>();
         for (const p of doRelogio) {
+          if (!p.ativoNoRelogio) continue;
           if (fichaPorJibble.has(p.jibbleId)) continue;
           const k = chaveNome(p.nome);
           relogioSemFicha.set(k, (relogioSemFicha.get(k) ?? 0) + 1);
@@ -755,11 +767,14 @@ Deno.serve(async (req) => {
           if (!ficha) {
             const k = chaveNome(p.nome);
             const candidatas = fichasSemRelogio.get(k) ?? [];
-            if (candidatas.length === 1 && relogioSemFicha.get(k) === 1) {
+            if (p.ativoNoRelogio && candidatas.length === 1 && relogioSemFicha.get(k) === 1) {
               ficha = candidatas[0];
               fichaPorJibble.set(p.jibbleId, ficha); // o de-para abaixo carimba o vínculo na ficha do RH
             }
           }
+          // Removido no relógio com o mesmo nome de uma ficha que já existe: é o
+          // cadastro duplicado/apagado no Jibble, não uma pessoa nova.
+          if (!ficha && !p.ativoNoRelogio && nomesComFicha.has(chaveNome(p.nome))) continue;
           if (!ficha) {
             novas.push({
               id: `pes_${p.jibbleId}`,
