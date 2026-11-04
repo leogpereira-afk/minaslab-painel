@@ -899,7 +899,12 @@ function BlocoCascata({ cascata, apuracao, previstoMesMin, jornadaEmPalavras }) 
       {/* Recuadas: são o DE QUE É FEITA a linha de cima, não parcelas ao lado
           dela. Faixa que ninguém apurou vai travessão, nunca 0h00. */}
       <LinhaCascata rotulo="Normais" valor={apuracao.normaisMin} recuada />
-      <LinhaCascata rotulo="Extra +50%" valor={apuracao.extrasMin} recuada />
+      <LinhaCascata
+        rotulo="Extra +50%"
+        nota={apuracao.compensadoBancoMin > 0 ? `já descontadas ${duracaoTexto(apuracao.compensadoBancoMin)} de folga paga com o banco de horas` : undefined}
+        valor={apuracao.extrasMin}
+        recuada
+      />
       <LinhaCascata rotulo="Extra +100%" valor={apuracao.extrasDobroMin} recuada />
 
       <p className="mt-1.5 border-t pt-1.5 text-[11px] text-slate-500" style={{ borderColor: "var(--hairline)" }}>

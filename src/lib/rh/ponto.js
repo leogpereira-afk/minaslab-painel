@@ -748,6 +748,20 @@ export const TIPOS_AUSENCIA = [
     chip: "chip",
     ajuda: "Folga ou compensação combinada: não desconta.",
   },
+  /* Pedido da Ana (04/11/2026): folga combinada que é PAGA COM HORAS DO BANCO.
+     Não desconta salário (não é falta), mas as horas previstas do dia saem das
+     horas extras / do saldo — se não, a pessoa recebia as extras e ainda a folga.
+     É também o tipo que a ponte do Jibble grava para a política "Banco de Horas /
+     Compensação". */
+  {
+    tipo: "banco_horas",
+    rotulo: "Banco de Horas / Compensação",
+    curto: "banco de horas",
+    desconta: false,
+    compensaBanco: true,
+    chip: "chip",
+    ajuda: "Folga combinada paga com horas do banco: não desconta do salário; as horas previstas do dia saem das horas extras.",
+  },
 ];
 
 const TIPO_AUSENCIA_POR_CHAVE = new Map(TIPOS_AUSENCIA.map((t) => [t.tipo, t]));
@@ -771,6 +785,7 @@ export function ausenciaDoDia(dia) {
     tipo,
     conhecido: !!conhecido,
     desconta: conhecido ? conhecido.desconta : false,
+    compensaBanco: conhecido ? conhecido.compensaBanco === true : false,
     rotulo: conhecido ? conhecido.rotulo : `tipo de ausência não reconhecido (${tipo})`,
     curto: conhecido ? conhecido.curto : tipo,
     chip: conhecido ? conhecido.chip : "chip-warn",
@@ -985,6 +1000,7 @@ export function apurarCompetencia(dias, jornada) {
   let extrasDobroDerivadosMin = 0;
   let diasEmDobroPelaLei = 0;
   let atrasosDerivadosMin = 0;
+  let compensadoBancoMin = 0;
 
   const ausencias = contadorDeAusencias();
   let ausenciasTotal = 0;
@@ -1007,7 +1023,14 @@ export function apurarCompetencia(dias, jornada) {
       }
       // Dia de ausência PURA (sem hora trabalhada) fica fora das somas de
       // trabalho: não é dia com batida nem dia em aberto — é dia explicado.
-      if (min === null || min === 0) continue;
+      // Folga paga com o banco: o dia previsto inteiro sai das horas extras.
+      if (min === null || min === 0) {
+        if (ausencia.compensaBanco) {
+          const prev = minutosPrevistosDoDia(d?.data, escala);
+          if (prev !== null && !diaDeFeriado(d)) compensadoBancoMin += prev;
+        }
+        continue;
+      }
       // Ausência lançada num dia que TAMBÉM tem hora trabalhada (atestado da
       // tarde, por exemplo): a hora é real e continua somando, e o caso sai
       // contado para a tela pedir conferência — descontar 1/30 de um dia
@@ -1071,7 +1094,11 @@ export function apurarCompetencia(dias, jornada) {
        ficou descoberto é atraso; sem essa medida, o abono cobre o dia e nada vira atraso.
        Falta lançada já desconta o dia inteiro, então não gera atraso por cima. */
     let abono = 0;
-    if (ausencia) {
+    if (ausencia?.compensaBanco) {
+      // Meio dia trabalhado + resto do banco: o que faltou sai das extras, não vira atraso.
+      compensadoBancoMin += Math.max(0, previsto - composicao.normaisMin);
+      abono = previsto;
+    } else if (ausencia) {
       const pago = d.origem === "jibble" ? Math.max(0, Math.round(numeroOuNulo(d.horasAtestadoMin) ?? 0)) : 0;
       abono = ausencia.desconta || pago === 0 ? previsto : pago;
     }
@@ -1106,10 +1133,13 @@ export function apurarCompetencia(dias, jornada) {
     // sem denominador.
     previstoDerivadoMin: temDerivado ? previstoDerivadoMin : null,
     fonteExtras: temRelogio && temDerivado ? "misto" : temRelogio ? "relogio" : temDerivado ? "manual" : "sem",
+    /* Extras +50% JÁ DESCONTADAS da folga paga com o banco (compensadoBancoMin);
+       sem extra suficiente, o resto não vira desconto aqui — fica no saldo do banco. */
     extrasMin:
       temRelogio || temDerivado
-        ? (temRelogio ? extrasRelogioMin : 0) + (temDerivado ? extrasDerivadosMin : 0)
+        ? Math.max(0, (temRelogio ? extrasRelogioMin : 0) + (temDerivado ? extrasDerivadosMin : 0) - compensadoBancoMin)
         : null,
+    compensadoBancoMin,
     extrasRelogioMin: temRelogio ? extrasRelogioMin : null,
     extrasDerivadosMin: temDerivado ? extrasDerivadosMin : null,
     // A dobra agora também sai da conta derivada (feriado e domingo pela lei): zero aqui é
