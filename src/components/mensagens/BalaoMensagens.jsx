@@ -11,9 +11,9 @@ import Chat from "./Chat.jsx";
 import { horaLocal } from "../../lib/tarefas.js";
 import { assinaturaDasNovas, contadorTexto, filtrarConversas, horaNaLista, previasDoBalao } from "../../lib/mensagens.js";
 import { textoSimples } from "../../lib/textoRico.js";
-import { conversasContar, conversasListar, mensagensUsuarios } from "../../services/mensagens.js";
+import { avisarContador, conversasListar, mensagensUsuarios } from "../../services/mensagens.js";
+import { useContagemMensagens } from "./VigiaMensagens.jsx";
 
-const INTERVALO = 10000;
 const CHAVE_OCULTAS = "ml_balao_ocultas";
 const lerOcultas = () => { try { return sessionStorage.getItem(CHAVE_OCULTAS) || ""; } catch { return ""; } };
 const gravarOcultas = (v) => { try { sessionStorage.setItem(CHAVE_OCULTAS, v); } catch { /* sem armazenamento: some só até recarregar */ } };
@@ -94,20 +94,11 @@ export default function BalaoMensagens() {
   const navigate = useNavigate();
   const [aberto, setAberto] = useState(false);
   const [conversa, setConversa] = useState(null); // id da conversa aberta dentro do balão
-  const [contagem, setContagem] = useState({ totalNaoLidas: 0, novas: [] });
+  const contagem = useContagemMensagens();
   const [ocultas, setOcultas] = useState(lerOcultas);
   const [usuarios, setUsuarios] = useState([]);
 
-  const conferir = useCallback(async () => {
-    try { const r = await conversasContar(); setContagem({ totalNaoLidas: r.totalNaoLidas || 0, novas: r.novas || [] }); } catch { /* o balão é só conforto */ }
-  }, []);
-  useEffect(() => {
-    void conferir();
-    const t = setInterval(() => { if (!document.hidden) void conferir(); }, INTERVALO);
-    window.addEventListener("mensagens:atualizar", conferir);
-    document.addEventListener("visibilitychange", conferir);
-    return () => { clearInterval(t); window.removeEventListener("mensagens:atualizar", conferir); document.removeEventListener("visibilitychange", conferir); };
-  }, [conferir]);
+  const conferir = useCallback(() => avisarContador(), []);
   useEffect(() => {
     if (!aberto || usuarios.length) return;
     mensagensUsuarios().then((r) => setUsuarios(r.usuarios || [])).catch(() => {});
