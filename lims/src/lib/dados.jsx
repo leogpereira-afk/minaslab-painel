@@ -49,12 +49,25 @@ export function DadosProvider({ children }) {
     return r.registro;
   }, []);
 
+  // Vários registros da mesma coleção numa chamada (ex.: as amostras de uma OS).
+  const salvarLote = useCallback(async (colecao, registros, { motivo = "", numerar = false } = {}) => {
+    const r = await comCracha(LIMS, { acao: "salvarLote", colecao, registros, motivo, numerar });
+    setStore((s) => {
+      const lista = [...(s[colecao] || [])];
+      for (const reg of r.registros) { const i = lista.findIndex((x) => x.id === reg.id); if (i >= 0) lista[i] = reg; else lista.push(reg); }
+      return { ...s, [colecao]: lista };
+    });
+    return r.registros;
+  }, []);
+
   const apagar = useCallback(async (colecao, id, motivo = "") => {
     await comCracha(LIMS, { acao: "apagar", colecao, id, motivo });
     setStore((s) => ({ ...s, [colecao]: (s[colecao] || []).filter((x) => x.id !== id) }));
   }, []);
 
   const proximo = useCallback(async (chave, minimo = 0) => (await comCracha(LIMS, { acao: "proximo", chave, minimo })).numero, []);
+  // Reserva um bloco de números de uma vez (atômico no servidor).
+  const reservar = useCallback(async (chave, minimo = 0, quantidade = 1) => (await comCracha(LIMS, { acao: "proximo", chave, minimo, quantidade })).numeros, []);
   const auditoria = useCallback(async (filtro = {}) => (await comCracha(LIMS, { acao: "auditoria", ...filtro })).itens, []);
   const contas = useCallback(async () => {
     if (!contasCache.current) contasCache.current = (await comCracha(LIMS, { acao: "contas" })).contas;
@@ -62,7 +75,7 @@ export function DadosProvider({ children }) {
   }, []);
 
   const dados = useMemo(() => comListas(store), [store]);
-  const valor = useMemo(() => ({ dados, eu, carregando, erro, recarregar, salvar, apagar, proximo, auditoria, contas }), [dados, eu, carregando, erro, recarregar, salvar, apagar, proximo, auditoria, contas]);
+  const valor = useMemo(() => ({ dados, eu, carregando, erro, recarregar, salvar, salvarLote, apagar, proximo, reservar, auditoria, contas }), [dados, eu, carregando, erro, recarregar, salvar, salvarLote, apagar, proximo, reservar, auditoria, contas]);
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 

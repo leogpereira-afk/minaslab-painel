@@ -12,7 +12,7 @@ export const MENU = [
   ["Cadastro", [["Solicitantes", "solicitantes", true], ["Cliente / Fornecedor", "customers", true]]],
   ["Propostas", [["Criar Proposta", "criar-proposta", true], ["Listar Propostas", "proposedlist", true]]],
   ["Contratos", [["Contratos Pendentes", "notification-pedents", true], ["Contratos", "contracts", true]]],
-  ["Ordem serviços", [["Ordem serviços", "service-order"], ["Rastreabilidade", "traceability"]]],
+  ["Ordem serviços", [["Ordem serviços", "service-order", true], ["Rastreabilidade", "traceability", true]]],
   ["Coletas", [["Logística", "logistics"], ["Coletas", "collections"], ["Agenda", "calendar"], ["Descarte amostras", "discardsamples"]]],
   ["Laboratório", [["Inspeção técnica de amostra", "technical-inspection"], ["Análise por Amostra", "laboratory-order-services"], ["Análise por Parâmetro", "analysis-methods"]]],
   ["Revisão", [["Resultado", "list-revisions-result"], ["Certificado", "list-revisions"]]],

@@ -17,7 +17,9 @@
 // Permissões de acesso (coleção "permissoes"), numa etapa seguinte.
 //
 // Ações: carregar · salvar (numerar: dá o próximo "cod" da coleção ao criar)
-//        · apagar · proximo · auditoria · contas
+//        · salvarLote (vários registros da mesma coleção numa chamada, cada um
+//          auditado) · apagar · proximo (quantidade: reserva um bloco de números)
+//        · auditoria · contas
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -39,6 +41,7 @@ const MAX_REGISTRO = 200_000;
 const ehSenha = (k: string) => /^senha/i.test(k);
 
 type Reg = Record<string, unknown>;
+class ErroUso extends Error {}
 
 function b64u(s: string) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; }
 async function crachaDoPainel(req: Request) {
@@ -121,9 +124,14 @@ Deno.serve(async (req) => {
       const chave = txt(body.chave);
       if (!CHAVE_OK.test(chave)) return json({ erro: "Numeração desconhecida." }, 400);
       const minimo = Math.max(0, Math.min(Number(body.minimo) || 0, 99_999_999));
-      const { data, error } = await sb.rpc("ml_lims_proximo", { p_chave: chave, p_minimo: minimo });
-      if (error) throw error;
-      return json({ ok: true, numero: Number(data) });
+      const quantidade = Math.max(1, Math.min(Math.floor(Number(body.quantidade) || 1), 500));
+      const numeros: number[] = [];
+      for (let i = 0; i < quantidade; i++) {
+        const { data, error } = await sb.rpc("ml_lims_proximo", { p_chave: chave, p_minimo: i === 0 ? minimo : 0 });
+        if (error) throw error;
+        numeros.push(Number(data));
+      }
+      return json({ ok: true, numero: numeros[0], numeros });
     }
 
     if (acao === "auditoria") {
@@ -141,13 +149,13 @@ Deno.serve(async (req) => {
     if (!COLECAO_OK.test(colecao)) return json({ erro: "Coleção inválida." }, 400);
     const motivo = txt(body.motivo).slice(0, 500);
 
-    if (acao === "salvar") {
-      const reg = (body.registro ?? {}) as Reg;
-      if (typeof reg !== "object" || Array.isArray(reg)) return json({ erro: "Registro inválido." }, 400);
+    // Grava um registro (cria ou atualiza), com histórico na trilha.
+    const gravarUm = async (reg: Reg, numerar: boolean) => {
+      if (typeof reg !== "object" || reg === null || Array.isArray(reg)) throw new ErroUso("Registro inválido.");
       if (!txt(reg.id)) reg.id = `${colecao.slice(0, 12)}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
       const id = txt(reg.id);
-      if (!ID_OK.test(id)) return json({ erro: "Identificador inválido." }, 400);
-      if (JSON.stringify(reg).length > MAX_REGISTRO) return json({ erro: "Registro grande demais." }, 400);
+      if (!ID_OK.test(id)) throw new ErroUso("Identificador inválido.");
+      if (JSON.stringify(reg).length > MAX_REGISTRO) throw new ErroUso("Registro grande demais.");
       const { data: atual, error: e1 } = await sb.from(T_REG).select("registro,apagado").eq("colecao", colecao).eq("id", id).maybeSingle();
       if (e1) throw e1;
       const antes = atual && !atual.apagado ? atual.registro as Reg : null;
@@ -157,7 +165,7 @@ Deno.serve(async (req) => {
         else if (ehSenha(k) && !txt(reg[k])) { if (antes?.[k]) reg[k] = antes[k]; else delete reg[k]; }
       }
       // Código sequencial por coleção (a coluna "ID" das listas), dado só na criação.
-      if (!antes && body.numerar === true && !reg.cod) {
+      if (!antes && numerar && !reg.cod) {
         const { data: n, error: en } = await sb.rpc("ml_lims_proximo", { p_chave: `cad:${colecao}`, p_minimo: 0 });
         if (en) throw en;
         reg.cod = Number(n);
@@ -172,7 +180,20 @@ Deno.serve(async (req) => {
       const acaoTexto = oQueMudou(antes, novo) + (motivo ? ` · Motivo: ${motivo}` : "");
       const { error: e3 } = await sb.from(T_AUD).insert({ usuario, colecao, registro_id: id, acao: acaoTexto, antes: semSenhas(antes), depois: semSenhas(novo) });
       if (e3) throw e3;
-      return json({ ok: true, registro: semSenhas(novo) });
+      return semSenhas(novo);
+    };
+
+    if (acao === "salvar") {
+      const registro = await gravarUm((body.registro ?? {}) as Reg, body.numerar === true);
+      return json({ ok: true, registro });
+    }
+
+    if (acao === "salvarLote") {
+      const lista = Array.isArray(body.registros) ? body.registros as Reg[] : [];
+      if (!lista.length || lista.length > 300) return json({ erro: "Envie de 1 a 300 registros por vez." }, 400);
+      const registros = [];
+      for (const r of lista) registros.push(await gravarUm(r, body.numerar === true));
+      return json({ ok: true, registros });
     }
 
     if (acao === "apagar") {
@@ -191,6 +212,7 @@ Deno.serve(async (req) => {
 
     return json({ erro: "Ação desconhecida." }, 400);
   } catch (e) {
+    if (e instanceof ErroUso) return json({ erro: e.message }, 400);
     console.error("ml-lims", e);
     return json({ erro: e instanceof Error ? e.message : "Falha interna." }, 500);
   }

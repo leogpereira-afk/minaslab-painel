@@ -18,6 +18,7 @@ import TelaCadastro from "./components/Cadastro.jsx";
 import ConfigSistema from "./pages/ConfigSistema.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
 import AuditoriaLog from "./pages/AuditoriaLog.jsx";
+import { ListaOS, FichaOS, Etiquetas, Rastreabilidade } from "./pages/Ordens.jsx";
 import { ContratosPendentes, ListaContratos, FichaContrato, DetalhesContrato, PlanoColeta, PlanoColetaAutomatico } from "./pages/Contratos.jsx";
 
 // Tela → [componente, migalhas]. Telas do menu ainda não construídas abrem
@@ -38,6 +39,10 @@ const TELAS = {
   contract: [FichaContrato, () => [["Contratos", link("contracts")], ["Contrato"]]],
   "services-contract": [DetalhesContrato, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Detalhes do contrato"]]],
   "collection-plan": [PlanoColeta, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta"]]],
+  "service-order": [ListaOS, () => [["Ordem serviços"]]],
+  ordem: [FichaOS, () => [["Ordem serviços", link("service-order")], ["Ordem de serviço"]]],
+  etiquetas: [Etiquetas, () => [["Ordem serviços", link("service-order")], ["Etiqueta"]]],
+  traceability: [Rastreabilidade, () => [["Rastreabilidade"]]],
   "collection-plan-auto": [PlanoColetaAutomatico, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta automático"]]],
   configs: [ConfigSistema, () => [["Configurações"], ["Configuração do sistema"]]],
   "permissoes-de-acesso": [Permissoes, () => [["Configurações"], ["Permissões de acesso"]]],

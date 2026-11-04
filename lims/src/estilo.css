@@ -226,3 +226,16 @@ svg.ch text { font-size: 10px; fill: #7d939b; font-family: var(--f); }
 .multi-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
 .multi-lista label { display: flex; gap: 6px; align-items: center; font-weight: 400; cursor: pointer; }
 .fg td input, .fg td select { padding: 5px 6px; border-radius: 4px; }
+
+/* Ordem serviços: etiquetas e impressão */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.etiquetas { display: grid; gap: 10px; }
+.etiqueta { background: #fff; color: #000; border: 1px dashed #9ca3af; border-radius: 4px; padding: 8px 10px; display: grid; gap: 3px; break-inside: avoid; }
+.et-topo { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.et-barra { text-align: center; font: 600 12px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+.et-info { font-size: 10.5px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print {
+  .nao-imprimir, .crumbbar, .brandbar, .menubar, .alertas, footer { display: none !important; }
+  .etiqueta { border: 1px solid #000; }
+  body, main.wrap, main .inner { background: #fff !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
+}

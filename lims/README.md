@@ -53,7 +53,9 @@ supabase functions deploy ml-lims --project-ref reoghclxripktzpdwhiy --no-verify
 | Cadastro (Cliente / Fornecedor, Solicitantes) | pronto |
 | Propostas (Criar, Listar, Serviços, Visualizar) | pronto |
 | Configurações (todos os grupos, menos Estoque e CQ) | pronto |
-| Contratos, Ordem serviços, Coletas, Laboratório, Revisão, Financeiro, Relatórios | depois |
+| Contratos (Pendentes, Contratos, ficha, parcelas, Plano de Coleta manual e automático) | pronto |
+| Ordem serviços (lista por amostra, Criar OS, ficha da OS, Gerar OS pelo Plano de Coleta, Etiquetas Code 128, Rastreabilidade) | pronto |
+| Coletas, Laboratório, Revisão, Financeiro, Relatórios | depois |
 | Gestão da qualidade | por último |
 
 Em Configurações ficam de fora, de propósito: Configuração Estoque (o painel

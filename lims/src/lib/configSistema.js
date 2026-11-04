@@ -27,6 +27,9 @@ export const ABAS_SISTEMA = [
     sn("liberarInspecaoSemColeta", "Liberar inspeção sem coleta"), sn("permitirInspecaoSemColeta", "Permitir inspeção sem coleta"), sn("permitirInspecaoSemInloco", "Permitir Inspeção sem Inloco"),
   ] },
   { aba: "Ordem de serviço", campos: [
+    { c: "numeroInicialOS", r: "Numeração da OS começa em", t: "number", larg: "s4", dica: "Para seguir o GerenciaLab, informe o próximo número de OS de lá." },
+    { c: "numeroInicialAmostra", r: "Numeração da amostra começa em", t: "number", larg: "s4", dica: "Próximo número de amostra (AM) do GerenciaLab." },
+    { c: "codigoBarrasInicial", r: "Código de barras começa em", t: "number", larg: "s4", dica: "Próximo código de barras do GerenciaLab." },
     sel("statusOsAvulsa", "Status O.S Avulsa", ["Status Aguardando agendamento", "Status Aguardando coleta"]), sel("cronjobOs", "Cronjob Ordem serviço", ["Ativo", "Inativo"], "Inativo"),
     sn("alterarOsConcluida", "Alterar Ordem serviço concluída"), num("removerDiasVencimento", "Remover dias no vencimento"), sn("inicioAnaliseAutomatico", "Data inicio análise automática"),
     sn("opcaoAmostrasRecebidas", "Opção amostras recebidas"), sn("permitirAlterarStatus", "Permitir Alterar Status"), sn("permitirAlterarLegislacao", "Permitir alterar Legislação"),

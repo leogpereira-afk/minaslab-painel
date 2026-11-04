@@ -16,6 +16,9 @@ import { numeroContrato, contratosPendentes, contratoDaProposta, totalContrato, 
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
+import { gerarOS } from "../lib/gerarOS.js";
+import { numeroOS } from "../lib/ordens.js";
+import { getSessao } from "../lib/sessao.js";
 
 const AVISO_EXPORTAR = "A exportação em Excel, PDF e impressão entra numa próxima etapa.";
 const feriadosAtivos = (dados) => dados.feriados.filter(estaAtivo).map((f) => f.data).filter(Boolean);
@@ -282,9 +285,16 @@ export function DetalhesContrato({ param }) {
 /* ======================= Plano de Coleta ======================= */
 
 function TabelaAgendamentos({ c }) {
-  const { salvar } = useDados();
+  const ctx = useDados();
+  const { salvar } = ctx;
   const avisar = useAviso();
   const [editar, setEditar] = useState(null);
+  const [gerando, setGerando] = useState("");
+  const gerar = async (ag) => {
+    setGerando(ag.id);
+    try { const os = await gerarOS(ctx, { contrato: c, servicos: ag.servicos, agendamento: ag, por: getSessao()?.nome || "" }); avisar(`${numeroOS(os)} gerada.`, "ok"); }
+    catch (e) { avisar(e.message, "err"); } finally { setGerando(""); }
+  };
   const nome = (sid) => c.servicos.find((s) => s.sid === sid)?.descricao || sid;
   const trocar = async (ag, msg) => { try { await salvar("contratos", { ...c, agendamentos: c.agendamentos.map((a) => (a.id === ag.id ? ag : a)) }); if (msg) avisar(msg, "ok"); } catch (e) { avisar(e.message, "err"); return false; } };
   const ordenados = [...(c.agendamentos || [])].sort((a, b) => a.data.localeCompare(b.data));
@@ -295,7 +305,7 @@ function TabelaAgendamentos({ c }) {
         <tbody>{ordenados.length ? ordenados.map((a, i) => (
           <tr key={a.id}><td>{i + 1}</td><td>{a.identificacao}</td><td className="quebra">{a.servicos.map((s) => `${nome(s.sid)} (${s.qtd})`).join("; ")}</td><td>{quandoBR(a.data)}</td><td>{a.periodo}</td>
             <td><span className={`lbl ${a.status === "Cancelado" ? "off" : a.status === "OS gerada" ? "ok" : "info"}`}>{a.status}</span></td>
-            <td><div className="acoes">{a.status === "Agendado" && <><button type="button" className="btn btn-default btn-sm" onClick={() => setEditar({ ...a })}>Alterar</button><button type="button" className="btn btn-danger btn-sm" onClick={() => trocar({ ...a, status: "Cancelado" }, "Agendamento cancelado.")}>Remover</button></>}</div></td></tr>
+            <td><div className="acoes">{a.status === "Agendado" && <><button type="button" className="btn btn-success btn-sm" disabled={!!gerando} onClick={() => gerar(a)}>{gerando === a.id ? "Gerando…" : "Gerar OS"}</button><button type="button" className="btn btn-default btn-sm" onClick={() => setEditar({ ...a })}>Alterar</button><button type="button" className="btn btn-danger btn-sm" onClick={() => trocar({ ...a, status: "Cancelado" }, "Agendamento cancelado.")}>Remover</button></>}{a.osId && <a className="btn btn-default btn-sm" href={link("ordem", a.osId)}>Ver OS</a>}</div></td></tr>
         )) : <tr><td colSpan={7} className="vazio">Nenhum agendamento.</td></tr>}</tbody>
       </table></div>
       {editar && (
