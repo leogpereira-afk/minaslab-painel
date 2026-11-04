@@ -232,6 +232,9 @@ function lerResumo(r, competencia) {
   if (r.preservados > 0 && r.diasGravados > 0) {
     detalhes.push(`${plural(r.preservados, "dia corrigido", "dias corrigidos")} à mão foram preservados`);
   }
+  if (r.diasRemovidos > 0) {
+    detalhes.push(`${plural(r.diasRemovidos, "dia apagado no relógio saiu", "dias apagados no relógio saíram")} daqui também`);
+  }
   if (r.vinculados > 0) detalhes.push(`${plural(r.vinculados, "dia sem dono ganhou", "dias sem dono ganharam")} ficha`);
   if (r.removidas > 0) detalhes.push(`${plural(r.removidas, "pessoa removida", "pessoas removidas")} no relógio`);
 
