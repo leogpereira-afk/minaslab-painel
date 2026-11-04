@@ -18,6 +18,7 @@ import Avatar from "./tarefas/Avatar.jsx";
 import { nomeCurto } from "../lib/nomes.js";
 import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
 import BalaoMensagens from "./mensagens/BalaoMensagens.jsx";
+import VigiaMensagens from "./mensagens/VigiaMensagens.jsx";
 
 /* O MENU E UMA LISTA SO. A Impresilk pagou dois dias de procura porque a lista
    de modulos vivia copiada em tres arquivos e a copia envelhecia calada. Aqui:
@@ -263,6 +264,7 @@ export default function Layout() {
         </main>
       </div>
       {/* Balão de mensagens no canto: em toda tela, menos na própria de Mensagens (lá a lista já está aberta). */}
+      {podeAbrir("mensagens", sessao) && <VigiaMensagens />}
       {podeAbrir("mensagens", sessao) && !location.pathname.startsWith("/mensagens") && <BalaoMensagens />}
     </div>
   );
