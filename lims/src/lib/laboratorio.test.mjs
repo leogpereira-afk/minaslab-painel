@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { numero, resultadoExibido, parecer, limiteDe, statusPelasAnalises, lancarResultado, enviarRevisao, revisar, inspecionar, registrarColeta, dataParaDescarte, valorAmostra, progressoOS, estatistica, violacoes, fluxoCaixa } from "./laboratorio.js";
+import { numero, resultadoExibido, parecer, limiteDe, statusPelasAnalises, lancarResultado, enviarRevisao, revisar, inspecionar, registrarColeta, dataParaDescarte, valorAmostra, progressoOS } from "./laboratorio.js";
 
 const amostra = () => ({ status: "Laboratório", legislacao: "Portaria 888", sid: "s1", analises: [
   { pid: "ph", nome: "pH", lq: "", etapa: "Aguardando", resultado: "" },
@@ -76,20 +76,4 @@ test("descarte, valor e progresso", () => {
   assert.equal(dataParaDescarte({ dataEntrada: "2026-11-04T10:00" }, 30), "2026-12-04");
   assert.equal(valorAmostra({ servicos: [{ sid: "s1", params: [{ preco: 25 }, { preco: 18 }] }] }, { sid: "s1" }), 43);
   assert.deepEqual(progressoOS([{ status: "Assinatura" }, { status: "Laboratório" }, { status: "Cancelado" }]), { total: 2, prontas: 1, pct: 50 });
-});
-
-test("carta controle: média, desvio e Westgard", () => {
-  const e = estatistica(["10", "12", "11", "9", "8"]);
-  assert.equal(e.media, 10);
-  assert.ok(Math.abs(e.dp - 1.5811) < 1e-3);
-  assert.deepEqual(violacoes([10, 15, 13.5, 13.4], 10, 1.5).map((v) => v.regra), ["1-3s", "2-2s", "2-2s"]);
-});
-
-test("fluxo de caixa junta receber e pagar no período", () => {
-  const f = fluxoCaixa([{ id: 1, valor: 100, venc: "2026-11-10", status: "Em aberto" }, { id: 2, valor: 50, venc: "2026-10-01", pagoEm: "2026-11-02", status: "Pago" }], [{ id: 3, valor: 30, vencimento: "2026-11-05", statusPagamento: "Pago", dataPagamento: "2026-11-05" }], "2026-11-01", "2026-11-30");
-  assert.equal(f.linhas.length, 3);
-  assert.equal(f.entradas, 150);
-  assert.equal(f.saidas, -30);
-  assert.equal(f.realizado, 20);
-  assert.equal(f.previsto, 120);
 });

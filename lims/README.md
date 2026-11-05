@@ -58,9 +58,8 @@ supabase functions deploy ml-lims --project-ref reoghclxripktzpdwhiy --no-verify
 | Coletas (Logística, Coletas com ficha e in loco, Agenda, Descarte, Cadeia de custódia) | pronto |
 | Laboratório (Inspeção técnica com protocolo, Análise por Amostra, Análise por Parâmetro/lote) | pronto |
 | Revisão (Resultado com retorno ao laboratório, Certificado com assinatura e reemissão) | pronto |
-| Financeiro (Contas a receber/pagar, Fluxo de Caixa, NFs de serviço e de entrada, Centro de custos) | pronto |
+| Financeiro (só Contas a receber; o resto fica no Finanças do painel) | pronto |
 | Relatórios (amostras, centro de custos, Dashboard Financeiro) | pronto |
-| Gestão da qualidade (Ocorrências, Arquivos, Amostras CQ, Carta controle, Homologação, Capacitação) | pronto |
 
 ### Caminho da amostra
 
