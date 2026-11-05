@@ -14,7 +14,7 @@ import { contaEditar, contaPaginas, contasPadraoLer, contasPadraoNome } from "..
 import { getSessao } from "../lib/sessao.js";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import FotoConta from "../components/acessos/FotoConta.jsx";
-import { GRUPOS_PERMISSOES, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
+import { GRUPOS_PERMISSOES, PAGINAS_COM_ACESSO_PROPRIO, PAGINAS_DE_TODOS, PAGINAS_SO_DIRECAO, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
 import {
   PageTitle, Card, Empty, CarregandoModulo, ErroModulo, Aviso, Modal,
@@ -27,7 +27,9 @@ const PAPEIS = [
   { valor: "leitura", rotulo: "Leitura", desc: "só olha" },
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc"].includes(p));
+// Contas antigas (antes da matriz) herdavam o operacional; os menus que só a direção
+// via antes (Patrimônio, Curva ABC, LIMS, RH, Ponto) NÃO entram nessa herança.
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc", "lims", "rh", "ponto"].includes(p));
 const paginasDaConta = (conta) => {
   const anteriores = conta.paginas_consulta || [];
   return anteriores.includes("__matriz_v1") || conta.papel === "direcao"
@@ -54,11 +56,23 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
     {GRUPOS_PERMISSOES.map(grupo => <section key={grupo.titulo}>
       <h3 className="mb-2 font-semibold text-slate-900">{grupo.titulo}</h3>
       <div className="space-y-2">{grupo.paginas.map(([id, rotulo]) => {
+        if (PAGINAS_DE_TODOS.has(id)) return <label key={id} className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-1 accent-blue-600" checked disabled aria-label={`${rotulo} — todos têm acesso`}/>
+          <span>{rotulo}<small className="block text-xs text-slate-500">Todos do painel têm acesso.</small></span>
+        </label>;
+        if (PAGINAS_SO_DIRECAO.has(id)) return <label key={id} className="flex items-start gap-2 text-sm text-slate-400">
+          <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao} disabled aria-label={`${rotulo} — só a direção`}/>
+          <span>{rotulo}<small className="block text-xs">Só a direção (quem tem Acessos libera tudo para todos).</small></span>
+        </label>;
+        if (PAGINAS_COM_ACESSO_PROPRIO[id]) return <div key={id} className="flex items-start gap-2 text-sm text-slate-700">
+          <span className="mt-1 inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-slate-300" aria-hidden="true"/>
+          <span>{rotulo}<small className="block text-xs text-slate-500">{PAGINAS_COM_ACESSO_PROPRIO[id]} <a className="font-semibold text-blue-700 underline" href={`${import.meta.env.BASE_URL}gestao/#/acessos`} target="_blank" rel="noreferrer">Abrir Acessos da Gestão</a></small></span>
+        </div>;
         const disponivel = PERMISSOES_DISPONIVEIS.has(id);
         return <div key={id}>
           <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
             <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`)))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
-            <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
+            <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{id === "lims" && <small className="block text-xs text-slate-500">O LIMS inteiro (todos os menus dele).</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
           </label>
           {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
             {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title={PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`) ? `Liberar somente ${nome}` : "Seleção individual ainda exige proteção dos dados desta aba no servidor"}>
@@ -721,7 +735,7 @@ export default function Acessos() {
         maiusculas={nomeMaiusculas}
       />
       {alvoFoto && <FotoConta conta={alvoFoto} aoFechar={() => setAlvoFoto(null)} />}
-      {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)}>
+      {alvoPaginas && <Modal titulo={`Páginas de ${alvoPaginas.usuario}`} aberto aoFechar={() => setAlvoPaginas(null)} largura="max-w-5xl">
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Ao salvar, somente as páginas marcadas ficarão disponíveis para consulta. A direção tem acesso a todas. Em Serviços Gerados, a equipe também pode conferir pagamentos.</p>
           <MatrizPaginas paginas={alvoPaginas.paginas_consulta} direcao={alvoPaginas.papel === "direcao"} onChange={paginas_consulta => setAlvoPaginas(v => ({ ...v, paginas_consulta }))}/>

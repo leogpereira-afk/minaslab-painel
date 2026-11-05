@@ -1,11 +1,24 @@
 // Catálogo único das páginas exibidas em Acessos. As chaves são caminhos reais.
 // Páginas financeiras que exigem operações adicionais permanecem visíveis na
 // matriz, mas só podem ser atribuídas após autorização também nas suas APIs.
+// Os grupos seguem o menu lateral (Agenda, Operação, Negócios, Administração) e
+// trazem TODOS os menus do painel (pedido da Ana, 05/11/2026). Alguns não se
+// marcam aqui: veja PAGINAS_DE_TODOS, PAGINAS_SO_DIRECAO e PAGINAS_COM_ACESSO_PROPRIO.
 export const GRUPOS_PERMISSOES = [
-  { titulo: "Painel", paginas: [["inicio", "Início"], ["calendario", "Calendário"], ["compromissos", "Compromissos"], ["licitacoes", "Licitações"], ["marketing", "Marketing"], ["google-drive", "Google Drive"], ["crm", "CRM"]] },
-  { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["rh", "RH"], ["ponto", "Ponto"], ["curva-abc", "Curva ABC"]] },
+  { titulo: "Agenda", paginas: [["inicio", "Início"], ["canais", "Canais MinasLab"], ["tarefas", "Tarefas"], ["mensagens", "Mensagens"], ["calendario", "Calendário"], ["compromissos", "Compromissos"]] },
+  { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["lims", "MinasLab LIMS"]] },
+  { titulo: "Negócios", paginas: [["licitacoes", "Licitações"], ["marketing", "Marketing"], ["crm", "CRM"], ["gestao", "Gestão"], ["curva-abc", "Curva ABC"]] },
+  { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["ponto", "Ponto"], ["acessos", "Acessos"]] },
   { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
+
+// Menus que todo mundo do painel já tem (não dependem de liberação).
+export const PAGINAS_DE_TODOS = new Set(["canais", "tarefas", "mensagens"]);
+// Menus que ficam só com a direção, sem como liberar (quem tem Acessos libera tudo para todos).
+export const PAGINAS_SO_DIRECAO = new Set(["acessos"]);
+// Menus com tela de acessos própria: aqui só aparece onde liberar.
+export const PAGINAS_COM_ACESSO_PROPRIO = { gestao: "Liberado na tela Acessos da própria Gestão (por setor e página)." };
+
 
 // Abas de cada módulo, conferidas com as opções de navegação das respectivas
 // páginas. Ficam explicitamente separadas do acesso à página: atribuí-las sem
@@ -32,4 +45,6 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
   "manutencoes", "laboratorio", "laboratorio/inicio", "laboratorio/entradas", "laboratorio/qualidade", "laboratorio/microbiologia", "laboratorio/fisicoquimico",
   "financas/servicos-gerados",
+  // MinasLab LIMS inteiro (o servidor ml-lims confere esta liberação ao vivo).
+  "lims",
 ]);
