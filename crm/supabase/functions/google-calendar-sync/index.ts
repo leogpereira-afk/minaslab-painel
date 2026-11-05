@@ -113,11 +113,58 @@ async function accessToken(refreshToken: string) {
   return json.access_token as string;
 }
 
+async function removerEventos(admin: any, lista: { id: string; external_calendar_id: string }[]) {
+  const { data: integration } = await admin.from('google_calendar_integrations').select('refresh_token')
+    .eq('provider', 'google').eq('calendar_id', CALENDAR_ID).maybeSingle();
+  if (!integration?.refresh_token) return { ok: false, error: 'google_calendar_not_connected', removidos: 0, erros: lista.length };
+  const token = await accessToken(integration.refresh_token);
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`;
+  let removidos = 0, erros = 0;
+  for (const a of lista) {
+    try {
+      const res = await externalFetch(`${base}/${encodeURIComponent(a.external_calendar_id)}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      }, { retries: 2 });
+      try { await res.body?.cancel(); } catch { /* no-op */ }
+      // 404/410: o evento já não existe no Google.
+      if (res.ok || res.status === 404 || res.status === 410) {
+        await admin.from('agendamentos').update({ external_calendar_id: null }).eq('id', a.id);
+        removidos += 1;
+      } else erros += 1;
+    } catch { erros += 1; }
+  }
+  return { ok: erros === 0, removidos, erros };
+}
+
+async function limparRemovidos(admin: any) {
+  const { data, error } = await admin.from('agendamentos').select('id,external_calendar_id')
+    .not('deleted_at', 'is', null).not('external_calendar_id', 'is', null).limit(150);
+  if (error) return reply({ error: error.message }, 500);
+  if (!data?.length) return reply({ ok: true, removidos: 0, erros: 0, restantes: 0 });
+  try {
+    const r = await removerEventos(admin, data);
+    return reply({ ...r, lote: data.length });
+  } catch { return reply({ error: 'google_auth_refresh_failed' }, 502); }
+}
+
 async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY || !CLIENT_ID || !CLIENT_SECRET || !CALENDAR_ID) {
     return reply({ error: 'config_incomplete' }, 500);
+  }
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+  // Rotina interna (pg_net, x-rotina-token conferido no cofre): apaga do Google os eventos de agendamentos removidos.
+  const rotina = req.headers.get('x-rotina-token') ?? '';
+  if (rotina) {
+    const { data: ok } = await admin.rpc('ml_chatpro_conferir_rotina', { p_token: rotina });
+    if (ok !== true) return reply({ error: 'unauthorized' }, 401);
+    let rb: any = {};
+    try { rb = await req.json(); } catch { /* corpo vazio */ }
+    if (rb?.acao !== 'limpar_removidos') return reply({ error: 'acao_invalida' }, 400);
+    return await limparRemovidos(admin);
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -132,13 +179,20 @@ async function handle(req: Request): Promise<Response> {
   const agendamentoId = String(body?.agendamento_id ?? '');
   if (!agendamentoId) return reply({ error: 'agendamento_id_required' }, 400);
 
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const { data: agenda, error: agendaError } = await admin
     .from('agendamentos')
     .select('id,ordem_servico_id,numero_os_referencia,proposta_id,numero_proposta_referencia,cliente_id,endereco_id,responsavel_id,inicio,fim,status,titulo,descricao,endereco_evento,external_calendar_id,deleted_at')
     .eq('id', agendamentoId)
     .single();
-  if (agendaError || !agenda || agenda.deleted_at) return reply({ error: 'agendamento_not_found' }, 404);
+  if (agendaError || !agenda) return reply({ error: 'agendamento_not_found' }, 404);
+  if (agenda.deleted_at) {
+    // Agendamento removido no CRM: tira o evento do Google também.
+    if (!agenda.external_calendar_id) return reply({ error: 'agendamento_not_found' }, 404);
+    try {
+      const r = await removerEventos(admin, [agenda]);
+      return reply(r, r.erros ? 502 : 200);
+    } catch { return reply({ error: 'google_auth_refresh_failed' }, 502); }
+  }
 
   const [clientRes, osRes, proposalRes, profileRes, addressRes, integrationRes] = await Promise.all([
     agenda.cliente_id ? admin.from('clientes').select('nome_fantasia,razao_social').eq('id', agenda.cliente_id).maybeSingle() : Promise.resolve({ data: null }),
