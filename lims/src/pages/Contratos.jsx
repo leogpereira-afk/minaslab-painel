@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useDados } from "../lib/dados.jsx";
+import { rotuloSolicitante } from "../lib/solicitantes.js";
 import { link, navegar } from "../lib/rota.js";
 import { brl, dataBR, isoDia } from "../lib/formato.js";
 import { estaAtivo } from "../lib/cadastros.js";
@@ -190,7 +191,7 @@ export function FichaContrato({ param }) {
           <div className="s12"><Parcelas contrato={f} /></div>
         </>}
         {aba === "Solicitante" && <>
-          {campo("cSol", "Solicitante", <select id="cSol" value={f.solicitanteId || ""} onChange={(e) => setF((x) => ({ ...x, solicitanteId: e.target.value || null }))}>{opcoes([["", "Sem solicitante"], ...dados.solicitantes.filter((s) => s.status === "Ativo").map((s) => [s.id, `${s.nome} (${s.cliente})`])])}</select>, "s6")}
+          {campo("cSol", "Solicitante", <select id="cSol" value={f.solicitanteId || ""} onChange={(e) => setF((x) => ({ ...x, solicitanteId: e.target.value || null }))}>{opcoes([["", "Sem solicitante"], ...dados.solicitantes.filter((s) => s.status === "Ativo").map((s) => [s.id, rotuloSolicitante(s)])])}</select>, "s6")}
           {campo("cCobS", "Cobrança", <select id="cCobS" value={f.cobranca} onChange={set("cobranca")}>{opcoes(["Cliente", "Solicitante"])}</select>)}
           {campo("cResS", "Resultado Final", <select id="cResS" value={f.resultado} onChange={set("resultado")}>{opcoes(["Cliente", "Solicitante", "Ambos"])}</select>)}
           {campo("cECS", "Email cobrança Solicitante", <input id="cECS" type="email" value={f.emailCobSol || ""} onChange={set("emailCobSol")} />, "s6")}

@@ -112,7 +112,8 @@ export function VerCliente({ param }) {
     ["Nome do Responsável", c.resp], [c.pessoa === "PJ" ? "CNPJ" : "CPF", c.doc], ["Razão Social", c.razao], ["Nome Fantasia", c.fantasia || "—"], ["Telefone", c.tel], ["Celular", c.cel],
     ["E-mail", c.email], ["CEP", c.cep], ["Endereço", `${c.end}, ${c.num}${c.comp ? ` - ${c.comp}` : ""}`], ["Bairro", c.bairro], ["Cidade / Estado", `${c.cidade} / ${c.uf}`],
     ["Criado", `${quando(c.criadoEm)} por ${c.criadoPor || ""}`], ["Modificado", `${quando(c.atualizadoEm)} por ${c.atualizadoPor || ""}`], ["Observações", c.obs || "—"]];
-  const solic = dados.solicitantes.filter((s) => s.cliente === c.razao);
+  const idsSol = new Set([...dados.propostas, ...dados.contratos].filter((x) => x.clienteId === c.id).map((x) => x.solicitanteId).filter(Boolean));
+  const solic = dados.solicitantes.filter((s) => idsSol.has(s.id) || (s.cliente && s.cliente === c.razao));
   const propostas = dados.propostas.filter((p) => p.clienteId === c.id);
   const alternar = async () => {
     try { await salvar("clientes", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" }); avisar(c.status === "Ativo" ? "Cliente inativado." : "Cliente ativado.", "ok"); }
@@ -127,8 +128,8 @@ export function VerCliente({ param }) {
         <dl className="detail">{campos.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
       </div>
       <Caixa titulo="Solicitantes vinculados">
-        {solic.length ? <div className="tw"><table><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Telefone</th></tr></thead><tbody>{solic.map((s) => <tr key={s.id}><td>{s.id}</td><td>{s.nome}</td><td>{s.email}</td><td>{s.tel}</td></tr>)}</tbody></table></div>
-          : <p className="suave" style={{ margin: 0 }}>Nenhum solicitante vinculado. <a href={link("solicitantes")}>Cadastrar solicitante</a></p>}
+        {solic.length ? <div className="tw"><table><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Telefone</th></tr></thead><tbody>{solic.map((s) => <tr key={s.id} className="clicavel" onClick={() => navegar("solicitante", s.id)}><td>{s.cod}</td><td>{s.razao || s.nome}</td><td>{s.email}</td><td>{s.tel}</td></tr>)}</tbody></table></div>
+          : <p className="suave" style={{ margin: 0 }}>Nenhum solicitante nas propostas e contratos deste cliente. <a href={link("adicionar-solicitante")}>Cadastrar solicitante</a></p>}
       </Caixa>
       <Caixa titulo="Propostas do cliente">
         {propostas.length ? <p style={{ margin: 0 }}>{propostas.length} proposta(s). <a href={link("proposedlist")}>Abrir Listar Propostas</a></p> : <p className="suave" style={{ margin: 0 }}>Nenhuma proposta. <a href={link("criar-proposta")}>Criar proposta</a></p>}
