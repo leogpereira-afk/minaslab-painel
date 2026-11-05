@@ -73,7 +73,7 @@ export function Coletas({onOpenHistory}:{onOpenHistory?:()=>void}={}){
  async function save(e:React.FormEvent){e.preventDefault();if((!form.cliente_id&&!form.numero_os_referencia.trim()&&!form.numero_proposta_referencia.trim())||!form.ocorrida_em){setError('Informe o cliente ou uma Ordem de Serviço, além da data/hora.');return}const km=Number(String(form.km_viagem).replace(',','.'));if(form.tipo_pagamento==='VIAGEM'&&!(km>0)){setError('Viagem: informe os km (ida e volta).');return}setSaving(true);setError('');const payload={ordem_servico_id:form.ordem_servico_id||null,numero_os_referencia:form.numero_os_referencia.trim()||null,proposta_id:form.proposta_id||null,numero_proposta_referencia:form.numero_proposta_referencia.trim()||null,cliente_id:form.cliente_id||null,contrato_id:form.contrato_id||null,recorrencia_id:form.recorrencia_id||null,coletor_id:form.realizada_pelo_cliente?null:form.coletor_id||null,realizada_pelo_cliente:form.realizada_pelo_cliente,ocorrida_em:new Date(form.ocorrida_em).toISOString(),status:form.status,observacoes:form.observacoes||null,endereco_evento:form.endereco_evento.trim()||null,tipo_pagamento:form.realizada_pelo_cliente?'NORMAL':form.tipo_pagamento,km_viagem:form.tipo_pagamento==='VIAGEM'&&!form.realizada_pelo_cliente?km:null};let id=editingId;if(id){const{error}=await supabase.from('coletas').update(payload).eq('id',id);if(error){setError(error.message);setSaving(false);return}}else{const{data,error}=await supabase.from('coletas').insert(payload).select('id').single();if(error||!data){setError(error?.message||'Não foi possível salvar.');setSaving(false);return}id=String(data.id)}if(!id){setError('Não foi possível identificar a coleta salva.');setSaving(false);return}try{await syncCalendar(id)}catch(err){setError(`Coleta salva no CRM, mas não foi sincronizada com o Google Agenda. ${err instanceof Error?err.message:String(err)}`);setSaving(false);return}setOpen(false);setSaving(false);await load()}
  async function removeCollection(r:Row){
   if(!canWrite||deletingId)return
-  const confirmed=window.confirm(`Excluir esta coleta de ${r.client}? O lançamento será removido de Coletas e, quando exclusivo, também da Agenda.`)
+  const confirmed=window.confirm(`Excluir esta coleta de ${r.client}? O lançamento será removido de Coletas e, quando exclusivo, também da Agenda e do Google Agenda.`)
   if(!confirmed)return
   setDeletingId(r.id);setError('')
   const now=new Date().toISOString()
@@ -88,11 +88,11 @@ export function Coletas({onOpenHistory}:{onOpenHistory?:()=>void}={}){
   if(r.agendamento_id){
    const{count}=await supabase.from('coletas').select('id',{count:'exact',head:true}).eq('agendamento_id',r.agendamento_id).is('deleted_at',null)
    if((count??0)===0){
-    const{error:cancelError}=await supabase.from('agendamentos').update({status:'CANCELADO',updated_at:now}).eq('id',r.agendamento_id)
+    // Sem outra coleta no agendamento: ele sai da Agenda e o evento é apagado do Google.
+    const{error:cancelError}=await supabase.from('agendamentos').update({status:'CANCELADO',deleted_at:now,updated_at:now}).eq('id',r.agendamento_id)
     if(!cancelError){
      const{data,error:syncError}=await supabase.functions.invoke('google-calendar-sync',{body:{agendamento_id:r.agendamento_id}})
-     if(syncError||data?.error)calendarWarning=' A coleta foi excluída, mas não foi possível cancelar o compromisso no Google Agenda.'
-     await supabase.from('agendamentos').update({deleted_at:now,updated_at:now}).eq('id',r.agendamento_id)
+     if(syncError||data?.error)calendarWarning=' A coleta foi excluída, mas não foi possível apagar o compromisso no Google Agenda.'
     }else calendarWarning=' A coleta foi excluída, mas o compromisso vinculado precisa ser revisado na Agenda.'
    }
   }
