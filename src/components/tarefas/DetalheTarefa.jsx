@@ -7,8 +7,9 @@ import { Modal } from "../ui.jsx";
 import Avatar from "./Avatar.jsx";
 import SeletorPessoas from "./SeletorPessoas.jsx";
 import ArquivosTarefa from "./ArquivosTarefa.jsx";
-import { LEMBRETES, STATUS_TAREFA, atalhosDePrazo, deInputLocal, diasDeAtraso, lembreteDoSelect, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
-import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaPessoas, tarefaStatus } from "../../services/tarefas.js";
+import FormularioTarefa from "./FormularioTarefa.jsx";
+import { STATUS_TAREFA, atalhosDePrazo, deInputLocal, diasDeAtraso, paraInputLocal, progressoChecklist, quandoAvisa, resumoRecorrencia, rotuloLembrete, rotuloPrazo } from "../../lib/tarefas.js";
+import { tarefaAtualizar, tarefaChecklist, tarefaDelegar, tarefaExcluir, tarefaMensagem, tarefaObter, tarefaStatus } from "../../services/tarefas.js";
 
 const FUSO = "America/Sao_Paulo";
 const horaMsg = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: FUSO });
@@ -145,10 +146,8 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   const [pendentes, setPendentes] = useState(0);
   const fila = useRef(Promise.resolve()); // as ações vão uma de cada vez, na ordem em que a pessoa clicou
   const ocupado = pendentes > 0;
-  const [titulo, setTitulo] = useState("");
-  const [descricao, setDescricao] = useState("");
   const [novoItem, setNovoItem] = useState("");
-  const [novoMarcador, setNovoMarcador] = useState("");
+  const [editando, setEditando] = useState(false);
   const [menu, setMenu] = useState(false);
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [delegando, setDelegando] = useState(false);
@@ -175,7 +174,6 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   }, [carregar]);
 
   const tarefa = dados?.tarefa;
-  useEffect(() => { if (tarefa) { setTitulo(tarefa.titulo); setDescricao(tarefa.descricao); } }, [tarefa?.id, tarefa?.titulo, tarefa?.descricao]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const executar = (acao) => {
     setPendentes((n) => n + 1);
@@ -206,25 +204,15 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   const atraso = tarefa && tarefa.status !== "concluida" ? diasDeAtraso(tarefa.prazo, agora) : 0;
   const st = tarefa ? STATUS_TAREFA[tarefa.status] : null;
 
-  const salvarTexto = () => {
-    const campos = {};
-    if (titulo.trim() && titulo.trim() !== tarefa.titulo) campos.titulo = titulo;
-    if (descricao.trim() !== (tarefa.descricao || "").trim()) campos.descricao = descricao;
-    if (Object.keys(campos).length) void executar(() => tarefaAtualizar(id, campos));
-  };
   // A caixinha muda na hora; se o servidor recusar, a recarga logo em seguida desfaz.
   const marcarItem = (item, feito) => {
     setDados((d) => (d ? { ...d, checklist: d.checklist.map((x) => (x.id === item.id ? { ...x, feito } : x)) } : d));
     void executar(() => tarefaChecklist(id, "marcar", { item_id: item.id, feito }));
   };
   const adicionarItem = () => { const t = novoItem.trim(); if (!t) return; setNovoItem(""); void executar(() => tarefaChecklist(id, "adicionar", { texto: t })); };
-  const adicionarMarcador = () => {
-    const t = novoMarcador.trim().replace(/^#/, "");
-    setNovoMarcador("");
-    if (t && !tarefa.marcadores.includes(t)) void executar(() => tarefaAtualizar(id, { marcadores: [...tarefa.marcadores, t] }));
-  };
 
   return (
+    <>
     <Modal titulo="Tarefa" aberto aoFechar={aoFechar} largura="max-w-6xl">
       {!dados && !erro && <p className="py-10 text-center text-sm text-slate-500">Abrindo a tarefa...</p>}
       {!dados && erro && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
@@ -233,64 +221,49 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
           <div className="min-w-0 space-y-4">
             {dados.pai && <p className="text-xs text-slate-500">Subtarefa de <button type="button" className="font-semibold text-brand-700 underline" onClick={() => aoAbrirOutra(dados.pai.id)}>{dados.pai.titulo}</button></p>}
             <div className="flex items-start gap-2">
-              {pode.gerir ? (
-                <textarea className="input min-h-[44px] flex-1 resize-none py-2 font-display text-lg font-semibold leading-snug" rows={1} aria-label="Nome da tarefa" value={titulo} maxLength={200} onChange={(e) => setTitulo(e.target.value)} onBlur={salvarTexto} />
-              ) : (
-                <h3 className="flex-1 font-display text-lg font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">{tarefa.titulo}</h3>
+              <h3 className="flex-1 font-display text-lg font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
+                {tarefa.urgente && <Flame size={18} className="mr-1 inline -translate-y-0.5 text-orange-500" aria-label="Urgente" />}{tarefa.titulo}
+              </h3>
+              {pode.editar && (
+                <button type="button" className="btn-outline h-10 min-h-0 shrink-0" disabled={ocupado} onClick={() => setEditando(true)}>
+                  <Pencil size={15} aria-hidden="true" />Editar tarefa
+                </button>
               )}
-              <button type="button" disabled={!pode.gerir || ocupado} onClick={() => executar(() => tarefaAtualizar(id, { urgente: !tarefa.urgente }))} aria-pressed={tarefa.urgente} title={tarefa.urgente ? "Urgente (clique para tirar a marca)" : "Marcar como urgente"} className={clsx("grid h-11 w-11 shrink-0 place-items-center rounded-xl border transition", tarefa.urgente ? "border-orange-300 bg-orange-50 text-orange-600" : "text-slate-300", pode.gerir && !tarefa.urgente && "hover:text-orange-500")} style={tarefa.urgente ? undefined : { borderColor: "var(--hairline)" }}>
-                <Flame size={20} aria-hidden="true" />
-              </button>
             </div>
 
-            {pode.gerir ? (
-              <textarea className="input min-h-[72px] py-2 text-sm" rows={3} placeholder="Descrição" aria-label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} onBlur={salvarTexto} />
-            ) : (
-              tarefa.descricao ? <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700 [overflow-wrap:anywhere]">{tarefa.descricao}</p> : null
-            )}
+            {tarefa.descricao ? <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700 [overflow-wrap:anywhere]">{tarefa.descricao}</p> : null}
 
             <div className="rounded-xl border px-3 py-1.5" style={{ borderColor: "var(--hairline)" }}>
               <Linha rotulo="Proprietário"><Pessoa usuario={tarefa.proprietario} nomes={nomes} /></Linha>
               <Linha rotulo="Responsável">
-                {pode.gerir
+                {pode.delegar && !pode.editar
                   ? <SeletorPessoas usuarios={usuarios} valor={tarefa.responsavel} unico rotuloBotao="Passar para outra pessoa" onChange={(u) => u !== tarefa.responsavel && executar(() => tarefaDelegar(id, u))} />
                   : <Pessoa usuario={tarefa.responsavel} nomes={nomes} />}
               </Linha>
               <Linha rotulo="Prazo">
-                <EditorPrazo prazo={tarefa.prazo} agora={agora} podeEditar={!!pode.gerir} ocupado={ocupado} atraso={atraso} aoSalvar={(iso) => executar(() => tarefaAtualizar(id, { prazo: iso }))} />
+                <EditorPrazo prazo={tarefa.prazo} agora={agora} podeEditar={false} ocupado={ocupado} atraso={atraso} aoSalvar={(iso) => executar(() => tarefaAtualizar(id, { prazo: iso }))} />
               </Linha>
-              {tarefa.prazo && tarefa.status !== "concluida" && (pode.gerir || tarefa.lembrete !== null) && (
+              {tarefa.prazo && tarefa.status !== "concluida" && tarefa.lembrete !== null && (
                 <Linha rotulo="Lembrete">
-                  {pode.gerir ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select className="input h-9 min-h-0 w-auto text-sm" aria-label="Lembrete" value={tarefa.lembrete ?? ""} onChange={(e) => executar(() => tarefaAtualizar(id, { lembrete: lembreteDoSelect(e.target.value) }))}>
-                        {LEMBRETES.map((l) => <option key={String(l.valor)} value={l.valor ?? ""}>{l.rotulo}</option>)}
-                      </select>
-                      {quandoAvisa(tarefa.prazo, tarefa.lembrete) && <span className="text-xs text-slate-500">avisa {rotuloPrazo(quandoAvisa(tarefa.prazo, tarefa.lembrete), agora).toLowerCase()}</span>}
-                    </div>
-                  ) : <span>{rotuloLembrete(tarefa.lembrete)}</span>}
+                  <span>{rotuloLembrete(tarefa.lembrete)}</span>
+                  {quandoAvisa(tarefa.prazo, tarefa.lembrete) && <span className="ml-2 text-xs text-slate-500">avisa {rotuloPrazo(quandoAvisa(tarefa.prazo, tarefa.lembrete), agora).toLowerCase()}</span>}
                 </Linha>
               )}
               {dados.recorrencia && <Linha rotulo="Repete"><span className="text-slate-600">{resumoRecorrencia(dados.recorrencia)}{dados.recorrencia.ativa ? "" : " (pausada)"}</span></Linha>}
               <Linha rotulo="Situação"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.classe}`}>{st.rotulo}</span></Linha>
               <Linha rotulo="Criada em"><span className="text-slate-600">{rotuloPrazo(tarefa.criadoEm, agora)}</span></Linha>
               <Linha rotulo="Participantes">
-                {pode.gerir
-                  ? <SeletorPessoas usuarios={usuarios} valor={tarefa.participantes} onChange={(l) => executar(() => tarefaPessoas(id, l, tarefa.observadores))} ocultar={[tarefa.responsavel, tarefa.proprietario, ...tarefa.observadores]} vazio="Ninguém" />
-                  : (tarefa.participantes.length ? <span className="flex flex-wrap gap-2">{tarefa.participantes.map((u) => <Pessoa key={u} usuario={u} nomes={nomes} />)}</span> : <span className="text-slate-400">Ninguém</span>)}
+                {(tarefa.participantes.length ? <span className="flex flex-wrap gap-2">{tarefa.participantes.map((u) => <Pessoa key={u} usuario={u} nomes={nomes} />)}</span> : <span className="text-slate-400">Ninguém</span>)}
               </Linha>
               <Linha rotulo="Observadores">
-                {pode.gerir
-                  ? <SeletorPessoas usuarios={usuarios} valor={tarefa.observadores} onChange={(l) => executar(() => tarefaPessoas(id, tarefa.participantes, l))} ocultar={[tarefa.responsavel, tarefa.proprietario, ...tarefa.participantes]} vazio="Ninguém" />
-                  : (tarefa.observadores.length ? <span className="flex flex-wrap gap-2">{tarefa.observadores.map((u) => <Pessoa key={u} usuario={u} nomes={nomes} />)}</span> : <span className="text-slate-400">Ninguém</span>)}
+                {(tarefa.observadores.length ? <span className="flex flex-wrap gap-2">{tarefa.observadores.map((u) => <Pessoa key={u} usuario={u} nomes={nomes} />)}</span> : <span className="text-slate-400">Ninguém</span>)}
               </Linha>
               <Linha rotulo="Marcadores">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {tarefa.marcadores.map((m) => (
-                    <span key={m} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">#{m}{pode.gerir && <button type="button" aria-label={`Remover marcador ${m}`} onClick={() => executar(() => tarefaAtualizar(id, { marcadores: tarefa.marcadores.filter((x) => x !== m) }))}><X size={11} /></button>}</span>
+                    <span key={m} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">#{m}</span>
                   ))}
-                  {pode.gerir && <input className="input h-8 min-h-0 w-36 text-xs" placeholder="Novo marcador" aria-label="Novo marcador" value={novoMarcador} maxLength={30} onChange={(e) => setNovoMarcador(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarMarcador(); } }} />}
-                  {!pode.gerir && tarefa.marcadores.length === 0 && <span className="text-slate-400">Nenhum</span>}
+                  {tarefa.marcadores.length === 0 && <span className="text-slate-400">Nenhum</span>}
                 </div>
               </Linha>
             </div>
@@ -355,8 +328,8 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                             <button type="button" className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50" onClick={() => { setMenu(false); void executar(() => tarefaStatus(id, "pausar")); }}>Pausar<Hourglass size={15} className="text-slate-400" aria-hidden="true" /></button>
                           )}
                           {tarefa.status !== "concluida" && (
-                            <button type="button" disabled={!pode.gerir} title={pode.gerir ? "Passar a tarefa para outra pessoa" : "Só o proprietário, o responsável ou a direção delegam"} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent" onClick={() => { setMenu(false); setBuscaDelegar(""); setDelegando(true); }}>
-                              <span className="flex items-center gap-1.5">{!pode.gerir && <Lock size={13} className="text-sky-600" aria-hidden="true" />}Delegar</span>
+                            <button type="button" disabled={!pode.delegar} title={pode.delegar ? "Passar a tarefa para outra pessoa" : "Só o proprietário ou o responsável delegam"} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent" onClick={() => { setMenu(false); setBuscaDelegar(""); setDelegando(true); }}>
+                              <span className="flex items-center gap-1.5">{!pode.delegar && <Lock size={13} className="text-sky-600" aria-hidden="true" />}Delegar</span>
                               <UserPlus size={15} className="text-slate-400" aria-hidden="true" />
                             </button>
                           )}
@@ -399,5 +372,13 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
         </Modal>
       )}
     </Modal>
+    {editando && tarefa && (
+      <FormularioTarefa
+        usuarios={usuarios} eu={dados.eu} tarefa={tarefa}
+        aoFechar={() => setEditando(false)}
+        aoSalva={() => { setEditando(false); void carregar(); aoMudou?.(); }}
+      />
+    )}
+    </>
   );
 }
