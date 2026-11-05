@@ -319,3 +319,15 @@ td .acoes { flex-wrap: nowrap; }
 .menu-pop button { text-align: left; background: var(--btn); border: 1px solid var(--btn-line); border-radius: 4px; padding: 9px 12px; font-size: 13px; cursor: pointer; color: var(--ink); }
 .menu-pop button:hover { background: var(--brand-50); border-color: var(--teal); }
 .menu-pop button.on { background: var(--brand-100); border-color: var(--teal); font-weight: 600; }
+
+/* Ficha do cliente: cabeçalho e abas, como em "Detalhes da Cliente" do GerenciaLab */
+.cliente-topo { display: grid; gap: 8px; font-size: 13px; }
+.cliente-topo b { color: var(--ink); }
+.abas-box { padding: 0; overflow: hidden; }
+.abas-ficha { display: flex; flex-wrap: wrap; border-bottom: 1px solid #e2e8f0; padding: 0 12px; }
+.abas-ficha button { background: none; border: 0; border-top: 2px solid transparent; padding: 12px 14px; font-size: 13px; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.abas-ficha button.on { border-top-color: var(--teal); color: var(--brand); font-weight: 600; background: #fff; box-shadow: 1px 0 0 #e2e8f0, -1px 0 0 #e2e8f0; }
+.abas-ficha button:hover:not(.on) { color: var(--brand); }
+.abas-corpo { padding: 20px; }
+.badge-n { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--crit); color: #fff; font-size: 10px; font-weight: 700; }
+.sub-titulo { font-size: 18px; font-weight: 400; color: var(--ink); margin: 0; }

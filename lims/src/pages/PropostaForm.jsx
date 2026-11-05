@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useDados, configSistema } from "../lib/dados.jsx";
 import { emailsDoSolicitante, rotuloSolicitante } from "../lib/solicitantes.js";
+import { emailDoTipo } from "../lib/clientes.js";
 import { link, navegar } from "../lib/rota.js";
 import { isoDia } from "../lib/formato.js";
 import { STATUS_PROPOSTA, EXIBICAO_PRECOS, numeroProposta, erroEtapa1, chaveNumero, minimoNumero } from "../lib/propostas.js";
@@ -43,7 +44,7 @@ export default function PropostaForm({ param, sessao }) {
 
   const escolherCliente = (id) => {
     const c = dados.clientes.find((x) => x.id === id);
-    setF((x) => ({ ...x, clienteId: c ? c.id : null, emailCliProp: c?.email || "", emailCliNF: c?.email || "", emailCliRes: c?.email || "" }));
+    setF((x) => ({ ...x, clienteId: c ? c.id : null, unidade: "Não tem unidade", emailCliProp: c?.email || "", emailCliNF: c ? emailDoTipo(c, "Nota Fiscal") : "", emailCliRes: c ? emailDoTipo(c, "Resultados") : "" }));
   };
   const escolherSolicitante = (id) => {
     const s = dados.solicitantes.find((x) => x.id === id);
@@ -100,7 +101,7 @@ export default function PropostaForm({ param, sessao }) {
       <Caixa cabecalho="Cliente">
         <div className="frm">
           <div className="fg s6"><label htmlFor="pCli">Selecione o cliente</label><select id="pCli" value={f.clienteId || ""} onChange={(e) => escolherCliente(e.target.value)}>{opcoes([["", "Selecione o cliente"], ...dados.clientes.filter((c) => c.status === "Ativo" || c.id === f.clienteId).map((c) => [c.id, `${c.razao} — ${c.doc}`])])}</select></div>
-          <div className="fg s6"><label htmlFor="pUni">Selecione a unidade</label><select id="pUni" value={f.unidade} onChange={muda("unidade")}>{opcoes(["Não tem unidade"])}</select></div>
+          <div className="fg s6"><label htmlFor="pUni">Selecione a unidade</label><select id="pUni" value={f.unidade} onChange={muda("unidade")}>{opcoes(["Não tem unidade", ...((cliente?.unidades || []).filter((u) => u.status !== "Inativo").map((u) => u.nome))])}</select></div>
           {ro("cRaz", "Razão Social", cliente?.razao)}{ro("cFan", "Nome Fantasia", cliente?.fantasia)}{ro("cResp", "Nome Responsável", cliente?.resp)}
           {ro("cDoc", "CNPJ", cliente?.doc)}{ro("cMail", "E-mail", cliente?.email)}{ro("cTel", "Telefone", cliente?.tel)}
         </div>

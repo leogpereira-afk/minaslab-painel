@@ -13,10 +13,10 @@ import { useDados } from "../lib/dados.jsx";
 import { link, navegar } from "../lib/rota.js";
 import { brl } from "../lib/formato.js";
 import { UFS } from "../lib/clientes.js";
-import { buscarCep } from "../lib/cep.js";
-import { erroSolicitante, normalizarSolicitante, enderecoDoCadastro, erroEndereco, TIPOS_ENDERECO, WHATSAPP_ENDERECO } from "../lib/solicitantes.js";
+import { erroSolicitante, normalizarSolicitante, enderecoDoCadastro, TIPOS_ENDERECO } from "../lib/solicitantes.js";
+import { useForm, completarCep, Pessoa, TabelaEnderecos } from "../components/Enderecos.jsx";
 import { Grade } from "../components/Grade.jsx";
-import { Caixa, Modal, RotuloStatus, opcoes, useAviso } from "../components/ui.jsx";
+import { Caixa, RotuloStatus, opcoes, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 
 const quando = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "");
@@ -51,32 +51,6 @@ export default function ListaSolicitantes() {
           { rotulo: "Status", menu: ["Todos", "Ativo", "Inativo"].map((o) => ({ rotulo: o, marcado: status === o, padrao: o === "Todos", acao: () => { setStatus(o); setSel(new Set()); } })) },
         ]} />
     </Caixa>
-  );
-}
-
-/* ---------- campos comuns ---------- */
-
-function useForm(inicial) {
-  const [f, setF] = useState(inicial);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const campo = (id, chave, rotulo, cls = "s4", extra = {}) => (
-    <div className={`fg ${cls}`}><label htmlFor={id}>{rotulo}</label><input id={id} placeholder={extra.ph ?? rotulo} type={extra.tipo || "text"} value={f[chave] ?? ""} onChange={(e) => set(chave, e.target.value)} onBlur={extra.onBlur} disabled={extra.disabled} autoComplete={extra.ac} /></div>
-  );
-  return { f, setF, set, campo };
-}
-
-// Preenche endereço pelo CEP sem apagar o que já foi digitado.
-const completarCep = async (f, setF) => {
-  const r = await buscarCep(f.cep);
-  if (r) setF((x) => ({ ...x, end: x.end || r.end, bairro: x.bairro || r.bairro, cidade: x.cidade || r.cidade, uf: x.uf || r.uf }));
-};
-
-function Pessoa({ f, set }) {
-  return (
-    <div className="s12 radios" role="radiogroup" aria-label="Tipo de pessoa">
-      <label><input type="radio" name="pessoa" checked={f.pessoa !== "PF"} onChange={() => set("pessoa", "PJ")} /> Pessoa Jurídica</label>
-      <label><input type="radio" name="pessoa" checked={f.pessoa === "PF"} onChange={() => set("pessoa", "PF")} /> Pessoa Física</label>
-    </div>
   );
 }
 
@@ -122,37 +96,12 @@ export function FormSolicitante() {
 
 /* ---------- Ficha do solicitante ---------- */
 
-const ENDERECO_VAZIO = { tipo: "Principal", responsavel: "", email: "", tel: "", cel: "", cep: "", end: "", num: "", comp: "", bairro: "", cidade: "", uf: "", whatsapp: "Não enviar" };
-
-function JanelaEndereco({ inicial, titulo, onFechar, aoSalvar }) {
-  const avisar = useAviso();
-  const { f, setF, set, campo } = useForm(inicial);
-  return (
-    <Modal titulo={titulo} largo onFechar={onFechar} rotuloOk="Salvar" aoConfirmar={async () => {
-      const erro = erroEndereco(f);
-      if (erro) { avisar(erro[1], "err"); document.getElementById(erro[0])?.focus(); return false; }
-      return aoSalvar(f);
-    }}>
-      <div className="frm">
-        <div className="fg s12"><span className="rot">Tipo de endereço</span><div className="radios" id="eTipo" role="radiogroup">{TIPOS_ENDERECO.map((t) => <label key={t}><input type="radio" name="eTipo" checked={f.tipo === t} onChange={() => set("tipo", t)} /> {t}</label>)}</div></div>
-        {campo("eResp", "responsavel", "Responsável")}{campo("eEmail", "email", "E-mail", "s4", { tipo: "email" })}{campo("eTel", "tel", "Telefone", "s2")}{campo("eCel", "cel", "Celular", "s2")}
-        {campo("eCep", "cep", "CEP", "s3", { onBlur: () => completarCep(f, setF) })}{campo("eEnd", "end", "Endereço", "s5")}{campo("eNum", "num", "Número", "s2")}{campo("eComp", "comp", "Complemento", "s2")}
-        {campo("eBairro", "bairro", "Bairro")}{campo("eCidade", "cidade", "Cidade")}
-        <div className="fg s2"><label htmlFor="eUf">Estado</label><select id="eUf" value={f.uf} onChange={(e) => set("uf", e.target.value)}>{opcoes([["", "Selecione"], ...UFS])}</select></div>
-        <div className="fg s2"><label htmlFor="eWpp">Notificação por Whatsapp</label><select id="eWpp" value={f.whatsapp} onChange={(e) => set("whatsapp", e.target.value)}>{opcoes(WHATSAPP_ENDERECO)}</select></div>
-      </div>
-    </Modal>
-  );
-}
-
 export function VerSolicitante({ param }) {
   const { dados, salvar } = useDados();
   const avisar = useAviso();
   const s = dados.solicitantes.find((x) => x.id === param);
   const { f, set, campo } = useForm(() => ({ pessoa: "PJ", fantasia: "", inadimplente: "Não", ...(s || {}), razao: s?.razao || s?.cliente || "", senhaPortal: "" }));
   const [ocupado, setOcupado] = useState(false);
-  const [janela, setJanela] = useState(null);
-  const [marcado, setMarcado] = useState(null);
   if (!s) return <NaoAchou />;
   const pf = f.pessoa === "PF";
   const contratos = dados.contratos.filter((c) => c.solicitanteId === s.id);
@@ -175,10 +124,6 @@ export function VerSolicitante({ param }) {
   const gravarEnderecos = async (lista, motivo) => {
     try { await salvar("solicitantes", { ...s, enderecos: lista }, { motivo }); avisar("Endereços atualizados.", "ok"); }
     catch (ex) { avisar(ex.message, "err"); return false; }
-  };
-  const salvarEndereco = (e) => {
-    const lista = e.id ? enderecos.map((x) => (x.id === e.id ? e : x)) : [...enderecos, { ...e, id: `e${Date.now().toString(36)}` }];
-    return gravarEnderecos(lista, e.id ? "Endereço alterado" : "Endereço adicionado");
   };
   return (
     <div className="ficha">
@@ -208,33 +153,9 @@ export function VerSolicitante({ param }) {
           </form>
         </Caixa>
         <Caixa titulo="Endereços">
-          <div className="acoes" style={{ marginBottom: 10 }}>
-            <button type="button" className="btn btn-info" onClick={() => setJanela({ titulo: "Adiciona endereço", inicial: { ...ENDERECO_VAZIO, responsavel: s.nome || "", email: s.email || "", tel: s.tel || "", cel: s.cel || "" } })}>Adicionar endereço</button>
-            <button type="button" className="btn btn-default" onClick={() => { const e = enderecos.find((x) => x.id === marcado); if (!e) { avisar("Marque o endereço a copiar.", "err"); return; } setJanela({ titulo: "Copiar endereço", inicial: { ...e, id: undefined, tipo: TIPOS_ENDERECO.find((t) => !enderecos.some((x) => x.tipo === t)) || e.tipo } }); }}>Copiar endereço</button>
-          </div>
-          <div className="tw"><table>
-            <thead><tr><th className="chk">#</th><th>Tipo de Cadastro</th><th>Responsável</th><th>Telefone</th><th>Celular</th><th>E-mail</th><th>Endereço</th><th>Whatsapp</th><th>ação</th></tr></thead>
-            <tbody>{enderecos.length ? enderecos.map((e) => (
-              <tr key={e.id}>
-                <td className="chk"><input type="radio" name="endSel" aria-label={`Marcar ${e.tipo}`} checked={marcado === e.id} onChange={() => setMarcado(e.id)} /></td>
-                <td>{e.tipo}</td><td>{e.responsavel}</td><td>{e.tel}</td><td>{e.cel}</td><td>{e.email}</td>
-                <td className="quebra">{[e.end && `${e.end}${e.num ? `, ${e.num}` : ""}${e.comp ? ` - ${e.comp}` : ""}`, e.bairro, e.cidade && `${e.cidade}${e.uf ? `/${e.uf}` : ""}`, e.cep].filter(Boolean).join(" · ")}</td>
-                <td>{e.whatsapp === "Sim enviar" ? "Sim" : "Não"}</td>
-                <td><div className="acoes">
-                  <button type="button" className="btn btn-default btn-sm" onClick={() => setJanela({ titulo: "Alterar endereço", inicial: { ...e } })}>Editar</button>
-                  <button type="button" className="btn btn-danger btn-sm" onClick={() => setJanela({ remover: e })}>Remover</button>
-                </div></td>
-              </tr>
-            )) : <tr><td colSpan={9} className="vazio">Nenhum endereço. Use “Adicionar endereço”.</td></tr>}</tbody>
-          </table></div>
+          <TabelaEnderecos enderecos={enderecos} tipos={TIPOS_ENDERECO} base={{ responsavel: s.nome || "", email: s.email || "", tel: s.tel || "", cel: s.cel || "" }} aoGravar={gravarEnderecos} />
         </Caixa>
       </div>
-      {janela?.inicial && <JanelaEndereco titulo={janela.titulo} inicial={janela.inicial} onFechar={() => setJanela(null)} aoSalvar={salvarEndereco} />}
-      {janela?.remover && (
-        <Modal titulo="Remover endereço" onFechar={() => setJanela(null)} rotuloOk="Remover" aoConfirmar={() => gravarEnderecos(enderecos.filter((x) => x.id !== janela.remover.id), `Endereço removido (${janela.remover.tipo})`)}>
-          <p style={{ margin: 0 }}>Remover o endereço <b>{janela.remover.tipo}</b> de {janela.remover.responsavel}? Fica registrado na Auditoria LOG.</p>
-        </Modal>
-      )}
     </div>
   );
 }
