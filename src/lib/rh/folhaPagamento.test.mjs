@@ -127,3 +127,25 @@ test("salário proporcional: 1.700 por 10 dias = 566,67 (mês comercial de 30)",
   assert.equal(clt10.diasPagar, 10);
   assert.equal(clt10.comEncargos, 1246.66, "encargos sobre o proporcional (733,33 × 1,7)");
 });
+
+test("comissão de coletas do CRM: composta 100; viagem até 50 km 50, acima 100", async () => {
+  const { valorDaColeta, coletoresSemFicha } = await import("./coletasComissao.js");
+  assert.equal(valorDaColeta({ tipo: "COMPOSTA" }), 100);
+  assert.equal(valorDaColeta({ tipo: "VIAGEM", km: 50 }), 50);
+  assert.equal(valorDaColeta({ tipo: "VIAGEM", km: 51 }), 100);
+  assert.equal(valorDaColeta({ tipo: "VIAGEM", km: 180 }), 100);
+  assert.equal(valorDaColeta({ tipo: "VIAGEM", km: null }), 0, "viagem sem km não paga às cegas");
+  assert.equal(valorDaColeta({ tipo: "NORMAL" }), 0);
+  const coletor = { id: "p5", nome: "PEDRO EXEMPLO COLETOR", tipoContrato: "Prestador", salario: 1500 };
+  const coletas = [
+    { id: "c1", tipo: "COMPOSTA", coletorNome: "Pedro Exemplo" },
+    { id: "c2", tipo: "VIAGEM", km: 40, coletorNome: "Pedro Exemplo" },
+    { id: "c3", tipo: "VIAGEM", km: 120, coletorNome: "Pedro Exemplo" },
+    { id: "c4", tipo: "COMPOSTA", coletorNome: "Outra Pessoa" },
+  ];
+  const l = linhaDaFolha({ ficha: coletor, competencia: "2026-10", coletas, fichas: [coletor] });
+  assert.equal(l.comissaoColetas, 250);
+  assert.equal(l.coletasLista.length, 3);
+  assert.equal(l.extras, 250);
+  assert.deepEqual(coletoresSemFicha(coletas, [coletor]), ["Outra Pessoa"]);
+});
