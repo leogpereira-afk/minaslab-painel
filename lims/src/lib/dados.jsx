@@ -1,3 +1,4 @@
+import { PADROES_SISTEMA } from "./configSistema.js";
 // Base de dados do LIMS: tudo pela porta ml-lims (Supabase "Projetos Léo",
 // tabelas ml_lims_*). As telas só conhecem useDados(): leem dados.<coleção>
 // (lista, nunca undefined) e gravam com salvar/apagar. Cada gravação vira uma
@@ -82,4 +83,4 @@ export function DadosProvider({ children }) {
 export const useDados = () => useContext(Ctx);
 
 // Configuração do sistema é um registro único (colecao "config", id "sistema").
-export const configSistema = (dados) => dados.config.find((c) => c.id === "sistema") || {};
+export const configSistema = (dados) => ({ ...PADROES_SISTEMA, ...(dados.config.find((c) => c.id === "sistema") || {}) });

@@ -370,3 +370,32 @@ tr.sub-linha > td { background: #f8fafc; padding: 8px 12px 14px; white-space: no
 .dash-kpi span { font-size: 12px; color: var(--ink, #333); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dash-kpi b { font-size: 34px; font-weight: 500; text-align: center; }
 .dash-kpi.on { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(22,168,151,.15); }
+
+/* Documentos no padrão MinasLab (Relatório de Ensaio, Ficha de Coleta, Ficha de análise) */
+.docml { background: #fff; color: #222; max-width: 820px; margin: 0 auto 18px; padding: 22px 26px 14px; border: 1px solid var(--line); font-family: "DejaVu Sans", Verdana, Arial, sans-serif; font-size: 10.5px; break-after: page; }
+.docml-topo { display: grid; grid-template-columns: 150px 1fr 150px; align-items: center; border-bottom: 1.5px solid #2e9e4f; padding-bottom: 8px; }
+.docml-topo img { width: 130px; height: auto; }
+.docml-titulo { text-align: center; }
+.docml-titulo .t { font-size: 19px; font-weight: 400; }
+.docml-titulo .n { font-size: 10.5px; font-weight: 700; margin-top: 2px; }
+.docml-corpo { padding-top: 10px; }
+.docml-bloco { border: 1px solid #bbb; margin: 8px 0 10px; }
+.docml-bloco-t { background: #e6e6e6; text-align: center; font-weight: 700; font-size: 11px; padding: 3px 4px; border-bottom: 1px solid #bbb; }
+.docml-pares { display: grid; grid-template-columns: 1fr 1fr; }
+.docml-pares > div { padding: 3px 5px; border-bottom: 1px solid #ddd; }
+.docml-pares > div:nth-child(odd) { border-right: 1px solid #ddd; }
+.docml-pares > div.larga { grid-column: 1 / -1; border-right: 0; }
+.docml-bloco p { margin: 3px 6px; }
+.docml table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.docml th { background: #e6e6e6; font-weight: 700; border: 1px solid #bbb; padding: 3px 4px; text-align: center; color: #222; text-transform: none; letter-spacing: 0; position: static; }
+.docml td { border: 1px solid #ccc; padding: 3px 4px; text-align: center; white-space: normal; max-width: none; }
+.docml td.esq { text-align: left; }
+.docml .nc { color: #b91c1c; font-weight: 700; }
+.docml-assin { text-align: center; margin: 22px 0 10px; }
+.docml-assin .linha { display: inline-block; border-top: 1px solid #555; min-width: 240px; padding-top: 3px; margin-top: 36px; }
+.docml-valid { border: 1px solid #bbb; background: #eee; text-align: center; padding: 4px; margin: 8px 0; word-break: break-all; }
+.docml-rodape { display: grid; grid-template-columns: 150px 1fr 150px; align-items: end; border-top: 1px solid #999; margin-top: 16px; padding-top: 4px; font-size: 9.5px; color: #333; }
+.docml-rodape .c { text-align: center; }
+.docml-previa { color: #b91c1c; font-weight: 700; }
+@media print { .docml { border: 0; margin: 0; padding: 0 0 8px; max-width: none; } }
+@media (max-width: 640px) { .docml-pares { grid-template-columns: 1fr; } .docml-pares > div:nth-child(odd) { border-right: 0; } .docml-topo, .docml-rodape { grid-template-columns: 90px 1fr 10px; } .docml-topo img { width: 85px; } }

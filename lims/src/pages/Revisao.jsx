@@ -19,7 +19,9 @@ import { RotuloOS, CodigoBarras } from "./Ordens.jsx";
 import { quandoBR } from "./Coletas.jsx";
 import { textoLimite, prazoAnalitico } from "./Laboratorio.jsx";
 import { acreditadoNoEscopo } from "../lib/escopo.js";
-import logoMinasLab from "../assets/logo-minaslab.webp";
+import { Documento, Bloco, dataExtenso, codigoValidacao } from "../components/Documento.jsx";
+import { camposAtivos, valoresDinamicos } from "../components/Dinamicos.jsx";
+import { emailDoTipo } from "../lib/clientes.js";
 
 const statusRevisao = (x) => (x.etapa === "Revisado" ? "Revisado" : x.etapa === "Revisão" ? "Aguardando" : x.motivoRetorno ? "Revisão LAB" : "");
 
@@ -152,52 +154,92 @@ export function RevisaoCertificado() {
 
 // Conteúdo do certificado congelado na emissão (o que foi assinado não muda).
 function montarConteudo(dados, a) {
+  const os = dados.ordens.find((o) => o.id === a.osId) || {};
+  const ct = dados.contratos.find((c) => c.id === a.contratoId) || {};
+  const cli = dados.clientes.find((c) => c.id === a.clienteId) || {};
+  const sol = dados.solicitantes.find((x) => x.id === (os.solicitanteId || ct.solicitanteId));
+  const unidade = (cli.unidades || []).find((u) => u.id === ct.unidade || u.nome === ct.unidade);
+  const defs = [...camposAtivos(dados.plano_amostragem), ...camposAtivos(dados.campos_coleta)];
   return {
-    amostra: { ref: referenciaAmostra(a), barra: a.barra, os: a.os, servico: a.servico, matriz: a.matriz, legislacao: a.legislacao, identificacao: a.identificacao, local: a.local, respAmostra: a.respAmostra, coletor: a.coletor || "", dataColeta: a.dataColeta, dataEntrada: a.dataEntrada, inspecao: a.inspecao || null },
+    cliente: { nome: cli.razao || "", doc: cli.doc || "", tel: cli.tel || cli.cel || "", email: emailDoTipo(cli, "Resultados"), endereco: [cli.end, cli.num].filter(Boolean).join(" - "), bairro: cli.bairro || "", cidade: [cli.cidade, cli.uf].filter(Boolean).join("/"), cep: cli.cep || "", unidade: unidade?.nome || "", solicitante: sol ? (sol.razao || sol.nome) : "" },
+    amostra: {
+      ref: referenciaAmostra(a), barra: a.barra, os: a.os, proposta: ct.proposta || "", servico: a.servico, matriz: a.matriz, legislacao: a.legislacao, identificacao: a.identificacao, local: a.local,
+      respAmostra: a.respAmostra, coletor: a.coletor || "", dataColeta: a.dataColeta, dataEntrada: a.dataEntrada, inspecao: a.inspecao || null, enderecoColeta: a.enderecoColeta || "",
+      campos: valoresDinamicos(defs, a.fichaColeta || {}), obsLab: a.obsLab || "",
+    },
     analises: a.analises.map((x) => {
       const p = dados.parametros.find((q) => q.id === x.pid) || {};
       const lim = limiteDe(dados, a, x.pid);
-      return { nome: x.nome, resultado: resultadoExibido(x.resultado, { lq: x.lq, casas: p.casasDecimais }), un: x.un, lq: x.lq, vmp: textoLimite(lim), parecer: parecer(x.resultado, lim, x.lq), metodo: x.metodo, acred: acreditadoNoEscopo(dados.escopo_acreditacao, { parametro: p.id ? p : { acreditado: x.acred ? "Sim" : "Não", nome: x.nome, inloco: x.inloco ? "Sim" : "" }, metodoTexto: x.metodo, matriz: a.matriz || a.servico }), subcontratado: p.subcontratado ? (dados.subcontratados.find((s) => s.id === p.subcontratado)?.empresa || "Subcontratado") : "", inicio: x.inicio, termino: x.termino, incerteza: p.incerteza || "" };
+      const naoAcred = p.id ? p.acreditado !== "Sim" : !x.acred;
+      return { nome: x.nome, resultado: resultadoExibido(x.resultado, { lq: x.lq, casas: p.casasDecimais }), un: x.un, lq: x.lq, vmp: textoLimite(lim), parecer: parecer(x.resultado, lim, x.lq), metodo: x.metodo, acred: acreditadoNoEscopo(dados.escopo_acreditacao, { parametro: p.id ? p : { acreditado: x.acred ? "Sim" : "Não", nome: x.nome, inloco: x.inloco ? "Sim" : "" }, metodoTexto: x.metodo, matriz: a.matriz || a.servico }), naoAcred, inloco: !!x.inloco || p.inloco === "Sim" || /in\s*situ/i.test(x.nome), subcontratado: p.subcontratado ? (dados.subcontratados.find((s) => s.id === p.subcontratado)?.empresa || "Subcontratado") : "", inicio: x.inicio, termino: x.termino, incerteza: p.incerteza || "" };
     }),
   };
 }
 
+const NOTAS_RE = [
+  "A incerteza (U) relatada é baseada na incerteza padrão combinada, multiplicada por um fator de abrangência k=2, para um nível de confiança de 95%.",
+  "As unidades do relatório de ensaio podem ser convertidas de acordo com a legislação solicitada.",
+  "O MinasLab adota a seguinte regra de decisão para expressar os resultados obtidos: a incerteza da medição do método é informada, entretanto esta não faz parte da declaração de conformidade, ficando a critério do contratante a aplicabilidade das incertezas no cálculo final do resultado expresso no relatório.",
+  "O relatório de ensaio só deve ser reproduzido por completo. A reprodução parcial requer aprovação por escrito deste laboratório.",
+  "Os resultados referem-se exclusivamente às amostras analisadas, não sendo extensivo a quaisquer lotes.",
+  "Este laboratório atende aos requisitos de competência da ABNT NBR ISO/IEC 17025:2017.",
+  "Quando amostragem realizada pelo cliente, o MinasLab não se responsabiliza pelos resultados dos ensaios a partir da entrada das amostras no laboratório.",
+  "A coleta realizada pelo MinasLab segue os procedimentos conforme POP-AM-01, e plano de amostragem com todas informações necessárias em formulário de ordem de serviços.",
+];
+
+const sup = (x) => (x.inloco ? "³" : x.acred ? "¹" : "²");
+
+// Relatório de Ensaio no padrão MinasLab (modelo RE do GerenciaLab), com o
+// conteúdo congelado na emissão.
 export function DocCertificado({ cert, dados, previa = false }) {
   const cfg = configSistema(dados);
-  const cli = dados.clientes.find((c) => c.id === cert.clienteId) || {};
+  const cliAtual = dados.clientes.find((c) => c.id === cert.clienteId) || {};
   const { amostra: am, analises } = cert.conteudo;
-  const temAcred = analises.some((x) => x.acred), temSub = analises.some((x) => x.subcontratado), temNC = analises.some((x) => x.parecer === "Não conforme");
+  const cli = cert.conteudo.cliente || { nome: cliAtual.razao, doc: cliAtual.doc, tel: cliAtual.tel, email: cliAtual.email, endereco: [cliAtual.end, cliAtual.num].filter(Boolean).join(" - "), bairro: cliAtual.bairro, cidade: [cliAtual.cidade, cliAtual.uf].filter(Boolean).join("/"), cep: cliAtual.cep };
+  const nc = analises.filter((x) => x.parecer === "Não conforme");
+  const temSub = analises.some((x) => x.subcontratado);
   const anterior = cert.substitui ? dados.certificados.find((c) => c.id === cert.substitui) : null;
-  const datas = analises.flatMap((x) => [x.inicio, x.termino]).filter(Boolean).sort();
+  const signat = dados.funcionarios.find((f) => f.nome === cert.signatario);
+  const insp = am.inspecao || {};
+  const acred = dados.escopo_acreditacao[0]?.acreditacao;
+  const obs = [
+    ...(insp.desvios?.length ? [`Informações sobre o recebimento da amostra: ${insp.desvios.join("; ")}${insp.observacoes ? ` ${insp.observacoes}` : ""}. Os resultados podem ter sido afetados.`] : insp.observacoes ? [`Informações sobre o recebimento da amostra: ${insp.observacoes}`] : []),
+    ...(am.obsLab ? [am.obsLab] : []),
+    ...(anterior ? [`Este relatório substitui o nº ${anterior.numero}${anterior.revisao ? ` rev. ${anterior.revisao}` : ""}. Motivo: ${cert.motivoRevisao}.`] : []),
+    ...(temSub ? [`Ensaio(s) realizado(s) por laboratório subcontratado: ${[...new Set(analises.filter((x) => x.subcontratado).map((x) => `${x.nome} (${x.subcontratado})`))].join(", ")}.`] : []),
+    "Os resultados se restringem à amostra analisada e ensaios realizados.",
+  ];
+  const numero = previa ? "PRÉVIA — sem validade" : `${cert.numero}${cert.revisao ? ` rev. ${cert.revisao}` : ""}`;
+  const pares = (lista) => lista.map(([r, v]) => [r, v]);
   return (
-    <div className="doc">
-      <div className="doc-topo">
-        <img src={logoMinasLab} alt="MinasLab" width="130" height="39" />
-        <div style={{ textAlign: "center" }}><b style={{ fontSize: 15 }}>{cfg.tituloCertificado || "Certificado de Ensaio"}</b><br />{previa ? <span className="nc">PRÉVIA — sem validade</span> : <>Nº {cert.numero}{cert.revisao ? ` · Revisão ${cert.revisao}` : ""}</>}</div>
-        <div style={{ width: 170 }}><CodigoBarras texto={am.barra} altura={30} /><div className="et-barra">{am.barra}</div></div>
-      </div>
-      <dl className="detail">
-        <div><dt>Laboratório</dt><dd>{cfg.empresa || "MinasLab"}{cfg.cnpj ? ` · CNPJ ${cfg.cnpj}` : ""}<br />{[cfg.endereco, cfg.cidade, cfg.estado].filter(Boolean).join(", ")}{cfg.telefone ? ` · ${cfg.telefone}` : ""}</dd></div>
-        <div><dt>Cliente</dt><dd>{cli.razao}{cli.doc ? ` · ${cli.doc}` : ""}<br />{[cli.endereco, cli.numero, cli.bairro, cli.cidade, cli.uf].filter(Boolean).join(", ")}</dd></div>
-        <div><dt>Amostra</dt><dd>{am.ref} · OS {am.os}</dd></div><div><dt>Matriz</dt><dd>{am.servico}{am.matriz ? ` — ${am.matriz}` : ""}</dd></div>
-        <div><dt>Identificação / ponto</dt><dd>{am.identificacao || "—"}{am.local ? ` · ${am.local}` : ""}</dd></div><div><dt>Legislação de referência</dt><dd>{am.legislacao || "—"}</dd></div>
-        <div><dt>Coleta</dt><dd>{quandoBR(am.dataColeta)} · {am.respAmostra === "Cliente" ? "realizada pelo cliente" : `MinasLab${am.coletor ? ` (${am.coletor})` : ""}`}</dd></div><div><dt>Recebimento</dt><dd>{quandoBR(am.dataEntrada)}{am.inspecao?.temperatura ? ` · ${am.inspecao.temperatura} °C` : ""}</dd></div>
-        <div><dt>Período de ensaio</dt><dd>{datas.length ? `${quandoBR(datas[0])} a ${quandoBR(datas[datas.length - 1])}` : "—"}</dd></div><div><dt>Emissão</dt><dd>{previa ? "—" : quandoBR(cert.emitidoEm)}</dd></div>
-      </dl>
-      {am.inspecao?.desvios?.length > 0 && <p className="doc-rodape" style={{ borderTop: 0 }}><b>Desvio no recebimento:</b> {am.inspecao.desvios.join("; ")}. {am.inspecao.observacoes} Os resultados podem ter sido afetados.</p>}
-      <table className="doc-tab">
-        <thead><tr><th>Parâmetro</th><th>Resultado</th><th>Unidade</th><th>LQ</th><th>VMP</th><th>Parecer</th><th>Método</th></tr></thead>
-        <tbody>{analises.map((x, i) => <tr key={i}><td>{x.nome}{x.acred ? " *" : ""}{x.subcontratado ? " **" : ""}</td><td><b>{x.resultado}</b></td><td>{x.un}</td><td>{x.lq}</td><td>{x.vmp}</td><td className={x.parecer === "Não conforme" ? "nc" : ""}>{x.parecer}</td><td>{x.metodo}</td></tr>)}</tbody>
-      </table>
-      <div className="doc-rodape">
-        {temAcred && <div>* Ensaio acreditado pela Cgcre conforme ABNT NBR ISO/IEC 17025{(dados.escopo_acreditacao[0]?.acreditacao) ? `, acreditação ${dados.escopo_acreditacao[0].acreditacao}` : ""}.</div>}
-        {temSub && <div>** Ensaio realizado por laboratório subcontratado: {[...new Set(analises.filter((x) => x.subcontratado).map((x) => x.subcontratado))].join(", ")}.</div>}
-        {am.legislacao && <div>Declaração de conformidade com {am.legislacao}: {temNC ? "a amostra NÃO atende a todos os limites avaliados." : "a amostra atende aos limites avaliados."} Regra de decisão: aceitação simples, sem considerar a incerteza de medição, conforme acordado com o cliente.</div>}
-        <div>Os resultados referem-se exclusivamente à amostra ensaiada{am.respAmostra === "Cliente" ? ", conforme recebida (amostragem de responsabilidade do cliente)" : ""}. Este certificado só pode ser reproduzido por completo, sem autorização do laboratório para reprodução parcial.</div>
-        {anterior && <div>Este certificado substitui o nº {anterior.numero}{anterior.revisao ? ` rev. ${anterior.revisao}` : ""}. Motivo: {cert.motivoRevisao}.</div>}
-      </div>
-      {!previa && <div className="assinatura"><div><b>{cert.signatario}</b><br />{cert.cargo || "Signatário autorizado"}<br />Assinado eletronicamente em {quandoBR(cert.emitidoEm)}</div></div>}
-    </div>
+    <Documento dados={dados} titulo={cfg.tituloCertificado || "Relatório de Ensaio"} subtitulo={numero} codigoModelo={cfg.codigoRE}>
+      <Bloco titulo="Identificação do Cliente" pares={pares([["Nome", cli.nome], ["CNPJ/CPF", cli.doc], ["Telefone", cli.tel], ["E-mail", cli.email], ["Endereço", cli.endereco], ["Bairro", cli.bairro], ["Cidade/UF", cli.cidade], ["CEP", cli.cep], ["Unidade", cli.unidade || "Não consta"], ["Solicitante", cli.solicitante || "-"]])} />
+      <Bloco titulo="Dados da Amostragem" pares={[
+        ["Proposta Comercial", am.proposta], ["Ordem de Serviço / Plano de amostragem", am.os], ["Referência da Amostra", am.ref], ["Descrição da Amostra", am.identificacao || am.matriz],
+        ["Data Coleta", am.dataColeta ? `${quandoBR(am.dataColeta)} h` : ""], ["Data Recebimento", am.dataEntrada ? `${quandoBR(am.dataEntrada)} h` : ""],
+        ["Tipo de Amostra", am.matriz || am.servico], ["Endereço da Coleta", am.enderecoColeta],
+        ["Temperatura de recebimento", insp.temperatura ? `${insp.temperatura} °C` : ""], ["Responsável pela coleta", am.respAmostra === "Cliente" ? "Cliente" : am.coletor],
+        ...(am.campos || []),
+      ]} />
+      <Bloco titulo="Resultados Analíticos">
+        <table><thead><tr><th>Ensaio</th><th>Resultado</th><th>Unidade</th><th>LQ</th><th>Incerteza</th><th>VMP</th><th>Metodologia</th><th>Data do ensaio</th></tr></thead>
+          <tbody>{analises.map((x, i) => <tr key={i}><td className="esq">{x.nome}<sup>{sup(x)}</sup>{x.subcontratado ? <sup>⁴</sup> : null}</td><td className={x.parecer === "Não conforme" ? "nc" : ""}>{x.resultado}</td><td>{x.un}</td><td>{x.lq}</td><td>{x.incerteza || "-"}</td><td>{x.vmp || "-"}</td><td>{x.metodo}</td><td>{x.termino ? quandoBR(String(x.termino).slice(0, 10)) : "-"}</td></tr>)}</tbody></table>
+      </Bloco>
+      {am.legislacao && <Bloco titulo="Legislação de referência"><p><b>VMP:</b> {am.legislacao}</p></Bloco>}
+      <Bloco titulo="Legenda"><p><b>VMP</b> - Valor Máximo Permitido, <b>LQ</b> - Limite de Quantificação, <b>NA</b> - Não Aplicável, <sup>1</sup> Ensaio acreditado{acred ? ` (Cgcre ${acred})` : ""}, <sup>2</sup> Ensaio não acreditado, <sup>3</sup> Ensaio realizado in situ (realizado nas dependências do cliente){temSub ? <>, <sup>4</sup> Ensaio subcontratado</> : null}.</p></Bloco>
+      <Bloco titulo="Notas">{NOTAS_RE.map((t) => <p key={t}>{t}</p>)}<p style={{ marginTop: 6 }}><b>Observações</b></p>{obs.map((t) => <p key={t}>- {t}</p>)}</Bloco>
+      <Bloco titulo="Declaração de Conformidade">
+        {am.legislacao ? (nc.length
+          ? <p>Amostra em desacordo com os padrões estabelecidos pela Legislação citada acima, para o(s) parâmetro(s) <b>{nc.map((x) => x.nome).join(", ")}</b>.</p>
+          : <p>Os resultados analíticos obtidos pelo laboratório, referente aos parâmetros avaliados na amostra analisada, demonstram conformidade com os limites e padrões estabelecidos pela legislação mencionada.</p>)
+          : <p>Não foi solicitada declaração de conformidade com legislação para esta amostra.</p>}
+        <p>As opiniões e interpretações expressas acima não fazem parte do escopo de reconhecimento de competência deste laboratório.</p>
+      </Bloco>
+      {previa ? <p className="docml-previa" style={{ textAlign: "center" }}>PRÉVIA — documento sem validade, ainda não assinado.</p> : <>
+        <div className="docml-assin"><b>{dataExtenso(cert.emitidoEm, cfg.cidadeAssinatura)}</b><br /><span className="linha">{cert.signatario}<br />{signat?.registro || cert.cargo || "Signatário autorizado"}<br /><span style={{ fontSize: 9 }}>Assinado eletronicamente em {quandoBR(cert.emitidoEm)}</span></span></div>
+        <div className="docml-valid"><b>Código de Validação:</b> {cert.codigoValidacao || codigoValidacao(cert.conteudo, cert.numero)}</div>
+      </>}
+    </Documento>
   );
 }
 

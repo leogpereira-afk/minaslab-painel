@@ -39,7 +39,7 @@ export const CADASTROS = {
   employees: { titulo: "Funcionários", secoes: [{
     colecao: "funcionarios", botao: "Adicionar Profissional", janela: "Profissional",
     colunas: ["nome", "cargo", "setor", "usuario", "status"],
-    campos: [nome(), { c: "cargo", r: "Cargo", t: "text", larg: "s6" }, { c: "email", r: "E-mail", t: "email", larg: "s6" }, { c: "telefone", r: "Telefone", t: "text", larg: "s3" },
+    campos: [nome(), { c: "cargo", r: "Cargo", t: "text", larg: "s6" }, { c: "registro", r: "Registro profissional (ex.: CRQ 02412771)", t: "text", larg: "s6" }, { c: "email", r: "E-mail", t: "email", larg: "s6" }, { c: "telefone", r: "Telefone", t: "text", larg: "s3" },
       ref("setor", "Setor", "setores", "nome", { larg: "s3" }), { c: "usuario", r: "Usuário do painel", t: "conta", larg: "s4", dica: "Liga o funcionário à conta de login do painel (assinaturas, revisão, permissões)." },
       { c: "revisor", r: "Revisor de resultados", t: "simnao", padrao: "Não", larg: "s4" }, { c: "signatario", r: "Signatário de certificado", t: "simnao", padrao: "Não", larg: "s4" }, status()],
   }] },

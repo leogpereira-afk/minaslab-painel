@@ -24,7 +24,8 @@ import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
 import { CamposDinamicos, camposAtivos, valoresDinamicos } from "../components/Dinamicos.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 import { RotuloOS, CodigoBarras } from "./Ordens.jsx";
-import logoMinasLab from "../assets/logo-minaslab.webp";
+import { Documento, Bloco } from "../components/Documento.jsx";
+import { acreditadoNoEscopo } from "../lib/escopo.js";
 
 export const quandoBR = (s) => (s ? (String(s).length > 10 ? new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : dataBR(s)) : "");
 
@@ -369,39 +370,67 @@ export function RegistrarColeta({ param }) {
 
 /* ---------- Ficha de coleta / Cadeia de custódia (impressão) ---------- */
 
+// Ficha de Coleta no padrão MinasLab (modelo OS do GerenciaLab): uma por OS,
+// com dados do cliente, rastreabilidade (plano de amostragem), as amostras por
+// grupo (campos da coleta, parâmetros in situ, endereço, parâmetros) e assinaturas.
+// "branco.<ids>" sai sem os dados preenchidos, para levar a campo.
 export function FichaCustodia({ param }) {
   const { dados } = useDados();
   const ids = String(param || "").split(".").filter(Boolean);
   const branco = ids[0] === "branco";
   if (branco) ids.shift();
-  const amostras = ids.map((id) => dados.amostras.find((a) => a.id === id)).filter(Boolean).map((a) => (branco ? { ...a, dataColeta: "", coletor: "", fichaColeta: {} } : a));
+  const amostras = ids.map((id) => dados.amostras.find((a) => a.id === id)).filter(Boolean).map((a) => (branco ? { ...a, dataColeta: "", coletor: "", fichaColeta: {}, analises: a.analises.map((x) => ({ ...x, resultado: "" })) } : a));
   if (!amostras.length) return <NaoAchou />;
   const cfg = configSistema(dados);
+  const porOS = {};
+  for (const a of amostras) (porOS[a.osId] ||= []).push(a);
   const defsColeta = camposAtivos(dados.campos_coleta);
+  const defsPlano = camposAtivos(dados.plano_amostragem);
+  const par = (pid) => dados.parametros.find((p) => p.id === pid) || {};
+  const ehInloco = (x) => x.inloco || par(x.pid).inloco === "Sim" || /in\s*situ/i.test(x.nome);
+  const ac = (x, a) => (ehInloco(x) ? "³" : acreditadoNoEscopo(dados.escopo_acreditacao, { parametro: par(x.pid).id ? par(x.pid) : { acreditado: x.acred ? "Sim" : "Não", nome: x.nome }, metodoTexto: x.metodo, matriz: a.matriz || a.servico }) ? "¹" : "²");
+  const valor = (a, d) => (a.fichaColeta || {})[d.id] ?? "";
   return (
     <>
-      <div className="box nao-imprimir"><div className="box-head-row"><h2 className="box-title">Cadeia de custódia · {amostras.length} amostra(s)</h2>
-        <div className="acoes"><button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir</button><button type="button" className="btn btn-default" onClick={() => window.history.back()}>Voltar</button></div></div></div>
-      {amostras.map((a) => {
-        const cli = dados.clientes.find((c) => c.id === a.clienteId) || {};
-        const preenchidos = valoresDinamicos(defsColeta, a.fichaColeta);
+      <div className="box nao-imprimir"><div className="box-head-row"><h2 className="box-title">Ficha de Coleta{branco ? " (em branco)" : ""} · {Object.keys(porOS).length} OS</h2>
+        <div className="acoes"><button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / PDF</button><button type="button" className="btn btn-default" onClick={() => window.history.back()}>Voltar</button></div></div></div>
+      {Object.values(porOS).map((l) => {
+        const os = dados.ordens.find((o) => o.id === l[0].osId) || {};
+        const cli = dados.clientes.find((c) => c.id === l[0].clienteId) || {};
+        const datas = l.map((a) => a.dataColeta).filter(Boolean).sort();
+        const grupos = {};
+        for (const a of l) { const g = dados.contratos.find((c) => c.id === a.contratoId)?.servicos?.find((s) => s.sid === a.sid)?.grupo || a.servico || ""; (grupos[g] ||= []).push(a); }
         return (
-          <div className="doc" key={a.id}>
-            <div className="doc-topo"><img src={logoMinasLab} alt="MinasLab" width="120" height="36" /><div><b>Cadeia de custódia / Ficha de coleta</b><br /><span className="suave">{cfg.empresa || "MinasLab"}{cfg.cnpj ? ` · CNPJ ${cfg.cnpj}` : ""}</span></div><div style={{ width: 180 }}><CodigoBarras texto={a.barra} altura={34} /><div className="et-barra">{a.barra}</div></div></div>
-            <dl className="detail">
-              <div><dt>Amostra</dt><dd>{referenciaAmostra(a)}</dd></div><div><dt>Ordem de serviço</dt><dd>{a.os}</dd></div>
-              <div><dt>Cliente</dt><dd>{cli.razao}</dd></div><div><dt>CNPJ/CPF</dt><dd>{cli.doc}</dd></div>
-              <div><dt>Serviço / Matriz</dt><dd>{a.servico}{a.matriz ? ` — ${a.matriz}` : ""}</dd></div><div><dt>Legislação</dt><dd>{a.legislacao}</dd></div>
-              <div><dt>Identificação / ponto</dt><dd>{a.identificacao || "______________________"}</dd></div><div><dt>Data e hora da coleta</dt><dd>{quandoBR(a.dataColeta) || "____/____/______ ____:____"}</dd></div>
-              <div><dt>Responsável pela coleta</dt><dd>{a.coletor || "______________________"}</dd></div><div><dt>Coleta por</dt><dd>{a.respAmostra === "Cliente" ? "Cliente" : "MinasLab"}</dd></div>
-            </dl>
-            <table className="doc-tab"><thead><tr><th>Parâmetro</th><th>Método</th><th>Frasco / embalagem</th><th>Preservante</th><th>Quantidade</th></tr></thead>
-              <tbody>{a.analises.map((x) => { const p = dados.parametros.find((q) => q.id === x.pid) || {}; return <tr key={x.pid}><td>{x.nome}</td><td>{x.metodo}</td><td>{p.embalagem || ""}</td><td>{dados.preservantes.find((q) => q.id === p.preservante)?.nome || ""}</td><td>{p.quantidade || ""}</td></tr>; })}</tbody></table>
-            {preenchidos.length ? <table className="doc-tab"><tbody>{preenchidos.map(([t, v]) => <tr key={t}><th style={{ width: "40%" }}>{t}</th><td>{v}</td></tr>)}</tbody></table>
-              : defsColeta.length ? <table className="doc-tab"><tbody>{defsColeta.map((d) => <tr key={d.id}><th style={{ width: "40%" }}>{d.titulo}</th><td>&nbsp;</td></tr>)}</tbody></table> : null}
-            <table className="doc-tab"><thead><tr><th>Etapa</th><th>Nome</th><th>Data e hora</th><th>Assinatura</th></tr></thead>
-              <tbody>{["Coletado por", "Transportado por", "Recebido no laboratório por"].map((e) => <tr key={e}><td>{e}</td><td /><td /><td style={{ height: 28 }} /></tr>)}</tbody></table>
-          </div>
+          <Documento key={l[0].osId} dados={dados} titulo="Ficha de Coleta" linhas={[`Ordem de serviço: ${l[0].os}`, os.contrato ? `Contrato: ${os.contrato}` : ""].filter(Boolean)} codigoModelo={cfg.codigoFichaColeta}>
+            <Bloco titulo="Ordem de serviço">
+              <table><thead><tr><th>Contrato</th><th>Ordem de serviço</th><th>Responsável pela Coleta</th><th>Data da Coleta inicial</th><th>Data da Coleta final</th></tr></thead>
+                <tbody><tr><td>{os.contrato || ""}</td><td>{l[0].os}</td><td>{[...new Set(l.map((a) => a.coletor).filter(Boolean))].join(", ") || (branco ? "" : "-")}</td><td>{quandoBR(datas[0] || (branco ? "" : os.dataColeta))}</td><td>{quandoBR(datas[datas.length - 1] || (branco ? "" : os.dataColeta))}</td></tr></tbody></table>
+            </Bloco>
+            <Bloco titulo="Dados do Cliente" pares={[["Razão Social", cli.razao], ["Responsável", cli.resp], ["CNPJ", cli.doc], ["Telefone", cli.tel || cli.cel], ["!Endereço", [cli.end, cli.num, cli.comp, cli.bairro, cli.cidade && `${cli.cidade} / ${cli.uf || ""}`, cli.cep && `CEP: ${cli.cep}`].filter(Boolean).join(" - ")]]} />
+            {defsPlano.length > 0 && <Bloco titulo="Dados Rastreabilidade">
+              <table><thead><tr>{defsPlano.map((d) => <th key={d.id}>{d.titulo}</th>)}</tr></thead><tbody><tr>{defsPlano.map((d) => <td key={d.id} style={{ height: 22 }}>{valor(l[0], d)}</td>)}</tr></tbody></table>
+            </Bloco>}
+            <Bloco titulo="Amostras">
+              {Object.entries(grupos).map(([g, am]) => (
+                <div key={g}>
+                  <div className="docml-bloco-t" style={{ fontWeight: 400 }}>Grupo: {g || "-"}</div>
+                  {am.map((a) => { const il = a.analises.filter(ehInloco); return (
+                    <div key={a.id} style={{ marginBottom: 8 }}>
+                      <table><thead><tr><th>Referência</th><th>Descrição</th><th>Data Coleta</th>{il.map((x) => <th key={x.pid}>{x.nome}<sup>³</sup></th>)}{defsColeta.map((d) => <th key={d.id}>{d.titulo}</th>)}</tr></thead>
+                        <tbody><tr><td>{referenciaAmostra(a)}</td><td>{a.identificacao || a.matriz || ""}</td><td>{quandoBR(a.dataColeta)}</td>{il.map((x) => <td key={x.pid} style={{ minWidth: 50 }}>{x.resultado || (branco ? "" : "-")}</td>)}{defsColeta.map((d) => <td key={d.id} style={{ minWidth: 50 }}>{valor(a, d) || (branco ? "" : "-")}</td>)}</tr></tbody></table>
+                      <div className="docml-pares" style={{ border: "1px solid #ccc", borderTop: 0 }}>
+                        <div className="larga"><b>Endereço:</b> {a.enderecoColeta || [cli.end, cli.num, cli.bairro, cli.cidade].filter(Boolean).join(", ")}</div>
+                        <div className="larga"><b>Parâmetros:</b> {a.analises.map((x) => <span key={x.pid}>{x.nome}<sup>{ac(x, a)}</sup>, </span>)}</div>
+                        {cfg.frascosFichaColeta !== "Não" && <div className="larga"><b>Frascos:</b> {[...new Set(a.analises.map((x) => [par(x.pid).embalagem, dados.preservantes.find((q) => q.id === par(x.pid).preservante)?.nome].filter(Boolean).join(" · ")).filter(Boolean))].join("; ") || "-"}</div>}
+                      </div>
+                      <table style={{ marginTop: -1 }}><tbody><tr><td className="esq" style={{ width: "34%" }}><b>Responsável pelo Recebimento:</b> {branco ? "" : a.inspecao?.responsavel || ""}</td><td className="esq"><b>Data de Recebimento:</b> {branco ? "" : quandoBR(a.dataEntrada)}</td><td className="esq"><b>Temperatura do Recebimento:</b> {branco ? "" : a.inspecao?.temperatura || ""} ºC</td></tr></tbody></table>
+                    </div>
+                  ); })}
+                </div>
+              ))}
+            </Bloco>
+            <table><tbody><tr><td className="esq" style={{ width: "30%", height: 70 }}>Assinaturas Coletor / Cliente / Responsável</td><td /></tr></tbody></table>
+          </Documento>
         );
       })}
     </>

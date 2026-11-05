@@ -48,6 +48,11 @@ export const ABAS_SISTEMA = [
     sn("inativarContratoVencido", "Inativar contrato vencido", "Sim"), sel("acessoInadimplencia", "Acesso com inadimplência", ["Não, acesso liberado", "Sim solicitar login"]),
   ] },
   { aba: "Documentos", campos: [
+    { c: "rodapeDocumentos", r: "Rodapé dos documentos (uma linha por linha)", t: "textarea", larg: "s12", padrao: "Rua Imperatriz Leopoldina, 200 Montes Claros MG 39.404-287\nContato (38) 3015-2214 - Site: www.minaslab.net\ne-mail: contato@minaslab.net – CNPJ: 52.657.257/0001-14" },
+    { c: "cidadeAssinatura", r: "Cidade na data da assinatura", t: "text", larg: "s4", padrao: "Montes Claros" },
+    { c: "codigoRE", r: "Código do modelo do Relatório de Ensaio", t: "text", larg: "s4", padrao: "RE rev.08 12/05/2026" },
+    { c: "codigoFichaColeta", r: "Código do modelo da Ficha de Coleta", t: "text", larg: "s4", padrao: "OS rev.04 29/12/2025" },
+    { c: "codigoProposta", r: "Código do modelo da Proposta", t: "text", larg: "s4", padrao: "PSA rev.07 08/07/2026" },
     sn("frascosFichaColeta", "Frascos documento ficha de coleta", "Sim"), sn("exibirBorda", "Exibir Borda", "Sim"), num("fonteOs", "Tamanho fonte OS/AM"), num("fonteCodigoBarra", "Tamanho fonte codigo barra"),
     sn("duplaEtiqueta", "Dupla etiqueta"), sn("etiquetaQrCode", "Etiqueta QrCode"), txt("tamanhoEtiqueta", "Tamanho etiqueta"), sel("fonte", "Fonte", ["Helvetica", "Times", "Dejavusans", "Cid0jp"]),
   ] },

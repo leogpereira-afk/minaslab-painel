@@ -9,6 +9,8 @@ import { dataBR } from "../lib/formato.js";
 import { NaoAchou } from "./Clientes.jsx";
 import { CodigoBarras } from "./Ordens.jsx";
 import logoMinasLab from "../assets/logo-minaslab.webp";
+import { Documento, Bloco } from "../components/Documento.jsx";
+import { acreditadoNoEscopo } from "../lib/escopo.js";
 
 export const DOCUMENTOS_OS = [
   ["plano", "Plano de amostragem"],
@@ -85,29 +87,25 @@ export function DocumentoOS({ param }) {
             <tbody>{[...soma.values()].map((e, i) => <tr key={i}><td>{e.emb}</td><td>{e.pres}</td><td>{e.qtd}</td><td>{e.amostras.size}</td><td>{[...e.params].join(", ")}</td></tr>)}</tbody></table>
         </div>);
     });
-  } else if (tipo.endsWith("-os")) {
-    corpo = Object.values(porOS).map((l) => {
-      const os = dados.ordens.find((o) => o.id === l[0].osId);
-      const linhas = l.flatMap((a) => analisesDe(a).map((x) => ({ a, x })));
-      return (
-        <div className="doc" key={l[0].osId}><Topo titulo={def[1].replace(" - O.S", " - Ordem de serviço")} os={os} cfg={cfg} />{cab(os, l[0])}
-          {linhas.length ? <table className="doc-tab"><thead><tr><th>Amostra</th><th>Identificação</th><th>Parâmetro</th><th>Método</th><th>Unidade</th><th>LQ</th>{soSub ? <th>Laboratório</th> : null}<th style={{ width: "16%" }}>Resultado</th><th>Equip.</th></tr></thead>
-            <tbody>{linhas.map(({ a, x }) => <tr key={`${a.id}-${x.pid}`}><td>{referenciaAmostra(a)}</td><td>{a.identificacao || ""}</td><td>{x.nome}</td><td>{x.metodo}</td><td>{x.un}</td><td>{x.lq}</td>{soSub ? <td>{sub(x.pid)?.empresa || ""}</td> : null}<td>{x.resultado || ""}</td><td /></tr>)}</tbody></table> : vazio}
-          {assinaturas}
-        </div>);
-    });
   } else {
-    corpo = amostras.map((a) => {
-      const os = dados.ordens.find((o) => o.id === a.osId);
-      const l = analisesDe(a);
+    // Ficha de análise no padrão MinasLab: por OS (todas as amostras) ou por amostra.
+    const grupos = tipo.endsWith("-am") || tipo === "am" ? amostras.map((a) => [a]) : Object.values(porOS);
+    const subtitulo = soSub ? `Análise Subcontratada ${tipo.includes("mb") ? "Microbiológica" : "Físico Química"}` : tipo.includes("mb") ? "Análise Microbiológico" : tipo.includes("fq") ? "Análise Físico Química" : "";
+    const prazoConclusao = (a) => { const dias = Math.max(0, ...a.analises.map((x) => Number(par(x.pid).prazoDias) || 0)); const base = a.dataEntrada || a.dataColeta; if (!dias || !base) return ""; const d = new Date(String(base).length > 10 ? base : `${base}T12:00`); d.setDate(d.getDate() + dias); return d.toISOString(); };
+    const ac = (x, a) => (x.inloco || /in\s*situ/i.test(x.nome) ? "³" : acreditadoNoEscopo(dados.escopo_acreditacao, { parametro: par(x.pid).id ? par(x.pid) : { acreditado: x.acred ? "Sim" : "Não", nome: x.nome }, metodoTexto: x.metodo, matriz: a.matriz || a.servico }) ? "¹" : "²");
+    corpo = grupos.map((l) => {
+      const blocos = l.map((a) => ({ a, an: analisesDe(a) })).filter((b) => b.an.length);
       return (
-        <div className="doc" key={a.id}><Topo titulo={def[1]} os={os} cfg={cfg} />
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>{cab(os, a)}<div style={{ width: 180 }}><CodigoBarras texto={a.barra} altura={34} /><div className="et-barra">{a.barra}</div></div></div>
-          <dl className="detail"><div><dt>Amostra</dt><dd>{referenciaAmostra(a)}</dd></div><div><dt>Identificação</dt><dd>{a.identificacao || "—"}</dd></div><div><dt>Matriz</dt><dd>{a.matriz || a.servico}</dd></div><div><dt>Entrada</dt><dd>{quandoBR(a.dataEntrada) || "—"}</dd></div></dl>
-          {l.length ? <table className="doc-tab"><thead><tr><th>Parâmetro</th><th>Método</th><th>Unidade</th><th>LQ</th><th style={{ width: "18%" }}>Resultado</th><th>Equip.</th><th>Início</th><th>Término</th></tr></thead>
-            <tbody>{l.map((x) => <tr key={x.pid}><td>{x.nome}</td><td>{x.metodo}</td><td>{x.un}</td><td>{x.lq}</td><td>{x.resultado || ""}</td><td>{x.equipamento || ""}</td><td>{quandoBR(x.inicio)}</td><td>{quandoBR(x.termino)}</td></tr>)}</tbody></table> : vazio}
-          {assinaturas}
-        </div>);
+        <Documento key={l.map((a) => a.id).join("-")} dados={dados} titulo="Ficha de análise" subtitulo={subtitulo}>
+          {blocos.length ? blocos.map(({ a, an }) => (
+            <div key={a.id}>
+              <Bloco titulo={`Ordem de Serviço ${a.os} / Amostra ${referenciaAmostra(a)}`} pares={[["Nº da Amostra", referenciaAmostra(a)], ["Identificação", a.identificacao || a.matriz || ""], ["Prazo de Validade", ""], ["Data e hora da Coleta", quandoBR(a.dataColeta)], ["Data de Recebimento", quandoBR(a.dataEntrada)], ["Prazo de Conclusão", quandoBR(prazoConclusao(a))]]} />
+              <table style={{ marginBottom: 14 }}><thead><tr><th>Ensaio</th><th>Método de Análise</th><th>Unidade</th>{soSub ? <th>Laboratório</th> : null}<th style={{ width: "12%" }}>Valor</th><th style={{ width: "12%" }}>Analista</th><th style={{ width: "9%" }}>Data</th></tr></thead>
+                <tbody>{an.map((x) => <tr key={x.pid}><td className="esq">{x.nome}<sup>{ac(x, a)}</sup></td><td className="esq">{x.metodo}</td><td className="esq">{x.un}</td>{soSub ? <td className="esq">{sub(x.pid)?.empresa || ""}</td> : null}<td>{x.resultado || ""}</td><td>{x.analista || ""}</td><td>{x.termino ? quandoBR(String(x.termino).slice(0, 10)) : ""}</td></tr>)}</tbody></table>
+            </div>
+          )) : vazio}
+        </Documento>
+      );
     });
   }
   return (
