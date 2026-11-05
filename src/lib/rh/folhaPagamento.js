@@ -84,6 +84,15 @@ export function valorHoraExtra(saldoMin, salario, liberada) {
   return arred((saldoMin / 60) * (s / 220) * 1.5);
 }
 
+/** Minutos que vão ser pagos: o que foi escolhido na janela (nunca mais que o saldo), ou o saldo inteiro. */
+export function minutosAPagar(saldoMin, registro = {}) {
+  if (registro.heLiberada !== true || !(saldoMin > 0)) return 0;
+  const escolhido = num(registro.horasPagarMin);
+  return escolhido === null ? saldoMin : Math.max(0, Math.min(saldoMin, Math.round(escolhido)));
+}
+
+const somaLista = (lista) => arred((lista || []).reduce((s, a) => s + (num(a.valor) || 0), 0));
+
 /** Ajuda de custo (combustível), arredondada para cima como na planilha. */
 export function ajudaDeCusto(ficha = {}, gasolina, dias) {
   const km = (num(ficha.kmIda) || 0) + (num(ficha.kmVolta) || 0);
@@ -136,12 +145,18 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
   const salarioPagar = liquidoHolerite ?? salario;
   const ehClt = vinculo === "CLT";
   const bancoMin = ehClt ? saldoBancoAte(ficha.id, competencia, pontoDia, movimentos) : null;
-  const he = ehClt ? valorHoraExtra(bancoMin, salario, registro.heLiberada === true) : 0;
+  const heMin = ehClt ? minutosAPagar(bancoMin, registro) : 0;
+  const he = ehClt ? valorHoraExtra(heMin, salario, heMin > 0) : 0;
   const dias = diasTrabalhados(ficha.id, competencia, pontoDia);
-  const ajuda = ajudaDeCusto(ficha, mes.gasolina, dias);
-  const comissao = comissaoDoMes(ficha, competencia, comissoes, fichas);
-  const ajustes = arred((registro.ajustes || []).reduce((s, a) => s + (num(a.valor) || 0), 0));
-  const variaveis = arred(he + ajuda + comissao + ajustes);
+  const ajudaCalculada = ajudaDeCusto(ficha, mes.gasolina, dias);
+  // Valor fixo do mês, quando alguém digitou na janela, vale no lugar da conta por km.
+  const ajuda = num(registro.ajudaFixa) ?? ajudaCalculada;
+  const comissaoGestao = comissaoDoMes(ficha, competencia, comissoes, fichas);
+  const comissaoManual = somaLista(registro.comissaoManual);
+  const comissao = arred(comissaoGestao + comissaoManual);
+  const bonus = somaLista(registro.bonus);
+  const ajustes = somaLista(registro.ajustes);
+  const variaveis = arred(he + ajuda + comissao + bonus + ajustes);
   const totalMinasLab = arred((paga === "MinasLab" ? salarioPagar : 0) + variaveis);
   const pagarMLab = arred(paga === "M Lab" ? salarioPagar : 0);
   const total = arred(totalMinasLab + pagarMLab);
@@ -149,8 +164,10 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
   const holerite = situacaoHolerite(ficha, holerites, vinculo);
   return {
     pessoaId: ficha.id, nome: ficha.nome, vinculo, paga, salario: arred(salario), liquidoHolerite,
-    salarioEstimado: liquidoHolerite === null, bancoMin, heLiberada: registro.heLiberada === true, he,
-    dias, ajuda, comissao, ajustes, ajustesLista: registro.ajustes || [], totalMinasLab, pagarMLab, total, comEncargos,
+    salarioEstimado: liquidoHolerite === null, bancoMin, heLiberada: registro.heLiberada === true, heMin, he,
+    dias, ajuda, ajudaCalculada, ajudaFixa: num(registro.ajudaFixa) !== null, comissao, comissaoGestao, comissaoManual,
+    bonus, ajustes, ajustesLista: registro.ajustes || [], bonusLista: registro.bonus || [], comissaoManualLista: registro.comissaoManual || [],
+    totalMinasLab, pagarMLab, total, comEncargos,
     holerite, fgts: arred(Object.values(holerites).reduce((s, h) => s + (h.fgts || 0), 0)),
   };
 }
@@ -158,7 +175,7 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
 export function totaisDaFolha(linhas = []) {
   const s = (k) => arred(linhas.reduce((n, l) => n + (Number(l[k]) || 0), 0));
   return {
-    pessoas: linhas.length, salario: s("salario"), he: s("he"), ajuda: s("ajuda"), comissao: s("comissao"), ajustes: s("ajustes"),
+    pessoas: linhas.length, salario: s("salario"), he: s("he"), ajuda: s("ajuda"), comissao: s("comissao"), bonus: s("bonus"), ajustes: s("ajustes"),
     totalMinasLab: s("totalMinasLab"), pagarMLab: s("pagarMLab"), total: s("total"), comEncargos: s("comEncargos"), fgts: s("fgts"),
     divergencias: linhas.filter((l) => ["divergencia", "leitura"].includes(l.holerite.situacao)).length,
     aguardando: linhas.filter((l) => l.holerite.situacao === "aguardando").length,
@@ -180,4 +197,27 @@ export function distribuirRelatorio(relatorio, fichas = []) {
     };
   }
   return { porPessoa, naoEncontrados };
+}
+
+/**
+ * O que o relatório da contabilidade ensina à ficha do RH (alimentação automática).
+ * Só preenche o que está VAZIO, com duas exceções explícitas:
+ *   · salário: quando o mês é cheio (220h de Horas Normais / Pró-labore) o valor é o
+ *     salário exato e corrige a ficha; mês quebrado (admissão, atestado) dá só o
+ *     valor-hora, que tem arredondamento — esse vira aviso, nunca sobrescreve;
+ *   · empresa que paga: vem do código da empresa do relatório quando a ficha não diz.
+ * Devolve { campos, mudancas: ["salário 1.800 → 2.500", …] } — campos vazio = nada a mudar.
+ */
+export function camposDaFichaPeloHolerite(ficha = {}, holerite = {}, codigoEmpresa = "") {
+  const campos = {};
+  const mudancas = [];
+  if (holerite.cadastro && !ficha.cadastroFolha) { campos.cadastroFolha = String(holerite.cadastro); mudancas.push(`cadastro na folha ${holerite.cadastro}`); }
+  if (!ficha.empresaPagadora && EMPRESAS[codigoEmpresa]) { campos.empresaPagadora = EMPRESAS[codigoEmpresa]; mudancas.push(`paga pela ${EMPRESAS[codigoEmpresa]}`); }
+  const cheio = (holerite.eventos || []).find((e) => /^horas (normais|pro-?labore)/.test(norm(e.descricao)) && Math.abs((e.referencia || 0) - 220) < 0.01);
+  const atual = num(ficha.salario);
+  if (cheio && !holerite.rescisao && (atual === null || Math.abs(atual - cheio.valor) >= 0.01)) {
+    campos.salario = String(cheio.valor);
+    mudancas.push(`salário ${atual === null ? "vazio" : moeda(atual)} → ${moeda(cheio.valor)}`);
+  }
+  return { campos, mudancas };
 }
