@@ -14,6 +14,8 @@ import { estaAtivo } from "../lib/cadastros.js";
 import { numeroContrato, saldoServicos } from "../lib/contratos.js";
 import { STATUS_AMOSTRA, PRIORIDADES, COR_STATUS_OS, numeroOS, referenciaAmostra, statusDaOS, code128 } from "../lib/ordens.js";
 import { gerarOS } from "../lib/gerarOS.js";
+import { enderecosDoCliente } from "../lib/clientes.js";
+import { DOCUMENTOS_OS } from "./DocumentosOS.jsx";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
@@ -127,6 +129,11 @@ export function ListaOS({ sessao }) {
   const uma = selecionadas.length === 1 ? selecionadas[0] : null;
   const exigirUma = (fn) => () => (uma ? fn(uma) : avisar("Selecione uma amostra.", "err"));
   const exigir = (fn) => () => (selecionadas.length ? fn() : avisar("Selecione ao menos uma amostra.", "err"));
+  const idsSel = () => [...new Set(selecionadas.map((a) => a.id))].join(".");
+  // Documentos "- O.S" saem com todas as amostras das OS selecionadas.
+  const idsDaOS = () => { const os = new Set(selecionadas.map((a) => a.osId)); return dados.amostras.filter((a) => os.has(a.osId)).sort((a, b) => a.num - b.num).map((a) => a.id).join("."); };
+  const endsCliente = janela?.endereco ? enderecosDoCliente(dados.clientes.find((c) => c.id === janela.endereco[0].clienteId) || {}).filter((e) => e.status !== "Inativo" && (e.end || e.cidade)) : [];
+  const textoEnd = (e) => [e.end, e.num ? `nº ${e.num}` : "", e.comp, e.bairro].filter(Boolean).join(", ") + (e.cidade ? ` - ${e.cidade} / ${e.uf || ""}` : "");
   return (
     <Caixa titulo="Ordem serviços">
       <Grade key={chave} id="os" ocultasPadrao={COLUNAS_OPCIONAIS.slice(4)} exportar="ordens-servico" linhas={dados.amostras} colunas={colunas} filtrosColuna multipla
@@ -134,22 +141,37 @@ export function ListaOS({ sessao }) {
         selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("ordem", r.osId)}
         botoes={[
           { rotulo: "Criar Ordem de serviço", acao: () => setJanela("criar") },
-          { rotulo: "Documentos", acao: exigirUma((a) => navegar("ordem", a.osId)) },
-          { rotulo: "Coleta", acao: exigir(async () => {
-            try {
-              const prontas = selecionadas.filter((a) => ["Aguardando coleta", "Aguardando agendamento"].includes(a.status));
-              if (!prontas.length) { avisar("As amostras selecionadas não estão aguardando coleta.", "err"); return; }
-              for (const a of prontas) await salvar("amostras", { ...a, status: "Em coleta" }, { motivo: "Saiu para coleta" });
-              avisar(`${prontas.length} amostra(s) em coleta. O registro da coleta fica no menu Coletas.`, "ok");
-            } catch (e) { avisar(e.message, "err"); }
-          }) },
+          { rotulo: "Documentos", menu: [
+            { rotulo: "Gerar Etiqueta", acao: exigir(() => navegar("etiquetas", idsSel())) },
+            { rotulo: "Plano de amostragem", acao: exigir(() => navegar("doc-os", `plano.${idsSel()}`)) },
+            { rotulo: "Ficha de coleta - em branco", acao: exigir(() => navegar("ficha-coleta", `branco.${idsSel()}`)) },
+            { rotulo: "Ficha de coleta - Preenchida", acao: exigir(() => navegar("ficha-coleta", idsSel())) },
+            ...DOCUMENTOS_OS.slice(1).map(([k, r]) => ({ rotulo: r, acao: exigir(() => navegar("doc-os", `${k}.${k.endsWith("-os") ? idsDaOS() : idsSel()}`)) })),
+            { rotulo: "Anexo", acao: exigirUma((a) => navegar("ordem", a.osId)) },
+          ] },
+          { rotulo: "Coleta", menu: [
+            { rotulo: "Visualizar Coleta", acao: exigir(() => navegar("ficha-coleta", idsSel())) },
+            { rotulo: "Alterar Endereço de coleta", acao: exigir(() => setJanela({ endereco: selecionadas, escolha: "" })) },
+          ] },
           { rotulo: "Visualizar", acao: exigirUma((a) => setJanela({ ver: a })) },
           { rotulo: "Inspeção técnica", acao: () => navegar("technical-inspection") },
-          { rotulo: "Gerar Etiqueta", acao: exigir(() => navegar("etiquetas", [...new Set(selecionadas.map((a) => a.id))].join("."))) },
           { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },
         ]} />
       {janela === "criar" && <CriarOS sessao={sessao} onFechar={() => setJanela(null)} />}
       {janela?.ver && <VerAmostra a={janela.ver} onFechar={() => setJanela(null)} />}
+      {janela?.endereco && (
+        <Modal titulo="Alterar Endereço de coleta" onFechar={() => setJanela(null)} rotuloOk="Salvar" aoConfirmar={async () => {
+          if (new Set(janela.endereco.map((a) => a.clienteId)).size > 1) { avisar("Selecione amostras de um mesmo cliente.", "err"); return false; }
+          const e = endsCliente.find((x) => x.id === janela.escolha);
+          if (!e) { avisar("Escolha o endereço.", "err"); return false; }
+          try { for (const a of janela.endereco) await salvar("amostras", { ...a, enderecoColeta: textoEnd(e), enderecoColetaId: e.id }, { motivo: "Alterou o endereço de coleta" }); setSel(new Set()); avisar("Endereço de coleta alterado.", "ok"); }
+          catch (x) { avisar(x.message, "err"); return false; }
+        }}>
+          <p style={{ marginTop: 0 }}>{janela.endereco.length} amostra(s) selecionada(s).</p>
+          {endsCliente.length ? endsCliente.map((e) => <label key={e.id} className="radios" style={{ display: "flex", gap: 8, marginBottom: 6 }}><input type="radio" name="endCol" checked={janela.escolha === e.id} onChange={() => setJanela({ ...janela, escolha: e.id })} /> <span><b>{e.tipo}</b> · {textoEnd(e)}</span></label>)
+            : <p className="suave">O cliente não tem endereços cadastrados. Cadastre em Cadastro → Cliente → Endereços.</p>}
+        </Modal>
+      )}
     </Caixa>
   );
 }
@@ -290,24 +312,37 @@ export function Etiquetas({ param }) {
 
 export function Rastreabilidade() {
   const { dados } = useDados();
+  const [aba, setAba] = useState("Rastreabilidade");
+  const [sel, setSel] = useState(new Set());
+  const [chave, setChave] = useState(0);
   const osDe = useMemo(() => Object.fromEntries(dados.ordens.map((o) => [o.id, o])), [dados.ordens]);
-  const linhas = useMemo(() => dados.amostras.flatMap((a) => a.analises.map((x, i) => ({ id: `${a.id}:${i}`, a, x }))), [dados.amostras]);
+  const porAmostra = useMemo(() => dados.amostras.map((a) => ({ id: a.id, a })), [dados.amostras]);
+  const porLote = useMemo(() => dados.amostras.flatMap((a) => a.analises.map((x, i) => ({ id: `${a.id}:${i}`, a, x }))), [dados.amostras]);
   const contrato = (r) => dados.contratos.find((c) => c.id === r.a.contratoId);
+  const lote = aba === "Rastreabilidade" ? (r) => [...new Set(r.a.analises.map((x) => x.lote).filter(Boolean))].join(", ") : (r) => r.x.lote || "";
   const colunas = [
-    { t: "ID", v: (r) => Number(r.a.cod) || 0 },
-    { t: "Lote análise", v: (r) => r.x.lote || "", filtro: true },
+    { t: "ID", v: (r) => Number(r.a.cod) || 0, filtro: true },
+    { t: "Lote análise", v: lote, filtro: true },
     { t: "Cliente", v: (r) => dados.clientes.find((c) => c.id === r.a.clienteId)?.razao || "", filtro: true },
     { t: "Proposta", v: (r) => contrato(r)?.proposta || "", filtro: true },
     { t: "Contrato", v: (r) => osDe[r.a.osId]?.contrato || "", filtro: true },
     { t: "Ordem serviço", v: (r) => r.a.os || "", filtro: true },
-    { t: "Amostra", v: (r) => `${referenciaAmostra(r.a)} · ${r.a.barra}`, filtro: true },
-    { t: "Parâmetro", v: (r) => r.x.nome, filtro: true },
-    { t: "Etapa", v: (r) => r.x.etapa, filtro: true },
+    { t: "Amostra", v: (r) => referenciaAmostra(r.a), filtro: true },
+    ...(aba === "Rastreabilidade" ? [] : [{ t: "Parâmetro", v: (r) => r.x.nome, filtro: true }, { t: "Etapa", v: (r) => r.x.etapa, filtro: "lista" }]),
   ];
+  const linhas = aba === "Rastreabilidade" ? porAmostra : porLote;
+  const r1 = linhas.find((r) => sel.has(r.id));
   return (
     <Caixa titulo="Rastreabilidade">
-      <p className="suave" style={{ marginTop: -6 }}>Cada linha é um parâmetro de uma amostra, com toda a cadeia até o cliente. Dois cliques abrem a OS.</p>
-      <Grade id="rastro" exportar="rastreabilidade" linhas={linhas} colunas={colunas} filtrosColuna ordemInicial={[0, "desc"]} aoAbrir={(r) => navegar("ordem", r.a.osId)} botoes={[]} />
+      <div className="abas" role="tablist">{["Rastreabilidade", "Rastreabilidade por lote"].map((a) => <button key={a} type="button" role="tab" aria-selected={aba === a} className={aba === a ? "on" : ""} onClick={() => { setAba(a); setSel(new Set()); }}>{a}</button>)}</div>
+      <div style={{ marginTop: 14 }}>
+        <Grade key={`${aba}-${chave}`} id={aba === "Rastreabilidade" ? "rastro" : "rastro-lote"} exportar="rastreabilidade" linhas={linhas} colunas={colunas} filtrosColuna ordemInicial={[0, "asc"]}
+          selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("ordem", r.a.osId)}
+          botoes={[
+            { rotulo: "Visualizar", acao: () => (r1 ? navegar("ordem", r1.a.osId) : null), desativado: !r1 },
+            { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },
+          ]} />
+      </div>
     </Caixa>
   );
 }
