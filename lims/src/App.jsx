@@ -22,9 +22,8 @@ import { ListaOS, FichaOS, Etiquetas, Rastreabilidade } from "./pages/Ordens.jsx
 import { Logistica, Coletas, RegistrarColeta, FichaCustodia, Agenda, Descarte } from "./pages/Coletas.jsx";
 import { Inspecao, Protocolo, AnalisePorAmostra, AnaliseAmostra, AnalisePorParametro } from "./pages/Laboratorio.jsx";
 import { RevisaoResultado, RevisaoCertificado, CertificadoOS } from "./pages/Revisao.jsx";
-import { ContasReceber, BoletimMedicao, ContasPagar, FluxoCaixa, NotasServico } from "./pages/Financeiro.jsx";
+import { ContasReceber, BoletimMedicao } from "./pages/Financeiro.jsx";
 import { RelatorioAmostras, RelatorioCentroCusto, DashboardFinanceiro } from "./pages/Relatorios.jsx";
-import { CartaControle } from "./pages/Qualidade.jsx";
 import { ContratosPendentes, ListaContratos, FichaContrato, DetalhesContrato, PlanoColeta, PlanoColetaAutomatico } from "./pages/Contratos.jsx";
 
 // Tela → [componente, migalhas]. Telas do menu ainda não construídas abrem
@@ -65,13 +64,9 @@ const TELAS = {
   certificado: [CertificadoOS, () => [["Revisão", link("list-revisions")], ["Certificado"]]],
   "bills-to-receive": [ContasReceber, () => [["Financeiro"], ["Contas a receber"]]],
   boletim: [BoletimMedicao, () => [["Financeiro", link("bills-to-receive")], ["Boletim de Medição"]]],
-  "bills-to-pay": [ContasPagar, () => [["Financeiro"], ["Contas a pagar"]]],
-  extract: [FluxoCaixa, () => [["Financeiro"], ["Fluxo de Caixa"]]],
-  "notas-fiscais": [NotasServico, () => [["Financeiro"], ["Notas fiscais de Serviços"]]],
   "report-sample": [RelatorioAmostras, () => [["Relatórios"], ["Relatórios de amostras"]]],
   "report-cost-center": [RelatorioCentroCusto, () => [["Relatórios"], ["Relatórios de centro de custos"]]],
   "dashboard-financeiro": [DashboardFinanceiro, () => [["Relatórios"], ["Dashboard Financeiro"]]],
-  "carta-controle": [CartaControle, () => [["Gestão da qualidade"], ["Carta controle"]]],
   "collection-plan-auto": [PlanoColetaAutomatico, (param) => [["Contratos", link("contracts")], ["Contrato", link("contract", param)], ["Plano de Coleta automático"]]],
   configs: [ConfigSistema, () => [["Configurações"], ["Configuração do sistema"]]],
   "permissoes-de-acesso": [Permissoes, () => [["Configurações"], ["Permissões de acesso"]]],

@@ -7,8 +7,7 @@
 
 export const MENU = [
   ["Relatórios", [["Relatórios de amostras", "report-sample", true], ["Relatórios de centro de custos", "report-cost-center", true], ["Dashboard Financeiro", "dashboard-financeiro", true]]],
-  ["Gestão da qualidade", [["Gestão de não conformidades", "occurrence", true], ["Gestão de arquivos", "filemanagement", true], ["Amostras Controle de Qualidade", "samples-cq", true], ["Carta controle", "carta-controle", true], ["Homologação", "homologation", true], ["Gestão de Capacitação", "training-management", true]]],
-  ["Financeiro", [["Contas a receber", "bills-to-receive", true], ["Contas a pagar", "bills-to-pay", true], ["Fluxo de Caixa", "extract", true], ["Notas fiscais de Serviços", "notas-fiscais", true], ["Notas fiscais de Entrada", "nota-fiscal-entrada", true], ["Centro de custos", "costcenter", true]]],
+  ["Financeiro", [["Contas a receber", "bills-to-receive", true]]],
   ["Cadastro", [["Solicitantes", "solicitantes", true], ["Cliente / Fornecedor", "customers", true]]],
   ["Propostas", [["Criar Proposta", "criar-proposta", true], ["Listar Propostas", "proposedlist", true]]],
   ["Contratos", [["Contratos Pendentes", "notification-pedents", true], ["Contratos", "contracts", true]]],

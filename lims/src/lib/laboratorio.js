@@ -146,39 +146,3 @@ export function progressoOS(amostras) {
   const prontas = vivas.filter((a) => ["Assinatura", "Faturamento", "Concluída"].includes(a.status));
   return { total: vivas.length, prontas: prontas.length, pct: vivas.length ? Math.round((prontas.length * 100) / vivas.length) : 0 };
 }
-
-/* ---------- Carta controle (CQ) ---------- */
-
-export function estatistica(valores) {
-  const v = valores.map(numero).filter((x) => x !== null);
-  if (!v.length) return { n: 0, media: 0, dp: 0 };
-  const media = v.reduce((s, x) => s + x, 0) / v.length;
-  const dp = v.length > 1 ? Math.sqrt(v.reduce((s, x) => s + (x - media) ** 2, 0) / (v.length - 1)) : 0;
-  return { n: v.length, media, dp };
-}
-
-// Regras de Westgard mais usadas: 1-3s (ponto fora de 3 DP) e 2-2s (dois
-// seguidos além de 2 DP do mesmo lado). Devolve o índice e a regra violada.
-export function violacoes(valores, media, dp) {
-  if (!dp) return [];
-  const z = valores.map((x) => (numero(x) - media) / dp);
-  const out = [];
-  z.forEach((v, i) => {
-    if (Math.abs(v) > 3) out.push({ i, regra: "1-3s" });
-    else if (i > 0 && ((v > 2 && z[i - 1] > 2) || (v < -2 && z[i - 1] < -2))) out.push({ i, regra: "2-2s" });
-  });
-  return out;
-}
-
-/* ---------- Fluxo de caixa ---------- */
-
-// Junta contas a receber (entrada) e a pagar (saída) num período.
-export function fluxoCaixa(receber, pagar, de, ate) {
-  const dentro = (d) => d && (!de || d >= de) && (!ate || d <= ate);
-  const linhas = [
-    ...receber.filter((r) => dentro(r.pagoEm || r.venc)).map((r) => ({ id: `r:${r.id}`, descricao: r.descricao || `Fatura ${r.cod || ""}`, valor: Number(r.valorPago ?? r.valor) || 0, categoria: r.categoria || "Receita de análises", status: r.status === "Pago" ? "Realizado" : "Previsto", data: r.pagoEm || r.venc })),
-    ...pagar.filter((p) => dentro(p.dataPagamento || p.vencimento)).map((p) => ({ id: `p:${p.id}`, descricao: p.nome || "Despesa", valor: -(Number(p.valorPago || p.valor) || 0), categoria: p.categoria || "Despesa", status: p.statusPagamento === "Pago" ? "Realizado" : "Previsto", data: p.dataPagamento || p.vencimento })),
-  ].sort((a, b) => a.data.localeCompare(b.data));
-  const soma = (f) => Math.round(linhas.filter(f).reduce((s, l) => s + l.valor, 0) * 100) / 100;
-  return { linhas, entradas: soma((l) => l.valor > 0), saidas: soma((l) => l.valor < 0), realizado: soma((l) => l.status === "Realizado"), previsto: soma(() => true) };
-}
