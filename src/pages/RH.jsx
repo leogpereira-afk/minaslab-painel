@@ -53,6 +53,7 @@ import AbaFerias from "../components/rh/AbaFerias.jsx";
 import AbaFeedback from "../components/rh/AbaFeedback.jsx";
 import AbaExames from "../components/rh/AbaExames.jsx";
 import AbaVencimentos from "../components/rh/AbaVencimentos.jsx";
+import AbaFolhaPagamento from "../components/rh/AbaFolhaPagamento.jsx";
 
 // Todo campo da ficha nasce aqui: campo ausente no VAZIO chega `undefined` no
 // input e o React troca o campo de controlado para não controlado no meio da
@@ -147,7 +148,7 @@ export default function RH() {
   const [aviso, setAviso] = useState(null);
   const [params, setParams] = useSearchParams();
   const abaDoLink = params.get("aba");
-  const aba = ["gestao", "pessoas", "ferias", "feedback", "exames", "vencimentos", "relatorios"].includes(abaDoLink) ? abaDoLink : "gestao";
+  const aba = ["gestao", "pessoas", "ferias", "feedback", "exames", "vencimentos", "relatorios", "folha"].includes(abaDoLink) ? abaDoLink : "gestao";
   const setAba = (valor) => setParams(atual => { const proximo = new URLSearchParams(atual); proximo.set("aba", valor); return proximo; });
   const [pessoaGestao, setPessoaGestao] = useState("");
   const [busca, setBusca] = useState("");
@@ -760,6 +761,8 @@ export default function RH() {
             { valor: "ferias", rotulo: "Férias" },
             { valor: "feedback", rotulo: "Feedback" },
             { valor: "exames", rotulo: "Exames" },
+            // Folha de Pagamento: salário e valores são da direção (rh_* no servidor).
+            ...(sessao?.papel === "direcao" ? [{ valor: "folha", rotulo: "Folha de Pagamento" }] : []),
             { valor: "vencimentos", rotulo: "Vencimentos" },
             { valor: "relatorios", rotulo: "Relatórios" },
           ]}
@@ -862,6 +865,10 @@ export default function RH() {
           apagarReg={apagarRegistro}
           setAviso={setAviso}
         />
+      )}
+
+      {aba === "folha" && sessao?.papel === "direcao" && (
+        <AbaFolhaPagamento pessoas={dados.pessoas} editavel={editavel} setAviso={setAviso} />
       )}
 
       {aba === "vencimentos" && (
