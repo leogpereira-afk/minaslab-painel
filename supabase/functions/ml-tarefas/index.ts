@@ -128,7 +128,12 @@ async function carregarTarefa(c: Ctx, id: unknown) {
   if (!envolvido && !c.direcao) erro(403, "Você não participa desta tarefa.");
   return {
     t: t as Tarefa, participantes, observadores,
-    gestor: ehProprietario || ehResponsavel || c.direcao, // edita, delega, conclui, mexe nas pessoas
+    gestor: ehProprietario || ehResponsavel || c.direcao, // conclui e reabre
+    // EDITAR a tarefa (nome, descrição, prazo, lembrete, urgente, marcadores, participantes e
+    // observadores) é SÓ do proprietário — decisão da Ana, 05/11/2026. A direção não edita.
+    editor: ehProprietario,
+    // Passar para outra pessoa: o proprietário e o responsável.
+    delegador: ehProprietario || ehResponsavel,
     colaborador: ehProprietario || ehResponsavel || ehParticipante || c.direcao, // checklist e iniciar
   };
 }
@@ -260,7 +265,7 @@ async function obter(c: Ctx, b: any) {
     },
     checklist: checklist ?? [], mensagens: mensagens ?? [], visualizacoes: (leituras ?? []).filter((l: any) => l.usuario !== c.eu), subtarefas: filhas ?? [], pai, recorrencia,
     anexos: (anexos ?? []).map((x: any) => ({ id: x.id, nome: x.nome, tipo: x.tipo, tamanho: x.tamanho, autor: x.autor, criadoEm: x.criado_em })),
-    nomes, eu: c.eu, pode: { gerir: a.gestor, colaborar: a.colaborador, excluir: t.proprietario === c.eu || c.direcao },
+    nomes, eu: c.eu, pode: { gerir: a.gestor, editar: a.editor, delegar: a.delegador, colaborar: a.colaborador, excluir: t.proprietario === c.eu || c.direcao },
   };
 }
 
@@ -318,7 +323,7 @@ async function criar(c: Ctx, b: any) {
 
 async function atualizar(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
-  if (!a.gestor) erro(403, "Só o proprietário, o responsável ou a direção editam a tarefa.");
+  if (!a.editor) erro(403, "Só o proprietário da tarefa pode editá-la.");
   const mudou: Record<string, unknown> = {};
   const avisos: string[] = [];
   const quem = nomeDe(c, c.eu);
@@ -347,7 +352,7 @@ async function atualizar(c: Ctx, b: any) {
 
 async function delegar(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
-  if (!a.gestor) erro(403, "Só o proprietário, o responsável ou a direção passam a tarefa para outra pessoa.");
+  if (!a.delegador) erro(403, "Só o proprietário ou o responsável passam a tarefa para outra pessoa.");
   const novo = txt(b.responsavel);
   exigirUsuarios(c, [novo]);
   if (novo === a.t.responsavel) return { ok: true, semMudanca: true };
@@ -400,7 +405,7 @@ async function mudarStatus(c: Ctx, b: any) {
 
 async function definirPessoas(c: Ctx, b: any) {
   const a = await carregarTarefa(c, b.id);
-  if (!a.gestor) erro(403, "Só o proprietário, o responsável ou a direção mudam as pessoas da tarefa.");
+  if (!a.editor) erro(403, "Só o proprietário da tarefa muda as pessoas dela.");
   const participantes = unicos(Array.isArray(b.participantes) ? b.participantes : []).filter((u) => u !== a.t.responsavel && u !== a.t.proprietario);
   const observadores = unicos(Array.isArray(b.observadores) ? b.observadores : []).filter((u) => u !== a.t.responsavel && u !== a.t.proprietario && !participantes.includes(u));
   exigirUsuarios(c, [...participantes, ...observadores]);
