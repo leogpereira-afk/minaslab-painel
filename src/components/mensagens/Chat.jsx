@@ -1,7 +1,7 @@
 // Uma conversa aberta: mensagens, envio, tique de "visualizado" e participantes do grupo.
 // Atualiza sozinha a cada poucos segundos (só as mensagens novas, pela posição `seq`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCheck, Loader2, Mic, PanelRight, Paperclip, Pencil, Send, Smile, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Loader2, Mic, PanelRight, Paperclip, Pencil, Reply, Send, Smile, Trash2, UserPlus, X } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
 import SobreConversa from "./SobreConversa.jsx";
@@ -42,6 +42,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
   const ultimaSeq = useRef(0);
   const ultimaSync = useRef(""); // hora do servidor na última consulta: traz as editadas/apagadas desde então
   const [editando, setEditando] = useState(null); // mensagem minha sendo editada
+  const [respondendo, setRespondendo] = useState(null); // mensagem que está sendo respondida (citação)
 
   const aplicar = useCallback((r, { substituir }) => {
     if (r.agora) ultimaSync.current = r.agora;
@@ -67,7 +68,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
   }, [id, aplicar, aoMudou]);
 
   useEffect(() => {
-    setDados(null); setMensagens([]); setTexto(""); setErro(""); setEditando(null); ultimaSeq.current = 0; ultimaSync.current = ""; colarNoFim.current = true;
+    setDados(null); setMensagens([]); setTexto(""); setErro(""); setEditando(null); setRespondendo(null); ultimaSeq.current = 0; ultimaSync.current = ""; colarNoFim.current = true;
     void carregar({ inicial: true });
     const t = setInterval(() => { if (!document.hidden) void carregar(); }, INTERVALO);
     const volta = () => { if (!document.hidden) void carregar(); };
@@ -94,8 +95,28 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
   const ehUsuario = useCallback((u) => logins.has(u), [logins]);
   const pessoas = useMemo(() => (dados?.membros || []).filter((m) => m.usuario !== eu).map((m) => ({ usuario: m.usuario, nome: dados?.nomes?.[m.usuario] || usuarios.find((x) => x.usuario === m.usuario)?.nome || m.usuario })), [dados?.membros, dados?.nomes, usuarios, eu]);
 
+  // Responder uma mensagem específica: a citação vai junto com a próxima mensagem enviada.
+  const resumoDe = (m) => (m.apagada ? "" : m.texto ? m.texto.replace(/\s+/g, " ").slice(0, 140) : ehAudioMensagem(m) ? "🎤 Mensagem de voz" : m.anexo ? `📎 ${m.anexo.nome}` : "");
+  const comecarResposta = (m) => {
+    if (!m || m.apagada || m.seq == null) return;
+    if (editando) { setEditando(null); setTexto(""); }
+    setRespondendo(m);
+    requestAnimationFrame(() => campo.current?.focus());
+  };
+  const cancelarResposta = () => { setRespondendo(null); campo.current?.focus(); };
+  const citacaoLocal = (m) => (m ? { id: m.id, autor: m.autor, texto: resumoDe(m), apagada: false } : null);
+  // Clicar na citação leva até a mensagem original (se ela estiver carregada) e pisca.
+  const irParaMensagem = (mid) => {
+    const el = document.getElementById(`msg-${mid}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-amber-400", "rounded-2xl");
+    setTimeout(() => el.classList.remove("ring-2", "ring-amber-400", "rounded-2xl"), 1600);
+  };
+
   const comecarEdicao = (m) => {
     if (!m) return;
+    setRespondendo(null);
     setEditando(m);
     setTexto(m.texto || "");
     requestAnimationFrame(() => { const el = campo.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
@@ -124,19 +145,22 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
     if (editando) { await salvarEdicao(); return; }
     const t = texto.trim();
     if (!t || enviando || !dados) return;
-    const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: t, apagada: false, criadoEm: new Date().toISOString() };
+    const citada = respondendo;
+    const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: t, apagada: false, criadoEm: new Date().toISOString(), resposta: citacaoLocal(citada) };
     colarNoFim.current = true;
     setMensagens((l) => [...l, provisoria]);
     setTexto("");
+    setRespondendo(null);
     setEnviando(true);
     try {
-      const r = await conversaEnviar(id, t);
+      const r = await conversaEnviar(id, t, citada?.id || null);
       setMensagens((l) => mesclarMensagens(l.filter((m) => m.id !== provisoria.id), [r.mensagem]));
       ultimaSeq.current = Math.max(ultimaSeq.current, r.mensagem.seq);
       aoMudou?.();
     } catch (ex) {
       setMensagens((l) => l.filter((m) => m.id !== provisoria.id));
       setTexto(t);
+      setRespondendo(citada);
       setErro(ex.message);
     } finally { setEnviando(false); campo.current?.focus(); }
   };
@@ -149,14 +173,17 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
     const validos = arquivos.filter((a) => !problemaDoArquivo(a, EXTENSOES_MENSAGEM));
     setErro(recusados.join(" "));
     let legenda = texto.trim();
+    let citada = validos.length ? respondendo : null; // a citação vai com o primeiro arquivo
+    if (citada) setRespondendo(null);
     setEnviando(true);
     for (const arq of validos) {
-      const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: legenda, anexo: { nome: arq.name, tamanho: arq.size }, apagada: false, criadoEm: new Date().toISOString() };
+      const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: legenda, anexo: { nome: arq.name, tamanho: arq.size }, apagada: false, criadoEm: new Date().toISOString(), resposta: citacaoLocal(citada) };
       colarNoFim.current = true;
       setMensagens((l) => [...l, provisoria]);
       try {
         const { nome, base64 } = await lerArquivoParaEnvio(arq);
-        const r = await conversaEnviarArquivo(id, nome, base64, legenda);
+        const r = await conversaEnviarArquivo(id, nome, base64, legenda, citada?.id || null);
+        citada = null;
         setMensagens((l) => mesclarMensagens(l.filter((m) => m.id !== provisoria.id), [r.mensagem]));
         ultimaSeq.current = Math.max(ultimaSeq.current, r.mensagem.seq);
         if (legenda) { setTexto(""); legenda = ""; }
@@ -176,13 +203,15 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
     setGravando(false);
     if (!dados) return;
     const nome = `audio-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}.${ext}`;
-    const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: "", anexo: { nome, tipo: blob.type || "audio/webm", tamanho: blob.size, duracao }, apagada: false, criadoEm: new Date().toISOString() };
+    const citada = respondendo;
+    setRespondendo(null);
+    const provisoria = { id: `local-${++contadorLocal}`, seq: null, autor: eu, tipo: "mensagem", texto: "", anexo: { nome, tipo: blob.type || "audio/webm", tamanho: blob.size, duracao }, apagada: false, criadoEm: new Date().toISOString(), resposta: citacaoLocal(citada) };
     colarNoFim.current = true;
     setMensagens((l) => [...l, provisoria]);
     setEnviando(true);
     try {
       const { base64 } = await lerArquivoParaEnvio(new File([blob], nome, { type: blob.type }));
-      const r = await conversaEnviarAudio(id, nome, base64, duracao);
+      const r = await conversaEnviarAudio(id, nome, base64, duracao, citada?.id || null);
       setMensagens((l) => mesclarMensagens(l.filter((m) => m.id !== provisoria.id), [r.mensagem]));
       ultimaSeq.current = Math.max(ultimaSeq.current, r.mensagem.seq);
       aoMudou?.();
@@ -275,14 +304,16 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
           const situacao = minha ? situacaoDaMensagem(m, dados.membros, eu) : null;
           const viram = grupo && minha && situacao ? quemViu(m, dados.membros, eu) : [];
           return (
-            <div key={it.chave} className={clsx("group flex items-end gap-1.5", minha ? "justify-end" : "justify-start", !mesmoAutor && "pt-1.5")}>
+            <div key={it.chave} id={m.id ? `msg-${m.id}` : undefined} className={clsx("group flex items-end gap-1.5 transition", minha ? "justify-end" : "justify-start", !mesmoAutor && "pt-1.5")}>
               {!minha && grupo && (mesmoAutor ? <span className="w-7 shrink-0" /> : <Avatar usuario={m.autor} nome={nomeDe(m.autor)} tamanho={28} />)}
+              {minha && !m.apagada && m.seq != null && <BotaoResponder aoResponder={() => comecarResposta(m)} />}
               {minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="esquerda" />}
               {minha && !m.apagada && m.seq != null && !ehAudioMensagem(m) && <button type="button" className="mb-1 rounded p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600" onClick={() => comecarEdicao(m)} aria-label="Editar mensagem" title="Editar mensagem"><Pencil size={13} /></button>}
               {minha && !m.apagada && m.seq != null && <button type="button" className="mb-1 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => apagar(m)} aria-label="Apagar mensagem" title="Apagar mensagem"><Trash2 size={13} /></button>}
               <div onDoubleClick={() => { if (!m.apagada && m.seq != null) { window.getSelection?.()?.removeAllRanges?.(); void reagir(m, "👍"); } }} title={!m.apagada && m.seq != null ? "Dois cliques para curtir 👍" : undefined}
                 className={clsx("max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm", minha ? "rounded-br-md bg-sky-100 text-slate-900" : "rounded-bl-md bg-white text-slate-900", !minha && !m.apagada && mencionaUsuario(m.texto, eu, ehUsuario) && "bg-amber-50 ring-2 ring-amber-300", editando?.id === m.id && "ring-2 ring-sky-400")}>
                 {!minha && grupo && !mesmoAutor && <p className="text-xs font-semibold" style={{ color: corDoAvatar(m.autor) }}>{nomeDe(m.autor)}</p>}
+                {m.resposta && !m.apagada && <Citacao c={m.resposta} nomeDe={nomeDe} eu={eu} minha={minha} aoClicar={() => irParaMensagem(m.resposta.id)} />}
                 {m.apagada ? <p className="italic text-slate-400">Mensagem apagada</p> : <>{m.anexo && <AnexoMensagem conversaId={id} mensagem={m} minha={minha} />}{m.texto && <TextoRico texto={m.texto} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} className={m.anexo ? "mt-1.5" : undefined} />}</>}
                 {!m.apagada && <ReacoesMensagem reacoes={dados.reacoes?.[m.id]} eu={eu} nomes={dados.nomes || {}} aoAlternar={(e) => reagir(m, e)} minha={minha} />}
                 <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
@@ -293,12 +324,23 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
                 {viram.length > 0 && !grupoTodosViram(viram, dados.membros, eu) && <p className="text-right text-[10px] text-slate-400">Visto por {viram.map((u) => nomeDe(u).split(" ")[0]).join(", ")}</p>}
               </div>
               {!minha && !m.apagada && m.seq != null && <BotaoReagir aoReagir={(e) => reagir(m, e)} lado="direita" />}
+              {!minha && !m.apagada && m.seq != null && <BotaoResponder aoResponder={() => comecarResposta(m)} />}
             </div>
           );
         })}
       </div>
 
       {erro && <div role="alert" className="border-t bg-red-50 px-3 py-2 text-sm text-red-700" style={{ borderColor: "var(--hairline)" }}>{erro}</div>}
+      {respondendo && !editando && (
+        <div className="flex items-center gap-2 border-t bg-white px-3 py-1.5" style={{ borderColor: "var(--hairline)" }} role="status">
+          <Reply size={14} className="shrink-0 text-sky-700" aria-hidden="true" />
+          <div className="min-w-0 flex-1 border-l-4 pl-2" style={{ borderColor: corDoAvatar(respondendo.autor) }}>
+            <p className="text-xs font-semibold" style={{ color: corDoAvatar(respondendo.autor) }}>Respondendo a {respondendo.autor === eu ? "você" : nomeDe(respondendo.autor)}</p>
+            <p className="truncate text-xs text-slate-600">{resumoDe(respondendo) || "Mensagem"}</p>
+          </div>
+          <button type="button" className="rounded p-1 text-slate-500 hover:bg-slate-100" onClick={cancelarResposta} aria-label="Cancelar resposta" title="Cancelar resposta (Esc)"><X size={14} /></button>
+        </div>
+      )}
       {editando && (
         <div className="flex items-center gap-2 border-t bg-sky-50 px-3 py-1.5 text-xs text-sky-900" style={{ borderColor: "var(--hairline)" }} role="status">
           <Pencil size={13} aria-hidden="true" />
@@ -313,7 +355,7 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
             {!compacto && anexarEmoji}
             <EditorMensagem campo={campo} texto={texto} setTexto={setTexto} aoEnviar={() => void enviar()} aoColarArquivos={(f) => void enviarArquivos(f)}
               pessoas={pessoas} grupo={grupo} nomeDe={nomeDe} ehUsuario={ehUsuario} eu={eu} desabilitado={enviando} compacto={compacto}
-              aoCancelar={editando ? cancelarEdicao : null} aoSetaCima={() => comecarEdicao(ultimaEditavel(mensagens, eu))}>
+              aoCancelar={editando ? cancelarEdicao : respondendo ? cancelarResposta : null} aoSetaCima={() => comecarEdicao(ultimaEditavel(mensagens, eu))}>
               {compacto && <><span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />{anexarEmoji}</>}
             </EditorMensagem>
             {editando
@@ -338,4 +380,20 @@ export default function Chat({ id, usuarios, aoVoltar, aoMudou, aoSairDoGrupo, c
 // Em grupo, "Visto por ..." só aparece enquanto nem todos viram (todos viram = tique azul duplo basta).
 function grupoTodosViram(viram, membros, eu) {
   return viram.length === membros.filter((m) => m.usuario !== eu).length;
+}
+
+// Botão "Responder" ao lado do balão (aparece ao passar o mouse; no celular fica sempre visível).
+function BotaoResponder({ aoResponder }) {
+  return <button type="button" className="mb-1 hidden rounded p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600 group-hover:block group-focus-within:block [@media(hover:none)]:block" onClick={aoResponder} aria-label="Responder esta mensagem" title="Responder"><Reply size={14} /></button>;
+}
+
+// A mensagem citada, em cima do texto da resposta. Clicar leva até a original.
+function Citacao({ c, nomeDe, eu, minha, aoClicar }) {
+  const cor = c.autor ? corDoAvatar(c.autor) : "#94a3b8";
+  return (
+    <button type="button" onClick={aoClicar} className={clsx("mb-1 block w-full rounded-lg border-l-4 px-2 py-1 text-left", minha ? "bg-sky-200/60 hover:bg-sky-200" : "bg-slate-100 hover:bg-slate-200")} style={{ borderColor: cor }} title="Ver a mensagem original">
+      <span className="block text-xs font-semibold" style={{ color: cor }}>{c.autor ? (c.autor === eu ? "Você" : nomeDe(c.autor)) : "Mensagem"}</span>
+      <span className={clsx("line-clamp-2 text-xs", c.apagada ? "italic text-slate-400" : "text-slate-600")}>{c.apagada ? "Mensagem apagada" : c.texto || "Mensagem"}</span>
+    </button>
+  );
 }

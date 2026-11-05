@@ -17,7 +17,8 @@ export const conversasContar = () => msg("contar");
 export const conversaAbrirDireta = (com) => msg("abrir_direta", { com });
 export const conversaCriarGrupo = (nome, membros) => msg("criar_grupo", { nome, membros });
 export const conversaObter = (id, extra = {}) => msg("obter", { id, ...extra });
-export const conversaEnviar = (id, texto) => msg("enviar", { id, texto });
+// respondeA: id da mensagem citada ("responder" uma mensagem específica), ou vazio.
+export const conversaEnviar = (id, texto, respondeA = null) => msg("enviar", { id, texto, responde_a: respondeA });
 export const conversaMembros = (id, adicionar = [], remover = []) => msg("membros", { id, adicionar, remover });
 export const conversaSair = (id) => msg("sair", { id });
 export const conversaRenomear = (id, nome) => msg("renomear", { id, nome });
@@ -29,8 +30,8 @@ export const avisarContador = () => { try { window.dispatchEvent(new Event("mens
 export const conversaFotoGrupo = (id, base64) => msg("foto_grupo", { id, base64 });
 export const conversaFotoGrupoRemover = (id) => msg("foto_grupo", { id, remover: true });
 export const conversaDescricao = (id, descricao) => msg("descricao", { id, descricao });
-export const conversaEnviarArquivo = (id, nome, base64, texto = "") => msg("enviar_arquivo", { id, nome, base64, texto });
+export const conversaEnviarArquivo = (id, nome, base64, texto = "", respondeA = null) => msg("enviar_arquivo", { id, nome, base64, texto, responde_a: respondeA });
 export const conversaArquivoUrl = (id, mensagemId, baixar = false) => msg("arquivo_url", { id, mensagem_id: mensagemId, baixar });
-export const conversaEnviarAudio = (id, nome, base64, duracao) => msg("enviar_arquivo", { id, nome, base64, duracao });
+export const conversaEnviarAudio = (id, nome, base64, duracao, respondeA = null) => msg("enviar_arquivo", { id, nome, base64, duracao, responde_a: respondeA });
 export const conversaEditarMensagem = (id, mensagemId, texto) => msg("editar_mensagem", { id, mensagem_id: mensagemId, texto });
 export const conversaReagir = (id, mensagemId, emoji) => msg("reagir", { id, mensagem_id: mensagemId, emoji });
