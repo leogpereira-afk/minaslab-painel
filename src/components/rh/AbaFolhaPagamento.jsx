@@ -177,19 +177,19 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
       titulo: `Folha de Pagamento — ${rotuloMes(competencia)}`,
       colunas: [
         { chave: "nome", rotulo: "Colaborador" }, { chave: "vinculo", rotulo: "Vínculo" }, { chave: "paga", rotulo: "Forma de pagamento" },
-        { chave: "salario", rotulo: "Salário (ficha)", tipo: "dinheiro" }, { chave: "liquido", rotulo: "Líquido holerite", tipo: "dinheiro" },
+        { chave: "salario", rotulo: "Salário (ficha)", tipo: "dinheiro" }, { chave: "dias", rotulo: "Dias pagos (de 30)" }, { chave: "salarioMes", rotulo: "Salário do mês", tipo: "dinheiro" }, { chave: "liquido", rotulo: "Líquido holerite", tipo: "dinheiro" },
         { chave: "banco", rotulo: "Banco de horas" }, { chave: "hePagas", rotulo: "Horas extras pagas" }, { chave: "he", rotulo: "Hora extra 50%", tipo: "dinheiro" },
         { chave: "ajuda", rotulo: "Ajuda de custo", tipo: "dinheiro" }, { chave: "comissao", rotulo: "Comissão", tipo: "dinheiro" },
-        { chave: "bonus", rotulo: "Bônus", tipo: "dinheiro" }, { chave: "ajustes", rotulo: "Ajustes", tipo: "dinheiro" }, { chave: "motivos", rotulo: "Motivos (bônus, comissão manual, ajustes)" },
+        { chave: "bonus", rotulo: "Bônus", tipo: "dinheiro" }, { chave: "ajustes", rotulo: "Ajustes", tipo: "dinheiro" }, { chave: "extras", rotulo: "Total de extras", tipo: "dinheiro" }, { chave: "motivos", rotulo: "Motivos (bônus, comissão manual, ajustes)" },
         { chave: "totalMinasLab", rotulo: "Total MinasLab", tipo: "dinheiro" }, { chave: "pagarMLab", rotulo: "Pagar pela M Lab", tipo: "dinheiro" },
         { chave: "total", rotulo: "Total geral", tipo: "dinheiro" }, { chave: "comEncargos", rotulo: "Total com encargos", tipo: "dinheiro" },
         { chave: "holerite", rotulo: "Holerite" },
       ],
       linhas: [...linhas.map((l) => ({
-        ...l, liquido: l.liquidoHolerite ?? "", banco: l.bancoMin === null ? "" : horas(l.bancoMin), hePagas: l.heMin ? hhmm(l.heMin) : "",
+        ...l, liquido: l.liquidoHolerite ?? "", dias: l.diasPagar ?? 30, banco: l.bancoMin === null ? "" : horas(l.bancoMin), hePagas: l.heMin ? hhmm(l.heMin) : "",
         motivos: [...l.bonusLista.map((a) => `bônus ${n2(a.valor)} ${a.motivo}`), ...l.comissaoManualLista.map((a) => `comissão ${n2(a.valor)} ${a.motivo}`), ...l.ajustesLista.map((a) => `ajuste ${n2(a.valor)} ${a.motivo}`)].join("; "),
         holerite: [SITUACAO[l.holerite.situacao][0], ...l.holerite.avisos].join(" — "),
-      })), { nome: "Total da folha", ...t, liquido: "", banco: "", hePagas: "", motivos: "", holerite: "" }],
+      })), { nome: "Total da folha", ...t, dias: "", liquido: "", banco: "", hePagas: "", motivos: "", holerite: "" }],
     });
   }
 
@@ -199,7 +199,9 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
   const fichaAberta = aberta && fichas.find((f) => f.id === aberta);
   const divergentes = linhas.filter((l) => l.holerite.avisos.length);
   const ultimaImport = (mes?.importacoes || []).at(-1);
-  const COLS = ["Colaborador", "Vínculo", "Paga", "Salário", "Líquido holerite", "Banco de horas", "HE 50%", "Ajuda de custo", "Comissão", "Bônus", "Ajustes", "Total MinasLab", "Pagar M Lab", "Total", "Com encargos", "Holerite", ""];
+  // Extras = hora extra + ajuda de custo + comissão + bônus + ajustes. O detalhe fica na janela da pessoa.
+  const COLS = ["Colaborador", "Vínculo", "Paga", "Salário", "Líquido holerite", "Banco de horas", "Extras", "Total MinasLab", "Pagar M Lab", "Total", "Com encargos", "Holerite", ""];
+  const composicao = (l) => [["Hora extra", l.he], ["Ajuda de custo", l.ajuda], ["Comissão", l.comissao], ["Bônus", l.bonus], ["Ajustes", l.ajustes]].filter(([, v]) => v).map(([r, v]) => `${r} ${n2(v)}`).join(" · ");
 
   return (
     <div className="space-y-4">
@@ -207,7 +209,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-display text-lg font-bold text-slate-900">Folha de Pagamento</h2>
-            <p className="text-xs text-slate-500">Clique em uma pessoa para lançar hora extra, ajuda de custo, comissão, bônus e ajustes.</p>
+            <p className="text-xs text-slate-500">Clique em uma pessoa para ver o detalhe e lançar hora extra, ajuda de custo, comissão, bônus, ajustes e salário proporcional.</p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-slate-600">Mês
@@ -254,9 +256,9 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
       <Card className="p-0">
         {linhas.length === 0 ? <Empty>Ninguém no quadro neste mês.</Empty> : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1400px] text-sm">
+            <table className="w-full min-w-[1100px] text-sm">
               <thead className="bg-slate-50 text-left text-xs text-slate-600">
-                <tr>{COLS.map((h, i) => <th key={h || i} className={clsx("px-2 py-2.5 font-semibold", i >= 3 && i <= 14 && "text-right")}>{h}</th>)}</tr>
+                <tr>{COLS.map((h, i) => <th key={h || i} className={clsx("px-2 py-2.5 font-semibold", i >= 3 && i <= 10 && "text-right")}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {linhas.map((l) => {
@@ -266,14 +268,10 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
                       <td className="px-2 py-2"><button type="button" className="text-left font-medium text-slate-900 hover:text-teal-800 hover:underline" onClick={(e) => { e.stopPropagation(); setAberta(l.pessoaId); }}>{l.nome}</button></td>
                       <td className="px-2 py-2">{l.vinculo}</td>
                       <td className="px-2 py-2">{l.paga}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{n2(l.salario)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{n2(l.salarioMes)}{l.diasPagar !== null && <span className="block text-[11px] text-amber-700">{l.diasPagar} de 30 dias</span>}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{l.liquidoHolerite === null ? vazio() : n2(l.liquidoHolerite)}</td>
                       <td className={clsx("px-2 py-2 text-right tabular-nums font-semibold", l.bancoMin > 0 ? "text-teal-700" : l.bancoMin < 0 ? "text-red-700" : "text-slate-500")}>{l.bancoMin === null ? vazio() : horas(l.bancoMin)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{l.he ? <>{n2(l.he)}<span className="block text-[11px] font-normal text-slate-500">{hhmm(l.heMin)} pagas</span></> : vazio()}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{valorOuVazio(l.ajuda)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{valorOuVazio(l.comissao)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{valorOuVazio(l.bonus)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{l.ajustes ? (l.ajustes > 0 ? "+" : "") + n2(l.ajustes) : vazio()}</td>
+                      <td className="px-2 py-2 text-right font-semibold tabular-nums" title={composicao(l)}>{l.extras ? n2(l.extras) : vazio()}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{n2(l.totalMinasLab)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{valorOuVazio(l.pagarMLab)}</td>
                       <td className="px-2 py-2 text-right font-semibold tabular-nums">{n2(l.total)}</td>
@@ -287,9 +285,9 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
               <tfoot className="border-t-2 bg-slate-50 font-bold text-slate-900" style={{ borderColor: "var(--hairline)" }}>
                 <tr>
                   <td className="px-2 py-2.5" colSpan={3}>Total da folha</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.salario)}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.salarioMes)}</td>
                   <td colSpan={2} />
-                  {[t.he, t.ajuda, t.comissao, t.bonus, t.ajustes, t.totalMinasLab, t.pagarMLab, t.total, t.comEncargos].map((v, i) => <td key={i} className="px-2 py-2.5 text-right tabular-nums">{n2(v)}</td>)}
+                  {[t.extras, t.totalMinasLab, t.pagarMLab, t.total, t.comEncargos].map((v, i) => <td key={i} className="px-2 py-2.5 text-right tabular-nums">{n2(v)}</td>)}
                   <td colSpan={2} />
                 </tr>
               </tfoot>
@@ -297,7 +295,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
           </div>
         )}
       </Card>
-      <p className="text-xs text-slate-500">HE 50% = horas pagas × (salário ÷ 220) × 1,5; depois de pagar, lance o débito no banco de horas. Ajuda de custo = km ida + volta ÷ consumo × gasolina × dias com batida no Ponto. Bônus, comissão manual e ajustes levam motivo.</p>
+      <p className="text-xs text-slate-500">Extras = hora extra + ajuda de custo + comissão + bônus + ajustes (passe o mouse para ver a soma; clique na pessoa para o detalhe). Salário proporcional = salário ÷ 30 × dias. HE 50% = horas pagas × (salário ÷ 220) × 1,5; depois de pagar, lance o débito no banco de horas.</p>
 
       {fichaAberta && (
         <JanelaPessoa
@@ -368,6 +366,7 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
     kmIda: ficha.kmIda ?? "", kmVolta: ficha.kmVolta ?? "", veiculo: ficha.veiculo || "Moto",
     ajudaFixa: registro.ajudaFixa === null || registro.ajudaFixa === undefined ? "" : String(registro.ajudaFixa).replace(".", ","),
     empresaPagadora: ficha.empresaPagadora || "",
+    diasPagar: registro.diasPagar === null || registro.diasPagar === undefined ? "" : String(registro.diasPagar),
     bonus: registro.bonus || [], comissaoManual: registro.comissaoManual || [], ajustes: registro.ajustes || [],
   }));
   const [erro, setErro] = useState("");
@@ -377,6 +376,8 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
 
   const horasPagarMin = lerHoras(f.horasPagar);
   const ajudaFixa = lerValor(f.ajudaFixa);
+  const diasPagar = String(f.diasPagar).trim() === "" ? null : Number(String(f.diasPagar).replace(",", "."));
+  const diasInvalido = diasPagar !== null && !(Number.isFinite(diasPagar) && diasPagar >= 0 && diasPagar <= 30);
   const camposFicha = useMemo(() => {
     const c = {};
     if (String(km(f.kmIda)) !== String(ficha.kmIda ?? "")) c.kmIda = km(f.kmIda);
@@ -388,6 +389,7 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
   const novoRegistro = {
     ...registro, heLiberada: f.heLiberada, horasPagarMin: Number.isNaN(horasPagarMin) ? null : horasPagarMin,
     ajudaFixa: ajudaFixa === null || Number.isNaN(ajudaFixa) ? null : ajudaFixa,
+    diasPagar: diasPagar === null || diasInvalido ? null : diasPagar,
     bonus: f.bonus, comissaoManual: f.comissaoManual, ajustes: f.ajustes,
   };
   // Prévia ao vivo: a mesma conta da tabela, com o que está digitado na janela.
@@ -398,6 +400,7 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
     e.preventDefault();
     if (Number.isNaN(horasPagarMin)) return setErro("Horas a pagar: use 10:30 ou 10,5.");
     if (Number.isNaN(ajudaFixa)) return setErro("Ajuda de custo fixa: valor inválido.");
+    if (diasInvalido) return setErro("Dias a pagar: de 0 a 30.");
     if ([f.kmIda, f.kmVolta].some((v) => String(v).trim() !== "" && !Number.isFinite(km(v)))) return setErro("Km inválido.");
     setGravando(true); setErro("");
     try { await aoSalvar(novoRegistro, camposFicha); } catch (ex) { setErro(ex.message); setGravando(false); }
@@ -408,6 +411,22 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
       <form onSubmit={enviar} className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="space-y-3">
           <p className="text-xs text-slate-500">{l.vinculo} · salário da ficha {moeda(l.salario)}{ficha.cadastroFolha ? ` · cadastro na folha ${ficha.cadastroFolha}` : ""}</p>
+
+          <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <legend className="px-1 text-sm font-semibold text-slate-800">Salário do mês</legend>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-xs text-slate-600">Dias a pagar (de 30)
+                <input className="input mt-1 block w-28" inputMode="numeric" placeholder={l.diasSugeridos === null ? "30 (cheio)" : String(l.diasSugeridos)} value={f.diasPagar} disabled={!editavel} onChange={campo("diasPagar")} />
+              </label>
+              <p className="pb-2 text-sm">{moeda(l.salario)} ÷ 30 × {l.diasPagar ?? 30} = <b>{moeda(l.salarioMes)}</b></p>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {l.diasSugeridos !== null
+                ? `Pela ficha (${ficha.admissao?.startsWith(competencia) ? `admissão em ${ficha.admissao.split("-").reverse().join("/")}` : ""}${ficha.admissao?.startsWith(competencia) && ficha.desligadoEm?.startsWith(competencia) ? ", " : ""}${ficha.desligadoEm?.startsWith(competencia) ? `desligamento em ${ficha.desligadoEm.split("-").reverse().join("/")}` : ""}) o mês é de ${l.diasSugeridos} dias — já aplicado. Digite outro número para trocar.`
+                : "Vazio = mês cheio. Para quem trabalhou só parte do mês (ex.: 10 dias), digite os dias."}
+              {l.vinculo === "CLT" && l.liquidoHolerite !== null && " Com holerite importado, o valor pago é o líquido do holerite (a contabilidade já fez a conta)."}
+            </p>
+          </fieldset>
 
           {l.vinculo === "CLT" && (
             <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
@@ -481,12 +500,13 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
         <aside className="h-fit rounded-xl bg-slate-50 p-3 lg:sticky lg:top-0">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo do mês</p>
           {l.holerite.avisos.length > 0 && <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900">{l.holerite.avisos.join("; ")}.</p>}
-          <Linha rotulo={l.paga === "M Lab" ? "Salário (pago pela M Lab)" : "Salário"} valor={moeda(l.liquidoHolerite ?? l.salario)} sub={l.liquidoHolerite === null ? "estimado: sem holerite importado" : "líquido do holerite"} />
+          <Linha rotulo={l.paga === "M Lab" ? "Salário (pago pela M Lab)" : "Salário"} valor={moeda(l.liquidoHolerite ?? l.salarioMes)} sub={l.liquidoHolerite !== null ? "líquido do holerite" : l.diasPagar !== null ? `proporcional: ${l.diasPagar} de 30 dias` : l.vinculo === "CLT" ? "estimado: sem holerite importado" : undefined} />
           <Linha rotulo="Hora extra 50%" valor={moeda(l.he)} sub={l.heMin ? `${hhmm(l.heMin)} pagas` : undefined} />
           <Linha rotulo="Ajuda de custo" valor={moeda(l.ajuda)} sub={l.ajudaFixa ? "valor fixo do mês" : undefined} />
           <Linha rotulo="Comissão" valor={moeda(l.comissao)} />
           <Linha rotulo="Bônus" valor={moeda(l.bonus)} />
           <Linha rotulo="Ajustes" valor={moeda(l.ajustes)} />
+          <Linha rotulo="Total de extras" valor={moeda(l.extras)} forte />
           <Linha rotulo="Total MinasLab" valor={moeda(l.totalMinasLab)} forte />
           <Linha rotulo="Pagar pela M Lab" valor={moeda(l.pagarMLab)} />
           <Linha rotulo="Total" valor={moeda(l.total)} forte />

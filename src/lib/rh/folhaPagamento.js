@@ -130,6 +130,23 @@ export function situacaoHolerite(ficha, holerites = {}, vinculo) {
   return { situacao: avisos.length ? "divergencia" : "confere", avisos };
 }
 
+/**
+ * Dias a pagar no mês comercial de 30 dias, quando a pessoa entrou ou saiu no meio
+ * do mês (admissão / desligamento na ficha). null = mês cheio.
+ * Ex.: admitida em 21/10 → 10 dias (21 a 30); desligada em 10/10 → 10 dias.
+ */
+export function diasProporcionais(ficha = {}, competencia) {
+  const dia = (iso) => (String(iso || "").slice(0, 7) === competencia ? Math.min(30, Number(String(iso).slice(8, 10)) || 1) : null);
+  const entrou = dia(ficha.admissao);
+  const saiu = dia(ficha.desligadoEm);
+  if (entrou === null && saiu === null) return null;
+  const dias = (saiu ?? 30) - (entrou ?? 1) + 1;
+  return dias >= 30 ? null : Math.max(0, dias);
+}
+
+/** Salário do mês: cheio, ou salário ÷ 30 × dias quando o mês é proporcional. */
+export const salarioProporcional = (salario, dias) => (dias === null || dias === undefined || dias >= 30 ? arred(salario) : arred((salario / 30) * Math.max(0, dias)));
+
 export const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /**
@@ -142,7 +159,12 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
   const paga = empresaPagadora(ficha, holerites);
   const salario = num(ficha.salario) ?? Object.values(holerites).find((h) => h.salarioBase)?.salarioBase ?? 0;
   const liquidoHolerite = Object.values(holerites).reduce((s, h) => (h.liquido === null || h.liquido === undefined ? s : (s ?? 0) + h.liquido), null);
-  const salarioPagar = liquidoHolerite ?? salario;
+  // Mês proporcional (entrou/saiu no meio, ou dias digitados na janela): salário ÷ 30 × dias.
+  const diasSugeridos = diasProporcionais(ficha, competencia);
+  const diasDigitados = num(registro.diasPagar);
+  const diasPagar = diasDigitados ?? diasSugeridos;
+  const salarioMes = salarioProporcional(salario, diasPagar);
+  const salarioPagar = liquidoHolerite ?? salarioMes;
   const ehClt = vinculo === "CLT";
   const bancoMin = ehClt ? saldoBancoAte(ficha.id, competencia, pontoDia, movimentos) : null;
   const heMin = ehClt ? minutosAPagar(bancoMin, registro) : 0;
@@ -160,10 +182,11 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
   const totalMinasLab = arred((paga === "MinasLab" ? salarioPagar : 0) + variaveis);
   const pagarMLab = arred(paga === "M Lab" ? salarioPagar : 0);
   const total = arred(totalMinasLab + pagarMLab);
-  const comEncargos = arred(ehClt ? salario * FATOR_ENCARGOS_CLT + variaveis : total);
+  const comEncargos = arred(ehClt ? salarioMes * FATOR_ENCARGOS_CLT + variaveis : total);
   const holerite = situacaoHolerite(ficha, holerites, vinculo);
   return {
     pessoaId: ficha.id, nome: ficha.nome, vinculo, paga, salario: arred(salario), liquidoHolerite,
+    salarioMes, diasPagar: diasPagar !== null && diasPagar < 30 ? diasPagar : null, diasSugeridos, diasDigitados: diasDigitados !== null, extras: variaveis,
     salarioEstimado: liquidoHolerite === null, bancoMin, heLiberada: registro.heLiberada === true, heMin, he,
     dias, ajuda, ajudaCalculada, ajudaFixa: num(registro.ajudaFixa) !== null, comissao, comissaoGestao, comissaoManual,
     bonus, ajustes, ajustesLista: registro.ajustes || [], bonusLista: registro.bonus || [], comissaoManualLista: registro.comissaoManual || [],
@@ -175,7 +198,7 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
 export function totaisDaFolha(linhas = []) {
   const s = (k) => arred(linhas.reduce((n, l) => n + (Number(l[k]) || 0), 0));
   return {
-    pessoas: linhas.length, salario: s("salario"), he: s("he"), ajuda: s("ajuda"), comissao: s("comissao"), bonus: s("bonus"), ajustes: s("ajustes"),
+    pessoas: linhas.length, salario: s("salario"), salarioMes: s("salarioMes"), extras: s("extras"), he: s("he"), ajuda: s("ajuda"), comissao: s("comissao"), bonus: s("bonus"), ajustes: s("ajustes"),
     totalMinasLab: s("totalMinasLab"), pagarMLab: s("pagarMLab"), total: s("total"), comEncargos: s("comEncargos"), fgts: s("fgts"),
     divergencias: linhas.filter((l) => ["divergencia", "leitura"].includes(l.holerite.situacao)).length,
     aguardando: linhas.filter((l) => l.holerite.situacao === "aguardando").length,
