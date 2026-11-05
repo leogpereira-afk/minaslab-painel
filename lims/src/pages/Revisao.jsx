@@ -109,7 +109,7 @@ export function RevisaoResultado() {
 
 /* ---------- Certificado ---------- */
 
-const emAberto = (r) => r.status !== "Pago" && r.status !== "Cancelado";
+const emAberto = (r) => r.status !== "Pago" && r.status !== "Cancelado" && r.status !== "Agrupada";
 
 export function RevisaoCertificado() {
   const { dados } = useDados();
