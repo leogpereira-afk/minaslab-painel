@@ -19,9 +19,10 @@ test("treinamentos dos níveis existem no catálogo", () => {
 test("liga a função do sistema ao nível e aponta os próximos passos", () => {
   assert.equal(nivelDaFuncao("analista de laboratório i")?.id, "lab-an1");
   assert.equal(nivelDaFuncao("Gerente"), null);
-  assert.equal(nivelDaFuncao("Analista Administrativo Comercial")?.id, "com-an1");
+  assert.equal(nivelDaFuncao("Auxiliar Administrativo Comercial II")?.id, "com-an1");
   assert.equal(nivelDaFuncao("Analista Comercial")?.id, "com-an1");
-  assert.equal(nivelDaFuncao("Auxiliar Administrativo Comercial")?.id, "com-ass");
+  assert.equal(nivelDaFuncao("Auxiliar Administrativo Comercial I")?.id, "com-ass");
+  assert.equal(nivelDaFuncao("Analista Administrativo Comercial")?.id, "com-an2");
   assert.deepEqual(proximosPassos("lab-an1").map((p) => p.para), ["lab-an2"]);
   assert.deepEqual(proximosPassos("col-tec").map((p) => [p.para, p.tipo]), [["lab-an1", "lateral"]]);
   assert.deepEqual(proximosPassos("lab-an3").map((p) => p.para), ["lab-sup", "qual-sup"]);
