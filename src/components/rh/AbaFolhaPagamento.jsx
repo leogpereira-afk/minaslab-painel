@@ -496,7 +496,7 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
               </div>
             )}
             {l.coletasLista.some((c) => c.semKm) && <p className="mt-1 text-xs text-amber-800">Há viagem sem km no CRM: corrija a coleta para ela entrar.</p>}
-            <p className="mt-1 text-xs text-slate-500">Composta R$ 100 · viagem até 50 km (ida e volta) R$ 50, acima R$ 100. Marque o tipo na coleta do CRM.</p>
+            <p className="mt-1 text-xs text-slate-500">Composta R$ 100 · viagem até 50 km (ida e volta) R$ 50, acima R$ 100. O tipo e os km são marcados na coleta do CRM (lá não aparece valor).</p>
           </fieldset>
           <Lista titulo="Comissão lançada à mão" itens={f.comissaoManual} setItens={(v) => setF((x) => ({ ...x, comissaoManual: v }))} editavel={editavel} exemplo="Ex.: comissão de venda fora do Gestão" />
           <Lista titulo="Bônus" itens={f.bonus} setItens={(v) => setF((x) => ({ ...x, bonus: v }))} editavel={editavel} exemplo="Ex.: 8 coletas" />
