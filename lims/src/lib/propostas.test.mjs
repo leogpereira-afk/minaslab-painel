@@ -84,3 +84,20 @@ test("item do pacote copia parâmetros e preços da tabela, só os marcados", ()
   assert.throws(() => itemDoPacote(pac, cat, 1, new Set()), /parâmetro/);
   assert.throws(() => itemDoPacote(null, cat, 1, new Set(["pH"])), /pacote/);
 });
+
+test("total da amostra: soma dos parâmetros, valor digitado e desconto", async () => {
+  const { precoUnitario, totalItem, totalOutros, totalProposta, itemManual } = await import("./propostas.js");
+  const it = { qtd: 2, params: [{ preco: 30 }, { preco: 20 }] };
+  assert.equal(precoUnitario(it), 50);
+  assert.equal(precoUnitario({ ...it, desconto: 10 }), 45);
+  assert.equal(precoUnitario({ ...it, precoAmostra: 470 }), 470);
+  assert.equal(totalItem({ ...it, desconto: 10 }), 90);
+  const p = { itens: [it], outrosItens: [{ servico: "Coleta", valor: 30, qtd: 2 }] };
+  assert.equal(totalOutros(p), 60);
+  assert.equal(totalProposta(p), 160);
+  const cat = { parametros: [{ id: "a", parametro: "pH", prazoDias: 5 }, { id: "b", parametro: "Cor", prazoDias: 10, preco: 7 }], tabelas_preco: [{ nome: "T", precos: { a: 12 } }], grupos_servico: [{ id: "g", nome: "Água" }], matrizes: [{ id: "m", nome: "Água tratada" }], legislacoes: [], metodos: [], unidades: [], subcontratados: [] };
+  const m = itemManual(cat, { grupo: "g", matriz: "m", parametros: ["a", "b"], tabela: "T" });
+  assert.deepEqual(m.params.map((x) => x.preco), [12, 7]);
+  assert.equal(m.prazo, 10);
+  assert.throws(() => itemManual(cat, { grupo: "g", matriz: "m", parametros: [] }), /parâmetro/);
+});

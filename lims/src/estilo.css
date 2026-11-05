@@ -331,3 +331,17 @@ td .acoes { flex-wrap: nowrap; }
 .abas-corpo { padding: 20px; }
 .badge-n { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--crit); color: #fff; font-size: 10px; font-weight: 700; }
 .sub-titulo { font-size: 18px; font-weight: 400; color: var(--ink); margin: 0; }
+
+/* Proposta → Adicionar serviços (como no GerenciaLab) */
+.duas-caixas { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 16px; }
+.quadro { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px 14px; margin: 0; min-width: 0; }
+.quadro legend { font-size: 12.5px; padding: 0 6px; color: var(--ink); }
+.quadro textarea { width: 100%; border: 1px solid var(--btn-line); border-radius: 6px; padding: 8px; font: inherit; }
+tr.sub-linha > td { background: #f8fafc; padding: 8px 12px 14px; white-space: normal; max-width: none; }
+.sub-titulo-tab { font-size: 12px; color: #475569; margin: 2px 0 6px; }
+.sub-tab { width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; }
+.sub-tab td, .sub-tab th { background: #fff; }
+.prop-doc h5 { font-size: 11.5px; font-weight: 700; margin: 16px 0 6px; color: #111; }
+.prop-doc p { font-size: 12.5px; line-height: 1.55; margin: 0 0 6px; text-align: justify; }
+.prop-doc .doc-tab td { font-size: 12px; }
+.prop-ponto { margin-bottom: 14px; break-inside: avoid; }
