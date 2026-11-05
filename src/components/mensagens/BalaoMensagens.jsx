@@ -121,8 +121,8 @@ export default function BalaoMensagens() {
       {!aberto && previas.length > 0 && (
         <div className="fixed bottom-24 right-4 z-30 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2 sm:right-6" aria-label="Mensagens novas" role="region">
           <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-bold text-slate-600">{total === 1 ? "1 mensagem nova" : `${contadorTexto(total)} mensagens novas`}</span>
-            <button type="button" onClick={ocultar} className="rounded px-1.5 py-1 text-xs font-semibold text-slate-600 underline hover:text-slate-900">Ocultar</button>
+            <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-bold text-slate-700 shadow-sm">{total === 1 ? "1 mensagem nova" : `${contadorTexto(total)} mensagens novas`}</span>
+            <button type="button" onClick={ocultar} className="inline-flex items-center gap-1 rounded-full bg-red-600 px-3 py-1.5 text-xs font-bold text-white shadow-md transition hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300" title="Esconder estes avisos (as mensagens continuam em Mensagens)"><X size={14} aria-hidden="true" />Ocultar</button>
           </div>
           {previas.map((c) => <Previa key={c.id} c={c} aoAbrir={abrirConversa} />)}
           <button type="button" onClick={() => { setConversa(null); setAberto(true); }} className="self-end rounded px-1.5 py-1 text-xs font-bold text-brand-800 hover:underline">Ver todas as mensagens →</button>
