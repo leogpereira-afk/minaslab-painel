@@ -109,6 +109,9 @@ export function RevisaoResultado() {
 
 /* ---------- Certificado ---------- */
 
+// Prazo da fatura pela condição de pagamento do contrato ("Boleto bancário, 10 dias" → 10).
+export const diasPagamento = (cond) => { const m = String(cond || "").match(/(\d+)\s*dias?\b/i); return m ? Number(m[1]) : 30; };
+
 const emAberto = (r) => r.status !== "Pago" && r.status !== "Cancelado" && r.status !== "Agrupada";
 
 export function RevisaoCertificado() {
@@ -238,7 +241,7 @@ export function CertificadoOS({ param }) {
         const faturar = cfg.sistemaFaturamento !== "Não" && contrato?.ciclo !== "Parcelado";
         if (faturar) {
           const valor = valorAmostra(contrato, a);
-          await salvar("contas_receber", { origem: "Amostra", amostraId: a.id, referencia: referenciaAmostra(a), osId: os.id, os: a.os, clienteId: a.clienteId, contratoId: a.contratoId, contrato: os.contrato, descricao: `${a.servico} · ${referenciaAmostra(a)}`, valor, venc: isoDia(30), status: "Em aberto" }, { numerar: true });
+          await salvar("contas_receber", { origem: "Amostra", amostraId: a.id, referencia: referenciaAmostra(a), osId: os.id, os: a.os, clienteId: a.clienteId, contratoId: a.contratoId, contrato: os.contrato, descricao: `${a.servico} · ${referenciaAmostra(a)}`, valor, venc: isoDia(diasPagamento(contrato?.condicoes)), forma: contrato?.condicoes || "", status: "Em aberto" }, { numerar: true });
         }
         await salvar("amostras", { ...a, status: faturar ? "Faturamento" : "Concluída", dataAssinatura: agora, certificadoId: cert.id }, { motivo: "Certificado emitido" });
       } else await salvar("amostras", { ...a, certificadoId: cert.id }, { motivo: `Certificado reemitido (rev. ${cert.revisao})` });
