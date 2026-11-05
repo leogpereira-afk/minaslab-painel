@@ -8,16 +8,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useDados } from "../lib/dados.jsx";
-import { rotuloSolicitante } from "../lib/solicitantes.js";
+import { rotuloSolicitante, emailsDoSolicitante } from "../lib/solicitantes.js";
+import { enderecosDoCliente } from "../lib/clientes.js";
 import { link, navegar } from "../lib/rota.js";
 import { brl, dataBR, isoDia } from "../lib/formato.js";
 import { estaAtivo } from "../lib/cadastros.js";
 import { numeroProposta, totalProposta, totalItem, precoUnitario, itemDoPacote } from "../lib/propostas.js";
-import { numeroContrato, contratosPendentes, contratoDaProposta, totalContrato, diasParaVencer, gerarParcelas, saldoServicos, novoAgendamento, planoAutomatico } from "../lib/contratos.js";
+import { numeroContrato, contratosPendentes, contratoDaProposta, totalContrato, diasParaVencer, gerarParcelas, saldoServicos, planoAutomatico, datasRepeticao, agendarPlano, mesclarAgendamentos, REPETIR, AGENDAR_TODA } from "../lib/contratos.js";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 import { gerarOS } from "../lib/gerarOS.js";
+import { JanelaAmostra } from "./PropostaServicos.jsx";
 import { numeroOS } from "../lib/ordens.js";
 import { getSessao } from "../lib/sessao.js";
 
@@ -37,7 +39,7 @@ export function ContratosPendentes({ sessao }) {
   const abrir = (x) => {
     setP(x);
     setGerarFaturas(true);
-    setG({ inicio: isoDia(0), fim: isoDia(365), ciclo: x.ciclo || "Faturado", parcelas: x.parcelas || 1, tipoPeriodo: x.tipoPeriodo || "Por dia Fixo", cobrarDia: x.cobrarDia || "10", primeiroPag: x.primeiroPag || "" });
+    setG({ inicio: "", fim: "", ciclo: x.ciclo || "Faturado", parcelas: x.parcelas || 1, tipoPeriodo: x.tipoPeriodo || "Por dia Fixo", cobrarDia: x.cobrarDia || "10", primeiroPag: x.primeiroPag || "" });
   };
   const colunas = [
     { t: "Proposta ID", v: (r) => numeroProposta(r), filtro: true },
@@ -47,7 +49,7 @@ export function ContratosPendentes({ sessao }) {
     { t: "Ciclo de Pagamento", v: (r) => r.ciclo || "", filtro: true },
     { t: "Responsável", v: (r) => r.resp || "", filtro: true },
     { t: "Total", v: (r) => totalProposta(r), h: (r) => brl(totalProposta(r)), fv: (r) => brl(totalProposta(r)) },
-    { t: "Status", v: (r) => r.status, h: (r) => <span className="lbl ok">{r.status}</span> },
+    { t: "Status", v: () => "Aguardando", h: () => <span className="lbl crit">Aguardando</span> },
   ];
   const gerar = async () => {
     try {
@@ -65,29 +67,28 @@ export function ContratosPendentes({ sessao }) {
   };
   const set = (k) => (e) => setG((x) => ({ ...x, [k]: e.target.value }));
   return (
-    <Caixa titulo="Contratos Pendentes">
-      <p className="suave" style={{ marginTop: -6 }}>Propostas aceitas que ainda não viraram contrato. Dê dois cliques (ou selecione e clique em Gerar contrato) para gerar a notificação de serviço.</p>
-      <Grade id="pend" linhas={pendentes} colunas={colunas} filtrosColuna aoAbrir={abrir} porPaginaInicial={25}
-        selecao={new Set(p ? [p.id] : [])} aoSelecionar={(s) => { const id = [...s][0]; setP(pendentes.find((x) => x.id === id) || null); }}
-        botoes={[{ rotulo: "Gerar contrato", acao: () => (p ? abrir(p) : avisar("Selecione uma proposta.", "err")) }, { rotulo: "Visualizar proposta", acao: () => (p ? navegar("proposta", p.id) : avisar("Selecione uma proposta.", "err")) }]} />
+    <Caixa titulo="Contratos pendentes">
+      <Grade id="pend" exportar="contratos-pendentes" linhas={pendentes} colunas={colunas} aoAbrir={abrir} porPaginaInicial={10}
+        selecao={new Set()} aoSelecionar={(s) => { const x = pendentes.find((y) => y.id === [...s][0]); if (x) abrir(x); }} botoes={[]} />
       {p && g && (
-        <Modal titulo="Gerar notificação de serviço" onFechar={() => setG(null)} rotuloOk="Gerar contrato" aoConfirmar={gerar}>
-          <p style={{ margin: 0 }}><b>Proposta:</b> {numeroProposta(p)} · {cli(p).razao} · {brl(totalProposta(p))}</p>
+        <Modal titulo="Gerar notificação de serviço" onFechar={() => setG(null)} rotuloOk="Gerar contrato" aoConfirmar={() => ((!g.inicio || !g.fim || g.fim < g.inicio) ? (avisar("Informe a data início e a data final.", "err"), false) : gerar())}>
+          <div className="fg"><span className="rot">Proposta:</span><span>{numeroProposta(p)} <span className="suave">· {cli(p).razao} · {brl(totalProposta(p))}</span></span></div>
           <div className="frm">
             <div className="fg s6"><label htmlFor="gIni">Data Início</label><input id="gIni" type="date" value={g.inicio} onChange={set("inicio")} /></div>
             <div className="fg s6"><label htmlFor="gFim">Data Final</label><input id="gFim" type="date" value={g.fim} onChange={set("fim")} /></div>
-            <div className="fg s6"><label htmlFor="gCiclo">Ciclo de pagamento</label><select id="gCiclo" value={g.ciclo} onChange={set("ciclo")}>{opcoes(["Faturado", "Parcelado"])}</select></div>
+            <div className="fg s12"><span className="rot">Ciclo de pagamento</span><span>{g.ciclo}</span></div>
+            {g.ciclo === "Parcelado" && <>
             <div className="fg s6"><label htmlFor="gParc">Número de parcelas</label><input id="gParc" type="number" min="1" max="60" value={g.parcelas} disabled={g.ciclo !== "Parcelado"} onChange={set("parcelas")} /></div>
             <div className="fg s6"><label htmlFor="gTP">Tipo período</label><select id="gTP" value={g.tipoPeriodo} disabled={g.ciclo !== "Parcelado"} onChange={set("tipoPeriodo")}>{opcoes(["Por dia Fixo", "Por dia útil"])}</select></div>
             <div className="fg s6"><label htmlFor="gDia">Cobrar sempre no</label><select id="gDia" value={g.cobrarDia} disabled={g.ciclo !== "Parcelado"} onChange={set("cobrarDia")}>{opcoes(Array.from({ length: 31 }, (_, i) => String(i + 1)))}</select></div>
             <div className="fg s6"><label htmlFor="gPrim">Data da primeira parcela</label><input id="gPrim" type="date" value={g.primeiroPag} disabled={g.ciclo !== "Parcelado"} onChange={set("primeiroPag")} /></div>
             <div className="fg s6" style={{ justifyContent: "flex-end" }}><label className="radios"><input type="checkbox" checked={gerarFaturas} disabled={g.ciclo !== "Parcelado"} onChange={(e) => setGerarFaturas(e.target.checked)} /> Gerar faturas</label></div>
+            </>}
           </div>
           {g.ciclo === "Parcelado" && g.primeiroPag && Number(g.parcelas) >= 1 && (
             <div className="tw"><table><thead><tr><th>Parcela</th><th>Vencimento</th><th>Valor</th></tr></thead>
               <tbody>{gerarParcelas(totalProposta(p), g.parcelas, g.primeiroPag, g.tipoPeriodo, g.cobrarDia, feriadosAtivos(dados)).map((x) => <tr key={x.parcela}><td>{x.parcela}/{x.de}</td><td>{dataBR(x.venc)}</td><td>{brl(x.valor)}</td></tr>)}</tbody></table></div>
           )}
-          {g.ciclo === "Faturado" && <p className="suave" style={{ margin: 0 }}>Faturado: a cobrança acontece por ordem de serviço, conforme "Cobrança na" da proposta.</p>}
         </Modal>
       )}
     </Caixa>
@@ -101,6 +102,8 @@ export function ListaContratos() {
   const avisar = useAviso();
   const [sel, setSel] = useState(new Set());
   const [chave, setChave] = useState(0);
+  const [status, setStatus] = useState("Todos");
+  const linhas = status === "Todos" ? dados.contratos : dados.contratos.filter((r) => (r.status || "Ativo") === status);
   const cli = (r) => dados.clientes.find((c) => c.id === r.clienteId) || {};
   const sol = (r) => dados.solicitantes.find((s) => s.id === r.solicitanteId);
   const func = (id) => dados.funcionarios.find((f) => f.id === id)?.nome || "";
@@ -112,8 +115,8 @@ export function ListaContratos() {
     { t: "Título Proposta", v: (r) => r.ident || "", filtro: true },
     { t: "Contrato", v: (r) => numeroContrato(r), filtro: true },
     { t: "Status", v: (r) => r.status, h: (r) => <span className={`lbl ${r.status === "Ativo" ? "ok" : "off"}`}>{r.status}</span>, filtro: "lista" },
-    { t: "CNPJ Solicitante", v: () => "", filtro: true },
-    { t: "Solicitante", v: (r) => sol(r)?.nome || "-", filtro: true },
+    { t: "CNPJ Solicitante", v: (r) => sol(r)?.doc || "", filtro: true },
+    { t: "Solicitante", v: (r) => sol(r)?.razao || sol(r)?.nome || "-", filtro: true },
     { t: "CNPJ Cliente", v: (r) => cli(r).doc || "", filtro: true },
     { t: "Cliente", v: (r) => cli(r).razao || "", filtro: true },
     { t: "Resp. pela coleta", v: (r) => (r.coleta === "Cliente" ? "Cliente" : "MinasLab"), filtro: true },
@@ -126,11 +129,11 @@ export function ListaContratos() {
   const exigir = (fn) => () => (c ? fn() : avisar("Selecione um contrato.", "err"));
   return (
     <Caixa titulo="Contratos">
-      <Grade key={chave} id="contratos" exportar="contratos" linhas={dados.contratos} colunas={colunas} filtrosColuna opcoesFiltro={{ 4: ["Ativo", "Inativo"] }}
+      <Grade key={chave} id="contratos" exportar="contratos" linhas={linhas} colunas={colunas} filtrosColuna opcoesFiltro={{ 4: ["Ativo", "Inativo"] }}
         selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("contract", r.id)}
         botoes={[
           { rotulo: "Visualizar", acao: exigir(() => navegar("contract", c.id)) },
-          { rotulo: "Status", acao: exigir(async () => { try { await salvar("contratos", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" }); avisar(`Contrato ${c.status === "Ativo" ? "inativado" : "ativado"}.`, "ok"); } catch (e) { avisar(e.message, "err"); } }) },
+          { rotulo: "Status", menu: ["Todos", "Ativo", "Inativo"].map((o) => ({ rotulo: o, marcado: status === o, padrao: o === "Todos", acao: () => { setStatus(o); setSel(new Set()); } })) },
           { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },
         ]} />
     </Caixa>
@@ -166,8 +169,9 @@ export function FichaContrato({ param }) {
           {campo("cFim", "Data Término", <input id="cFim" type="date" value={f.fim} onChange={set("fim")} />)}
           {campo("cInd", "Indicação", <select id="cInd" className="gray" value={f.indicacao} onChange={set("indicacao")}>{opcoes(["Sem indicação", "Cliente", "Parceiro", "Site", "Redes sociais"])}</select>)}
           {campo("cGr", "Grupo regional", <select id="cGr" value={f.grupoRegional || ""} onChange={set("grupoRegional")}>{opcoes([["", "Selecione a região"], ...dados.grupos_regionais.map((g) => [g.id, g.nome])])}</select>)}
-          {campo("cENF", "Email Nota Fiscal Cliente", <input id="cENF" type="email" value={f.emailNF || ""} onChange={set("emailNF")} />, "s4")}
-          {campo("cERes", "Email Resultado Cliente", <input id="cERes" type="email" value={f.emailResultado || ""} onChange={set("emailResultado")} />, "s4")}
+          {campo("cENF", "Email Nota Fiscal Cliente", <input id="cENF" type="email" list="em-cli" value={f.emailNF || ""} onChange={set("emailNF")} />, "s4")}
+          {campo("cERes", "Email Resultado Cliente", <input id="cERes" type="email" list="em-cli" value={f.emailResultado || ""} onChange={set("emailResultado")} />, "s4")}
+          <datalist id="em-cli">{[...new Set([cliente.email, ...enderecosDoCliente(cliente).map((e) => e.email)].filter(Boolean))].map((e) => <option key={e} value={e} />)}</datalist>
           <div className="quebra-linha" />
           {campo("cPMb", "Prazo Parâmetros Microbiológicos (dias)", <input id="cPMb" type="number" min="0" value={f.prazoMicro || ""} onChange={set("prazoMicro")} />)}
           {campo("cPFq", "Prazo Parâmetros Físico-químicos (dias)", <input id="cPFq" type="number" min="0" value={f.prazoFQ || ""} onChange={set("prazoFQ")} />)}
@@ -182,7 +186,7 @@ export function FichaContrato({ param }) {
           {campo("cObsF", "Observações Financeiras", <textarea id="cObsF" rows={3} value={f.obsFin || ""} onChange={set("obsFin")} />, "s12")}
           {campo("cLim", "Limite de amostras", <input id="cLim" type="number" min="0" value={f.limiteAmostras || ""} onChange={set("limiteAmostras")} />)}
           {campo("cTC", "Tipo de contrato", <select id="cTC" value={f.tipoContrato || ""} onChange={set("tipoContrato")}>{opcoes([["", "Selecione tipo de contrato"], "Contrato Padrão", "Contrato Parcelado"])}</select>)}
-          {campo("cCond", "Condições de pagamento", <select id="cCond" value={f.condicoes || ""} onChange={set("condicoes")}>{opcoes([["", "Selecione"], ...new Set([...(f.condicoes ? [f.condicoes] : []), ...dados.condicoes_pagamento.map((c) => c.descricao)])])}</select>, "s6")}
+          {campo("cCond", "Condições de pagamento", <select id="cCond" value={f.condicoes || ""} onChange={set("condicoes")}>{opcoes([["", "Selecione"], ...new Set([...(f.condicoes ? [f.condicoes] : []), ...dados.formas_pagamento.filter((x) => estaAtivo(x) && (!f.tipoContrato || x.tipoContrato === f.tipoContrato)).map((x) => x.descricao), ...dados.condicoes_pagamento.map((c) => c.descricao)])])}</select>, "s6")}
           {campo("cCiclo", "Ciclo pagamento", <select id="cCiclo" value={f.ciclo} onChange={set("ciclo")}>{opcoes(["Faturado", "Parcelado"])}</select>)}
           {campo("cCob", "Cobrança Na", <select id="cCob" value={f.cobrancaNa || ""} onChange={set("cobrancaNa")}>{opcoes(["Entrada da amostra", "Assinatura do certificado", "Nota Fiscal"])}</select>)}
           {campo("cParc", "Numero de parcelas", <input id="cParc" type="number" min="1" value={f.parcelas || 1} onChange={set("parcelas")} />)}
@@ -194,17 +198,17 @@ export function FichaContrato({ param }) {
           {campo("cSol", "Solicitante", <select id="cSol" value={f.solicitanteId || ""} onChange={(e) => setF((x) => ({ ...x, solicitanteId: e.target.value || null }))}>{opcoes([["", "Sem solicitante"], ...dados.solicitantes.filter((s) => s.status === "Ativo").map((s) => [s.id, rotuloSolicitante(s)])])}</select>, "s6")}
           {campo("cCobS", "Cobrança", <select id="cCobS" value={f.cobranca} onChange={set("cobranca")}>{opcoes(["Cliente", "Solicitante"])}</select>)}
           {campo("cResS", "Resultado Final", <select id="cResS" value={f.resultado} onChange={set("resultado")}>{opcoes(["Cliente", "Solicitante", "Ambos"])}</select>)}
-          {campo("cECS", "Email cobrança Solicitante", <input id="cECS" type="email" value={f.emailCobSol || ""} onChange={set("emailCobSol")} />, "s6")}
-          {campo("cERS", "Email Resultado Solicitante", <input id="cERS" type="email" value={f.emailResSol || ""} onChange={set("emailResSol")} />, "s6")}
+          {campo("cECS", "Email cobrança Solicitante", <input id="cECS" type="email" list="em-sol" value={f.emailCobSol || ""} onChange={set("emailCobSol")} />, "s6")}
+          {campo("cERS", "Email Resultado Solicitante", <input id="cERS" type="email" list="em-sol" value={f.emailResSol || ""} onChange={set("emailResSol")} />, "s6")}
+          <datalist id="em-sol">{emailsDoSolicitante(dados.solicitantes.find((s) => s.id === f.solicitanteId)).map((e) => <option key={e} value={e} />)}</datalist>
         </>}
       </div>
       <div className="acoes" style={{ marginTop: 20, justifyContent: "space-between" }}>
-        <a className="btn btn-default" href={link("contracts")}>Voltar</a>
+        <div className="acoes"><a className="btn btn-default" href={link("contracts")}>Voltar</a><button type="button" className="btn btn-default" disabled={ocupado} onClick={gravar}>{ocupado ? "Salvando…" : "Atualizar contrato"}</button></div>
         <div className="acoes">
           <a className="btn btn-default" href={link("collection-plan", f.id)}>Plano de Coleta</a>
           <a className="btn btn-default" href={link("collection-plan-auto", f.id)}>Plano de Coleta automático</a>
           <a className="btn btn-default" href={link("services-contract", f.id)}>Detalhes do contrato</a>
-          <button type="button" className="btn btn-success" disabled={ocupado} onClick={gravar}>{ocupado ? "Salvando…" : "Salvar"}</button>
         </div>
       </div>
     </div>
@@ -227,86 +231,104 @@ export function DetalhesContrato({ param }) {
   const { dados, salvar, auditoria } = useDados();
   const avisar = useAviso();
   const c = dados.contratos.find((x) => x.id === param);
-  const pacotes = dados.pacotes.filter(estaAtivo);
-  const [pid, setPid] = useState(pacotes[0]?.id || "");
-  const [qtd, setQtd] = useState(1);
+  const [sel, setSel] = useState(new Set());
+  const [janela, setJanela] = useState(null);
   const [hist, setHist] = useState(null);
-  useEffect(() => { if (c) auditoria({ colecao: "contratos", registroId: c.id, limite: 50 }).then(setHist).catch(() => setHist([])); }, [auditoria, c?.id, c?.atualizadoEm]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!c) return <NaoAchou />;
-  const saldo = saldoServicos(c);
-  const adicionar = async () => {
-    try {
-      const pac = pacotes.find((x) => x.id === pid);
-      const item = itemDoPacote(pac, dados, qtd, new Set(pac?.parametros || []));
-      const sid = `s${Math.max(0, ...c.servicos.map((s) => Number(String(s.sid).slice(1)) || 0)) + 1}`;
-      await salvar("contratos", { ...c, servicos: [...c.servicos, { ...item, sid, status: "Ativo" }] }, { motivo: `Adicionou ${item.descricao} (${item.qtd})` });
-      avisar("Amostra adicionada ao contrato.", "ok");
-    } catch (e) { avisar(e.message, "err"); }
-  };
-  const alternar = async (s) => {
-    try { await salvar("contratos", { ...c, servicos: c.servicos.map((x) => (x.sid === s.sid ? { ...x, status: x.status === "Inativo" ? "Ativo" : "Inativo" } : x)) }); }
-    catch (e) { avisar(e.message, "err"); }
-  };
+  const saldo = saldoServicos(c).map((s) => ({ ...s, id: s.sid }));
+  const s1 = saldo.find((s) => sel.has(s.id));
+  const colunas = [
+    { t: "ID", v: (s) => Number(String(s.sid).replace(/\D/g, "")) || 0 },
+    { t: "Status", v: (s) => s.status || "Ativo", h: (s) => <span className={`lbl ${s.status === "Inativo" ? "off" : "ok"}`}>{s.status === "Inativo" ? "Cancelado" : "Ativo"}</span> },
+    { t: "Preço", v: (s) => precoUnitario(s), h: (s) => brl(precoUnitario(s)) },
+    { t: "Qtde", v: (s) => Number(s.qtd) || 0 },
+    { t: "Total", v: (s) => totalItem(s), h: (s) => brl(totalItem(s)) },
+    { t: "Grupo", v: (s) => s.grupo || "" },
+    { t: "Matriz", v: (s) => s.matriz || s.descricao },
+    { t: "Parâmetros", v: (s) => s.params.map((x) => x.nome).join(", "), h: (s) => <span title={s.params.map((x) => x.nome).join(", ")}>{s.params.length}: {s.params.map((x) => x.abrev || x.nome).join(", ")}</span> },
+    { t: "L. Apli 1.", v: (s) => s.legislacao || "" },
+    { t: "L. Apli 2.", v: (s) => (s.legislacao2 || []).join(", ") },
+    { t: "Agendado", v: (s) => s.agendado },
+    { t: "Saldo", v: (s) => s.saldo },
+  ];
+  const abrirHist = async () => { setJanela("hist"); setHist(null); try { setHist(await auditoria({ colecao: "contratos", registroId: c.id, limite: 100 })); } catch { setHist([]); } };
   return (
-    <>
-      <Caixa cabecalho={`Detalhes do contrato ${numeroContrato(c)}`}>
-        {pacotes.length ? (
-          <div className="frm">
-            <div className="fg s6"><label htmlFor="dPac">Pacote de serviços</label><select id="dPac" value={pid} onChange={(e) => setPid(e.target.value)}>{opcoes(pacotes.map((x) => [x.id, x.descricao]))}</select></div>
-            <div className="fg s2"><label htmlFor="dQtd">Qtde</label><input id="dQtd" type="number" min="1" value={qtd} onChange={(e) => setQtd(Math.max(1, Number(e.target.value) || 1))} /></div>
-            <div className="fg s4" style={{ justifyContent: "flex-end" }}><button type="button" className="btn btn-primary" onClick={adicionar}>Adicionar amostra</button></div>
-          </div>
-        ) : <p className="aviso alerta">Cadastre Pacotes de Serviço em <a href={link("service-package")}>Configurações</a> para adicionar amostras.</p>}
-        <div className="tw" style={{ marginTop: 14 }}>
-          <table>
-            <thead><tr>{["ID", "Status", "Preço", "Serviço / Matriz", "Parâmetros", "L. Apli 1.", "Qtde", "Agendado", "Saldo", "Total", ""].map((t) => <th key={t}>{t}</th>)}</tr></thead>
-            <tbody>{saldo.map((s) => (
-              <tr key={s.sid}>
-                <td>{s.sid}</td><td><span className={`lbl ${s.status === "Inativo" ? "off" : "ok"}`}>{s.status || "Ativo"}</span></td><td>{brl(precoUnitario(s))}</td>
-                <td>{s.descricao}{s.matriz ? ` — ${s.matriz}` : ""}</td><td title={s.params.map((x) => x.nome).join(", ")}>{s.params.length}: {s.params.map((x) => x.abrev || x.nome).join(", ")}</td>
-                <td>{s.legislacao}</td><td>{s.qtd}</td><td>{s.agendado}</td><td>{s.saldo}</td><td>{brl(totalItem(s))}</td>
-                <td><button type="button" className="btn btn-default btn-sm" onClick={() => alternar(s)}>{s.status === "Inativo" ? "Ativar" : "Inativar"}</button></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-        <div className="tot"><span>Total do contrato: <b>{brl(totalContrato(c))}</b></span></div>
-        <div className="acoes" style={{ marginTop: 12 }}><a className="btn btn-default" href={link("contract", c.id)}>Voltar</a><a className="btn btn-default" href={link("collection-plan", c.id)}>Plano de Coleta</a></div>
-      </Caixa>
-      <Caixa titulo="Histórico de Alterações">
-        <div className="tw"><table><thead><tr><th>Data</th><th>Usuário</th><th>O que mudou</th></tr></thead>
-          <tbody>{hist?.length ? hist.map((a) => <tr key={a.id}><td>{quandoBR(a.em)}</td><td>{a.usuario}</td><td className="quebra">{a.acao}</td></tr>) : <tr><td colSpan={3} className="vazio">{hist ? "Sem registros." : "Carregando…"}</td></tr>}</tbody></table></div>
-      </Caixa>
-    </>
+    <Caixa cabecalho={`Detalhes do contrato ${numeroContrato(c)}`}>
+      <Grade id="det-contrato" exportar="detalhes-contrato" linhas={saldo} colunas={colunas} selecao={sel} aoSelecionar={setSel} ordemInicial={[0, "asc"]}
+        botoes={[
+          { rotulo: "Voltar", acao: () => navegar("contract", c.id) },
+          { rotulo: "Adicionar", acao: () => setJanela("add") },
+          { rotulo: "Cancelar", acao: () => (s1 ? (s1.status === "Inativo" ? avisar("Este serviço já está cancelado.", "err") : setJanela({ cancelar: s1, motivo: "" })) : avisar("Selecione um serviço.", "err")) },
+          { rotulo: "Histórico de alterações", acao: abrirHist },
+        ]} />
+      <div className="tot"><span>Total do contrato: <b>{brl(totalContrato(c))}</b></span></div>
+      <div className="acoes" style={{ marginTop: 12 }}><a className="btn btn-default" href={link("collection-plan", c.id)}>Plano de Coleta</a></div>
+      {janela === "add" && <JanelaAmostra inicial={{}} onFechar={() => setJanela(null)} aoSalvar={async (item) => {
+        const sid = `s${Math.max(0, ...c.servicos.map((s) => Number(String(s.sid).slice(1)) || 0)) + 1}`;
+        try { await salvar("contratos", { ...c, servicos: [...c.servicos, { ...item, sid, status: "Ativo" }] }, { motivo: `Adicionou ${item.descricao} (${item.qtd})` }); avisar("Amostra adicionada ao contrato.", "ok"); }
+        catch (e) { avisar(e.message, "err"); return false; }
+      }} />}
+      {janela?.cancelar && (
+        <Modal titulo="Cancelar serviço do contrato" onFechar={() => setJanela(null)} rotuloOk="Cancelar serviço" aoConfirmar={async () => {
+          if (!janela.motivo.trim()) { avisar("Informe o motivo.", "err"); return false; }
+          try { await salvar("contratos", { ...c, servicos: c.servicos.map((x) => (x.sid === janela.cancelar.sid ? { ...x, status: "Inativo" } : x)) }, { motivo: `Cancelou ${janela.cancelar.descricao}: ${janela.motivo.trim()}` }); avisar("Serviço cancelado.", "ok"); }
+          catch (e) { avisar(e.message, "err"); return false; }
+        }}>
+          <p style={{ marginTop: 0 }}>{janela.cancelar.matriz || janela.cancelar.descricao} — saldo {janela.cancelar.saldo} de {janela.cancelar.qtd}.</p>
+          <div className="fg"><label htmlFor="cMot">Motivo</label><input id="cMot" list="mot-ct" value={janela.motivo} onChange={(e) => setJanela({ ...janela, motivo: e.target.value })} /><datalist id="mot-ct">{dados.motivos_alteracao.filter(estaAtivo).map((m) => <option key={m.id} value={m.identificacao} />)}</datalist></div>
+        </Modal>
+      )}
+      {janela === "hist" && (
+        <Modal titulo="Histórico de alterações" largo onFechar={() => setJanela(null)}>
+          <div className="tw"><table><thead><tr><th>Data</th><th>Usuário</th><th>O que mudou</th></tr></thead>
+            <tbody>{hist?.length ? hist.map((a) => <tr key={a.id}><td>{quandoBR(a.em)}</td><td>{a.usuario}</td><td className="quebra">{a.acao}</td></tr>) : <tr><td colSpan={3} className="vazio">{hist ? "Sem registros." : "Carregando…"}</td></tr>}</tbody></table></div>
+        </Modal>
+      )}
+    </Caixa>
   );
 }
 
 /* ======================= Plano de Coleta ======================= */
 
+const statusAg = (a) => (a.status === "OS gerada" ? "Executado" : a.status);
+
 function TabelaAgendamentos({ c }) {
   const ctx = useDados();
   const { salvar } = ctx;
   const avisar = useAviso();
+  const [sel, setSel] = useState(new Set());
   const [editar, setEditar] = useState(null);
-  const [gerando, setGerando] = useState("");
-  const gerar = async (ag) => {
-    setGerando(ag.id);
-    try { const os = await gerarOS(ctx, { contrato: c, servicos: ag.servicos, agendamento: ag, por: getSessao()?.nome || "" }); avisar(`${numeroOS(os)} gerada.`, "ok"); }
-    catch (e) { avisar(e.message, "err"); } finally { setGerando(""); }
-  };
-  const nome = (sid) => c.servicos.find((s) => s.sid === sid)?.descricao || sid;
-  const trocar = async (ag, msg) => { try { await salvar("contratos", { ...c, agendamentos: c.agendamentos.map((a) => (a.id === ag.id ? ag : a)) }); if (msg) avisar(msg, "ok"); } catch (e) { avisar(e.message, "err"); return false; } };
-  const ordenados = [...(c.agendamentos || [])].sort((a, b) => a.data.localeCompare(b.data));
+  const [ocupado, setOcupado] = useState(false);
+  const nome = (sid) => { const s = c.servicos.find((x) => x.sid === sid); return s ? `[ ${String(s.sid).replace(/\D/g, "")} ] ${s.matriz || s.descricao}` : sid; };
+  const linhas = (c.agendamentos || []).map((a, i) => ({ ...a, n: i + 1 }));
+  const marcados = linhas.filter((a) => sel.has(a.id));
+  const um = (fn) => () => (marcados.length === 1 ? fn(marcados[0]) : avisar(marcados.length ? "Selecione apenas um agendamento." : "Selecione um agendamento.", "err"));
+  const gravar = async (novo, msg) => { try { await salvar("contratos", novo); setSel(new Set()); if (msg) avisar(msg, "ok"); } catch (e) { avisar(e.message, "err"); return false; } };
+  const trocar = (ag, msg) => gravar({ ...c, agendamentos: c.agendamentos.map((a) => (a.id === ag.id ? ag : a)) }, msg);
+  const executar = um(async (a) => {
+    if (a.status !== "Agendado") { avisar("Este agendamento já foi executado ou cancelado.", "err"); return; }
+    setOcupado(true);
+    try { const os = await gerarOS(ctx, { contrato: c, servicos: a.servicos, agendamento: a, por: getSessao()?.nome || "" }); setSel(new Set()); avisar(`${numeroOS(os)} gerada.`, "ok"); }
+    catch (e) { avisar(e.message, "err"); } finally { setOcupado(false); }
+  });
+  const colunas = [
+    { t: "ID", v: (a) => a.n },
+    { t: "Identificação", v: (a) => a.identificacao || "" },
+    { t: "Serviços", v: (a) => a.servicos.map((s) => `${nome(s.sid)}${Number(s.qtd) > 1 ? ` (${s.qtd})` : ""}`).join("; ") },
+    { t: "Data do agendamento", v: (a) => a.data || "", h: (a) => quandoBR(a.data), fv: (a) => quandoBR(a.data) },
+    { t: "Periodo", v: (a) => a.periodo || "unico" },
+    { t: "Status", v: (a) => statusAg(a), h: (a) => <span className={`lbl ${a.status === "Cancelado" ? "off" : a.status === "Agendado" ? "info" : "ok"}`}>{statusAg(a)}</span> },
+    { t: "OS", v: (a) => a.osId || "", h: (a) => (a.osId ? <a href={link("ordem", a.osId)}>Ver OS</a> : "") },
+  ];
   return (
     <>
-      <div className="tw"><table>
-        <thead><tr>{["ID", "Identificação", "Serviços", "Data do agendamento", "Período", "Status", ""].map((t) => <th key={t}>{t}</th>)}</tr></thead>
-        <tbody>{ordenados.length ? ordenados.map((a, i) => (
-          <tr key={a.id}><td>{i + 1}</td><td>{a.identificacao}</td><td className="quebra">{a.servicos.map((s) => `${nome(s.sid)} (${s.qtd})`).join("; ")}</td><td>{quandoBR(a.data)}</td><td>{a.periodo}</td>
-            <td><span className={`lbl ${a.status === "Cancelado" ? "off" : a.status === "OS gerada" ? "ok" : "info"}`}>{a.status}</span></td>
-            <td><div className="acoes">{a.status === "Agendado" && <><button type="button" className="btn btn-success btn-sm" disabled={!!gerando} onClick={() => gerar(a)}>{gerando === a.id ? "Gerando…" : "Gerar OS"}</button><button type="button" className="btn btn-default btn-sm" onClick={() => setEditar({ ...a })}>Alterar</button><button type="button" className="btn btn-danger btn-sm" onClick={() => trocar({ ...a, status: "Cancelado" }, "Agendamento cancelado.")}>Remover</button></>}{a.osId && <a className="btn btn-default btn-sm" href={link("ordem", a.osId)}>Ver OS</a>}</div></td></tr>
-        )) : <tr><td colSpan={7} className="vazio">Nenhum agendamento.</td></tr>}</tbody>
-      </table></div>
+      <Grade id="agendamentos" exportar="agendamentos" linhas={linhas} colunas={colunas} multipla selecao={sel} aoSelecionar={setSel} ordemInicial={[0, "asc"]} porPaginaInicial={10}
+        botoes={[
+          { rotulo: ocupado ? "Executando…" : "Executar", acao: executar, desativado: ocupado },
+          { rotulo: "Cancelar", acao: um((a) => (a.status !== "Agendado" ? avisar("Só é possível cancelar agendamento ainda não executado.", "err") : trocar({ ...a, status: "Cancelado" }, "Agendamento cancelado."))) },
+          { rotulo: "Editar", acao: um((a) => (a.status !== "Agendado" ? avisar("Só é possível editar agendamento ainda não executado.", "err") : setEditar({ ...a }))) },
+          { rotulo: "Mesclar", acao: () => { try { gravar(mesclarAgendamentos(c, marcados.map((a) => a.id)), "Agendamentos mesclados."); } catch (e) { avisar(e.message, "err"); } } },
+        ]} />
       {editar && (
         <Modal titulo="Alterar Agendamento" onFechar={() => setEditar(null)} rotuloOk="Atualizar" aoConfirmar={() => (editar.data ? trocar(editar, "Agendamento alterado.") : (avisar("Informe a data.", "err"), false))}>
           <div className="fg"><label htmlFor="eData">Data e Hora do agendamento</label><input id="eData" type="datetime-local" value={editar.data} onChange={(e) => setEditar({ ...editar, data: e.target.value })} /></div>
@@ -321,43 +343,88 @@ export function PlanoColeta({ param }) {
   const { dados, salvar } = useDados();
   const avisar = useAviso();
   const c = dados.contratos.find((x) => x.id === param);
-  const [qtds, setQtds] = useState({});
-  const [data, setData] = useState(`${isoDia(1)}T08:00`);
-  const [ident, setIdent] = useState("");
+  const [marc, setMarc] = useState({}); // sid -> Set(pids) (com o serviço marcado)
+  const [plano, setPlano] = useState([]); // [{ sid, params, qtd }]
+  const [ag, setAg] = useState({ identificacao: "", repetir: "Único", inicio: "", fim: "", cada: 1, dia: AGENDAR_TODA[0] });
   if (!c) return <NaoAchou />;
   const cliente = dados.clientes.find((x) => x.id === c.clienteId) || {};
+  const ends = enderecosDoCliente(cliente).filter((e) => e.status !== "Inativo");
+  const endColeta = ends.find((e) => e.tipo === "Coleta" && e.padrao === "Sim") || ends.find((e) => e.tipo === "Coleta");
+  const endUsado = endColeta || ends.find((e) => e.tipo === "Principal") || {};
+  const textoEnd = [endUsado.end, endUsado.num ? `nº ${endUsado.num}` : "", endUsado.comp, endUsado.bairro].filter(Boolean).join(", ") + (endUsado.cidade ? ` - ${endUsado.cidade} / ${endUsado.uf || ""}` : "");
   const saldo = saldoServicos(c).filter((s) => s.status !== "Inativo");
+  const marcarServ = (s, on) => setMarc((m) => { const n = { ...m }; if (on) n[s.sid] = n[s.sid] || new Set(); else delete n[s.sid]; return n; });
+  const marcarParam = (s, pid, on) => setMarc((m) => { const atual = new Set(m[s.sid] || []); on ? atual.add(pid) : atual.delete(pid); return { ...m, [s.sid]: atual }; });
+  const adicionar = () => {
+    const escolhidos = Object.entries(marc);
+    if (!escolhidos.length) { avisar("Selecione os serviços.", "err"); return; }
+    if (escolhidos.some(([, ps]) => !ps.size)) { avisar("Selecione os parâmetros.", "err"); return; }
+    setPlano((p) => [...p, ...escolhidos.map(([sid, ps]) => { const sv = c.servicos.find((x) => x.sid === sid); return { k: `${sid}-${Date.now()}-${Math.random()}`, sid, params: ps.size === sv.params.length ? [] : [...ps], qtd: 1 }; })]);
+    setMarc({});
+  };
   const agendar = async () => {
     try {
-      const ag = novoAgendamento(c, { data, identificacao: ident, servicos: Object.entries(qtds).map(([sid, qtd]) => ({ sid, qtd })) });
-      await salvar("contratos", { ...c, agendamentos: [...(c.agendamentos || []), ag] });
-      setQtds({}); setIdent("");
-      avisar("Serviço adicionado ao agendamento.", "ok");
+      if (!plano.length) throw new Error("Adicione serviços ao plano de coleta.");
+      const datas = datasRepeticao({ ...ag, feriados: feriadosAtivos(dados) });
+      const periodo = ag.repetir === "Único" ? "unico" : `${ag.repetir.toLowerCase()}${Number(ag.cada) > 1 ? ` a cada ${ag.cada}` : ""}`;
+      const novos = agendarPlano(c, { datas, servicos: plano, identificacao: ag.identificacao, periodo });
+      await salvar("contratos", { ...c, agendamentos: [...(c.agendamentos || []), ...novos] }, { motivo: `Plano de coleta: ${novos.length} agendamento(s)` });
+      setPlano([]); setAg((x) => ({ ...x, identificacao: "", inicio: "", fim: "" }));
+      avisar(`${novos.length} agendamento(s) criado(s).`, "ok");
     } catch (e) { avisar(e.message, "err"); }
   };
+  const nomeServ = (sid) => { const s = c.servicos.find((x) => x.sid === sid); return s?.matriz || s?.descricao || sid; };
+  const setA = (k) => (e) => setAg((x) => ({ ...x, [k]: e.target.value }));
   return (
-    <>
-      <Caixa cabecalho={`Plano de coleta - ${cliente.razao || ""} · contrato ${numeroContrato(c)}`}>
-        <h3 className="box-title" style={{ fontSize: 14 }}>Serviços do contrato</h3>
-        <div className="acoes" style={{ marginBottom: 8 }}><button type="button" className="btn btn-default btn-sm" onClick={() => setQtds(Object.fromEntries(saldo.filter((s) => s.saldo > 0).map((s) => [s.sid, 1])))}>Selecionar Todos</button></div>
-        <div className="tw"><table>
-          <thead><tr>{["#", "Serviço / Matriz", "Legislação Aplicável", "Parâmetros", "Qtde", "Saldo", "Total", "Quantidade a agendar"].map((t) => <th key={t}>{t}</th>)}</tr></thead>
-          <tbody>{saldo.length ? saldo.map((s) => (
-            <tr key={s.sid}><td>{s.sid}</td><td>{s.descricao}{s.matriz ? ` — ${s.matriz}` : ""}</td><td>{s.legislacao}</td><td>{s.params.length}</td><td>{s.qtd}</td><td>{s.saldo}</td><td>{brl(totalItem(s))}</td>
-              <td><input className="campo-num" type="number" min="0" max={s.saldo} aria-label={`Quantidade de ${s.descricao}`} disabled={s.saldo <= 0} value={qtds[s.sid] ?? ""} onChange={(e) => setQtds((q) => ({ ...q, [s.sid]: e.target.value }))} /></td></tr>
-          )) : <tr><td colSpan={8} className="vazio">O contrato não tem serviços ativos.</td></tr>}</tbody>
-        </table></div>
-        <div className="frm" style={{ marginTop: 14 }}>
-          <div className="fg s4"><label htmlFor="pData">Data e Hora do agendamento</label><input id="pData" type="datetime-local" value={data} onChange={(e) => setData(e.target.value)} /></div>
-          <div className="fg s4"><label htmlFor="pIdent">Identificação</label><input id="pIdent" placeholder="Ex.: Coleta mensal - pontos 1 a 4" value={ident} onChange={(e) => setIdent(e.target.value)} /></div>
-          <div className="fg s4" style={{ justifyContent: "flex-end" }}><button type="button" className="btn btn-primary" onClick={agendar}>Adicionar serviço ao agendamento</button></div>
+    <Caixa cabecalho={`Plano de coleta - ${cliente.razao || ""}`}>
+      <h3 className="box-title" style={{ fontSize: 15 }}>Serviços do contrato</h3>
+      <div className="acoes" style={{ marginBottom: 8 }}><button type="button" className="dbtn" onClick={() => setMarc(Object.fromEntries(saldo.filter((s) => s.saldo > 0).map((s) => [s.sid, new Set(s.params.map((x) => x.id))])))}>Selecionar Todos</button></div>
+      <div className="tw"><table>
+        <thead><tr>{["ID", "#", "Grupo", "Matriz", "Legislação Aplicável", "Legislação Aplicável comparativa", "Parâmetros", "Qtde", "Saldo", "Total"].map((t) => <th key={t}>{t}</th>)}</tr></thead>
+        <tbody>
+          <tr><td colSpan={10} className="suave">{endColeta ? <><b>Endereço de coleta:</b> {textoEnd}</> : <><b>Nenhum endereço de coleta definido como padrão; usando o endereço principal de cadastro.</b><br /><b>Endereço usado:</b> {textoEnd || "—"}</>}</td></tr>
+          {saldo.length ? saldo.map((s) => {
+            const ps = marc[s.sid];
+            return (
+              <tr key={s.sid}><td>{String(s.sid).replace(/\D/g, "")}</td>
+                <td className="chk"><input type="checkbox" aria-label={`Selecionar ${s.matriz || s.descricao}`} disabled={s.saldo <= 0} checked={!!ps} onChange={(e) => marcarServ(s, e.target.checked)} /></td>
+                <td>{s.grupo || ""}</td><td>{s.matriz || s.descricao}</td><td>{s.legislacao || ""}</td><td>{(s.legislacao2 || []).join(", ") || "-"}</td>
+                <td><label className="radios"><input type="checkbox" disabled={s.saldo <= 0} checked={!!ps && ps.size === s.params.length} onChange={(e) => setMarc((m) => ({ ...m, [s.sid]: new Set(e.target.checked ? s.params.map((x) => x.id) : []) }))} /> <b>Selecionar todos</b></label>
+                  {s.params.map((x) => <label key={x.id} className="radios"><input type="checkbox" disabled={s.saldo <= 0} checked={!!ps?.has(x.id)} onChange={(e) => marcarParam(s, x.id, e.target.checked)} /> {x.nome}</label>)}</td>
+                <td>{s.qtd}</td><td>{s.saldo}</td><td>{brl(totalItem(s))}</td></tr>
+            );
+          }) : <tr><td colSpan={10} className="vazio">O contrato não tem serviços ativos.</td></tr>}
+        </tbody>
+      </table></div>
+      <div style={{ margin: "16px 0" }}><button type="button" className="btn btn-info" onClick={adicionar}>Adicionar serviço ao agendamento</button></div>
+      <h3 className="box-title" style={{ fontSize: 15 }}>Plano de coleta</h3>
+      <div className="tw"><table>
+        <thead><tr><th style={{ width: 110 }}>Remover</th><th>Serviço</th><th style={{ width: 260 }}>Quantidade</th></tr></thead>
+        <tbody>{plano.map((p) => (
+          <tr key={p.k}><td><button type="button" className="dbtn" onClick={() => setPlano((l) => l.filter((x) => x.k !== p.k))}>Remover</button></td>
+            <td>{nomeServ(p.sid)}{p.params.length ? <span className="suave"> · {p.params.length} parâmetro(s)</span> : ""}</td>
+            <td><input className="campo-num" type="number" min="1" aria-label={`Quantidade de ${nomeServ(p.sid)}`} value={p.qtd} onChange={(e) => setPlano((l) => l.map((x) => (x.k === p.k ? { ...x, qtd: e.target.value } : x)))} /></td></tr>
+        ))}</tbody>
+      </table></div>
+      {plano.length > 0 && <>
+        <h3 className="box-title" style={{ fontSize: 15, marginTop: 24 }}>Agendamento Ordem de Serviço</h3>
+        <div className="frm">
+          <div className="fg s4"><label htmlFor="agId">Identificação</label><input id="agId" value={ag.identificacao} onChange={setA("identificacao")} /></div>
+          <div className="quebra-linha" />
+          <div className="fg s2"><label htmlFor="agRep">Repetir</label><select id="agRep" value={ag.repetir} onChange={setA("repetir")}>{opcoes(REPETIR)}</select></div>
+          <div className="fg s3"><label htmlFor="agIni">Data inicio e hora (Primeira coleta)</label><input id="agIni" type="datetime-local" value={ag.inicio} onChange={setA("inicio")} /></div>
+          {ag.repetir !== "Único" && <>
+            <div className="fg s3"><label htmlFor="agFim">Data final e hora (Última coleta)</label><input id="agFim" type="datetime-local" value={ag.fim} onChange={setA("fim")} /></div>
+            <div className="fg s2"><label htmlFor="agCada">Repetir a cada</label><select id="agCada" value={ag.cada} onChange={setA("cada")}>{opcoes(Array.from({ length: 24 }, (_, i) => String(i + 1)))}</select></div>
+            <div className="fg s2"><label htmlFor="agDia">agendar toda</label><select id="agDia" value={ag.dia} onChange={setA("dia")}>{opcoes(AGENDAR_TODA)}</select></div>
+          </>}
         </div>
-      </Caixa>
-      <Caixa titulo="Agendamentos">
-        <TabelaAgendamentos c={c} />
-        <div className="acoes" style={{ marginTop: 12 }}><a className="btn btn-default" href={link("contract", c.id)}>Voltar</a><a className="btn btn-default" href={link("collection-plan-auto", c.id)}>Plano de Coleta automático</a></div>
-      </Caixa>
-    </>
+        <div className="acoes" style={{ marginTop: 12 }}><button type="button" className="btn btn-success" onClick={agendar}>Agendar</button><button type="button" className="btn btn-default" onClick={() => setPlano([])}>Voltar</button></div>
+      </>}
+      <h3 className="box-title" style={{ fontSize: 15, marginTop: 28 }}>Agendamentos</h3>
+      <TabelaAgendamentos c={c} />
+      <div className="acoes" style={{ marginTop: 12 }}><a className="btn btn-default" href={link("contract", c.id)}>Voltar</a><a className="btn btn-default" href={link("collection-plan-auto", c.id)}>Plano de Coleta automático</a></div>
+    </Caixa>
   );
 }
 

@@ -92,7 +92,73 @@ export function novoAgendamento(c, { data, servicos, identificacao = "", periodo
   if (!sel.length) throw new Error("Selecione ao menos um serviço com quantidade.");
   const saldo = Object.fromEntries(saldoServicos(c).map((s) => [s.sid, s.saldo]));
   for (const s of sel) if (Number(s.qtd) > (saldo[s.sid] ?? 0)) throw new Error("A quantidade passa do saldo contratado do serviço.");
-  return { id: idAg(), data, identificacao, periodo, servicos: sel.map((s) => ({ sid: s.sid, qtd: Number(s.qtd) })), status: "Agendado" };
+  return { id: idAg(), data, identificacao, periodo, servicos: sel.map((s) => ({ sid: s.sid, qtd: Number(s.qtd), ...(s.params?.length ? { params: [...s.params] } : {}) })), status: "Agendado" };
+}
+
+// Agendamento do Plano de Coleta como no GerenciaLab: Repetir (Único,
+// Diariamente, Semanal, Mensal) a cada N, da primeira à última coleta, e
+// "agendar toda" (dias livres ou um dia da semana fixo).
+export const REPETIR = ["Único", "Diariamente", "Semanal", "Mensal"];
+export const AGENDAR_TODA = ["Livre - segunda á sexta", "Livre - segunda á sábado", "Livre - todos os dias", "Segunda", "Terça Feira", "Quarta Feira", "Quinta Feira", "Sexta Feira", "Sábado", "Domingo"];
+const DIA_SEMANA = { Domingo: 0, Segunda: 1, "Terça Feira": 2, "Quarta Feira": 3, "Quinta Feira": 4, "Sexta Feira": 5, Sábado: 6 };
+
+export function datasRepeticao({ inicio, fim = "", repetir = "Único", cada = 1, dia = AGENDAR_TODA[0], feriados = [] }) {
+  if (!inicio) throw new Error("Informe a data e hora da primeira coleta.");
+  const [d0, hora = "08:00"] = String(inicio).split("T");
+  if (repetir === "Único") return [`${d0}T${hora.slice(0, 5)}`];
+  if (!fim) throw new Error("Informe a data da última coleta.");
+  const dFim = String(fim).slice(0, 10);
+  if (dFim < d0) throw new Error("A última coleta é antes da primeira.");
+  const passo = Math.max(1, Math.floor(Number(cada) || 1));
+  const fer = new Set(feriados);
+  const ajustar = (d) => {
+    const x = new Date(d);
+    if (dia in DIA_SEMANA) { while (x.getUTCDay() !== DIA_SEMANA[dia]) x.setUTCDate(x.getUTCDate() + 1); return x; }
+    const ok = (y) => !fer.has(iso(y)) && (dia === "Livre - todos os dias" || (y.getUTCDay() !== 0 && (dia === "Livre - segunda á sábado" || y.getUTCDay() !== 6)));
+    for (let i = 0; i < 10 && !ok(x); i++) x.setUTCDate(x.getUTCDate() + 1);
+    return x;
+  };
+  const out = new Set();
+  const base = utc(d0);
+  for (let k = 0; k < 1000; k++) {
+    const d = new Date(base);
+    if (repetir === "Diariamente") d.setUTCDate(d.getUTCDate() + k * passo);
+    else if (repetir === "Semanal") d.setUTCDate(d.getUTCDate() + k * passo * 7);
+    else { d.setUTCMonth(d.getUTCMonth() + k * passo); if (d.getUTCDate() !== base.getUTCDate()) d.setUTCDate(0); }
+    if (iso(d) > dFim) break;
+    const a = ajustar(d);
+    if (iso(a) <= dFim) out.add(`${iso(a)}T${hora.slice(0, 5)}`);
+  }
+  if (!out.size) throw new Error("Nenhuma data no período informado.");
+  return [...out].sort();
+}
+
+// Cria um agendamento por data, conferindo o saldo acumulado.
+export function agendarPlano(c, { datas, servicos, identificacao = "", periodo = "" }) {
+  const novos = [];
+  let atual = c;
+  for (const data of datas) {
+    const ag = novoAgendamento(atual, { data, servicos, identificacao, periodo });
+    novos.push(ag);
+    atual = { ...atual, agendamentos: [...(atual.agendamentos || []), ag] };
+  }
+  return novos;
+}
+
+// Mescla agendamentos ainda não executados no primeiro (por data).
+export function mesclarAgendamentos(c, ids) {
+  const alvo = (c.agendamentos || []).filter((a) => ids.includes(a.id)).sort((a, b) => String(a.data).localeCompare(String(b.data)));
+  if (alvo.length < 2) throw new Error("Selecione ao menos dois agendamentos para mesclar.");
+  if (alvo.some((a) => a.status !== "Agendado")) throw new Error("Só é possível mesclar agendamentos que ainda não foram executados.");
+  const soma = new Map();
+  for (const a of alvo) for (const s of a.servicos) {
+    const k = `${s.sid}|${(s.params || []).join(",")}`;
+    soma.set(k, { ...s, qtd: (soma.get(k)?.qtd || 0) + Number(s.qtd || 0) });
+  }
+  const [prim, ...resto] = alvo;
+  const fora = new Set(resto.map((a) => a.id));
+  const unido = { ...prim, identificacao: [...new Set(alvo.map((a) => a.identificacao).filter(Boolean))].join(" + "), servicos: [...soma.values()] };
+  return { ...c, agendamentos: c.agendamentos.filter((a) => !fora.has(a.id)).map((a) => (a.id === prim.id ? unido : a)) };
 }
 
 // Plano automático: datas a cada N dias entre início e fim (pula fim de

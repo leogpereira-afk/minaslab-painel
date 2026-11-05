@@ -33,7 +33,7 @@ function Menu({ rotulo, itens }) {
   );
 }
 
-function JanelaAmostra({ inicial, onFechar, aoSalvar }) {
+export function JanelaAmostra({ inicial, onFechar, aoSalvar }) {
   const { dados } = useDados();
   const avisar = useAviso();
   const pacotes = dados.pacotes.filter(estaAtivo);

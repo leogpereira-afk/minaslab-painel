@@ -45,7 +45,7 @@ export function amostrasDosServicos(contrato, servicos) {
     for (let i = 0; i < Number(s.qtd || 0); i++) {
       out.push({
         sid: sv.sid, servico: sv.descricao, matriz: sv.matriz || "", legislacao: sv.legislacao || "",
-        analises: sv.params.map((p) => ({ pid: p.id, nome: p.nome, abrev: p.abrev || "", metodo: p.metodo || "", un: p.un || "", lq: p.lq || "", acred: !!p.acred, resultado: "", etapa: "Aguardando" })),
+        analises: (s.params?.length ? sv.params.filter((p) => s.params.includes(p.id)) : sv.params).map((p) => ({ pid: p.id, nome: p.nome, abrev: p.abrev || "", metodo: p.metodo || "", un: p.un || "", lq: p.lq || "", acred: !!p.acred, resultado: "", etapa: "Aguardando" })),
       });
     }
   }

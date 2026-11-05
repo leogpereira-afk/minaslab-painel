@@ -26,10 +26,10 @@ export async function gerarOS(ctx, { contrato, servicos, agendamento = null, des
   const osSalva = await salvar("ordens", os, { numerar: true, motivo: avulsa ? "OS avulsa" : `Agendamento de ${agendamento.data}` });
   await salvarLote("amostras", amostras.map((a) => ({ ...a, osId: osSalva.id, os: `OS${String(os.num).padStart(5, "0")}/${ano}` })), { numerar: true });
   if (agendamento) {
-    await salvar("contratos", { ...contrato, agendamentos: contrato.agendamentos.map((a) => (a.id === agendamento.id ? { ...a, status: "OS gerada", osId: osSalva.id } : a)) });
+    await salvar("contratos", { ...contrato, agendamentos: contrato.agendamentos.map((a) => (a.id === agendamento.id ? { ...a, status: "Executado", osId: osSalva.id } : a)) });
   } else {
     // OS avulsa também consome o saldo do contrato: registra como agendamento já com OS.
-    const ag = { id: `ag${Date.now().toString(36)}`, data: "", identificacao: descricao || "OS avulsa", periodo: "", servicos: servicos.filter((s) => Number(s.qtd) > 0).map((s) => ({ sid: s.sid, qtd: Number(s.qtd) })), status: "OS gerada", osId: osSalva.id };
+    const ag = { id: `ag${Date.now().toString(36)}`, data: "", identificacao: descricao || "OS avulsa", periodo: "", servicos: servicos.filter((s) => Number(s.qtd) > 0).map((s) => ({ sid: s.sid, qtd: Number(s.qtd) })), status: "Executado", osId: osSalva.id };
     await salvar("contratos", { ...contrato, agendamentos: [...(contrato.agendamentos || []), ag] });
   }
   return osSalva;
