@@ -321,6 +321,7 @@ export function RegistrarColeta({ param }) {
   const gravar = async (finalizar) => {
     setOcupado(true);
     try {
+      if (finalizar) { const ag = agoraLocal(); const fut = amostras.filter((a) => (ed[a.id].dataColeta || "") > ag); if (fut.length) throw new Error(`Data e hora da coleta no futuro (${fut.map(referenciaAmostra).join(", ")}). Informe quando a coleta foi feita.`); }
       const novas = amostras.map((a) => montar(a, finalizar));
       await salvarLote("amostras", novas, { motivo: finalizar ? "Coleta registrada" : "Edição dinâmica da coleta" });
       avisar(finalizar ? `Coleta finalizada: ${novas.length} amostra(s) em "${statusFinal}".` : "Dados da coleta salvos.", "ok");

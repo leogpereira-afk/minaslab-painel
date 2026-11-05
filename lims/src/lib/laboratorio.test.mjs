@@ -37,6 +37,19 @@ test("limite vem da legislação da amostra", () => {
   assert.equal(limiteDe(dados, amostra(), "ph"), null);
 });
 
+test("limite acha o parâmetro de mesmo nome e prefere a matriz da amostra", () => {
+  const dados = {
+    legislacoes: [{ id: "L1", nome: "Portaria 888" }], matrizes: [{ id: "M1", nome: "Água tratada" }],
+    parametros: [{ id: "mn-a", parametro: "Manganês" }, { id: "mn-b", parametro: "Manganes" }, { id: "tu-a", parametro: "Turbidez (In Situ)" }, { id: "tu-b", parametro: "Turbidez" }, { id: "cl", parametro: "Cloro Residual Total" }, { id: "cll", parametro: "Cloro Residual Livre" }],
+    resultado_la: [{ legislacao: "L1", matriz: "M9", limites: [{ parametro: "mn-b", maximo: 9 }] }, { legislacao: "L1", matriz: "M1", limites: [{ parametro: "mn-b", maximo: 0.1 }, { parametro: "tu-b", maximo: 5 }, { parametro: "cll", minimo: 0.2, maximo: 5 }] }],
+  };
+  const a = { ...amostra(), legislacao: "Portaria 888", matriz: "Água tratada" };
+  assert.equal(limiteDe(dados, a, "mn-a").maximo, 0.1);
+  assert.equal(limiteDe(dados, a, "tu-a").maximo, 5);
+  assert.equal(limiteDe(dados, a, "cl"), null);
+  assert.equal(parecer("1,0", limiteDe(dados, a, "mn-a")), "Não conforme");
+});
+
 test("fluxo: lançar → revisão → aprovar → assinatura", () => {
   let a = amostra();
   assert.throws(() => enviarRevisao(a, "t"), /Falta resultado em: pH, Turbidez/);
