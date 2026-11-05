@@ -24,7 +24,7 @@ export function contratoDaProposta(p, g, por) {
     propostaId: p.id, proposta: numeroProposta(p), num: p.num, ano: p.ano, ident: p.ident || "",
     clienteId: p.clienteId, solicitanteId: p.solicitanteId || null, centro: p.centro || "", status: "Ativo",
     inicio: g.inicio, fim: g.fim, indicacao: p.indicacao || "Sem indicação", grupoRegional: "",
-    emailNF: p.emailCliNF || "", emailResultado: p.emailCliRes || "", prazoMicro: "", prazoFQ: "", responsavel: "", coleta: "MinasLab",
+    emailNF: p.emailCliNF || "", emailResultado: p.emailCliRes || "", prazoMicro: "", prazoFQ: "", responsavel: "", coleta: p.respColeta === "Cliente" ? "Cliente" : "MinasLab", equip: p.equip || "",
     obsFin: p.obsFin || "", limiteAmostras: "", tipoContrato: p.tipoContrato || "", condicoes: p.condicoes || "",
     ciclo: g.ciclo, cobrancaNa: p.cobrancaNa || "", parcelas: g.ciclo === "Parcelado" ? Number(g.parcelas) : 1,
     tipoPeriodo: g.tipoPeriodo || "Por dia Fixo", cobrarDia: g.cobrarDia || "10", primeiroPag: g.primeiroPag || "",

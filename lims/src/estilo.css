@@ -345,3 +345,15 @@ tr.sub-linha > td { background: #f8fafc; padding: 8px 12px 14px; white-space: no
 .prop-doc p { font-size: 12.5px; line-height: 1.55; margin: 0 0 6px; text-align: justify; }
 .prop-doc .doc-tab td { font-size: 12px; }
 .prop-ponto { margin-bottom: 14px; break-inside: avoid; }
+
+/* Agenda (Coletas) */
+.agenda-lay { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; }
+.agenda-usuarios { border: 1px solid var(--line); border-radius: 4px; align-self: start; }
+.agenda-usu-tit { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--line); text-align: center; }
+.agenda-usuarios button { display: flex; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 7px 10px; font-size: 12.5px; cursor: pointer; }
+.agenda-usuarios button.on { background: var(--teal-50, #e6f4f1); font-weight: 600; }
+.agenda-lista { border: 1px solid var(--line); border-radius: 4px; }
+.agenda-lista > p { padding: 10px; margin: 0; }
+.agenda-dia { display: flex; justify-content: space-between; background: #eef1f2; padding: 6px 10px; font-size: 12.5px; }
+.agenda-lista .cal-ev { display: block; width: 100%; text-align: left; white-space: normal; margin: 0; border-radius: 0; padding: 8px 10px; }
+@media (max-width: 800px) { .agenda-lay { grid-template-columns: 1fr; } }
