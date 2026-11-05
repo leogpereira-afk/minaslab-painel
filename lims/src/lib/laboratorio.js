@@ -52,13 +52,29 @@ export function parecer(valor, limite, lq = "") {
 }
 
 // Limite do parâmetro na legislação da amostra (Resultado Legislação Aplicável).
+// O catálogo do GerenciaLab tem o mesmo parâmetro cadastrado várias vezes
+// (um por grupo/matriz), e o limite pode estar ligado a outro cadastro de
+// mesmo nome. Procura: 1) mesma matriz e mesmo parâmetro; 2) mesmo parâmetro;
+// 3) mesmo nome de parâmetro (sem acento, "(In Situ)" e índices).
+export const nomeParametroNormal = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]/g, "").replace(/<[^>]+>/g, "").replace(/\(\s*in\s*situ\s*\)/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+const cacheNomes = new WeakMap();
 export function limiteDe(dados, amostra, pid) {
   const leg = dados.legislacoes.find((l) => l.nome === amostra.legislacao);
   if (!leg) return null;
-  for (const r of dados.resultado_la.filter((x) => x.legislacao === leg.id)) {
-    const l = (r.limites || []).find((x) => x.parametro === pid);
-    if (l) return l;
-  }
+  const regs = dados.resultado_la.filter((x) => x.legislacao === leg.id);
+  if (!regs.length) return null;
+  const mat = (dados.matrizes || []).find((m) => m.nome === amostra.matriz);
+  const daMatriz = (r) => !!amostra.matriz && (r.matriz === amostra.matriz || (mat && r.matriz === mat.id));
+  const ordenados = [...regs.filter(daMatriz), ...regs.filter((r) => !daMatriz(r))];
+  for (const r of ordenados) { const l = (r.limites || []).find((x) => x.parametro === pid); if (l) return l; }
+  const lista = dados.parametros || [];
+  let mapa = cacheNomes.get(lista);
+  if (!mapa) { mapa = new Map(lista.map((p) => [p.id, nomeParametroNormal(p.parametro || p.descricao)])); cacheNomes.set(lista, mapa); }
+  const nomeDe = (id) => mapa.get(id) || "";
+  const alvo = nomeDe(pid) || nomeParametroNormal(amostra.analises?.find((x) => x.pid === pid)?.nome);
+  if (!alvo) return null;
+  for (const r of ordenados) { const l = (r.limites || []).find((x) => nomeDe(x.parametro) === alvo); if (l) return l; }
   return null;
 }
 
