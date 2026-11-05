@@ -99,13 +99,21 @@ Deno.serve(async (req) => {
   try {
     const usuario = txt(cracha.sub);
     const papel = txt(cracha.papel);
-    const { data: conta, error: erroConta } = await sb.from("ml_contas").select("nome,ativo").eq("usuario", usuario).maybeSingle();
+    const { data: conta, error: erroConta } = await sb.from("ml_contas").select("nome,ativo,paginas_consulta").eq("usuario", usuario).maybeSingle();
     if (erroConta) throw erroConta;
     if (conta && conta.ativo !== true) return json({ erro: "Esta conta foi desativada.", semSessao: true }, 401);
-    if (papel !== "direcao") return json({ erro: "O LIMS está em piloto e, por enquanto, só a direção usa.", semPermissao: true }, 403);
+    // A direção usa sempre; os demais só com "lims" liberado pela matriz da tela Acessos do
+    // painel (lido da conta AO VIVO: tirar a liberação vale na hora, sem esperar o crachá vencer).
+    const paginasConta: string[] = Array.isArray(conta?.paginas_consulta) ? conta.paginas_consulta : [];
+    const liberado = !!conta && paginasConta.includes("__matriz_v1") && paginasConta.includes("lims");
+    if (papel !== "direcao" && !liberado) return json({ erro: "O MinasLab LIMS não está liberado para você. Peça à direção (tela Acessos).", semPermissao: true }, 403);
 
     const body = await req.json().catch(() => ({}));
     const acao = txt(body.acao);
+    // Papel "leitura" só consulta: nada de gravar, numerar ou apagar.
+    if (papel !== "direcao" && papel !== "equipe" && !["carregar", "contas", "auditoria"].includes(acao)) {
+      return json({ erro: "Seu acesso ao LIMS é só de consulta.", semPermissao: true }, 403);
+    }
     const agora = new Date().toISOString();
 
     if (acao === "carregar") {

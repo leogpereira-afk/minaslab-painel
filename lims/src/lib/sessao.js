@@ -70,8 +70,9 @@ export function getSessao() {
   }
 }
 
-// Piloto: enquanto o LIMS não tem porta própria no servidor, só a direção usa.
-export const podeUsarLims = (s) => s?.papel === "direcao";
+// A direção usa sempre; os demais, quando a direção libera "MinasLab LIMS" na tela
+// Acessos do painel (o servidor ml-lims confere a liberação ao vivo a cada chamada).
+export const podeUsarLims = (s) => s?.papel === "direcao" || (Array.isArray(s?.paginas_consulta) && s.paginas_consulta.includes("__matriz_v1") && s.paginas_consulta.includes("lims"));
 
 export function sair(motivo = "") {
   gravar(K_TOKEN, null);

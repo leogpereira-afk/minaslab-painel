@@ -128,7 +128,7 @@ export const ehDirecao = (sessao = getSessao()) => sessao?.papel === "direcao";
 // Com a matriz de páginas (Acessos), a equipe edita só os módulos marcados
 // para ela. O módulo vem da rota aberta (/compromissos, /licitacoes...);
 // Calendário e Início seguem só leitura. Mesma régua do servidor (ml-sync).
-const MODULOS_EDITAVEIS_MATRIZ = ["compromissos", "licitacoes", "marketing", "manutencoes", "google-drive", "compras", "laboratorio"];
+const MODULOS_EDITAVEIS_MATRIZ = ["compromissos", "licitacoes", "marketing", "manutencoes", "google-drive", "compras", "laboratorio", "rh", "ponto"];
 function moduloDaRota() {
   try {
     const base = String(import.meta.env.BASE_URL || "/");

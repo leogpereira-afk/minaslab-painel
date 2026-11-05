@@ -422,8 +422,16 @@ Deno.serve(async (req) => {
   const cracha = m ? await verificarJwt(m[1]) : null;
   const ehMaquina = !!TOKEN && req.headers.get("x-token") === TOKEN;
   if (!cracha && !ehMaquina) return resp({ erro: "Entre no sistema.", semSessao: true }, 401);
+  // A direção sempre; a equipe com "ponto" ou "rh" liberado na tela Acessos (Ana,
+  // 05/11/2026). A liberação e a conta ativa são lidas AO VIVO a cada chamada.
   if (!ehMaquina && String(cracha?.papel ?? "") !== "direcao") {
-    return resp({ erro: "O ponto é só da direção.", semPermissao: true }, 403);
+    const { data: conta } = await sb.from("ml_contas").select("ativo,papel,paginas_consulta").eq("usuario", String(cracha?.sub ?? "")).maybeSingle();
+    if (!conta || conta.ativo !== true) return resp({ erro: "Esta conta foi desativada.", semSessao: true }, 401);
+    const paginas: string[] = Array.isArray(conta.paginas_consulta) ? conta.paginas_consulta : [];
+    const liberado = paginas.includes("__matriz_v1") && (paginas.includes("ponto") || paginas.includes("rh"));
+    if (!liberado) return resp({ erro: "O ponto não está liberado para você. Peça à direção (tela Acessos).", semPermissao: true }, 403);
+    // Papel "leitura" só consulta a situação da ponte; importar/sincronizar é da equipe.
+    if (conta.papel !== "equipe" && !["estado", "pessoas"].includes(action)) return resp({ erro: "Seu acesso ao ponto é só de consulta.", semPermissao: true }, 403);
   }
 
   try {
