@@ -147,38 +147,7 @@ async function limparRemovidos(admin: any) {
   } catch { return reply({ error: 'google_auth_refresh_failed' }, 502); }
 }
 
-async function handle(req: Request): Promise<Response> {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  if (req.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY || !CLIENT_ID || !CLIENT_SECRET || !CALENDAR_ID) {
-    return reply({ error: 'config_incomplete' }, 500);
-  }
-
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-
-  // Rotina interna (pg_net, x-rotina-token conferido no cofre): apaga do Google os eventos de agendamentos removidos.
-  const rotina = req.headers.get('x-rotina-token') ?? '';
-  if (rotina) {
-    const { data: ok } = await admin.rpc('ml_chatpro_conferir_rotina', { p_token: rotina });
-    if (ok !== true) return reply({ error: 'unauthorized' }, 401);
-    let rb: any = {};
-    try { rb = await req.json(); } catch { /* corpo vazio */ }
-    if (rb?.acao !== 'limpar_removidos') return reply({ error: 'acao_invalida' }, 400);
-    return await limparRemovidos(admin);
-  }
-
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
-  const { data: userData, error: userError } = await authClient.auth.getUser();
-  if (userError || !userData.user) return reply({ error: 'unauthorized' }, 401);
-  const { data: allowed, error: permError } = await authClient.rpc('has_permission', { p_permission: 'crm.write' });
-  if (permError || allowed !== true) return reply({ error: 'forbidden' }, 403);
-
-  let body: any;
-  try { body = await req.json(); } catch { return reply({ error: 'invalid_json' }, 400); }
-  const agendamentoId = String(body?.agendamento_id ?? '');
-  if (!agendamentoId) return reply({ error: 'agendamento_id_required' }, 400);
-
+async function sincronizar(admin: any, agendamentoId: string): Promise<Response> {
   const { data: agenda, error: agendaError } = await admin
     .from('agendamentos')
     .select('id,ordem_servico_id,numero_os_referencia,proposta_id,numero_proposta_referencia,cliente_id,endereco_id,responsavel_id,inicio,fim,status,titulo,descricao,endereco_evento,external_calendar_id,deleted_at')
@@ -277,6 +246,50 @@ async function handle(req: Request): Promise<Response> {
     .eq('id', agendamentoId);
   if (updateError) return reply({ error: 'calendar_created_but_crm_update_failed', event_id: event.id }, 500);
   return reply({ ok: true, event_id: event.id, html_link: event.htmlLink ?? null });
+}
+
+async function handle(req: Request): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (req.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY || !CLIENT_ID || !CLIENT_SECRET || !CALENDAR_ID) {
+    return reply({ error: 'config_incomplete' }, 500);
+  }
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+  // Rotina interna (pg_net, x-rotina-token conferido no cofre): apaga do Google os eventos de agendamentos removidos.
+  const rotina = req.headers.get('x-rotina-token') ?? '';
+  if (rotina) {
+    const { data: ok } = await admin.rpc('ml_chatpro_conferir_rotina', { p_token: rotina });
+    if (ok !== true) return reply({ error: 'unauthorized' }, 401);
+    let rb: any = {};
+    try { rb = await req.json(); } catch { /* corpo vazio */ }
+    if (rb?.acao === 'limpar_removidos') return await limparRemovidos(admin);
+    if (rb?.acao === 'sincronizar' && Array.isArray(rb.agendamento_ids)) {
+      // Cria/atualiza no Google os agendamentos indicados (ex.: restaurados ou com data corrigida).
+      const res: Record<string, number> = {};
+      for (const id of rb.agendamento_ids.slice(0, 60)) {
+        const r = await sincronizar(admin, String(id));
+        res[String(id)] = r.status;
+      }
+      return reply({ ok: Object.values(res).every((s) => s === 200), resultado: res });
+    }
+    return reply({ error: 'acao_invalida' }, 400);
+  }
+
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+  const { data: userData, error: userError } = await authClient.auth.getUser();
+  if (userError || !userData.user) return reply({ error: 'unauthorized' }, 401);
+  const { data: allowed, error: permError } = await authClient.rpc('has_permission', { p_permission: 'crm.write' });
+  if (permError || allowed !== true) return reply({ error: 'forbidden' }, 403);
+
+  let body: any;
+  try { body = await req.json(); } catch { return reply({ error: 'invalid_json' }, 400); }
+  const agendamentoId = String(body?.agendamento_id ?? '');
+  if (!agendamentoId) return reply({ error: 'agendamento_id_required' }, 400);
+
+  return await sincronizar(admin, agendamentoId);
 }
 
 Deno.serve(async (req: Request) => {
