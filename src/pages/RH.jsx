@@ -142,7 +142,7 @@ export default function RH() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
   // Folha de Pagamento: a direção, ou quem tem "folha-pagamento" liberado em Acessos.
-  const podeVerFolha = sessao?.papel === "direcao" || (sessao?.paginas_consulta || []).includes("folha-pagamento");
+  const podeVerFolha = sessao?.papel === "direcao" || ["folha-pagamento", "rh", "__matriz_v1"].every((p) => (sessao?.paginas_consulta || []).includes(p));
 
   const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, exames, historico }
   const [erro, setErro] = useState(null);

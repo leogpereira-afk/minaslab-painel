@@ -222,6 +222,8 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
 const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados", "lims", "rh", "ponto", "folha-pagamento"]);
+// Só valem com a matriz (__matriz_v1): contas antigas nunca herdam estes módulos.
+const PAGINAS_SO_COM_MATRIZ = new Set(["lims", "rh", "ponto", "folha-pagamento"]);
 const COLECOES_ESTOQUE: Record<string, string[]> = {
   estoque_produtos_base: ["dashboard", "cadastro-insumo", "entrada-lote", "retirada-baixa", "pedido-compra"],
   estoque_lotes: ["dashboard", "entrada-lote", "retirada-baixa", "etiquetas", "relatorios"],
@@ -431,8 +433,13 @@ Deno.serve(async (req) => {
       rh_ponto: ["rh", "ponto"], rh_ponto_dia: ["rh", "ponto", "folha-pagamento"],
       rh_folha_pagamento: ["folha-pagamento"], rh_comercial_comissoes: ["folha-pagamento"],
     };
-    const liberadoEm = (...paginas: string[]) => ehDirecao || (matrizAtiva && paginas.some((p) => permissoes.includes(p)));
-    const podeRH = (colecao: string) => matrizAtiva && (COLECOES_RH_PAGINAS[colecao] || []).some((p) => permissoes.includes(p));
+    // A Folha de Pagamento é aba do RH: sem "rh" ela não vale (a tela marca as duas juntas).
+    const temPagina = (p: string) => permissoes.includes(p) && (p !== "folha-pagamento" || permissoes.includes("rh"));
+    // Gravar a ficha (rh_pessoas) é do RH e da Folha; o Ponto só LÊ a ficha (usa o salário no desconto de faltas).
+    const ESCRITA_RH_PAGINAS: Record<string, string[]> = { ...COLECOES_RH_PAGINAS, rh_pessoas: ["rh", "folha-pagamento"] };
+    const liberadoEm = (...paginas: string[]) => ehDirecao || (matrizAtiva && paginas.some(temPagina));
+    const podeRH = (colecao: string) => matrizAtiva && (COLECOES_RH_PAGINAS[colecao] || []).some(temPagina);
+    const podeGravarColecaoRH = (colecao: string) => matrizAtiva && (ESCRITA_RH_PAGINAS[colecao] || []).some(temPagina);
     // Ações próprias do RH/Ponto: ler com a liberação; gravar só "equipe" com a liberação.
     const podeLerRH = (...paginas: string[]) => liberadoEm(...paginas);
     const podeGravarRH = (...paginas: string[]) => ehDirecao || (papel === "equipe" && liberadoEm(...paginas));
@@ -459,7 +466,7 @@ Deno.serve(async (req) => {
       if (ehDirecao) return true;
       if (papel !== "equipe") return false;
       if (!matrizAtiva) return true;
-      if (ehColecaoRH(colecao)) return podeRH(colecao);
+      if (ehColecaoRH(colecao)) return podeGravarColecaoRH(colecao);
       const pagina = COLECAO_PAGINA[colecao];
       return !!pagina && (
         permissoes.includes(pagina) ||
@@ -1068,7 +1075,7 @@ Deno.serve(async (req) => {
         if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!colecao || !registro?.id) return resp({ erro: "colecao e registro.id obrigatórios." }, 400);
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só grava pelas ações próprias (saldo, status e vínculos são conferidos no servidor).", semPermissao: true }, 403);
-        if (ehColecaoRH(colecao) && !ehDirecao && !podeRH(colecao)) {
+        if (ehColecaoRH(colecao) && !ehDirecao && !podeGravarColecaoRH(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         // Carimbo no ato: quem gravou e quando ficam NO registro, decididos
@@ -1091,7 +1098,7 @@ Deno.serve(async (req) => {
         if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const id = String(body.id ?? "");
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só exclui pelas ações próprias (com conferência e auditoria).", semPermissao: true }, 403);
-        if (ehColecaoRH(colecao) && !ehDirecao && !podeRH(colecao)) {
+        if (ehColecaoRH(colecao) && !ehDirecao && !podeGravarColecaoRH(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const agora = new Date().toISOString();
@@ -1713,6 +1720,7 @@ Deno.serve(async (req) => {
         const senha = String(body.senha ?? "");
         const paginas = Array.isArray(body.paginas_consulta) ? body.paginas_consulta : [];
         if (paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Página não reconhecida." }, 400);
+        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha e Ponto só se liberam pela matriz de páginas." }, 400);
         if (!u || !nome) return resp({ erro: "Informe usuário e nome." }, 400);
         if (!PAPEIS.includes(papelNovo)) return resp({ erro: `Papel desconhecido: ${papelNovo}` }, 400);
         if (senha.length < 6) return resp({ erro: "A senha precisa de ao menos 6 caracteres." }, 400);
@@ -1733,6 +1741,7 @@ Deno.serve(async (req) => {
         const u = normalizarUsuario(body.usuario);
         const paginas = body.paginas_consulta;
         if (!Array.isArray(paginas) || paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Selecione páginas válidas." }, 400);
+        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha e Ponto só se liberam pela matriz de páginas." }, 400);
         const { data, error } = await sb.from(T_CONTAS).update({ paginas_consulta: [...new Set(paginas)] }).eq("usuario", u).select("*").maybeSingle();
         if (error) throw error;
         if (!data) return resp({ erro: "Conta não encontrada." }, 404);

@@ -1,5 +1,5 @@
 // ml-rh-coletas — as coletas do CRM que geram comissão ao coletor, para a
-// Folha de Pagamento do painel (aba RH, só a direção).
+// Folha de Pagamento do painel (aba RH: a direção ou quem tem a Folha liberada).
 //
 // Regra (Ana, 05/11/2026): na coleta do CRM marca-se o tipo — COMPOSTA ou VIAGEM
 // (com os km de ida e volta). Entra na folha só a coleta COLETADA no mês, feita
@@ -64,9 +64,12 @@ Deno.serve(async (req) => {
     const m = String(req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i);
     const cracha = m && JWT_SECRET ? await verificarJwt(m[1], JWT_SECRET) : null;
     if (!cracha || cracha.sis !== SIS) return resp({ erro: "Entre no sistema.", semSessao: true }, 401);
-    const { data: conta } = await sb.from("ml_contas").select("ativo").eq("usuario", String(cracha.sub ?? "")).maybeSingle();
+    const { data: conta } = await sb.from("ml_contas").select("ativo,paginas_consulta").eq("usuario", String(cracha.sub ?? "")).maybeSingle();
     if (conta && conta.ativo !== true) return resp({ erro: "Esta conta foi desativada.", semSessao: true }, 401);
-    if (cracha.papel !== "direcao") return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+    // A direção, ou quem tem a Folha de Pagamento (com o RH) liberada pela matriz em Acessos — lido ao vivo.
+    const pags: string[] = Array.isArray(conta?.paginas_consulta) ? conta.paginas_consulta : [];
+    const liberado = !!conta && pags.includes("__matriz_v1") && pags.includes("folha-pagamento") && pags.includes("rh");
+    if (cracha.papel !== "direcao" && !liberado) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
 
     const body = await req.json().catch(() => ({}));
     if (body.action !== "comissaoColetas") return resp({ erro: "Ação desconhecida." }, 400);

@@ -429,7 +429,9 @@ Deno.serve(async (req) => {
     if (!conta || conta.ativo !== true) return resp({ erro: "Esta conta foi desativada.", semSessao: true }, 401);
     const paginas: string[] = Array.isArray(conta.paginas_consulta) ? conta.paginas_consulta : [];
     const liberado = paginas.includes("__matriz_v1") && (paginas.includes("ponto") || paginas.includes("rh"));
-    if (conta.papel !== "equipe" || !liberado) return resp({ erro: "O ponto não está liberado para você. Peça à direção (tela Acessos).", semPermissao: true }, 403);
+    if (!liberado) return resp({ erro: "O ponto não está liberado para você. Peça à direção (tela Acessos).", semPermissao: true }, 403);
+    // Papel "leitura" só consulta a situação da ponte; importar/sincronizar é da equipe.
+    if (conta.papel !== "equipe" && !["estado", "pessoas"].includes(action)) return resp({ erro: "Seu acesso ao ponto é só de consulta.", semPermissao: true }, 403);
   }
 
   try {
