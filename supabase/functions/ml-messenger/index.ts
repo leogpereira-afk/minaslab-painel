@@ -284,20 +284,47 @@ async function obter(c: Ctx, b: any) {
   for (const m of a.membros) nomes[m.usuario] = nomeDe(c, m.usuario);
   for (const m of mensagens) if (m.autor) nomes[m.autor] = nomeDe(c, m.autor);
   if (outro) nomes[outro] = nomeDe(c, outro);
+  const citadas = await citacoes([...mensagens, ...alteradas]);
+  for (const o of citadas.values()) if (o.autor) nomes[o.autor] = nomeDe(c, o.autor);
   return {
     conversa: { id: a.conv.id, tipo: a.conv.tipo, titulo: a.conv.tipo === "grupo" ? a.conv.nome : nomeDe(c, outro as string), nome: a.conv.nome, outro, criador: a.conv.criador, foto: a.conv.foto ?? null, descricao: a.conv.descricao ?? "", criadoEm: a.conv.criado_em, silenciado: !!a.meu.silenciado },
     membros: a.membros.map((m: any) => ({ usuario: m.usuario, papel: m.papel, lidoAte: m.usuario === c.eu ? lidoAte : Number(m.lido_ate) })),
-    mensagens: mensagens.map(mensagemDe),
+    mensagens: mensagens.map((m) => mensagemDe(m, citadas)),
     // Editadas ou apagadas desde a última consulta (quem está com a conversa aberta recebe sem reabrir).
-    alteradas: alteradas.map(mensagemDe),
+    alteradas: alteradas.map((m) => mensagemDe(m, citadas)),
     agora: agoraServidor,
     reacoes: await reacoesDaConversa(a.conv.id),
     maisAntigas, nomes, eu: c.eu, pode: { gerir: a.admin, sair: a.conv.tipo === "grupo" },
   };
 }
 
-function mensagemDe(m: any) {
-  return { seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em, editadaEm: m.apagada ? null : m.editada_em ?? null };
+// Resposta a uma mensagem (citação): a mensagem guarda `responde_a`; a tela recebe um resumo
+// da original (autor + texto curto) para mostrar em cima do balão, mesmo que a original
+// não esteja carregada na tela.
+async function citacoes(lista: any[]) {
+  const ids = unicos(lista.map((m) => m?.responde_a).filter(Boolean));
+  if (!ids.length) return new Map<string, any>();
+  const rows = await lerPorIds("ml_conversa_mensagens", "id", ids, "id,conversa_id,autor,texto,apagada,anexo_nome,anexo_tipo,anexo_caminho,anexo_duracao");
+  return new Map<string, any>(rows.map((r: any) => [r.id, r]));
+}
+function citacaoDe(m: any, mapa: Map<string, any>) {
+  if (!m.responde_a) return null;
+  const o = mapa.get(m.responde_a);
+  if (!o || o.conversa_id !== m.conversa_id) return { id: m.responde_a, autor: null, texto: "", apagada: true };
+  return { id: o.id, autor: o.autor, apagada: !!o.apagada, texto: o.apagada ? "" : resumoTexto(dizDe(o)) };
+}
+async function lerRespondeA(conversaId: string, v: unknown): Promise<string | null> {
+  const id = txt(v);
+  if (!id) return null;
+  if (!UUID.test(id)) erro(400, "Mensagem respondida inválida.");
+  const { data, error } = await sb.from("ml_conversa_mensagens").select("id,conversa_id,tipo").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data || data.conversa_id !== conversaId || data.tipo !== "mensagem") erro(400, "Não encontrei a mensagem que você está respondendo.");
+  return id;
+}
+
+function mensagemDe(m: any, mapa: Map<string, any> = new Map()) {
+  return { seq: Number(m.seq), id: m.id, autor: m.autor, tipo: m.tipo, texto: m.apagada ? "" : m.texto, anexo: m.apagada ? null : anexoDe(m), apagada: m.apagada, criadoEm: m.criado_em, editadaEm: m.apagada ? null : m.editada_em ?? null, resposta: citacaoDe(m, mapa) };
 }
 
 // Editar a própria mensagem: o texto (ou a legenda do arquivo). Fica marcada como "editada";
@@ -314,7 +341,7 @@ async function editarMensagem(c: Ctx, b: any) {
   const limite = m.anexo_caminho ? 1000 : 5000;
   const texto = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, limite);
   if (!texto && !m.anexo_caminho) erro(400, "Escreva a mensagem.");
-  if (texto === m.texto) return { ok: true, mensagem: mensagemDe(m) };
+  if (texto === m.texto) return { ok: true, mensagem: mensagemDe(m, await citacoes([m])) };
   const agora = new Date().toISOString();
   const { data, error: e2 } = await sb.from("ml_conversa_mensagens")
     .update({ texto, editada_em: agora, alterado_em: agora, texto_original: m.texto_original ?? m.texto }).eq("id", mid).select("*").single();
@@ -322,18 +349,19 @@ async function editarMensagem(c: Ctx, b: any) {
   // Se era a última da conversa, a prévia da lista acompanha.
   const ultima = await ultimaSeq(a.conv.id);
   if (Number(m.seq) === ultima) await sb.from("ml_conversas").update({ ultima_msg_texto: resumoTexto(dizDe(data)) }).eq("id", a.conv.id);
-  return { ok: true, mensagem: mensagemDe(data) };
+  return { ok: true, mensagem: mensagemDe(data, await citacoes([data])) };
 }
 
 async function enviar(c: Ctx, b: any) {
   const a = await carregarConversa(c, b.id);
   const texto = String(b.texto ?? "").replace(/\r\n/g, "\n").trim().slice(0, 5000);
   if (!texto) erro(400, "Escreva a mensagem.");
-  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto }).select("*").single();
+  const respondeA = await lerRespondeA(a.conv.id, b.responde_a);
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto, responde_a: respondeA }).select("*").single();
   if (error) throw error;
   await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(texto), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
   await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
-  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, anexo: null, apagada: false, criadoEm: data.criado_em } };
+  return { ok: true, mensagem: mensagemDe(data, await citacoes([data])) };
 }
 
 async function enviarArquivo(c: Ctx, b: any) {
@@ -353,14 +381,15 @@ async function enviarArquivo(c: Ctx, b: any) {
   const duracaoBruta = Math.round(Number(b.duracao));
   const duracao = ehAudio(tipo) && Number.isFinite(duracaoBruta) && duracaoBruta > 0 ? Math.min(duracaoBruta, MAX_AUDIO_SEG) : null;
   if (ehAudio(tipo) && duracaoBruta > MAX_AUDIO_SEG) erro(400, "A mensagem de voz passa de 10 minutos.");
+  const respondeA = await lerRespondeA(a.conv.id, b.responde_a);
   const caminho = `conversas/${a.conv.id}/${crypto.randomUUID()}-${nomeSeguro(nome)}`;
   const { error: eUp } = await sb.storage.from(BUCKET_ARQUIVOS).upload(caminho, bytes, { contentType: tipo, upsert: false });
   if (eUp) throw eUp;
-  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto: legenda, anexo_nome: nome, anexo_tipo: tipo, anexo_tamanho: bytes.length, anexo_duracao: duracao, anexo_caminho: caminho }).select("*").single();
+  const { data, error } = await sb.from("ml_conversa_mensagens").insert({ conversa_id: a.conv.id, autor: c.eu, tipo: "mensagem", texto: legenda, anexo_nome: nome, anexo_tipo: tipo, anexo_tamanho: bytes.length, anexo_duracao: duracao, anexo_caminho: caminho, responde_a: respondeA }).select("*").single();
   if (error) { await sb.storage.from(BUCKET_ARQUIVOS).remove([caminho]); throw error; }
   await sb.from("ml_conversas").update({ ultima_msg_em: data.criado_em, ultima_msg_texto: resumoTexto(dizDe(data)), ultima_msg_autor: c.eu }).eq("id", a.conv.id);
   await sb.from("ml_conversa_membros").update({ lido_ate: Number(data.seq) }).eq("conversa_id", a.conv.id).eq("usuario", c.eu);
-  return { ok: true, mensagem: { seq: Number(data.seq), id: data.id, autor: data.autor, tipo: data.tipo, texto: data.texto, anexo: anexoDe(data), apagada: false, criadoEm: data.criado_em } };
+  return { ok: true, mensagem: mensagemDe(data, await citacoes([data])) };
 }
 
 async function arquivoUrl(c: Ctx, b: any) {
