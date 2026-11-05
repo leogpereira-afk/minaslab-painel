@@ -11,13 +11,13 @@ import { link, navegar } from "../lib/rota.js";
 import { agoraLocal, isoDia } from "../lib/formato.js";
 import { estaAtivo } from "../lib/cadastros.js";
 import { referenciaAmostra, numeroOS, PRIORIDADES } from "../lib/ordens.js";
-import { revisar, resultadoExibido, parecer, limiteDe, progressoOS, valorAmostra } from "../lib/laboratorio.js";
+import { revisar, resultadoExibido, parecer, limiteDe, progressoOS, valorAmostra, statusPelasAnalises } from "../lib/laboratorio.js";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, useAviso } from "../components/ui.jsx";
 import { NaoAchou } from "./Clientes.jsx";
 import { RotuloOS, CodigoBarras } from "./Ordens.jsx";
 import { quandoBR } from "./Coletas.jsx";
-import { textoLimite } from "./Laboratorio.jsx";
+import { textoLimite, prazoAnalitico } from "./Laboratorio.jsx";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 
 const statusRevisao = (x) => (x.etapa === "Revisado" ? "Revisado" : x.etapa === "Revisão" ? "Aguardando" : x.motivoRetorno ? "Revisão LAB" : "");
@@ -34,6 +34,7 @@ export function RevisaoResultado() {
   const { dados, salvarLote, eu } = useDados();
   const avisar = useAviso();
   const [sel, setSel] = useState(new Set());
+  const [chave, setChave] = useState(0);
   const [janela, setJanela] = useState(null);
   const linhas = useMemo(() => dados.amostras.flatMap((a) => a.analises.filter((x) => statusRevisao(x)).map((x) => ({ id: `${a.id}|${x.pid}`, a, x }))), [dados.amostras]);
   const colunas = [
@@ -43,6 +44,7 @@ export function RevisaoResultado() {
     { t: "Referência", v: (r) => referenciaAmostra(r.a), filtro: true },
     { t: "Descrição", v: (r) => r.a.identificacao || r.a.servico, filtro: true },
     { t: "Parâmetro", v: (r) => r.x.nome, filtro: true },
+    { t: "Tipo Parâmetro", v: (r) => dados.parametros.find((p) => p.id === r.x.pid)?.classificacao || "", filtro: true },
     { t: "Status", v: (r) => statusRevisao(r.x), h: (r) => <span className={`lbl ${{ Aguardando: "warn", Revisado: "ok", "Revisão LAB": "crit" }[statusRevisao(r.x)]}`}>{statusRevisao(r.x)}</span>, filtro: "lista" },
     { t: "Prioridade", v: (r) => r.a.prioridade || "Padrão", filtro: "lista" },
     { t: "Resultado", v: (r) => resultadoExibido(r.x.resultado, { lq: r.x.lq, casas: dados.parametros.find((p) => p.id === r.x.pid)?.casasDecimais }), filtro: true },
@@ -56,6 +58,7 @@ export function RevisaoResultado() {
     { t: "Data de Entrada", v: (r) => r.a.dataEntrada || "", h: (r) => quandoBR(r.a.dataEntrada) },
     { t: "Data início da Análise", v: (r) => r.x.inicio || "", h: (r) => quandoBR(r.x.inicio) },
     { t: "Data de Término", v: (r) => r.x.termino || "", h: (r) => quandoBR(r.x.termino) },
+    { t: "Data Limite da Análise", v: (r) => prazoAnalitico(dados, r.a, r.x.pid), h: (r) => quandoBR(prazoAnalitico(dados, r.a, r.x.pid)) },
     { t: "Analista", v: (r) => r.x.analista || "", filtro: true },
     { t: "Conferência", v: (r) => r.x.revisor || "", filtro: true },
   ];
@@ -76,13 +79,25 @@ export function RevisaoResultado() {
   };
   return (
     <Caixa titulo="Ordem serviços - Revisão">
-      <Grade id="rev-res" exportar="revisao-resultados" linhas={linhas} colunas={colunas} filtrosColuna multipla selecao={sel} aoSelecionar={setSel}
-        opcoesFiltro={{ 6: ["Aguardando", "Revisado", "Revisão LAB"], 7: PRIORIDADES }} aoAbrir={(r) => navegar("analise", r.a.id)}
+      <Grade key={chave} id="rev-res" exportar="revisao-resultados" linhas={linhas} colunas={colunas} filtrosColuna multipla selecao={sel} aoSelecionar={setSel} ocultasPadrao={["Parecer"]}
+        opcoesFiltro={{ 7: ["Aguardando", "Revisado", "Revisão LAB"], 8: PRIORIDADES }} aoAbrir={(r) => navegar("analise", r.a.id)}
         botoes={[
-          { rotulo: "Aprovar resultado", acao: () => decidir(true) },
-          { rotulo: "Retornar ao laboratório", acao: () => (selecionadas.length ? setJanela({ motivo: "" }) : avisar("Selecione ao menos um resultado.", "err")) },
+          { rotulo: "Selecionar todos", acao: () => setSel(new Set(linhas.filter((r) => r.x.etapa === "Revisão").map((r) => r.id))) },
+          { rotulo: "Deselecionar todos", acao: () => setSel(new Set()) },
+          { rotulo: "Retornar Laboratório", acao: () => (selecionadas.length ? setJanela({ motivo: "" }) : avisar("Selecione ao menos um resultado.", "err")) },
+          { rotulo: "Revisar", acao: () => decidir(true) },
+          { rotulo: "Obs amostra", acao: () => (selecionadas.length ? setJanela({ obs: selecionadas[0].a.obsLab || "" }) : avisar("Selecione ao menos um resultado.", "err")) },
+          { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },
         ]} />
-      {janela && (
+      {janela?.obs !== undefined && (
+        <Modal titulo="Obs amostra" onFechar={() => setJanela(null)} rotuloOk="Salvar" aoConfirmar={async () => {
+          const ams = [...new Map(selecionadas.map((r) => [r.a.id, r.a])).values()];
+          try { await salvarLote("amostras", ams.map((a) => ({ ...a, obsLab: janela.obs.trim() })), { motivo: "Observação da amostra (revisão)" }); setSel(new Set()); avisar("Observação salva.", "ok"); } catch (e) { avisar(e.message, "err"); return false; }
+        }}>
+          <div className="fg"><label htmlFor="rObs">Observação da amostra ({[...new Set(selecionadas.map((r) => referenciaAmostra(r.a)))].join(", ")})</label><textarea id="rObs" rows={3} value={janela.obs} onChange={(e) => setJanela({ obs: e.target.value })} /></div>
+        </Modal>
+      )}
+      {janela?.motivo !== undefined && (
         <Modal titulo="Informe o motivo do retorno" onFechar={() => setJanela(null)} rotuloOk="Retornar" aoConfirmar={() => (janela.motivo.trim() ? decidir(false, janela.motivo) : (avisar("Informe o motivo do retorno.", "err"), false))}>
           <div className="fg"><label htmlFor="rMot">Motivo do retorno</label><input id="rMot" list="mot-rev" value={janela.motivo} onChange={(e) => setJanela({ motivo: e.target.value })} />
             <datalist id="mot-rev">{dados.motivos_alteracao.filter(estaAtivo).map((m) => <option key={m.id} value={m.identificacao} />)}</datalist></div>
@@ -98,6 +113,9 @@ const emAberto = (r) => r.status !== "Pago" && r.status !== "Cancelado";
 
 export function RevisaoCertificado() {
   const { dados } = useDados();
+  const avisar = useAviso();
+  const [sel, setSel] = useState(new Set());
+  const [chave, setChave] = useState(0);
   const linhas = useMemo(() => dados.ordens.map((o) => {
     const am = dados.amostras.filter((a) => a.osId === o.id);
     const pr = progressoOS(am);
@@ -118,8 +136,12 @@ export function RevisaoCertificado() {
   ];
   return (
     <Caixa titulo="Ordem serviços - Revisão">
-      <p className="suave" style={{ marginTop: -6 }}>Dois cliques abrem a OS para assinar e emitir os certificados.</p>
-      <Grade id="rev-cert" exportar="certificados" linhas={linhas} colunas={colunas} filtrosColuna opcoesFiltro={{ 7: ["Sim", "Não"] }} aoAbrir={(r) => navegar("certificado", r.id)} botoes={[]} />
+      <Grade key={chave} id="rev-cert" exportar="certificados" linhas={linhas} colunas={colunas} filtrosColuna opcoesFiltro={{ 7: ["Sim", "Não"] }} ocultasPadrao={["Certificados"]}
+        selecao={sel} aoSelecionar={setSel} aoAbrir={(r) => navegar("certificado", r.id)}
+        botoes={[
+          { rotulo: "Visualizar", acao: () => { const r = linhas.find((x) => sel.has(x.id)); if (r) navegar("certificado", r.id); else avisar("Selecione uma ordem de serviço.", "err"); } },
+          { rotulo: "Limpar Pesquisa", acao: () => { setSel(new Set()); setChave((k) => k + 1); } },
+        ]} />
     </Caixa>
   );
 }
@@ -175,21 +197,28 @@ export function DocCertificado({ cert, dados, previa = false }) {
   );
 }
 
+// Amostras em revisão da OS (GerenciaLab): Revisar (confere o certificado),
+// Revisar automático, Retornar para revisão de resultado, Liberar para
+// assinatura; depois o signatário assina e emite.
 export function CertificadoOS({ param }) {
   const ctx = useDados();
-  const { dados, salvar, proximo, eu } = ctx;
+  const { dados, salvar, salvarLote, proximo, eu } = ctx;
   const avisar = useAviso();
+  const [sel, setSel] = useState(new Set());
   const [ver, setVer] = useState(null);
-  const [reemitir, setReemitir] = useState(null);
+  const [janela, setJanela] = useState(null);
   const [ocupado, setOcupado] = useState("");
   const os = dados.ordens.find((o) => o.id === param);
   if (!os) return <NaoAchou />;
   const cfg = configSistema(dados);
-  const amostras = dados.amostras.filter((a) => a.osId === os.id).sort((a, b) => a.num - b.num);
+  const amostras = dados.amostras.filter((a) => a.osId === os.id && a.status !== "Cancelado").sort((a, b) => a.num - b.num);
   const vigente = (a) => dados.certificados.find((c) => c.amostraId === a.id && !c.substituidoPor);
   const signatarios = dados.funcionarios.filter((f) => estaAtivo(f) && f.signatario === "Sim");
   const eu_ = signatarios.find((f) => f.usuario === eu?.usuario);
   const contrato = dados.contratos.find((c) => c.id === os.contratoId);
+  const pronta = (a) => a.analises.length > 0 && a.analises.every((x) => x.etapa === "Revisado");
+  const marcadas = amostras.filter((a) => sel.has(a.id));
+  const quem = () => ({ por: eu?.nome || eu?.usuario || "", em: agoraLocal() });
   const emitir = async (a, anterior = null, motivoRevisao = "") => {
     if (!eu_) { avisar(signatarios.length ? "Você não é signatário autorizado (Configurações → Funcionários)." : "Cadastre o signatário autorizado em Configurações → Funcionários (Signatário de certificado = Sim, ligado à sua conta).", "err"); return false; }
     setOcupado(a.id);
@@ -201,6 +230,7 @@ export function CertificadoOS({ param }) {
       const cert = await salvar("certificados", {
         num: n, ano: anoCert, numero: `${String(n).padStart(6, "0")}/${anoCert}`, revisao: anterior ? (anterior.revisao || 0) + 1 : 0, substitui: anterior?.id || null, motivoRevisao,
         amostraId: a.id, osId: os.id, clienteId: a.clienteId, contratoId: a.contratoId, emitidoEm: agora, emitidoPor: eu?.usuario, signatario: eu_.nome, cargo: eu_.cargo || "",
+        revisadoPor: a.certRevisao?.por || "", liberadoPor: a.liberadaAssinatura?.por || "",
         conteudo: montarConteudo(dados, a),
       }, { numerar: true, motivo: anterior ? `Reemissão: ${motivoRevisao}` : "Emissão do certificado" });
       if (anterior) await salvar("certificados", { ...anterior, substituidoPor: cert.id }, { motivo: `Substituído pela revisão ${cert.revisao}` });
@@ -216,41 +246,66 @@ export function CertificadoOS({ param }) {
       setVer(cert.id);
     } catch (e) { avisar(e.message, "err"); return false; } finally { setOcupado(""); }
   };
+  const exigir = (fn) => () => (marcadas.length ? fn(marcadas) : avisar("Selecione ao menos uma amostra.", "err"));
+  const gravarLote = async (lista, motivo, msg) => { try { await salvarLote("amostras", lista, { motivo }); setSel(new Set()); avisar(msg, "ok"); } catch (e) { avisar(e.message, "err"); return false; } };
+  const situacao = (a) => (vigente(a) ? "Emitido" : a.liberadaAssinatura ? "Liberado para assinatura" : a.certRevisao ? "Certificado revisado" : pronta(a) ? "Aguardando revisão" : "Resultados em revisão");
+  const colunas = [
+    { t: "Amostra ID", v: (a) => Number(a.cod) || 0 },
+    { t: "Referência", v: (a) => referenciaAmostra(a) },
+    { t: "Código barra", v: (a) => a.barra },
+    { t: "Descrição", v: (a) => `${a.matriz || a.servico}${a.identificacao ? ` - ${a.identificacao}` : ""}` },
+    { t: "Data Coleta", v: (a) => a.dataColeta || "", h: (a) => quandoBR(a.dataColeta), fv: (a) => quandoBR(a.dataColeta) },
+    { t: "Data entrega", v: (a) => a.dataEntrega || "", h: (a) => quandoBR(a.dataEntrega), fv: (a) => quandoBR(a.dataEntrega) },
+    { t: "Revisado", v: (a) => a.analises.filter((x) => x.etapa === "Revisado").length, h: (a) => { const r = a.analises.filter((x) => x.etapa === "Revisado").length; return <span className={`lbl ${r === a.analises.length ? "ok" : "warn"}`}>{r}/{a.analises.length} Revisado</span>; } },
+    { t: "Pendência", v: (a) => (pronta(a) ? "Não" : "Sim"), h: (a) => (pronta(a) ? "Não" : <span className="lbl warn">Sim</span>) },
+    { t: "Situação", v: situacao, h: (a) => <span className={`lbl ${{ Emitido: "ok", "Liberado para assinatura": "primary", "Certificado revisado": "info" }[situacao(a)] || "default"}`}>{situacao(a)}</span> },
+    { t: "Certificado", v: (a) => { const c = vigente(a); return c ? `${c.numero}${c.revisao ? ` rev. ${c.revisao}` : ""}` : ""; } },
+  ];
   const certVer = ver && dados.certificados.find((c) => c.id === ver);
   const previa = ver && !certVer ? amostras.find((a) => a.id === ver) : null;
   return (
     <>
       <div className="box nao-imprimir">
-        <div className="box-head-row"><h2 className="box-title">Certificados · {numeroOS(os)}</h2><div className="acoes"><a className="btn btn-default" href={link("list-revisions")}>Voltar</a>{ver && <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir</button>}</div></div>
-        {!eu_ && <p className="aviso alerta">{signatarios.length ? "Você não é signatário autorizado: pode ver as prévias, mas não assinar." : "Nenhum signatário cadastrado. Em Configurações → Funcionários marque “Signatário de certificado” e ligue à conta do painel."}</p>}
-        <div className="tw"><table>
-          <thead><tr><th>Referência</th><th>Serviço / Matriz</th><th>Status</th><th>Resultados revisados</th><th>Certificado</th><th /></tr></thead>
-          <tbody>{amostras.map((a) => {
-            const c = vigente(a);
-            const rev = a.analises.filter((x) => x.etapa === "Revisado").length;
-            return (
-              <tr key={a.id}>
-                <td>{referenciaAmostra(a)}</td><td>{a.servico}{a.matriz ? ` — ${a.matriz}` : ""}</td><td><RotuloOS s={a.status} /></td><td>{rev}/{a.analises.length}</td>
-                <td>{c ? `${c.numero}${c.revisao ? ` rev. ${c.revisao}` : ""}` : "—"}</td>
-                <td><div className="acoes">
-                  {c ? <button type="button" className="btn btn-default btn-sm" onClick={() => setVer(c.id)}>Visualizar</button> : rev === a.analises.length && a.analises.length ? <button type="button" className="btn btn-default btn-sm" onClick={() => setVer(a.id)}>Prévia</button> : null}
-                  {!c && a.status === "Assinatura" && <button type="button" className="btn btn-success btn-sm" disabled={!!ocupado} onClick={() => emitir(a)}>{ocupado === a.id ? "Emitindo…" : "Assinar e emitir"}</button>}
-                  {c && <button type="button" className="btn btn-warning btn-sm" disabled={!!ocupado} onClick={() => setReemitir({ a, c, motivo: "" })}>Reemitir</button>}
-                </div></td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>
+        <div className="box-head-row"><h2 className="box-title">Amostras em revisão Ordem de Serviço {numeroOS(os)}</h2>{ver && <div className="acoes"><button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / PDF</button><button type="button" className="btn btn-default" onClick={() => setVer(null)}>Fechar visualização</button></div>}</div>
+        {!eu_ && <p className="aviso alerta">{signatarios.length ? "Você não é signatário autorizado: pode revisar e liberar, mas não assinar." : "Nenhum signatário cadastrado. Em Configurações → Funcionários marque “Signatário de certificado” e ligue à conta do painel."}</p>}
+        <Grade id="rev-amostras" exportar="amostras-revisao" linhas={amostras} colunas={colunas} multipla selecao={sel} aoSelecionar={setSel} ordemInicial={[0, "asc"]} porPaginaInicial={100}
+          aoAbrir={(a) => setVer(vigente(a)?.id || a.id)}
+          botoes={[
+            { rotulo: "Voltar", acao: () => navegar("list-revisions") },
+            { rotulo: "Selecionar todos", acao: () => setSel(new Set(amostras.map((a) => a.id))) },
+            { rotulo: "Deselecionar todos", acao: () => setSel(new Set()) },
+            { rotulo: "Revisar", acao: exigir((l) => { const a = l[0]; if (!pronta(a)) { avisar("Há resultados desta amostra ainda sem revisão.", "err"); return; } setVer(a.id); setJanela({ revisar: a }); }) },
+            { rotulo: "Revisar automático", acao: () => { const l = amostras.filter((a) => pronta(a) && !a.certRevisao && !vigente(a)); if (!l.length) { avisar("Nenhuma amostra pronta aguardando revisão do certificado.", "err"); return; } gravarLote(l.map((a) => ({ ...a, certRevisao: { ...quem(), automatico: true } })), "Revisão automática do certificado", `${l.length} certificado(s) revisado(s).`); } },
+            { rotulo: "Retornar para revisão de resultado", acao: exigir((l) => { const v = l.filter((a) => vigente(a)); if (v.length) { avisar("Amostra com certificado emitido: use Reemitir.", "err"); return; } setJanela({ retornar: l, motivo: "" }); }) },
+            { rotulo: "Liberar para assinatura", acao: exigir((l) => { const sem = l.filter((a) => !a.certRevisao); if (sem.length) { avisar(`Revise o certificado antes: ${sem.map(referenciaAmostra).join(", ")}.`, "err"); return; } gravarLote(l.filter((a) => !a.liberadaAssinatura).map((a) => ({ ...a, liberadaAssinatura: quem() })), "Liberado para assinatura", "Liberado para assinatura."); }) },
+            { rotulo: "Assinar e emitir", acao: exigir(async (l) => { const ok = l.filter((a) => a.liberadaAssinatura && !vigente(a)); if (!ok.length) { avisar("Selecione amostras liberadas para assinatura e ainda sem certificado.", "err"); return; } for (const a of ok) if ((await emitir(a)) === false) break; setSel(new Set()); }) },
+            { rotulo: "Certificado", menu: [
+              { rotulo: "Visualizar", acao: exigir((l) => setVer(vigente(l[0])?.id || l[0].id)) },
+              { rotulo: "Reemitir", acao: exigir((l) => { const c = vigente(l[0]); if (!c) { avisar("Esta amostra ainda não tem certificado.", "err"); return; } setJanela({ reemitir: { a: l[0], c, motivo: "" } }); }) },
+            ] },
+          ]} />
       </div>
       {certVer && <DocCertificado cert={certVer} dados={dados} />}
       {previa && <DocCertificado cert={{ clienteId: previa.clienteId, conteudo: montarConteudo(dados, previa) }} dados={dados} previa />}
-      {reemitir && (
-        <Modal titulo={`Reemitir ${reemitir.c.numero}`} onFechar={() => setReemitir(null)} rotuloOk="Reemitir" aoConfirmar={() => (reemitir.motivo.trim() ? emitir(reemitir.a, reemitir.c, reemitir.motivo.trim()) : (avisar("Informe o motivo da reemissão.", "err"), false))}>
+      {janela?.revisar && (
+        <Modal titulo={`Revisar certificado · ${referenciaAmostra(janela.revisar)}`} onFechar={() => setJanela(null)} rotuloOk="Confirmar revisão" aoConfirmar={() => gravarLote([{ ...janela.revisar, certRevisao: quem() }], "Certificado revisado", "Certificado revisado.")}>
+          <p style={{ margin: 0 }}>Confira a prévia do certificado abaixo desta janela (cabeçalho, amostra, resultados, VMP e parecer). Confirmando, a amostra fica pronta para "Liberar para assinatura".</p>
+        </Modal>
+      )}
+      {janela?.retornar && (
+        <Modal titulo="Retornar para revisão de resultado" onFechar={() => setJanela(null)} rotuloOk="Retornar" aoConfirmar={() => {
+          if (!janela.motivo.trim()) { avisar("Informe o motivo.", "err"); return false; }
+          return gravarLote(janela.retornar.map((a) => { const n = { ...a, certRevisao: null, liberadaAssinatura: null, analises: a.analises.map((x) => (x.etapa === "Revisado" ? { ...x, etapa: "Revisão", revisor: "", revisadoEm: "", motivoRetornoCert: janela.motivo.trim() } : x)) }; return { ...n, status: statusPelasAnalises(n) }; }), `Retorno para revisão de resultado: ${janela.motivo.trim()}`, "Resultados voltaram para a Revisão de resultado.");
+        }}>
+          <div className="fg"><label htmlFor="rcMot">Motivo</label><input id="rcMot" list="mot-rc" value={janela.motivo} onChange={(e) => setJanela({ ...janela, motivo: e.target.value })} /><datalist id="mot-rc">{dados.motivos_alteracao.filter(estaAtivo).map((m) => <option key={m.id} value={m.identificacao} />)}</datalist></div>
+        </Modal>
+      )}
+      {janela?.reemitir && (
+        <Modal titulo={`Reemitir ${janela.reemitir.c.numero}`} onFechar={() => setJanela(null)} rotuloOk="Reemitir" aoConfirmar={() => (janela.reemitir.motivo.trim() ? emitir(janela.reemitir.a, janela.reemitir.c, janela.reemitir.motivo.trim()) : (avisar("Informe o motivo da reemissão.", "err"), false))}>
           <p style={{ marginTop: 0 }}>A nova revisão substitui a atual e cita o motivo no certificado (ISO/IEC 17025 7.8.8). Para corrigir um resultado, devolva-o antes na Revisão de resultados.</p>
-          <div className="fg"><label htmlFor="reMot">Motivo da reemissão</label><input id="reMot" value={reemitir.motivo} onChange={(e) => setReemitir({ ...reemitir, motivo: e.target.value })} /></div>
+          <div className="fg"><label htmlFor="reMot">Motivo da reemissão</label><input id="reMot" value={janela.reemitir.motivo} onChange={(e) => setJanela({ reemitir: { ...janela.reemitir, motivo: e.target.value } })} /></div>
         </Modal>
       )}
     </>
   );
 }
-
