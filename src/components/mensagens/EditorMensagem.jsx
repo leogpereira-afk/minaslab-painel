@@ -2,8 +2,8 @@
 // riscado, link, marcar pessoa), atalhos Ctrl+B / Ctrl+I / Ctrl+U / Ctrl+K e o
 // "@" que sugere as pessoas da conversa. O texto vai simples, com marcações
 // (*negrito* _itálico_ __sublinhado__ ~riscado~ [texto](link) @usuario).
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Bold, Italic, Link2, Strikethrough, Underline } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AtSign, Bold, Italic, Link2, Maximize2, Minimize2, Strikethrough, Underline } from "lucide-react";
 import { clsx } from "clsx";
 import Avatar from "../tarefas/Avatar.jsx";
 import TextoRico from "./TextoRico.jsx";
@@ -14,6 +14,40 @@ export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoCol
   const [ativo, setAtivo] = useState(0);
   const [link, setLink] = useState(null); // { ini, fim, url }
   const linkRef = useRef(null);
+  /* CAMPO QUE CRESCE COM O TEXTO (pedido da Ana, 05/11/2026). Antes era uma
+     linha só com rolagem, e texto longo ficava difícil de ler e editar. Agora:
+     cresce sozinho até um teto, tem o botão Expandir (campo grande, como no
+     Bitrix) e a alça no canto para puxar o tamanho na mão. O tamanho puxado na
+     mão vale até a mensagem ser enviada. */
+  const [expandido, setExpandido] = useState(false);
+  const manual = useRef(0);
+  const ultimaAltura = useRef(0);
+  const limites = () => {
+    const tela = typeof window !== "undefined" ? window.innerHeight : 800;
+    const min = compacto ? 36 : 44;
+    if (expandido) {
+      const max = compacto ? Math.min(360, tela * 0.5) : tela * 0.6;
+      return { min: compacto ? Math.min(200, max) : Math.min(max, tela * 0.35), max };
+    }
+    return { min, max: compacto ? 160 : 260 };
+  };
+  useLayoutEffect(() => {
+    const el = campo.current;
+    if (!el) return;
+    if (!texto) manual.current = 0;
+    const { min, max } = limites();
+    el.style.height = "auto";
+    const conteudo = el.scrollHeight + 2;
+    const altura = Math.min(Math.max(max, manual.current), Math.max(min, conteudo, manual.current));
+    el.style.height = `${Math.round(altura)}px`;
+    el.style.maxHeight = `${Math.round(Math.max(max, manual.current))}px`;
+    ultimaAltura.current = el.offsetHeight;
+  }, [texto, expandido, compacto]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Puxou a alça do canto: guarda o tamanho escolhido.
+  const soltouAlca = () => {
+    const el = campo.current;
+    if (el && Math.abs(el.offsetHeight - ultimaAltura.current) > 4) { manual.current = el.offsetHeight; ultimaAltura.current = el.offsetHeight; el.style.maxHeight = "none"; }
+  };
 
   const sugestoes = useMemo(() => (mencao ? sugestoesMencao(pessoas, mencao.busca, { grupo }) : []), [mencao, pessoas, grupo]);
   useEffect(() => { setAtivo(0); }, [mencao?.busca]);
@@ -131,13 +165,19 @@ export default function EditorMensagem({ campo, texto, setTexto, aoEnviar, aoCol
             className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"><Icone size={15} /></button>
         ))}
         {children}
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { manual.current = 0; setExpandido((v) => !v); requestAnimationFrame(() => campo.current?.focus()); }}
+          aria-pressed={expandido} title={expandido ? "Diminuir o campo" : "Aumentar o campo (texto longo)"} aria-label={expandido ? "Diminuir o campo de mensagem" : "Aumentar o campo de mensagem"}
+          className={clsx("ml-auto grid h-7 w-7 place-items-center rounded-md hover:bg-slate-100 hover:text-slate-800", expandido ? "bg-sky-50 text-sky-700" : "text-slate-500")}>
+          {expandido ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
       </div>
-      <textarea ref={campo} className={clsx("input w-full resize-none text-sm", compacto ? "max-h-28 min-h-[36px] py-1.5" : "max-h-32 min-h-[44px] py-2.5")} rows={1} placeholder={compacto ? "Mensagem (@ marca alguém)" : "Escreva uma mensagem (@ para marcar alguém)"} style={compacto ? { minHeight: 36 } : undefined} aria-label="Escreva uma mensagem" value={texto} maxLength={5000}
+      <textarea ref={campo} className={clsx("input w-full resize-y text-sm leading-relaxed", compacto ? "py-1.5" : "py-2.5")} rows={1} placeholder={compacto ? "Mensagem (@ marca alguém)" : "Escreva uma mensagem (@ para marcar alguém)"} style={compacto ? { minHeight: 36 } : undefined} aria-label="Escreva uma mensagem" value={texto} maxLength={5000}
         onChange={(e) => { setTexto(e.target.value); olharMencao(e.target.value, e.target.selectionStart); }}
         onClick={(e) => olharMencao(e.currentTarget.value, e.currentTarget.selectionStart)}
         onKeyUp={(e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) olharMencao(e.currentTarget.value, e.currentTarget.selectionStart); }}
         onBlur={() => setTimeout(() => setMencao(null), 150)}
         onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); aoColarArquivos(f); } }}
+        onMouseUp={soltouAlca} onTouchEnd={soltouAlca}
         onKeyDown={teclas} />
     </div>
   );
