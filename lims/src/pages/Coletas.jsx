@@ -163,7 +163,9 @@ export function RegistrarColeta({ param }) {
 export function FichaCustodia({ param }) {
   const { dados } = useDados();
   const ids = String(param || "").split(".").filter(Boolean);
-  const amostras = ids.map((id) => dados.amostras.find((a) => a.id === id)).filter(Boolean);
+  const branco = ids[0] === "branco";
+  if (branco) ids.shift();
+  const amostras = ids.map((id) => dados.amostras.find((a) => a.id === id)).filter(Boolean).map((a) => (branco ? { ...a, dataColeta: "", coletor: "", fichaColeta: {} } : a));
   if (!amostras.length) return <NaoAchou />;
   const cfg = configSistema(dados);
   const defsColeta = camposAtivos(dados.campos_coleta);
