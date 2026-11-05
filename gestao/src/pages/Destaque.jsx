@@ -80,7 +80,7 @@ function Votacoes() {
   return (
     <>
       <div className="aviso marca peq" style={{ lineHeight: 1.6 }}>
-        <b>Como fica anônimo:</b> o servidor só soma as notas; não guarda a resposta de cada pessoa. No <b>link aberto</b>, a pessoa escolhe o próprio nome só para sair da lista e votar uma vez: fica registrado que ela votou, nunca o que votou. Com <b>código</b> (mais sigiloso), nem isso: cada um sorteia uma tirinha. Médias e comentários só aparecem depois de encerrar e para quem recebeu pelo menos o mínimo de votos.
+        <b>Link aberto ou com código:</b> no <b>link aberto</b> a pessoa escolhe o próprio nome (para sair da lista e votar uma vez), então a votação não é anônima. Com <b>código</b> ela é anônima: cada um sorteia uma tirinha e o servidor só soma as notas. Médias e comentários só aparecem depois de encerrar e para quem recebeu pelo menos o mínimo de votos.
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <h2>Votações</h2>

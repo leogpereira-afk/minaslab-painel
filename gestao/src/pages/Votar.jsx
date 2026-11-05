@@ -38,10 +38,10 @@ export default function Votar({ param }) {
     <div className="votar">
       <header className="votar-topo">
         <div className="votar-marca">Minas<b>Lab</b></div>
-        <div className="votar-sub">Destaque do Mês · votação anônima</div>
+        <div className="votar-sub">Destaque do Mês · {dados?.modo === "codigo" || (!dados && pedeCodigo) ? "votação anônima" : "votação"}</div>
       </header>
       <main className="votar-miolo">
-        {enviado ? <Obrigado /> : dados ? <Formulario pid={pid} codigo={codigo} dados={dados} aoEnviar={() => setEnviado(true)} /> : !pedeCodigo ? (
+        {enviado ? <Obrigado aberto={dados?.modo === "aberto"} /> : dados ? <Formulario pid={pid} codigo={codigo} dados={dados} aoEnviar={() => setEnviado(true)} /> : !pedeCodigo ? (
           <div className="card votar-cartao">{erro ? <div className="aviso ruim">{erro}</div> : !pid ? <div className="aviso ruim">Link incompleto. Peça o link da votação à gestão.</div> : <div className="vazio">Abrindo a votação…</div>}</div>
         ) : (
           <form className="card votar-cartao" onSubmit={abrir}>
@@ -65,12 +65,12 @@ export default function Votar({ param }) {
   );
 }
 
-function Obrigado() {
+function Obrigado({ aberto }) {
   return (
     <div className="card votar-cartao" style={{ textAlign: "center" }}>
       <div style={{ fontSize: 44 }} aria-hidden="true">✓</div>
       <h1 style={{ fontSize: 24 }}>Voto registrado. Obrigado por participar!</h1>
-      <p className="suave">Suas respostas foram somadas às dos colegas, sem seu nome. Pode fechar esta página.</p>
+      <p className="suave">{aberto ? "Suas respostas foram somadas às dos colegas." : "Suas respostas foram somadas às dos colegas, sem seu nome."} Pode fechar esta página.</p>
     </div>
   );
 }
@@ -132,7 +132,7 @@ function Formulario({ pid, codigo, dados, aoEnviar }) {
       {passo.tipo === "quem" && (
         <>
           <h1 style={{ fontSize: 22 }}>Quem é você?</h1>
-          <p className="peq" style={{ margin: 0, lineHeight: 1.6 }}>Serve só para tirar o seu nome da lista (ninguém vota em si mesmo) e para cada pessoa votar uma vez. <b>Seu nome não fica junto das suas notas</b>: o sistema guarda apenas que você já votou.</p>
+          <p className="peq" style={{ margin: 0, lineHeight: 1.6 }}>Serve para tirar o seu nome da lista (ninguém vota em si mesmo) e para cada pessoa votar uma vez.</p>
           <div className="campo">
             <label htmlFor="v-eu">Seu nome</label>
             <select id="v-eu" className="entrada" value={eu} onChange={(e) => { setEu(e.target.value); setNotas({}); setPular({}); setComent({}); }}>
