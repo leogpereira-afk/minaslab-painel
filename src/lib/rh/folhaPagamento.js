@@ -15,6 +15,7 @@
 //   · ajuda de custo = (km ida + volta) ÷ consumo × gasolina × dias, arredondada
 //     para cima (moto 35 km/l, carro 12 km/l, como na planilha).
 
+import { coletasDaPessoa } from "./coletasComissao.js";
 import { saldoDoDia } from "./folhaMensal.js";
 import { casarPessoa } from "./folhaContabil.js";
 import { mesDaFolha, pagamentosDeComissao } from "../recibosComissao.js";
@@ -153,7 +154,7 @@ export const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "cur
  * A linha da folha de uma pessoa no mês.
  * registro = o que foi gravado no mês para ela ({ heLiberada, ajustes, holerites }).
  */
-export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pontoDia = [], movimentos = [], comissoes = [], fichas = [] }) {
+export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pontoDia = [], movimentos = [], comissoes = [], fichas = [], coletas = [] }) {
   const vinculo = vinculoDe(ficha);
   const holerites = registro.holerites || {};
   const paga = empresaPagadora(ficha, holerites);
@@ -175,7 +176,10 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
   const ajuda = num(registro.ajudaFixa) ?? ajudaCalculada;
   const comissaoGestao = comissaoDoMes(ficha, competencia, comissoes, fichas);
   const comissaoManual = somaLista(registro.comissaoManual);
-  const comissao = arred(comissaoGestao + comissaoManual);
+  // Coletas do CRM marcadas como composta/viagem e COLETADAS no mês (coletasComissao.js).
+  const coletasLista = coletasDaPessoa(ficha, coletas, fichas);
+  const comissaoColetas = arred(coletasLista.reduce((n, c) => n + c.valor, 0));
+  const comissao = arred(comissaoGestao + comissaoManual + comissaoColetas);
   const bonus = somaLista(registro.bonus);
   const ajustes = somaLista(registro.ajustes);
   const variaveis = arred(he + ajuda + comissao + bonus + ajustes);
@@ -188,7 +192,7 @@ export function linhaDaFolha({ ficha, competencia, registro = {}, mes = {}, pont
     pessoaId: ficha.id, nome: ficha.nome, vinculo, paga, salario: arred(salario), liquidoHolerite,
     salarioMes, diasPagar: diasPagar !== null && diasPagar < 30 ? diasPagar : null, diasSugeridos, diasDigitados: diasDigitados !== null, extras: variaveis,
     salarioEstimado: liquidoHolerite === null, bancoMin, heLiberada: registro.heLiberada === true, heMin, he,
-    dias, ajuda, ajudaCalculada, ajudaFixa: num(registro.ajudaFixa) !== null, comissao, comissaoGestao, comissaoManual,
+    dias, ajuda, ajudaCalculada, ajudaFixa: num(registro.ajudaFixa) !== null, comissao, comissaoGestao, comissaoManual, comissaoColetas, coletasLista,
     bonus, ajustes, ajustesLista: registro.ajustes || [], bonusLista: registro.bonus || [], comissaoManualLista: registro.comissaoManual || [],
     totalMinasLab, pagarMLab, total, comEncargos,
     holerite, fgts: arred(Object.values(holerites).reduce((s, h) => s + (h.fgts || 0), 0)),

@@ -18,6 +18,8 @@ import { lerRelatorioFolha } from "../../lib/rh/folhaContabil.js";
 import { linhasDoPdf } from "../../lib/rh/folhaPdf.js";
 import { COLECAO_FOLHA, CONSUMO_PADRAO, EMPRESAS, camposDaFichaPeloHolerite, distribuirRelatorio, idDaLinha, idDoMes, linhaDaFolha, moeda, totaisDaFolha } from "../../lib/rh/folhaPagamento.js";
 import { COLECAO_COMISSOES } from "../../lib/recibosComissao.js";
+import { coletoresSemFicha } from "../../lib/rh/coletasComissao.js";
+import { coletasComissionadas } from "../../services/coletasComissao.js";
 import { marcosDaFicha } from "./uteis.js";
 
 const n2 = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -72,6 +74,17 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
   const [importando, setImportando] = useState(false);
   const [aberta, setAberta] = useState(null); // pessoaId da janela aberta
   const [gasolinaTexto, setGasolinaTexto] = useState("");
+  // Coletas do CRM (composta / viagem, COLETADAS no mês). Falha aqui não derruba a folha: avisa.
+  const [coletas, setColetas] = useState([]);
+  const [coletasErro, setColetasErro] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    setColetas([]); setColetasErro("");
+    coletasComissionadas(competencia)
+      .then((c) => { if (vivo) setColetas(c); })
+      .catch((ex) => { if (vivo) setColetasErro(ex.message); });
+    return () => { vivo = false; };
+  }, [competencia]);
 
   const carregar = useCallback(async () => {
     try {
@@ -88,7 +101,8 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
   const gasolina = mes?.gasolina ?? gasolinaAnterior;
   useEffect(() => { setGasolinaTexto(gasolina ? String(gasolina).replace(".", ",") : ""); }, [gasolina, competencia]);
 
-  const contexto = useMemo(() => ({ competencia, mes: { gasolina }, pontoDia, movimentos, comissoes, fichas }), [competencia, gasolina, pontoDia, movimentos, comissoes, fichas]);
+  const contexto = useMemo(() => ({ competencia, mes: { gasolina }, pontoDia, movimentos, comissoes, fichas, coletas }), [competencia, gasolina, pontoDia, movimentos, comissoes, fichas, coletas]);
+  const semFichaColetas = useMemo(() => coletoresSemFicha(coletas, fichas), [coletas, fichas]);
   const linhas = useMemo(() => {
     if (!registros) return [];
     const doMes = (f) => regPorId.get(idDaLinha(competencia, f.id));
@@ -179,7 +193,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
         { chave: "nome", rotulo: "Colaborador" }, { chave: "vinculo", rotulo: "Vínculo" }, { chave: "paga", rotulo: "Forma de pagamento" },
         { chave: "salario", rotulo: "Salário (ficha)", tipo: "dinheiro" }, { chave: "dias", rotulo: "Dias pagos (de 30)" }, { chave: "salarioMes", rotulo: "Salário do mês", tipo: "dinheiro" }, { chave: "liquido", rotulo: "Líquido holerite", tipo: "dinheiro" },
         { chave: "banco", rotulo: "Banco de horas" }, { chave: "hePagas", rotulo: "Horas extras pagas" }, { chave: "he", rotulo: "Hora extra 50%", tipo: "dinheiro" },
-        { chave: "ajuda", rotulo: "Ajuda de custo", tipo: "dinheiro" }, { chave: "comissao", rotulo: "Comissão", tipo: "dinheiro" },
+        { chave: "ajuda", rotulo: "Ajuda de custo", tipo: "dinheiro" }, { chave: "comissaoColetas", rotulo: "Comissão de coletas (CRM)", tipo: "dinheiro" }, { chave: "comissao", rotulo: "Comissão total", tipo: "dinheiro" },
         { chave: "bonus", rotulo: "Bônus", tipo: "dinheiro" }, { chave: "ajustes", rotulo: "Ajustes", tipo: "dinheiro" }, { chave: "extras", rotulo: "Total de extras", tipo: "dinheiro" }, { chave: "motivos", rotulo: "Motivos (bônus, comissão manual, ajustes)" },
         { chave: "totalMinasLab", rotulo: "Total MinasLab", tipo: "dinheiro" }, { chave: "pagarMLab", rotulo: "Pagar pela M Lab", tipo: "dinheiro" },
         { chave: "total", rotulo: "Total geral", tipo: "dinheiro" }, { chave: "comEncargos", rotulo: "Total com encargos", tipo: "dinheiro" },
@@ -243,11 +257,13 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
         ))}
       </div>
 
-      {(divergentes.length > 0 || !gasolina || (ultimaImport?.naoEncontrados || []).length > 0) && (
+      {(divergentes.length > 0 || !gasolina || (ultimaImport?.naoEncontrados || []).length > 0 || coletasErro || semFichaColetas.length > 0) && (
         <div className="space-y-2">
           {divergentes.map((l) => (
             <p key={l.pessoaId} role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"><b>{l.nome}:</b> {l.holerite.avisos.join("; ")}.</p>
           ))}
+          {coletasErro && <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">Não consegui trazer as coletas do CRM ({coletasErro}). A comissão de coletas ficou de fora.</p>}
+          {semFichaColetas.length > 0 && <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">Coletor do CRM sem ficha no RH: {semFichaColetas.join(", ")}. A comissão dessas coletas não entrou.</p>}
           {!gasolina && <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">Informe o preço da gasolina do mês para calcular a ajuda de custo.</p>}
           {(ultimaImport?.naoEncontrados || []).length > 0 && <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">No último relatório, sem ficha no RH: {ultimaImport.naoEncontrados.join(", ")}. Confira o nome na ficha.</p>}
         </div>
@@ -460,6 +476,27 @@ function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFech
           <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
             <legend className="px-1 text-sm font-semibold text-slate-800">Comissão</legend>
             <p className="text-sm">Do fechamento do Gestão: <b>{moeda(l.comissaoGestao)}</b></p>
+            <p className="mt-1 text-sm">Coletas do CRM (composta / viagem, COLETADAS no mês): <b>{moeda(l.comissaoColetas)}</b></p>
+            {l.coletasLista.length > 0 && (
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--hairline)" }}>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-left text-slate-600"><tr><th className="px-2 py-1.5">Data</th><th className="px-2 py-1.5">OS</th><th className="px-2 py-1.5">Cliente</th><th className="px-2 py-1.5">Tipo</th><th className="px-2 py-1.5 text-right">Valor</th></tr></thead>
+                  <tbody>
+                    {l.coletasLista.map((c) => (
+                      <tr key={c.id} className="border-t" style={{ borderColor: "var(--hairline)" }}>
+                        <td className="px-2 py-1.5 tabular-nums">{c.data ? new Date(c.data).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"}</td>
+                        <td className="px-2 py-1.5">{c.os || "—"}</td>
+                        <td className="max-w-[180px] truncate px-2 py-1.5" title={c.cliente}>{c.cliente || "—"}</td>
+                        <td className="px-2 py-1.5">{c.tipo === "VIAGEM" ? `Viagem · ${c.km ?? "?"} km` : "Composta"}</td>
+                        <td className={clsx("px-2 py-1.5 text-right tabular-nums", c.semKm && "text-amber-700")}>{c.semKm ? "sem km" : n2(c.valor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {l.coletasLista.some((c) => c.semKm) && <p className="mt-1 text-xs text-amber-800">Há viagem sem km no CRM: corrija a coleta para ela entrar.</p>}
+            <p className="mt-1 text-xs text-slate-500">Composta R$ 100 · viagem até 50 km (ida e volta) R$ 50, acima R$ 100. Marque o tipo na coleta do CRM.</p>
           </fieldset>
           <Lista titulo="Comissão lançada à mão" itens={f.comissaoManual} setItens={(v) => setF((x) => ({ ...x, comissaoManual: v }))} editavel={editavel} exemplo="Ex.: comissão de venda fora do Gestão" />
           <Lista titulo="Bônus" itens={f.bonus} setItens={(v) => setF((x) => ({ ...x, bonus: v }))} editavel={editavel} exemplo="Ex.: 8 coletas" />
