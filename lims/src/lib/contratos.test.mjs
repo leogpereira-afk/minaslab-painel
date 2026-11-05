@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { numeroContrato, contratosPendentes, contratoDaProposta, totalContrato, diasParaVencer, gerarParcelas, saldoServicos, novoAgendamento, planoAutomatico } from "./contratos.js";
+import { numeroContrato, contratosPendentes, contratoDaProposta, totalContrato, diasParaVencer, gerarParcelas, saldoServicos, novoAgendamento, planoAutomatico, datasRepeticao, agendarPlano, mesclarAgendamentos } from "./contratos.js";
 
 const prop = () => ({ id: "p1", num: 959, ano: 2026, ver: 1, status: "Aceito", clienteId: "c1", itens: [{ descricao: "Potabilidade", qtd: 4, params: [{ id: "a", preco: 30 }, { id: "b", preco: 20 }] }], outros: 100 });
 const ger = { inicio: "2026-11-04", fim: "2026-12-31", ciclo: "Parcelado", parcelas: 3, primeiroPag: "2026-11-10", tipoPeriodo: "Por dia Fixo", cobrarDia: "10" };
@@ -51,4 +51,24 @@ test("plano automático: a cada N dias, pula fim de semana e para no saldo", () 
   assert.equal(ag.length, 4);
   assert.equal(ag[0].data, "2026-11-09T08:00");
   assert.throws(() => planoAutomatico(c, { inicio: "2026-11-07", fim: "2026-12-31", intervaloDias: 0, sids: ["s1"] }), /frequência/);
+});
+
+test("repetição do plano de coleta (Único, Semanal, Mensal, dias livres)", () => {
+  assert.deepEqual(datasRepeticao({ inicio: "2026-11-07T10:30" }), ["2026-11-07T10:30"]);
+  // 07/11/2026 é sábado: "segunda á sexta" leva para segunda 09/11
+  assert.deepEqual(datasRepeticao({ inicio: "2026-11-07T08:00", fim: "2026-11-30", repetir: "Semanal", cada: 1 }), ["2026-11-09T08:00", "2026-11-16T08:00", "2026-11-23T08:00", "2026-11-30T08:00"]);
+  assert.deepEqual(datasRepeticao({ inicio: "2026-11-02T08:00", fim: "2026-11-20", repetir: "Diariamente", cada: 7, dia: "Quarta Feira" }), ["2026-11-04T08:00", "2026-11-11T08:00", "2026-11-18T08:00"]);
+  assert.equal(datasRepeticao({ inicio: "2026-01-31T08:00", fim: "2026-04-30", repetir: "Mensal", dia: "Livre - todos os dias" })[1], "2026-02-28T08:00");
+  assert.throws(() => datasRepeticao({ inicio: "2026-11-07T08:00", repetir: "Semanal" }), /última coleta/);
+});
+
+test("agendar plano respeita saldo e mesclar soma os serviços", () => {
+  const c = { servicos: [{ sid: "s1", qtd: 3, params: [{ id: "a" }, { id: "b" }] }], agendamentos: [] };
+  const ags = agendarPlano(c, { datas: ["2026-11-09T08:00", "2026-11-16T08:00"], servicos: [{ sid: "s1", qtd: 1, params: ["a"] }] });
+  assert.equal(ags.length, 2);
+  assert.deepEqual(ags[0].servicos[0].params, ["a"]);
+  assert.throws(() => agendarPlano(c, { datas: ["2026-11-09T08:00", "2026-11-16T08:00"], servicos: [{ sid: "s1", qtd: 2 }] }), /saldo/);
+  const m = mesclarAgendamentos({ ...c, agendamentos: ags }, ags.map((a) => a.id));
+  assert.equal(m.agendamentos.length, 1);
+  assert.equal(m.agendamentos[0].servicos[0].qtd, 2);
 });

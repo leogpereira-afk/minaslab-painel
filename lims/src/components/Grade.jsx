@@ -112,7 +112,7 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
     <>
       <div className="dt-top">
         <div className="dt-btns">
-          {exportar && !exportarMenu && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c)))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
+          {exportar && !exportarMenu && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c)))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Criar PDF</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
           {exportar && exportarMenu && <MenuBotao b={{ rotulo: "Exportar", menu: [
             { rotulo: "Excel", acao: () => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c))) },
             { rotulo: "CSV", acao: () => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c), ",")) },
