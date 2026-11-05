@@ -105,8 +105,10 @@ export function revisar(amostra, pids, { aprovar, revisor, quando, motivo = "", 
 // Inspeção de recebimento (7.4): perguntas padrão + campos da configuração.
 export const PERGUNTAS_INSPECAO = [
   ["temperaturaOk", "A temperatura de recebimento está de acordo?"],
+  ["identificadoOk", "Os frascos ou produtos estão identificados corretamente de acordo com a ordem de serviço?"],
   ["prazoOk", "O prazo entre a coleta e o recebimento está adequado?"],
   ["integraOk", "As amostras ou produtos estão sem sinais de violação?"],
+  ["armazenadoOk", "As amostras estão armazenadas e separadas de forma a evitar contaminação cruzada?"],
 ];
 
 export function inspecionar(amostra, insp, { quando, statusFinal = "Laboratório" }) {
