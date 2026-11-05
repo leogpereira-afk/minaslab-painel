@@ -25,25 +25,20 @@ const COLUNAS = [
 ];
 
 export function ListaClientes() {
-  const { dados, salvar } = useDados();
-  const avisar = useAviso();
+  const { dados } = useDados();
   const [sel, setSel] = useState(new Set());
-  const alternarStatus = async () => {
-    try {
-      for (const c of dados.clientes.filter((x) => sel.has(x.id))) await salvar("clientes", { ...c, status: c.status === "Ativo" ? "Inativo" : "Ativo" });
-      avisar(`Status alterado em ${sel.size} registro(s).`, "ok");
-    } catch (e) { avisar(e.message, "err"); }
-  };
+  const [status, setStatus] = useState("Todos");
+  const linhas = status === "Todos" ? dados.clientes : dados.clientes.filter((c) => (c.status || "Ativo") === status);
   return (
     <Caixa titulo="Clientes e Fornecedores">
-      <Grade id="cli" exportar="clientes" linhas={dados.clientes} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla
+      <Grade id="cli" exportar="clientes" linhas={linhas} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla
         aoAbrir={(l) => navegar("cliente", l.id)}
         botoes={[
-          { rotulo: "Selecionar todos", acao: () => setSel(new Set(dados.clientes.map((c) => c.id))) },
+          { rotulo: "Selecionar todos", acao: () => setSel(new Set(linhas.map((c) => c.id))) },
           { rotulo: "Deselecionar todos", acao: () => setSel(new Set()), desativado: !sel.size },
           { rotulo: "Visualizar", acao: () => navegar("cliente", [...sel][0]), desativado: sel.size !== 1 },
           { rotulo: "Novo Cliente", acao: () => navegar("customer-register") },
-          { rotulo: "Status", acao: alternarStatus, desativado: !sel.size },
+          { rotulo: "Status", menu: ["Todos", "Ativo", "Inativo"].map((o) => ({ rotulo: o, marcado: status === o, padrao: o === "Todos", acao: () => { setStatus(o); setSel(new Set()); } })) },
         ]} />
     </Caixa>
   );

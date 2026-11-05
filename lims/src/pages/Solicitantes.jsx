@@ -1,7 +1,7 @@
 // Cadastro → Solicitantes, fiel ao GerenciaLab:
 //  - Lista: ID, Status, Nome responsável, Razão social, CNPJ, E-mail, Criado,
 //    Modificado; botões Selecionar/Deselecionar todos, Visualizar, Novo
-//    Solicitante e Status.
+//    Solicitante e Status (filtra Todos / Ativo / Inativo).
 //  - Adicionar Solicitante: Pessoa Jurídica/Física, responsável, telefones,
 //    razão social, CNPJ/CPF, inscrições, endereço (busca pelo CEP) e e-mail.
 //  - Ficha do solicitante: resumo (contratos, OS, faturas), dados editáveis
@@ -33,23 +33,22 @@ const COLUNAS = [
 ];
 
 export default function ListaSolicitantes() {
-  const { dados, salvarLote } = useDados();
+  const { dados } = useDados();
   const avisar = useAviso();
   const [sel, setSel] = useState(new Set());
-  const selecionados = dados.solicitantes.filter((s) => sel.has(s.id));
+  const [status, setStatus] = useState("Todos");
+  const linhas = status === "Todos" ? dados.solicitantes : dados.solicitantes.filter((s) => (s.status || "Ativo") === status);
+  const selecionados = linhas.filter((s) => sel.has(s.id));
   return (
     <Caixa titulo="Solicitantes">
-      <Grade id="sol" exportar="solicitantes" linhas={dados.solicitantes} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla ordemInicial={[0, "asc"]}
+      <Grade id="sol" exportar="solicitantes" linhas={linhas} colunas={COLUNAS} selecao={sel} aoSelecionar={setSel} multipla ordemInicial={[0, "asc"]}
         aoAbrir={(r) => navegar("solicitante", r.id)}
         botoes={[
-          { rotulo: "Selecionar todos", acao: () => setSel(new Set(dados.solicitantes.map((s) => s.id))) },
+          { rotulo: "Selecionar todos", acao: () => setSel(new Set(linhas.map((s) => s.id))) },
           { rotulo: "Deselecionar todos", acao: () => setSel(new Set()), desativado: !sel.size },
           { rotulo: "Visualizar", acao: () => (selecionados.length === 1 ? navegar("solicitante", selecionados[0].id) : avisar("Selecione um solicitante.", "err")) },
           { rotulo: "Novo Solicitante", acao: () => navegar("adicionar-solicitante") },
-          { rotulo: "Status", desativado: !sel.size, acao: async () => {
-            try { await salvarLote("solicitantes", selecionados.map((s) => ({ ...s, status: s.status === "Ativo" ? "Inativo" : "Ativo" })), { motivo: "Status alterado" }); avisar(`Status alterado em ${selecionados.length} registro(s).`, "ok"); setSel(new Set()); }
-            catch (e) { avisar(e.message, "err"); }
-          } },
+          { rotulo: "Status", menu: ["Todos", "Ativo", "Inativo"].map((o) => ({ rotulo: o, marcado: status === o, padrao: o === "Todos", acao: () => { setStatus(o); setSel(new Set()); } })) },
         ]} />
     </Caixa>
   );
