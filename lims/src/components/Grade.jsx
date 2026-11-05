@@ -79,7 +79,7 @@ function MenuBotao({ b }) {
   );
 }
 
-export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"], filtrosColuna = false, opcoesFiltro = {}, selecao, aoSelecionar, aoAbrir, multipla = false, porPaginaInicial = 25, rotuloPorPagina, exportar, ocultasPadrao = [] }) {
+export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"], filtrosColuna = false, opcoesFiltro = {}, selecao, aoSelecionar, aoAbrir, multipla = false, porPaginaInicial = 25, rotuloPorPagina, exportar, exportarMenu = false, ocultasPadrao = [] }) {
   const [ocultas, setOcultasEstado] = useState(() => lerOcultas(id, ocultasPadrao));
   const setOcultas = (v) => { setOcultasEstado(v); gravarOcultas(id, v); };
   // Colunas na tela, com o índice original (filtros e ordem usam o original).
@@ -112,7 +112,12 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
     <>
       <div className="dt-top">
         <div className="dt-btns">
-          {exportar && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c)))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
+          {exportar && !exportarMenu && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c)))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
+          {exportar && exportarMenu && <MenuBotao b={{ rotulo: "Exportar", menu: [
+            { rotulo: "Excel", acao: () => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c))) },
+            { rotulo: "CSV", acao: () => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c), ",")) },
+            { rotulo: "PDF", acao: () => window.print() }, { rotulo: "Print", acao: () => window.print() },
+          ] }} />}
           <EscolherColunas colunas={colunas} ocultas={ocultas} setOcultas={setOcultas} />
           {botoes.map((b) => (b.menu ? <MenuBotao key={b.rotulo} b={b} /> : <button key={b.rotulo} type="button" className="dbtn" disabled={b.desativado} onClick={b.acao}>{b.rotulo}</button>))}
         </div>

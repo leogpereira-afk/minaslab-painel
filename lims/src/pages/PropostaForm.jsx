@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useDados, configSistema } from "../lib/dados.jsx";
 import { emailsDoSolicitante, rotuloSolicitante } from "../lib/solicitantes.js";
-import { emailDoTipo } from "../lib/clientes.js";
+import { emailDoTipo, erroCliente, normalizarCliente, enderecoPrincipal } from "../lib/clientes.js";
 import { link, navegar } from "../lib/rota.js";
 import { isoDia } from "../lib/formato.js";
 import { STATUS_PROPOSTA, EXIBICAO_PRECOS, numeroProposta, erroEtapa1, chaveNumero, minimoNumero } from "../lib/propostas.js";
@@ -31,6 +31,7 @@ export default function PropostaForm({ param, sessao }) {
   const existente = param ? dados.propostas.find((p) => p.id === param) : null;
   const [f, setF] = useState(() => (existente ? { ...existente } : nova(dados)));
   const [ocupado, setOcupado] = useState(false);
+  const [novoCli, setNovoCli] = useState(null); // { pessoa, razao, fantasia, resp, doc, email, tel } quando "Novo cliente"
   if (param && !existente) return <NaoAchou />;
   if (existente && existente.status === "Aceito") {
     return <Caixa titulo="Proposta aceita"><p style={{ margin: 0 }}>A proposta {numeroProposta(existente)} já foi aceita e não pode ser editada. Use <b>Criar revisão</b> em <a href={link("proposedlist")}>Listar Propostas</a>.</p></Caixa>;
@@ -53,16 +54,31 @@ export default function PropostaForm({ param, sessao }) {
 
   const avancar = async (e) => {
     e.preventDefault();
-    const erro = erroEtapa1(f);
-    if (erro) { avisar(erro, "err"); return; }
+    if (cliente?.inadimplencia === "Bloqueio total") { avisar("Cliente com inadimplência (bloqueio total): regularize no Financeiro antes de criar a proposta.", "err"); return; }
+    let dadosF = f;
+    if (novoCli) {
+      const erroC = erroCliente({ ...novoCli, razao: novoCli.pessoa === "PF" ? novoCli.resp : novoCli.razao });
+      if (erroC) { avisar(erroC[1], "err"); document.getElementById(`nc-${erroC[0]}`)?.focus(); return; }
+    } else {
+      const erro = erroEtapa1(f);
+      if (erro) { avisar(erro, "err"); return; }
+    }
     setOcupado(true);
     try {
+      if (novoCli) {
+        const n = normalizarCliente({ ...novoCli, tipo: "Cliente", cep: "", end: "", num: "", comp: "", bairro: "", cidade: "", uf: "" });
+        const c = await salvar("clientes", { ...n, status: "Ativo", obs: "", enderecos: [enderecoPrincipal(n)] }, { numerar: true, motivo: "Cadastrado na proposta" });
+        dadosF = { ...f, clienteId: c.id, emailCliProp: c.email || "", emailCliNF: c.email || "", emailCliRes: c.email || "" };
+        const erro = erroEtapa1(dadosF);
+        if (erro) { avisar(erro, "err"); setF(dadosF); setNovoCli(null); return; }
+      }
+      const fx = dadosF;
       let reg;
-      if (existente) reg = await salvar("propostas", { ...f, parcelas: Number(f.parcelas) || 1 });
+      if (existente) reg = await salvar("propostas", { ...fx, parcelas: Number(fx.parcelas) || 1 });
       else {
         // Número dado pelo servidor (atômico): duas pessoas nunca recebem o mesmo.
-        const num = await proximo(chaveNumero(f.ano), minimoNumero(configSistema(dados)));
-        reg = await salvar("propostas", { ...f, num, ident: f.ident || `${String(num).padStart(5, "0")}/${f.ano}`, parcelas: Number(f.parcelas) || 1, itens: [], outros: 0, resp: sessao.nome || sessao.usuario, statusProc: "Aguardando aceite", views: 0, revs: [], docs: [], aceite: null, novo: true }, { numerar: true });
+        const num = await proximo(chaveNumero(fx.ano), minimoNumero(configSistema(dados)));
+        reg = await salvar("propostas", { ...fx, num, ident: fx.ident || `${String(num).padStart(5, "0")}/${fx.ano}`, parcelas: Number(fx.parcelas) || 1, itens: [], outros: 0, resp: sessao.nome || sessao.usuario, statusProc: "Aguardando aceite", views: 0, revs: [], docs: [], aceite: null, novo: true }, { numerar: true });
       }
       navegar("proposta-servicos", reg.id);
     } catch (ex) { avisar(ex.message, "err"); } finally { setOcupado(false); }
@@ -82,7 +98,7 @@ export default function PropostaForm({ param, sessao }) {
           <div className="fg s2"><label htmlFor="pStatus">Status proposta</label><select id="pStatus" value={f.status} onChange={muda("status")}>{opcoes(STATUS_PROPOSTA.filter((s) => s !== "Salvo" || f.status === "Salvo"))}</select></div>
           <div className="fg s2"><label htmlFor="pExib">Exibição de preços</label><select id="pExib" value={f.exib} onChange={muda("exib")}>{opcoes(EXIBICAO_PRECOS)}</select></div>
           <div className="fg s2"><label htmlFor="pInd">Indicação</label><select id="pInd" className="gray" value={f.indicacao} onChange={muda("indicacao")}>{opcoes(["Sem indicação", "Cliente", "Parceiro", "Site", "Redes sociais"])}</select></div>
-          <div className="fg s2"><label htmlFor="pEquip">Equipamentos</label><input id="pEquip" value={f.equip} onChange={muda("equip")} /></div>
+          <div className="fg s2"><label htmlFor="pEquip">Equipamentos</label><input id="pEquip" list="equip-prop" placeholder="Equipamentos" value={f.equip} onChange={muda("equip")} /><datalist id="equip-prop">{dados.equipamentos.filter((x) => x.emUso !== "Não").map((x) => <option key={x.id} value={`${x.codigo ? `${x.codigo} · ` : ""}${x.equipamento}`} />)}</datalist></div>
         </div>
       </Caixa>
 
@@ -99,15 +115,30 @@ export default function PropostaForm({ param, sessao }) {
       </Caixa>
 
       <Caixa cabecalho="Cliente">
+        {!existente && <div className="radios" style={{ marginBottom: 10 }} role="radiogroup" aria-label="Cliente novo ou existente">
+          <label><input type="radio" name="tipoCli" checked={!!novoCli} onChange={() => setNovoCli({ pessoa: "PJ", razao: "", fantasia: "", resp: "", doc: "", email: "", tel: "" })} /> Novo cliente</label>
+          <label><input type="radio" name="tipoCli" checked={!novoCli} onChange={() => setNovoCli(null)} /> Cliente existente</label>
+        </div>}
+        {novoCli ? (
+          <div className="frm">
+            <div className="s12 radios" role="radiogroup" aria-label="Tipo de pessoa"><label><input type="radio" name="ncPessoa" checked={novoCli.pessoa !== "PF"} onChange={() => setNovoCli({ ...novoCli, pessoa: "PJ" })} /> Pessoa Jurídica</label><label><input type="radio" name="ncPessoa" checked={novoCli.pessoa === "PF"} onChange={() => setNovoCli({ ...novoCli, pessoa: "PF" })} /> Pessoa Física</label></div>
+            {[["razao", "Razão Social"], ["fantasia", "Nome Fantasia"], ["resp", "Nome Responsável"], ["doc", novoCli.pessoa === "PF" ? "CPF" : "CNPJ"], ["email", "E-mail"], ["tel", "Telefone"]].filter(([k]) => novoCli.pessoa !== "PF" || !["razao", "fantasia"].includes(k)).map(([k, r]) => (
+              <div className="fg s4" key={k}><label htmlFor={`nc-${k}`}>{r}</label><input id={`nc-${k}`} type={k === "email" ? "email" : "text"} value={novoCli[k]} onChange={(e) => setNovoCli({ ...novoCli, [k]: e.target.value })} /></div>
+            ))}
+            <p className="s12 suave" style={{ margin: 0 }}>O cliente é cadastrado ao avançar. Endereços e demais dados ficam na ficha do cliente.</p>
+          </div>
+        ) : (
         <div className="frm">
           <div className="fg s6"><label htmlFor="pCli">Selecione o cliente</label><select id="pCli" value={f.clienteId || ""} onChange={(e) => escolherCliente(e.target.value)}>{opcoes([["", "Selecione o cliente"], ...dados.clientes.filter((c) => c.status === "Ativo" || c.id === f.clienteId).map((c) => [c.id, `${c.razao} — ${c.doc}`])])}</select></div>
           <div className="fg s6"><label htmlFor="pUni">Selecione a unidade</label><select id="pUni" value={f.unidade} onChange={muda("unidade")}>{opcoes(["Não tem unidade", ...((cliente?.unidades || []).filter((u) => u.status !== "Inativo").map((u) => u.nome))])}</select></div>
           {ro("cRaz", "Razão Social", cliente?.razao)}{ro("cFan", "Nome Fantasia", cliente?.fantasia)}{ro("cResp", "Nome Responsável", cliente?.resp)}
           {ro("cDoc", "CNPJ", cliente?.doc)}{ro("cMail", "E-mail", cliente?.email)}{ro("cTel", "Telefone", cliente?.tel)}
+          {cliente?.inadimplencia && cliente.inadimplencia !== "Não" && <p className="s12 aviso ruim" style={{ margin: 0 }}><b>Atenção Cliente com inadimplência</b> ({cliente.inadimplencia}).{cliente.inadimplencia === "Bloqueio total" ? " Não é possível avançar." : ""}</p>}
         </div>
+        )}
       </Caixa>
 
-      {cliente && (
+      {cliente && !novoCli && (
         <Caixa cabecalho="Email Cliente">
           <div className="frm">
             <div className="fg s4"><label htmlFor="pECP">Email proposta Cliente</label><input id="pECP" type="email" value={f.emailCliProp} onChange={muda("emailCliProp")} /></div>
@@ -122,12 +153,14 @@ export default function PropostaForm({ param, sessao }) {
           <div className="fg s3"><label htmlFor="pCria">Data criação da proposta</label><input id="pCria" type="date" value={f.criacao} onChange={muda("criacao")} /></div>
           <div className="fg s3"><label htmlFor="pVal">Data Validade da proposta</label><input id="pVal" type="date" value={f.validade} onChange={muda("validade")} /></div>
           <div className="fg s3"><label htmlFor="pCiclo">Ciclo pagamento</label><select id="pCiclo" value={f.ciclo} onChange={muda("ciclo")}>{opcoes(["Faturado", "Parcelado"])}</select></div>
-          <div className="fg s3"><label htmlFor="pParc">Numero de parcelas</label><input id="pParc" type="number" min="1" max="36" value={f.parcelas} disabled={f.ciclo !== "Parcelado"} onChange={muda("parcelas")} /></div>
+          {f.ciclo === "Parcelado" && <>
+          <div className="fg s3"><label htmlFor="pParc">Numero de parcelas</label><input id="pParc" type="number" min="1" max="36" value={f.parcelas} onChange={muda("parcelas")} /></div>
           <div className="fg s3"><label htmlFor="pTP">Tipo período</label><select id="pTP" value={f.tipoPeriodo} onChange={muda("tipoPeriodo")}>{opcoes(["Por dia Fixo", "Por dia útil"])}</select></div>
           <div className="fg s3"><label htmlFor="pDia">Cobrar sempre no</label><select id="pDia" value={f.cobrarDia} onChange={muda("cobrarDia")}>{opcoes(Array.from({ length: 31 }, (_, i) => String(i + 1)))}</select></div>
           <div className="fg s3"><label htmlFor="pPrim">Data primeiro pagamento</label><input id="pPrim" type="date" value={f.primeiroPag} onChange={muda("primeiroPag")} /></div>
+          </>}
           <div className="fg s3"><label htmlFor="pTC">Tipo de contrato</label><select id="pTC" value={f.tipoContrato} onChange={muda("tipoContrato")}>{opcoes([["", "Selecione tipo de contrato"], ...new Set(["Contrato Padrão", "Contrato Parcelado", ...dados.formas_pagamento.filter(estaAtivo).map((x) => x.tipoContrato)])])}</select></div>
-          <div className="fg s6"><label htmlFor="pCond">Condições de pagamento</label><select id="pCond" value={f.condicoes} onChange={muda("condicoes")}>{opcoes([["", "Selecione"], ...new Set([...(f.condicoes ? [f.condicoes] : []), ...dados.condicoes_pagamento.map((c) => c.descricao)])])}</select></div>
+          <div className="fg s6"><label htmlFor="pCond">Condições de pagamento</label><select id="pCond" value={f.condicoes} onChange={muda("condicoes")}>{opcoes([["", "Selecione"], ...new Set([...(f.condicoes ? [f.condicoes] : []), ...dados.formas_pagamento.filter((x) => estaAtivo(x) && (!f.tipoContrato || x.tipoContrato === f.tipoContrato)).map((x) => x.descricao), ...dados.condicoes_pagamento.map((c) => c.descricao)])])}</select></div>
           <div className="fg s6"><label htmlFor="pCobNa">Cobrança Na</label><select id="pCobNa" value={f.cobrancaNa} onChange={muda("cobrancaNa")}>{opcoes(["Entrada da amostra", "Assinatura do certificado", "Nota Fiscal"])}</select></div>
           <div className="fg s6"><label htmlFor="pObs">Observações internas ou Externa</label><textarea id="pObs" rows={4} value={f.obs} onChange={muda("obs")} /></div>
           <div className="fg s6"><label htmlFor="pObsF">Observações Financeiras</label><textarea id="pObsF" rows={4} value={f.obsFin} onChange={muda("obsFin")} /></div>

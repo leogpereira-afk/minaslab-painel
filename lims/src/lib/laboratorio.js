@@ -1,3 +1,5 @@
+import { precoUnitario } from "./propostas.js";
+
 // Regras do caminho da amostra depois da OS: coleta, inspeção de recebimento,
 // análise, revisão, certificado e descarte. Puro e testado.
 //
@@ -134,10 +136,7 @@ export function dataParaDescarte(amostra, dias = 30) {
 // Valor da amostra para faturar: soma dos preços dos parâmetros contratados.
 export function valorAmostra(contrato, amostra) {
   const sv = contrato?.servicos?.find((s) => s.sid === amostra.sid);
-  if (!sv) return 0;
-  const bruto = (sv.params || []).reduce((s, p) => s + (Number(p.preco) || 0), 0);
-  const desc = Number(sv.desconto) || 0;
-  return Math.round(bruto * (1 - desc / 100) * 100) / 100;
+  return sv ? precoUnitario(sv) : 0;
 }
 
 // Progresso do certificado de uma OS: amostras prontas para assinar/assinadas.
