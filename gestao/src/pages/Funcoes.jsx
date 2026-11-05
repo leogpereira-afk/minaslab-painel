@@ -3,6 +3,8 @@
 // trilhas de treinamento. Cada pessoa da equipe é ligada a uma função.
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
+import logoMinasLab from "../assets/logo-minaslab.webp";
 import { useBase } from "../hooks/base.jsx";
 import { Card, Chip, Cabecalho, Modal } from "../components/ui.jsx";
 import { Orientacao } from "../components/Orientacao.jsx";
@@ -196,6 +198,10 @@ function Editor({ inicial, aoFechar }) {
   );
 }
 
+// A4 em pé. A caixa de margem com o nº da página faz o navegador deixar de
+// imprimir o próprio cabeçalho e rodapé (endereço da página e data).
+const PAGINA_A4 = "@media print { @page { size: A4 portrait; margin: 14mm 14mm 16mm; @bottom-right { content: 'Página ' counter(page) ' de ' counter(pages); font: 9px Inter, sans-serif; color: #64748b; } } }";
+
 // Ficha de descrição de cargo no formato dos documentos da MinasLab; imprime em A4.
 export function DocumentoCargo({ f }) {
   const id = f.identificacao || {};
@@ -210,7 +216,7 @@ export function DocumentoCargo({ f }) {
   const sec = (titulo) => <h3 className="doc-sec">{++n}. {titulo}</h3>;
   return (
     <div className="doc-cargo">
-      <div className="doc-topo"><span>Minas<b>Lab</b></span><span>Descrição de cargo{f.revisadoEm ? ` · revisada em ${dataCurta(f.revisadoEm)}` : ""}</span></div>
+      <div className="doc-topo"><img src={logoMinasLab} alt="MinasLab" className="doc-logo" /><span>Descrição de cargo{f.revisadoEm ? ` · revisada em ${dataCurta(f.revisadoEm)}` : ""}</span></div>
       <h2 className="doc-titulo">{f.nome}</h2>
       {sec("Identificação do cargo")}
       <table className="doc-tab"><tbody>
@@ -242,7 +248,7 @@ function VerDescricao({ f, aoFechar }) {
         <button type="button" className="btn" onClick={() => window.print()}>Imprimir / salvar PDF</button>
       </div>
       <DocumentoCargo f={f} />
-      <div className="impressao" aria-hidden="true"><DocumentoCargo f={f} /></div>
+      {createPortal(<><style>{PAGINA_A4}</style><div className="impressao cert-avulso doc-avulso" aria-hidden="true"><DocumentoCargo f={f} /></div></>, document.body)}
     </Modal>
   );
 }
