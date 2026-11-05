@@ -91,20 +91,19 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "os-correta", "atendimento"],
   }),
   N("com-ass", {
-    cargo: "Assistente de Suporte Operacional, Atendimento e Licitações", funcao: "Assistente de Suporte Operacional, Atendimento e Licitações", pcmso: "", grupo: "administrativo", tempoMinimo: 12,
-    alerta: "Não aparece com esse nome no PCMSO: confirme com a clínica (provável Aux. Administrativo Comercial).",
+    cargo: "Auxiliar Administrativo Comercial", funcao: "Auxiliar Administrativo Comercial", antigos: ["Assistente de Suporte Operacional, Atendimento e Licitações"], pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", tempoMinimo: 12,
     escopo: "Atendimento, recebimento de amostras e OS, controle de provedores, licitações e apoio às propostas.",
     requisitos: ["Ensino médio completo; desejável técnico ou superior em administração", "POPs de recebimento de amostras e emissão de OS"],
     treinamentos: ["integracao", "qualidade-5s", "os-correta", "atendimento", "licitacoes", "crm-sem-furos"],
   }),
   N("com-an1", {
-    cargo: "Analista Comercial", funcao: "Analista Comercial", pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", tempoMinimo: 18,
+    cargo: "Analista Administrativo Comercial", funcao: "Analista Administrativo Comercial", antigos: ["Analista Comercial"], pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", tempoMinimo: 18,
     escopo: "Propostas, follow-up, CRM, atendimento e agendamento de coletas, com metas mensais de propostas e aprovação.",
     requisitos: ["Ensino médio completo; desejável técnico ou superior", "Análise crítica de pedidos e propostas (PG 006)"],
     treinamentos: ["crm-sem-furos", "follow-up", "proposta-sem-erro", "analise-critica", "atendimento"],
   }),
   N("com-an2", {
-    cargo: "Analista Comercial Sênior", funcao: "Analista Comercial Sênior", pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", novo: true, tempoMinimo: 24,
+    cargo: "Analista Administrativo Comercial Sênior", funcao: "Analista Administrativo Comercial Sênior", pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", novo: true, tempoMinimo: 24,
     escopo: "Cuida dos clientes-chave e das licitações mais complexas, faz propostas de escopo novo com a análise crítica, treina quem chega e responde pela meta de valor.",
     requisitos: ["Superior completo ou em curso", "Taxa de aprovação na meta em dois trimestres seguidos", "Conhecimento técnico dos ensaios e venda consultiva"],
     treinamentos: ["spin", "tecnico", "pg012-satisfacao", "pg013-reclamacoes"],
@@ -158,7 +157,7 @@ export const REGRAS = {
 export const nivelPorId = (id) => NIVEIS.find((n) => n.id === id) || null;
 const norm = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 /** Nível do plano pela função do sistema (nome da função). */
-export const nivelDaFuncao = (nomeFuncao) => (nomeFuncao ? NIVEIS.find((n) => norm(n.funcao) === norm(nomeFuncao)) || null : null);
+export const nivelDaFuncao = (nomeFuncao) => (nomeFuncao ? NIVEIS.find((n) => [n.funcao, ...(n.antigos || [])].some((x) => norm(x) === norm(nomeFuncao))) || null : null);
 export const trilhasDoNivel = (id) => TRILHAS_CARREIRA.filter((t) => t.niveis.includes(id));
 
 /** Próximos passos a partir de um nível: subir na trilha e trocas laterais. */
