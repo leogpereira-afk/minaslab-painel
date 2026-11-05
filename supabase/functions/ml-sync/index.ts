@@ -396,7 +396,7 @@ Deno.serve(async (req) => {
       if (bytes.byteLength > 20 * 1024 * 1024) return resp({ erro: "O arquivo passa de 20 MB. Diminua a resolução do escaneamento." }, 413);
       const mime = ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : "image/jpeg";
       const up = await sb.storage.from(RH_DOC_BUCKET).upload(`estoque/scan-temp/${sid}.${ext}`, bytes, { contentType: mime, upsert: true }); if (up.error) throw up.error;
-      await sb.storage.from(RH_DOC_BUCKET).upload(`estoque/scan-temp/${sid}.nome`, new TextEncoder().encode(nomeOriginal.replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 200)), { contentType: "text/plain", upsert: true });
+      await sb.storage.from(RH_DOC_BUCKET).upload(`estoque/scan-temp/${sid}.nome`, new TextEncoder().encode(nomeOriginal.replace(/[\\/\p{Cc}]/gu, "_").slice(0, 200)), { contentType: "text/plain", upsert: true });
       return resp({ ok: true });
     }
 
@@ -609,7 +609,7 @@ Deno.serve(async (req) => {
         const avaliacao=(body.avaliacao??{}) as Record<string,unknown>;
         if(!fornecedorId) return resp({erro:"Fornecedor obrigatório."},400);
         // FAPE: cada critério é SIM (2 pts) / NÃO (0) / NÃO SE APLICA (fora da conta). A nota é calculada aqui, não na tela.
-        const semAcento=(v:unknown)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase().replace(/\s+/g," ");
+        const semAcento=(v:unknown)=>String(v??"").normalize("NFD").replace(/\p{M}/gu,"").trim().toUpperCase().replace(/\s+/g," ");
         // De 1 a 12 critérios (a quantidade vem de Configurações e é gravada na avaliação); sem qtdCriterios valem 4, como antes.
         const qtdBruta=Number(avaliacao.qtdCriterios), qtdCrit=Number.isInteger(qtdBruta)&&qtdBruta>=1&&qtdBruta<=12?qtdBruta:4;
         const respostas=Array.from({length:qtdCrit},(_,k)=>k+1).map(i=>{const k=semAcento(avaliacao[`criterio${i}Resposta`]);return k==="SIM"?"SIM":k==="NAO"?"NÃO":(k==="NAO SE APLICA"||k==="N/A")?"NÃO SE APLICA":"";});
