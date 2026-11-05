@@ -149,50 +149,63 @@ Deno.serve(async (req) => {
     if (!COLECAO_OK.test(colecao)) return json({ erro: "Coleção inválida." }, 400);
     const motivo = txt(body.motivo).slice(0, 500);
 
-    // Grava um registro (cria ou atualiza), com histórico na trilha.
-    const gravarUm = async (reg: Reg, numerar: boolean) => {
-      if (typeof reg !== "object" || reg === null || Array.isArray(reg)) throw new ErroUso("Registro inválido.");
-      if (!txt(reg.id)) reg.id = `${colecao.slice(0, 12)}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-      const id = txt(reg.id);
-      if (!ID_OK.test(id)) throw new ErroUso("Identificador inválido.");
-      if (JSON.stringify(reg).length > MAX_REGISTRO) throw new ErroUso("Registro grande demais.");
-      const { data: atual, error: e1 } = await sb.from(T_REG).select("registro,apagado").eq("colecao", colecao).eq("id", id).maybeSingle();
-      if (e1) throw e1;
-      const antes = atual && !atual.apagado ? atual.registro as Reg : null;
-      // Senha em branco = manter a gravada. Marcadores "...Definida" não se gravam.
-      for (const k of Object.keys(reg)) {
-        if (/Definida$/.test(k) && ehSenha(k)) delete reg[k];
-        else if (ehSenha(k) && !txt(reg[k])) { if (antes?.[k]) reg[k] = antes[k]; else delete reg[k]; }
+    // Grava registros (cria ou atualiza), com histórico na trilha. Em lote:
+    // uma leitura dos atuais, um upsert e uma inserção na trilha.
+    const gravarVarios = async (lista: Reg[], numerar: boolean) => {
+      for (const reg of lista) {
+        if (typeof reg !== "object" || reg === null || Array.isArray(reg)) throw new ErroUso("Registro inválido.");
+        if (!txt(reg.id)) reg.id = `${colecao.slice(0, 12)}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+        if (!ID_OK.test(txt(reg.id))) throw new ErroUso("Identificador inválido.");
+        if (JSON.stringify(reg).length > MAX_REGISTRO) throw new ErroUso("Registro grande demais.");
       }
-      // Código sequencial por coleção (a coluna "ID" das listas), dado só na criação.
-      if (!antes && numerar && !reg.cod) {
-        const { data: n, error: en } = await sb.rpc("ml_lims_proximo", { p_chave: `cad:${colecao}`, p_minimo: 0 });
-        if (en) throw en;
-        reg.cod = Number(n);
-      } else if (antes?.cod) reg.cod = antes.cod;
-      const novo: Reg = {
-        ...reg, id,
-        criadoEm: antes?.criadoEm ?? agora, criadoPor: antes?.criadoPor ?? usuario,
-        atualizadoEm: agora, atualizadoPor: usuario,
-      };
-      const { error: e2 } = await sb.from(T_REG).upsert({ colecao, id, registro: novo, apagado: false, atualizado_em: agora, ...(antes ? {} : { criado_em: agora }) });
-      if (e2) throw e2;
-      const acaoTexto = oQueMudou(antes, novo) + (motivo ? ` · Motivo: ${motivo}` : "");
-      const { error: e3 } = await sb.from(T_AUD).insert({ usuario, colecao, registro_id: id, acao: acaoTexto, antes: semSenhas(antes), depois: semSenhas(novo) });
+      const ids = lista.map((r) => txt(r.id));
+      if (new Set(ids).size !== ids.length) throw new ErroUso("Registro repetido no lote.");
+      const { data: atuais, error: e1 } = await sb.from(T_REG).select("id,registro,apagado").eq("colecao", colecao).in("id", ids);
+      if (e1) throw e1;
+      const porId = new Map((atuais ?? []).map((a) => [a.id as string, a]));
+      const linhas = [], trilha = [], saida: Reg[] = [];
+      for (const reg of lista) {
+        const id = txt(reg.id);
+        const atual = porId.get(id);
+        const antes = atual && !atual.apagado ? atual.registro as Reg : null;
+        // Senha em branco = manter a gravada. Marcadores "...Definida" não se gravam.
+        for (const k of Object.keys(reg)) {
+          if (/Definida$/.test(k) && ehSenha(k)) delete reg[k];
+          else if (ehSenha(k) && !txt(reg[k])) { if (antes?.[k]) reg[k] = antes[k]; else delete reg[k]; }
+        }
+        // Código sequencial por coleção (a coluna "ID" das listas), dado só na criação.
+        if (!antes && numerar && !reg.cod) {
+          const { data: n, error: en } = await sb.rpc("ml_lims_proximo", { p_chave: `cad:${colecao}`, p_minimo: 0 });
+          if (en) throw en;
+          reg.cod = Number(n);
+        } else if (antes?.cod) reg.cod = antes.cod;
+        const novo: Reg = {
+          ...reg, id,
+          criadoEm: antes?.criadoEm ?? agora, criadoPor: antes?.criadoPor ?? usuario,
+          atualizadoEm: agora, atualizadoPor: usuario,
+        };
+        linhas.push({ colecao, id, registro: novo, apagado: false, atualizado_em: agora, criado_em: agora });
+        trilha.push({ usuario, colecao, registro_id: id, acao: oQueMudou(antes, novo) + (motivo ? ` · Motivo: ${motivo}` : ""), antes: semSenhas(antes), depois: semSenhas(novo) });
+        saida.push(semSenhas(novo)!);
+      }
+      // Novos entram com criado_em; existentes mantêm o criado_em original.
+      const novos = linhas.filter((l) => !porId.has(l.id)), velhos = linhas.filter((l) => porId.has(l.id)).map(({ criado_em: _c, ...l }) => l);
+      if (novos.length) { const { error } = await sb.from(T_REG).insert(novos); if (error) throw error; }
+      if (velhos.length) { const { error } = await sb.from(T_REG).upsert(velhos); if (error) throw error; }
+      const { error: e3 } = await sb.from(T_AUD).insert(trilha);
       if (e3) throw e3;
-      return semSenhas(novo);
+      return saida;
     };
 
     if (acao === "salvar") {
-      const registro = await gravarUm((body.registro ?? {}) as Reg, body.numerar === true);
+      const [registro] = await gravarVarios([(body.registro ?? {}) as Reg], body.numerar === true);
       return json({ ok: true, registro });
     }
 
     if (acao === "salvarLote") {
       const lista = Array.isArray(body.registros) ? body.registros as Reg[] : [];
       if (!lista.length || lista.length > 300) return json({ erro: "Envie de 1 a 300 registros por vez." }, 400);
-      const registros = [];
-      for (const r of lista) registros.push(await gravarUm(r, body.numerar === true));
+      const registros = await gravarVarios(lista, body.numerar === true);
       return json({ ok: true, registros });
     }
 
