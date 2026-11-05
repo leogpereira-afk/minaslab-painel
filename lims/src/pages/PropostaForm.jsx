@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useDados, configSistema } from "../lib/dados.jsx";
+import { emailsDoSolicitante, rotuloSolicitante } from "../lib/solicitantes.js";
 import { link, navegar } from "../lib/rota.js";
 import { isoDia } from "../lib/formato.js";
 import { STATUS_PROPOSTA, EXIBICAO_PRECOS, numeroProposta, erroEtapa1, chaveNumero, minimoNumero } from "../lib/propostas.js";
@@ -38,7 +39,7 @@ export default function PropostaForm({ param, sessao }) {
   const muda = (k) => (e) => set(k, e.target.value);
   const cliente = dados.clientes.find((c) => c.id === f.clienteId);
   const sol = dados.solicitantes.find((s) => s.id === f.solicitanteId);
-  const emailsSol = [["", "Selecione o solicitante"], ...(sol ? [[sol.email, sol.email]] : [])];
+  const emailsSol = [["", "Selecione o solicitante"], ...emailsDoSolicitante(sol).map((e) => [e, e])];
 
   const escolherCliente = (id) => {
     const c = dados.clientes.find((x) => x.id === id);
@@ -46,7 +47,7 @@ export default function PropostaForm({ param, sessao }) {
   };
   const escolherSolicitante = (id) => {
     const s = dados.solicitantes.find((x) => x.id === id);
-    setF((x) => ({ ...x, solicitanteId: s ? s.id : null, emailSolProp: s?.email || "", emailSolCob: s?.email || "", emailSolRes: s?.email || "" }));
+    setF((x) => ({ ...x, solicitanteId: s ? s.id : null, emailSolProp: s?.email || "", emailSolCob: emailsDoSolicitante(s, "Nota Fiscal")[1] || s?.email || "", emailSolRes: emailsDoSolicitante(s, "Resultados")[1] || s?.email || "" }));
   };
 
   const avancar = async (e) => {
@@ -86,7 +87,7 @@ export default function PropostaForm({ param, sessao }) {
 
       <Caixa cabecalho="Solicitante">
         <div className="frm">
-          <div className="fg s3"><label htmlFor="pSol">Solicitante</label><select id="pSol" className="gray" value={f.solicitanteId || ""} onChange={(e) => escolherSolicitante(e.target.value)}>{opcoes([["", "Sem solicitante"], ...dados.solicitantes.filter((s) => s.status === "Ativo").map((s) => [s.id, `${s.nome} (${s.cliente})`])])}</select></div>
+          <div className="fg s3"><label htmlFor="pSol">Solicitante</label><select id="pSol" className="gray" value={f.solicitanteId || ""} onChange={(e) => escolherSolicitante(e.target.value)}>{opcoes([["", "Sem solicitante"], ...dados.solicitantes.filter((s) => s.status === "Ativo").map((s) => [s.id, rotuloSolicitante(s)])])}</select></div>
           <div className="fg s3"><label htmlFor="pEnvio">Envio da proposta</label><select id="pEnvio" value={f.envio} onChange={muda("envio")}>{opcoes(["Cliente", "Solicitante"])}</select></div>
           <div className="fg s3"><label htmlFor="pCob">Cobrança</label><select id="pCob" value={f.cobranca} onChange={muda("cobranca")}>{opcoes(["Cliente", "Solicitante"])}</select></div>
           <div className="fg s3"><label htmlFor="pRes">Resultado Final</label><select id="pRes" value={f.resultado} onChange={muda("resultado")}>{opcoes(["Cliente", "Solicitante", "Ambos"])}</select></div>

@@ -9,7 +9,7 @@ import Layout from "./components/Layout.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import { ListaClientes, FormCliente, VerCliente } from "./pages/Clientes.jsx";
-import Solicitantes from "./pages/Solicitantes.jsx";
+import ListaSolicitantes, { FormSolicitante, VerSolicitante } from "./pages/Solicitantes.jsx";
 import ListaPropostas from "./pages/Propostas.jsx";
 import PropostaForm from "./pages/PropostaForm.jsx";
 import PropostaServicos from "./pages/PropostaServicos.jsx";
@@ -34,7 +34,9 @@ const TELAS = {
   "customer-register": [FormCliente, () => [["Clientes", link("customers")], ["Adiciona Cliente"]]],
   cliente: [VerCliente, () => [["Clientes", link("customers")], ["Visualizar Cliente"]]],
   "cliente-editar": [FormCliente, () => [["Clientes", link("customers")], ["Editar Cliente"]]],
-  solicitantes: [Solicitantes, () => [["Solicitantes"]]],
+  solicitantes: [ListaSolicitantes, () => [["Solicitantes"]]],
+  "adicionar-solicitante": [FormSolicitante, () => [["Solicitantes", link("solicitantes")], ["Adicionar Solicitante"]]],
+  solicitante: [VerSolicitante, () => [["Solicitantes", link("solicitantes")], ["Visualizar Solicitante"]]],
   proposedlist: [ListaPropostas, () => [["Propostas"], ["Listar Propostas"]]],
   "criar-proposta": [PropostaForm, (param) => [["Propostas", link("proposedlist")], [param ? "Editar Proposta" : "Criar Proposta"]]],
   "proposta-servicos": [PropostaServicos, () => [["Propostas", link("proposedlist")], ["Serviços e amostras"]]],
