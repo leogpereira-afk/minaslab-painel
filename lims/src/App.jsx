@@ -20,6 +20,7 @@ import Permissoes from "./pages/Permissoes.jsx";
 import AuditoriaLog from "./pages/AuditoriaLog.jsx";
 import { ListaOS, FichaOS, Etiquetas, Rastreabilidade } from "./pages/Ordens.jsx";
 import { DocumentoOS } from "./pages/DocumentosOS.jsx";
+import { EscopoAcreditacao } from "./pages/Escopo.jsx";
 import { Logistica, Coletas, RegistrarColeta, FichaCustodia, Agenda, Descarte } from "./pages/Coletas.jsx";
 import { Inspecao, Protocolo, AnalisePorAmostra, AnaliseAmostra, AnalisePorParametro } from "./pages/Laboratorio.jsx";
 import { RevisaoResultado, RevisaoCertificado, CertificadoOS } from "./pages/Revisao.jsx";
@@ -50,6 +51,7 @@ const TELAS = {
   "service-order": [ListaOS, () => [["Ordem serviços"]]],
   ordem: [FichaOS, () => [["Ordem serviços", link("service-order")], ["Ordem de serviço"]]],
   etiquetas: [Etiquetas, () => [["Ordem serviços", link("service-order")], ["Etiqueta"]]],
+  "escopo-acreditacao": [EscopoAcreditacao, () => [["Configurações"], ["Escopo de acreditação"]]],
   "doc-os": [DocumentoOS, () => [["Ordem serviços", link("service-order")], ["Documento"]]],
   traceability: [Rastreabilidade, () => [["Rastreabilidade"]]],
   logistics: [Logistica, () => [["Coletas"], ["Logística"]]],
