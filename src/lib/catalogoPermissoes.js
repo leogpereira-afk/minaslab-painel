@@ -8,7 +8,7 @@ export const GRUPOS_PERMISSOES = [
   { titulo: "Agenda", paginas: [["inicio", "Início"], ["canais", "Canais MinasLab"], ["tarefas", "Tarefas"], ["mensagens", "Mensagens"], ["calendario", "Calendário"], ["compromissos", "Compromissos"]] },
   { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["lims", "MinasLab LIMS"]] },
   { titulo: "Negócios", paginas: [["licitacoes", "Licitações"], ["marketing", "Marketing"], ["crm", "CRM"], ["gestao", "Gestão"], ["curva-abc", "Curva ABC"]] },
-  { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["ponto", "Ponto"], ["acessos", "Acessos"]] },
+  { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["folha-pagamento", "Folha de Pagamento"], ["ponto", "Ponto"], ["acessos", "Acessos"]] },
   { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
 
@@ -47,4 +47,7 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "financas/servicos-gerados",
   // MinasLab LIMS inteiro (o servidor ml-lims confere esta liberação ao vivo).
   "lims",
+  // RH (todas as abas, menos a Folha de Pagamento), a Folha de Pagamento (aba do RH,
+  // exige o RH) e o Ponto. O ml-sync e o ml-ponto conferem ao vivo.
+  "rh", "folha-pagamento", "ponto",
 ]);

@@ -28,8 +28,8 @@ const PAPEIS = [
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
 // Contas antigas (antes da matriz) herdavam o operacional; os menus que só a direção
-// via antes (Patrimônio, Curva ABC, LIMS, RH, Ponto) NÃO entram nessa herança.
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc", "lims", "rh", "ponto"].includes(p));
+// via antes (Patrimônio, Curva ABC, LIMS, RH, Folha, Ponto) NÃO entram nessa herança.
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc", "lims", "rh", "folha-pagamento", "ponto"].includes(p));
 const paginasDaConta = (conta) => {
   const anteriores = conta.paginas_consulta || [];
   return anteriores.includes("__matriz_v1") || conta.papel === "direcao"
@@ -41,9 +41,10 @@ const paginasDaConta = (conta) => {
 const ajustarNome = (v, maiusculas) => (maiusculas ? String(v || "").toLocaleUpperCase("pt-BR") : v);
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
+  // A Folha de Pagamento é uma aba do RH: marcá-la marca o RH; desmarcar o RH tira a Folha.
   const alternarPagina = (id, marcado) => onChange(marcado
-    ? [...new Set([...paginas.filter(p => !p.startsWith(`${id}/`)), id])]
-    : paginas.filter(p => p !== id && !p.startsWith(`${id}/`)));
+    ? [...new Set([...paginas.filter(p => !p.startsWith(`${id}/`)), id, ...(id === "folha-pagamento" ? ["rh"] : [])])]
+    : paginas.filter(p => p !== id && !p.startsWith(`${id}/`) && !(id === "rh" && p === "folha-pagamento")));
   const alternarSecao = (id, secao, marcado) => {
     const chave = `${id}/${secao}`;
     const herdadas = paginas.includes(id)
@@ -72,7 +73,7 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
         return <div key={id}>
           <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
             <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`)))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
-            <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{id === "lims" && <small className="block text-xs text-slate-500">O LIMS inteiro (todos os menus dele).</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
+            <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{id === "lims" && <small className="block text-xs text-slate-500">O LIMS inteiro (todos os menus dele).</small>}{id === "rh" && <small className="block text-xs text-slate-500">Inclui fichas com salário, documentos, férias, exames e o ponto da equipe.</small>}{id === "folha-pagamento" && <small className="block text-xs text-slate-500">Aba do RH com líquidos, extras e comissões. Marca o RH junto.</small>}{id === "ponto" && <small className="block text-xs text-slate-500">Ponto de toda a equipe: conferência, ajustes, faltas e folha mensal.</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
           </label>
           {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
             {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title={PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`) ? `Liberar somente ${nome}` : "Seleção individual ainda exige proteção dos dados desta aba no servidor"}>

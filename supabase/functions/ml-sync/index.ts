@@ -221,7 +221,7 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados", "lims", "rh", "ponto", "folha-pagamento"]);
 const COLECOES_ESTOQUE: Record<string, string[]> = {
   estoque_produtos_base: ["dashboard", "cadastro-insumo", "entrada-lote", "retirada-baixa", "pedido-compra"],
   estoque_lotes: ["dashboard", "entrada-lote", "retirada-baixa", "etiquetas", "relatorios"],
@@ -421,8 +421,24 @@ Deno.serve(async (req) => {
       permissoes = Array.isArray(contaPermissoes.paginas_consulta) ? contaPermissoes.paginas_consulta : [];
     }
     const matrizAtiva = permissoes.includes("__matriz_v1");
+    // RH e Ponto liberáveis por pessoa na tela Acessos (Ana, 05/11/2026). Sem a
+    // liberação, rh_* continua só da direção. "folha-pagamento" = a aba Folha de
+    // Pagamento do RH (salário líquido, comissões, extras).
+    const COLECOES_RH_PAGINAS: Record<string, string[]> = {
+      rh_pessoas: ["rh", "ponto", "folha-pagamento"],
+      rh_historico: ["rh"], rh_ferias: ["rh"], rh_feedbacks: ["rh"], rh_exames: ["rh"], rh_vencimentos: ["rh"],
+      rh_comercial_feedbacks: ["rh"], rh_comercial_equipe: ["rh"], rh_lab_feedbacks: ["rh"], rh_lab_equipe: ["rh"],
+      rh_ponto: ["rh", "ponto"], rh_ponto_dia: ["rh", "ponto", "folha-pagamento"],
+      rh_folha_pagamento: ["folha-pagamento"], rh_comercial_comissoes: ["folha-pagamento"],
+    };
+    const liberadoEm = (...paginas: string[]) => ehDirecao || (matrizAtiva && paginas.some((p) => permissoes.includes(p)));
+    const podeRH = (colecao: string) => matrizAtiva && (COLECOES_RH_PAGINAS[colecao] || []).some((p) => permissoes.includes(p));
+    // Ações próprias do RH/Ponto: ler com a liberação; gravar só "equipe" com a liberação.
+    const podeLerRH = (...paginas: string[]) => liberadoEm(...paginas);
+    const podeGravarRH = (...paginas: string[]) => ehDirecao || (papel === "equipe" && liberadoEm(...paginas));
     const podeConsultarColecao = (colecao: string) => {
       if (ehDirecao) return true;
+      if (podeRH(colecao)) return true;
       if (ehColecaoRH(colecao)) return matrizAtiva &&
         ["fin_receber", "fin_clientes", "fin_categorias"].includes(colecao) &&
         permissoes.some(p => p === "curva-abc" || p.startsWith("curva-abc/"));
@@ -443,7 +459,7 @@ Deno.serve(async (req) => {
       if (ehDirecao) return true;
       if (papel !== "equipe") return false;
       if (!matrizAtiva) return true;
-      if (ehColecaoRH(colecao)) return false;
+      if (ehColecaoRH(colecao)) return podeRH(colecao);
       const pagina = COLECAO_PAGINA[colecao];
       return !!pagina && (
         permissoes.includes(pagina) ||
@@ -1052,7 +1068,7 @@ Deno.serve(async (req) => {
         if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!colecao || !registro?.id) return resp({ erro: "colecao e registro.id obrigatórios." }, 400);
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só grava pelas ações próprias (saldo, status e vínculos são conferidos no servidor).", semPermissao: true }, 403);
-        if (ehColecaoRH(colecao) && !ehDirecao) {
+        if (ehColecaoRH(colecao) && !ehDirecao && !podeRH(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         // Carimbo no ato: quem gravou e quando ficam NO registro, decididos
@@ -1075,7 +1091,7 @@ Deno.serve(async (req) => {
         if (!podeEscreverColecao(colecao)) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         const id = String(body.id ?? "");
         if (ehColecaoEstoque(colecao)) return resp({ erro: "A Gestão de Estoque só exclui pelas ações próprias (com conferência e auditoria).", semPermissao: true }, 403);
-        if (ehColecaoRH(colecao) && !ehDirecao) {
+        if (ehColecaoRH(colecao) && !ehDirecao && !podeRH(colecao)) {
           return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
         }
         const agora = new Date().toISOString();
@@ -1091,7 +1107,7 @@ Deno.serve(async (req) => {
       
       // ---------------- RH / PONTO — ações aditivas ----------------
       case "rhDocumentoListar": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeLerRH("rh")) return resp({ erro: "Você não tem acesso a esta parte do RH.", semPermissao: true }, 403);
         let q = sb.from("rh_documentos").select("*").neq("status", "SUBSTITUIDO").order("created_at", { ascending: false });
         if (body.pessoaId) q = q.eq("pessoa_id", String(body.pessoaId));
         if (body.tipo) q = q.eq("tipo", String(body.tipo));
@@ -1101,7 +1117,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhDocumentoUpload": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const pessoaId = String(body.pessoaId ?? "");
         const tipo = String(body.tipo ?? "").trim();
         const nomeOriginal = String(body.nomeOriginal ?? "").trim();
@@ -1134,7 +1150,7 @@ Deno.serve(async (req) => {
 
 
       case "rhDocumentoExcluir": {
-        if (!ehDirecao) return resp({ erro: "Somente a direção pode excluir documentos.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const id = String(body.documentoId ?? "");
         const { data: doc, error: de } = await sb.from("rh_documentos").select("id,pessoa_id,nome_original,tipo,status").eq("id", id).maybeSingle();
         if (de) throw de;
@@ -1149,7 +1165,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhDocumentoConfirmarPreenchimento": {
-        if (!ehDirecao) return resp({ erro: "Somente a direção pode confirmar dados do RH.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const pessoaId = String(body.pessoaId ?? "");
         const documentoId = String(body.documentoId ?? "");
         const confirmados = body.dadosConfirmados && typeof body.dadosConfirmados === "object" ? body.dadosConfirmados : {};
@@ -1182,7 +1198,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhDocumentoUrl": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeLerRH("rh")) return resp({ erro: "Você não tem acesso a esta parte do RH.", semPermissao: true }, 403);
         const id = String(body.documentoId ?? "");
         const { data: doc, error: de } = await sb.from("rh_documentos").select("storage_bucket,storage_path").eq("id", id).maybeSingle();
         if (de) throw de;
@@ -1193,7 +1209,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhDocumentoAtualizar": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const id = String(body.documentoId ?? "");
         const campos: Record<string, unknown> = {};
         for (const k of ["tipo","empresa","data_emissao","data_realizacao","validade","status","leitura_status","observacoes","dados_extraidos","atualizado_por"]) {
@@ -1208,7 +1224,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhBancoListar": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeLerRH("rh", "ponto", "folha-pagamento")) return resp({ erro: "Você não tem acesso a esta parte do RH.", semPermissao: true }, 403);
         let q = sb.from("rh_banco_horas_movimentos").select("*").order("data_movimento", { ascending: true }).order("created_at", { ascending: true });
         if (body.pessoaId) q = q.eq("pessoa_id", String(body.pessoaId));
         if (body.competencia) q = q.eq("competencia", String(body.competencia));
@@ -1219,7 +1235,7 @@ Deno.serve(async (req) => {
       }
 
       case "rhBancoRegistrar": {
-        if (!ehDirecao) return resp({ erro: "Somente a direção pode lançar banco de horas.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh", "ponto")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const pessoaId = String(body.pessoaId ?? "");
         const competencia = String(body.competencia ?? "");
         const dataMovimento = String(body.dataMovimento ?? "");
@@ -1240,14 +1256,14 @@ Deno.serve(async (req) => {
       }
 
       case "rhFolhaBuscar": {
-        if (!ehDirecao) return resp({ erro: "Estas informações são só da direção.", semPermissao: true }, 403);
+        if (!podeLerRH("rh", "ponto")) return resp({ erro: "Você não tem acesso a esta parte do RH.", semPermissao: true }, 403);
         const { data, error } = await sb.from("rh_folhas_ponto").select("*").eq("pessoa_id", String(body.pessoaId ?? "")).eq("competencia", String(body.competencia ?? "")).maybeSingle();
         if (error) throw error;
         return resp({ folha: data ?? null });
       }
 
       case "rhFolhaSalvar": {
-        if (!ehDirecao) return resp({ erro: "Somente a direção pode gerar ou fechar a Folha.", semPermissao: true }, 403);
+        if (!podeGravarRH("rh", "ponto")) return resp({ erro: "Seu acesso não permite gravar nesta parte do RH.", semPermissao: true }, 403);
         const pessoaId = String(body.pessoaId ?? "");
         const competencia = String(body.competencia ?? "");
         const snapshot = body.dadosSnapshot && typeof body.dadosSnapshot === "object" ? body.dadosSnapshot : {};

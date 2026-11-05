@@ -141,6 +141,8 @@ const COLECOES_GESTAO = ["rh_comercial_feedbacks", "rh_comercial_equipe", "rh_la
 export default function RH() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
+  // Folha de Pagamento: a direção, ou quem tem "folha-pagamento" liberado em Acessos.
+  const podeVerFolha = sessao?.papel === "direcao" || (sessao?.paginas_consulta || []).includes("folha-pagamento");
 
   const [dados, setDados] = useState(null); // { pessoas, ferias, vencimentos, feedbacks, exames, historico }
   const [erro, setErro] = useState(null);
@@ -762,7 +764,7 @@ export default function RH() {
             { valor: "feedback", rotulo: "Feedback" },
             { valor: "exames", rotulo: "Exames" },
             // Folha de Pagamento: salário e valores são da direção (rh_* no servidor).
-            ...(sessao?.papel === "direcao" ? [{ valor: "folha", rotulo: "Folha de Pagamento" }] : []),
+            ...(podeVerFolha ? [{ valor: "folha", rotulo: "Folha de Pagamento" }] : []),
             { valor: "vencimentos", rotulo: "Vencimentos" },
             { valor: "relatorios", rotulo: "Relatórios" },
           ]}
@@ -867,7 +869,7 @@ export default function RH() {
         />
       )}
 
-      {aba === "folha" && sessao?.papel === "direcao" && (
+      {aba === "folha" && podeVerFolha && (
         <AbaFolhaPagamento pessoas={dados.pessoas} editavel={editavel} setAviso={setAviso} />
       )}
 
