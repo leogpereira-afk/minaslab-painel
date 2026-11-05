@@ -51,6 +51,7 @@ export function EscopoAcreditacao() {
   return (
     <Caixa titulo="Escopo de acreditação">
       <p style={{ marginTop: -4 }}><b>CRL 1943</b> · MINASLABBRASIL LTDA / MINASLAB · ABNT NBR ISO/IEC 17025 · Ensaio · Instalação permanente · revisão de 25/08/2025 (NIT-DICLA-016).</p>
+      {escopo.length > 0 && ESCOPO_CRL1943.some((e) => { const g = escopo.find((x) => x.id === e.id); return !g || ["ensaio", "metodo", "faixa", "campo", "classe"].some((k) => JSON.stringify(g[k] ?? null) !== JSON.stringify(e[k] ?? null)) || JSON.stringify(g.matrizes) !== JSON.stringify(e.matrizes); }) && <p className="aviso alerta">O escopo gravado difere da versão conferida com o PDF. <button type="button" className="btn btn-primary btn-sm" disabled={ocupado} onClick={carregar}>Atualizar escopo gravado</button></p>}
       {!escopo.length && <p className="aviso alerta">O escopo ainda não está gravado no sistema; a conferência abaixo usa a cópia do PDF. <button type="button" className="btn btn-primary btn-sm" disabled={ocupado} onClick={carregar}>Gravar escopo CRL 1943 ({ESCOPO_CRL1943.length} itens)</button></p>}
       <div className="abas" role="tablist">{["Escopo", "Conferência dos parâmetros"].map((t) => <button key={t} type="button" role="tab" aria-selected={aba === t} className={aba === t ? "on" : ""} onClick={() => { setAba(t); setSel(new Set()); }}>{t}</button>)}</div>
       <div style={{ marginTop: 14 }}>
