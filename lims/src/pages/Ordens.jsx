@@ -146,7 +146,7 @@ export function ListaOS({ sessao }) {
             { rotulo: "Plano de amostragem", acao: exigir(() => navegar("doc-os", `plano.${idsSel()}`)) },
             { rotulo: "Ficha de coleta - em branco", acao: exigir(() => navegar("ficha-coleta", `branco.${idsSel()}`)) },
             { rotulo: "Ficha de coleta - Preenchida", acao: exigir(() => navegar("ficha-coleta", idsSel())) },
-            ...DOCUMENTOS_OS.slice(1).map(([k, r]) => ({ rotulo: r, acao: exigir(() => navegar("doc-os", `${k}.${k.endsWith("-os") ? idsDaOS() : idsSel()}`)) })),
+            ...DOCUMENTOS_OS.slice(1, -1).map(([k, r]) => ({ rotulo: r, acao: exigir(() => navegar("doc-os", `${k}.${k.endsWith("-os") ? idsDaOS() : idsSel()}`)) })),
             { rotulo: "Anexo", acao: exigirUma((a) => navegar("ordem", a.osId)) },
           ] },
           { rotulo: "Coleta", menu: [

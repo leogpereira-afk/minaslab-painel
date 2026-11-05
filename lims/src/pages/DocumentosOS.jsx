@@ -19,6 +19,7 @@ export const DOCUMENTOS_OS = [
   ["sub-fq-os", "Análises Subcontratado FQ - O.S"],
   ["mb-am", "Ficha de análise MB - Amostra"],
   ["fq-am", "Ficha de análise FQ - Amostra"],
+  ["am", "Ficha de análise"],
 ];
 
 const quandoBR = (s) => (s ? (String(s).length > 10 ? new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : dataBR(s)) : "");
@@ -50,7 +51,7 @@ export function DocumentoOS({ param }) {
   const cfg = configSistema(dados);
   const par = (pid) => dados.parametros.find((x) => x.id === pid) || {};
   const sub = (pid) => dados.subcontratados.find((s) => s.id === par(pid).subcontratado);
-  const filtro = tipo.includes("mb") ? (x) => ehMicro(dados, x.pid, x.nome) : tipo.includes("fq") ? (x) => !ehMicro(dados, x.pid, x.nome) : () => true;
+  const filtro = tipo === "am" ? () => true : tipo.includes("mb") ? (x) => ehMicro(dados, x.pid, x.nome) : tipo.includes("fq") ? (x) => !ehMicro(dados, x.pid, x.nome) : () => true;
   const soSub = tipo.startsWith("sub-");
   const analisesDe = (a) => a.analises.filter((x) => a.status !== "Cancelado" && filtro(x) && (!soSub || sub(x.pid)));
   const porOS = {};

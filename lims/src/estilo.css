@@ -357,3 +357,6 @@ tr.sub-linha > td { background: #f8fafc; padding: 8px 12px 14px; white-space: no
 .agenda-dia { display: flex; justify-content: space-between; background: #eef1f2; padding: 6px 10px; font-size: 12.5px; }
 .agenda-lista .cal-ev { display: block; width: 100%; text-align: left; white-space: normal; margin: 0; border-radius: 0; padding: 8px 10px; }
 @media (max-width: 800px) { .agenda-lay { grid-template-columns: 1fr; } }
+
+.analise-lay { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .analise-lay { grid-template-columns: 1fr; } }
