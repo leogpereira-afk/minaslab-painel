@@ -119,7 +119,7 @@ const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "o
 export function DashboardFinanceiro() {
   const { dados } = useDados();
   const hoje = isoDia(0);
-  const receber = dados.contas_receber.filter((r) => r.status !== "Cancelado");
+  const receber = dados.contas_receber.filter((r) => r.status !== "Cancelado" && r.status !== "Agrupada");
   const meses = useMemo(() => {
     const out = [];
     const d = new Date();

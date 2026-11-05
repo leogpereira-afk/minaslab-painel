@@ -360,3 +360,7 @@ tr.sub-linha > td { background: #f8fafc; padding: 8px 12px 14px; white-space: no
 
 .analise-lay { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 900px) { .analise-lay { grid-template-columns: 1fr; } }
+
+.kpis-azul .kpi { background: #3c8dbc; color: #fff; border: 0; }
+.kpis-azul .kpi span { color: #eaf4fb; font-size: 11.5px; letter-spacing: .03em; }
+.kpis-azul .kpi b { color: #fff; }
