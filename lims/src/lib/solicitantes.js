@@ -31,8 +31,8 @@ export function enderecoDoCadastro(d) {
   return { id: `e${Date.now().toString(36)}`, tipo: "Principal", responsavel: d.nome || "", email: d.email || "", tel: d.tel || "", cel: d.cel || "", cep: d.cep || "", end: d.end || "", num: d.num || "", comp: d.comp || "", bairro: d.bairro || "", cidade: d.cidade || "", uf: d.uf || "", whatsapp: "Não enviar" };
 }
 
-export function erroEndereco(e) {
-  if (!TIPOS_ENDERECO.includes(e.tipo)) return ["eTipo", "Escolha o tipo de endereço."];
+export function erroEndereco(e, tipos = TIPOS_ENDERECO) {
+  if (!tipos.includes(e.tipo)) return ["eTipo", "Escolha o tipo de endereço."];
   if (!String(e.responsavel || "").trim()) return ["eResp", "Informe o responsável."];
   if (!emailOk(e.email)) return ["eEmail", "Confira o e-mail."];
   return null;
