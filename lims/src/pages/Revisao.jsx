@@ -18,6 +18,7 @@ import { NaoAchou } from "./Clientes.jsx";
 import { RotuloOS, CodigoBarras } from "./Ordens.jsx";
 import { quandoBR } from "./Coletas.jsx";
 import { textoLimite, prazoAnalitico } from "./Laboratorio.jsx";
+import { acreditadoNoEscopo } from "../lib/escopo.js";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 
 const statusRevisao = (x) => (x.etapa === "Revisado" ? "Revisado" : x.etapa === "Revisão" ? "Aguardando" : x.motivoRetorno ? "Revisão LAB" : "");
@@ -156,7 +157,7 @@ function montarConteudo(dados, a) {
     analises: a.analises.map((x) => {
       const p = dados.parametros.find((q) => q.id === x.pid) || {};
       const lim = limiteDe(dados, a, x.pid);
-      return { nome: x.nome, resultado: resultadoExibido(x.resultado, { lq: x.lq, casas: p.casasDecimais }), un: x.un, lq: x.lq, vmp: textoLimite(lim), parecer: parecer(x.resultado, lim, x.lq), metodo: x.metodo, acred: !!x.acred, subcontratado: p.subcontratado ? (dados.subcontratados.find((s) => s.id === p.subcontratado)?.empresa || "Subcontratado") : "", inicio: x.inicio, termino: x.termino, incerteza: p.incerteza || "" };
+      return { nome: x.nome, resultado: resultadoExibido(x.resultado, { lq: x.lq, casas: p.casasDecimais }), un: x.un, lq: x.lq, vmp: textoLimite(lim), parecer: parecer(x.resultado, lim, x.lq), metodo: x.metodo, acred: acreditadoNoEscopo(dados.escopo_acreditacao, { parametro: p.id ? p : { acreditado: x.acred ? "Sim" : "Não", nome: x.nome, inloco: x.inloco ? "Sim" : "" }, metodoTexto: x.metodo, matriz: a.matriz || a.servico }), subcontratado: p.subcontratado ? (dados.subcontratados.find((s) => s.id === p.subcontratado)?.empresa || "Subcontratado") : "", inicio: x.inicio, termino: x.termino, incerteza: p.incerteza || "" };
     }),
   };
 }
@@ -189,7 +190,7 @@ export function DocCertificado({ cert, dados, previa = false }) {
         <tbody>{analises.map((x, i) => <tr key={i}><td>{x.nome}{x.acred ? " *" : ""}{x.subcontratado ? " **" : ""}</td><td><b>{x.resultado}</b></td><td>{x.un}</td><td>{x.lq}</td><td>{x.vmp}</td><td className={x.parecer === "Não conforme" ? "nc" : ""}>{x.parecer}</td><td>{x.metodo}</td></tr>)}</tbody>
       </table>
       <div className="doc-rodape">
-        {temAcred && <div>* Ensaio acreditado pela Cgcre conforme ABNT NBR ISO/IEC 17025.</div>}
+        {temAcred && <div>* Ensaio acreditado pela Cgcre conforme ABNT NBR ISO/IEC 17025{(dados.escopo_acreditacao[0]?.acreditacao) ? `, acreditação ${dados.escopo_acreditacao[0].acreditacao}` : ""}.</div>}
         {temSub && <div>** Ensaio realizado por laboratório subcontratado: {[...new Set(analises.filter((x) => x.subcontratado).map((x) => x.subcontratado))].join(", ")}.</div>}
         {am.legislacao && <div>Declaração de conformidade com {am.legislacao}: {temNC ? "a amostra NÃO atende a todos os limites avaliados." : "a amostra atende aos limites avaliados."} Regra de decisão: aceitação simples, sem considerar a incerteza de medição, conforme acordado com o cliente.</div>}
         <div>Os resultados referem-se exclusivamente à amostra ensaiada{am.respAmostra === "Cliente" ? ", conforme recebida (amostragem de responsabilidade do cliente)" : ""}. Este certificado só pode ser reproduzido por completo, sem autorização do laboratório para reprodução parcial.</div>
