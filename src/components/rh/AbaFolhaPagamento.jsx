@@ -2,22 +2,45 @@
 // Funcionarios.xlsx. As contas moram em lib/rh/folhaPagamento.js (com teste); a
 // leitura dos relatórios da contabilidade em lib/rh/folhaContabil.js.
 // Só a direção vê (as coleções rh_* são da direção no servidor).
+//
+// A TABELA SÓ MOSTRA (pedido da Ana, 05/11/2026): tudo o que se digita — pagar a
+// hora extra, km da ajuda de custo, bônus, comissão, ajustes, empresa que paga —
+// fica na janela da pessoa, aberta ao clicar na linha. Os relatórios importados
+// também ALIMENTAM a ficha (cadastro na folha, empresa, salário de mês cheio).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
-import { Download, FileUp, Loader2, Plus, Settings2, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FileUp, Loader2, Plus, Trash2 } from "lucide-react";
 import { Card, Empty, Modal } from "../ui.jsx";
 import { listar, salvar, rhBancoListar } from "../../services/dados.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
+import { ymdLocal } from "../../lib/format.js";
 import { lerRelatorioFolha } from "../../lib/rh/folhaContabil.js";
 import { linhasDoPdf } from "../../lib/rh/folhaPdf.js";
-import { COLECAO_FOLHA, EMPRESAS, distribuirRelatorio, idDaLinha, idDoMes, linhaDaFolha, moeda, totaisDaFolha } from "../../lib/rh/folhaPagamento.js";
+import { COLECAO_FOLHA, CONSUMO_PADRAO, EMPRESAS, camposDaFichaPeloHolerite, distribuirRelatorio, idDaLinha, idDoMes, linhaDaFolha, moeda, totaisDaFolha } from "../../lib/rh/folhaPagamento.js";
 import { COLECAO_COMISSOES } from "../../lib/recibosComissao.js";
+import { marcosDaFicha } from "./uteis.js";
 
 const n2 = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const horas = (min) => {
   if (min === null || min === undefined) return "—";
   const s = min < 0 ? "−" : "+", a = Math.abs(Math.round(min));
   return `${s}${String(Math.floor(a / 60)).padStart(2, "0")}h${String(a % 60).padStart(2, "0")}`;
+};
+const hhmm = (min) => `${Math.floor(Math.max(0, min) / 60)}:${String(Math.round(Math.max(0, min)) % 60).padStart(2, "0")}`;
+/** "10:30" → 630; "10" → 600; "10,5" → 630; vazio → null. */
+const lerHoras = (txt) => {
+  const s = String(txt ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,4}):([0-5]\d)$/);
+  if (m) return +m[1] * 60 + +m[2];
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 60) : NaN;
+};
+const lerValor = (txt) => {
+  const s = String(txt ?? "").trim();
+  if (!s) return null;
+  const n = Number(/,\d{1,2}$/.test(s) || s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
+  return Number.isFinite(n) ? n : NaN;
 };
 const NOMES_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const rotuloMes = (c) => { const [a, m] = c.split("-").map(Number); return `${NOMES_MES[m - 1]}/${a}`; };
@@ -35,6 +58,7 @@ const SITUACAO = {
   nao_se_aplica: ["não se aplica", "text-slate-500"],
 };
 const vazio = () => <span className="text-slate-400">—</span>;
+const valorOuVazio = (v) => (v ? n2(v) : vazio());
 
 export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) {
   const opcoesMes = useMemo(meses, []);
@@ -46,7 +70,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
   const [erro, setErro] = useState("");
   const [fichasEditadas, setFichasEditadas] = useState({});
   const [importando, setImportando] = useState(false);
-  const [modal, setModal] = useState(null); // { tipo: "ajustes"|"config"|"holerite", pessoaId }
+  const [aberta, setAberta] = useState(null); // pessoaId da janela aberta
   const [gasolinaTexto, setGasolinaTexto] = useState("");
 
   const carregar = useCallback(async () => {
@@ -64,14 +88,15 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
   const gasolina = mes?.gasolina ?? gasolinaAnterior;
   useEffect(() => { setGasolinaTexto(gasolina ? String(gasolina).replace(".", ",") : ""); }, [gasolina, competencia]);
 
+  const contexto = useMemo(() => ({ competencia, mes: { gasolina }, pontoDia, movimentos, comissoes, fichas }), [competencia, gasolina, pontoDia, movimentos, comissoes, fichas]);
   const linhas = useMemo(() => {
     if (!registros) return [];
     const doMes = (f) => regPorId.get(idDaLinha(competencia, f.id));
     return fichas
       .filter((f) => f.ativo !== false || doMes(f))
-      .map((f) => linhaDaFolha({ ficha: f, competencia, registro: doMes(f) || {}, mes: { gasolina }, pontoDia, movimentos, comissoes, fichas }))
+      .map((f) => linhaDaFolha({ ...contexto, ficha: f, registro: doMes(f) || {} }))
       .sort((a, b) => a.paga.localeCompare(b.paga) || a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [registros, regPorId, fichas, competencia, gasolina, pontoDia, movimentos, comissoes]);
+  }, [registros, regPorId, fichas, competencia, contexto]);
   const t = useMemo(() => totaisDaFolha(linhas), [linhas]);
 
   async function gravarRegistro(registro) {
@@ -79,13 +104,19 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
     setRegistros((lista) => [...(lista || []).filter((x) => x.id !== r.id), r]);
     return r;
   }
+  /* Ficha do RH: grava e carimba no histórico o que mudou (cargo, setor, salário),
+     do mesmo jeito da aba Pessoas. Falha no histórico não derruba a ficha. */
+  async function gravarFicha(antes, campos) {
+    const gravada = await salvar("rh_pessoas", { ...antes, ...campos });
+    setFichasEditadas((m) => ({ ...m, [gravada.id]: gravada }));
+    for (const marco of marcosDaFicha(antes, gravada, ymdLocal(new Date()))) {
+      try { await salvar("rh_historico", marco); } catch { /* o aviso da tela de Pessoas cobre a ficha; aqui segue */ }
+    }
+    return gravada;
+  }
   const registroDe = (pessoaId) => regPorId.get(idDaLinha(competencia, pessoaId)) || { id: idDaLinha(competencia, pessoaId), tipo: "pessoa", competencia, pessoaId, pessoaNome: fichas.find((f) => f.id === pessoaId)?.nome || "" };
   const registroDoMes = (comp) => regPorId.get(idDoMes(comp)) || { id: idDoMes(comp), tipo: "mes", competencia: comp, importacoes: [] };
 
-  async function alternarHE(l) {
-    try { await gravarRegistro({ ...registroDe(l.pessoaId), heLiberada: !l.heLiberada }); }
-    catch (ex) { setAviso?.({ tipo: "erro", texto: ex.message }); }
-  }
   async function salvarGasolina() {
     const v = Number(String(gasolinaTexto).replace(",", "."));
     if (!Number.isFinite(v) || v <= 0 || String(v) === String(mes?.gasolina)) return;
@@ -97,7 +128,9 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
     if (!arquivos?.length) return;
     setImportando(true);
     const resumo = [];
+    const fichaMudou = [];
     let compFinal = competencia;
+    const fichasAtuais = new Map(fichas.map((f) => [f.id, f]));
     try {
       for (const arquivo of arquivos) {
         const rel = lerRelatorioFolha(await linhasDoPdf(arquivo));
@@ -109,20 +142,30 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
         const agora = new Date().toISOString();
         for (const [pessoaId, h] of Object.entries(porPessoa)) {
           const id = idDaLinha(comp, pessoaId);
-          const reg = regPorId.get(id) || { id, tipo: "pessoa", competencia: comp, pessoaId, pessoaNome: fichas.find((f) => f.id === pessoaId)?.nome || h.nome };
+          const reg = regPorId.get(id) || { id, tipo: "pessoa", competencia: comp, pessoaId, pessoaNome: fichasAtuais.get(pessoaId)?.nome || h.nome };
           const atual = reg.holerites?.[codigo];
           // Líquidos depois de Eventos não apaga o detalhe: só confere o líquido.
           const novo = rel.tipo === "liquidos" && atual?.tipoRelatorio === "eventos"
             ? { ...atual, liquidoRelacao: h.liquido, confere: atual.confere !== false && Math.abs((atual.liquido ?? h.liquido) - h.liquido) < 0.05 }
             : { ...h, arquivo: arquivo.name, importadoEm: agora };
           await gravarRegistro({ ...reg, holerites: { ...(reg.holerites || {}), [codigo]: novo } });
+          // ALIMENTA A FICHA: cadastro na folha, empresa que paga e salário de mês cheio.
+          const ficha = fichasAtuais.get(pessoaId);
+          const { campos, mudancas } = camposDaFichaPeloHolerite(ficha, novo, codigo);
+          if (ficha && Object.keys(campos).length) {
+            try {
+              const g = await gravarFicha(ficha, campos);
+              fichasAtuais.set(pessoaId, g);
+              fichaMudou.push(`${ficha.nome}: ${mudancas.join(", ")}`);
+            } catch (ex) { fichaMudou.push(`${ficha.nome}: não consegui atualizar a ficha (${ex.message})`); }
+          }
         }
         const m = registroDoMes(comp);
-        await gravarRegistro({ ...m, importacoes: [...(m.importacoes || []), { arquivo: arquivo.name, tipo: rel.tipo, empresa: rel.empresa.nome, codigo, pessoas: Object.keys(porPessoa).length, naoEncontrados, em: agora }] });
+        await gravarRegistro({ ...m, importacoes: [...(m.importacoes || []), { arquivo: arquivo.name, tipo: rel.tipo, empresa: rel.empresa.nome, codigo, pessoas: Object.keys(porPessoa).length, naoEncontrados, fichasAtualizadas: fichaMudou.length, em: agora }] });
         resumo.push(`${arquivo.name}: ${Object.keys(porPessoa).length} pessoa(s) de ${rel.empresa.nome || "empresa"} em ${rotuloMes(comp)}${naoEncontrados.length ? ` — sem ficha no RH: ${naoEncontrados.join(", ")}` : ""}.`);
       }
       setCompetencia(compFinal);
-      setAviso?.({ tipo: "ok", texto: resumo.join(" ") });
+      setAviso?.({ tipo: "ok", texto: [...resumo, fichaMudou.length ? `Fichas atualizadas — ${fichaMudou.join("; ")}.` : ""].filter(Boolean).join(" ") });
     } catch (ex) {
       setAviso?.({ tipo: "erro", texto: `Não consegui ler o PDF: ${ex.message}` });
     } finally { setImportando(false); }
@@ -134,29 +177,31 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
       titulo: `Folha de Pagamento — ${rotuloMes(competencia)}`,
       colunas: [
         { chave: "nome", rotulo: "Colaborador" }, { chave: "vinculo", rotulo: "Vínculo" }, { chave: "paga", rotulo: "Forma de pagamento" },
-        { chave: "salario", rotulo: "Salário (ficha)", tipo: "dinheiro" }, { chave: "liquido", rotulo: "Líquido holerite", tipo: "dinheiro" },
-        { chave: "banco", rotulo: "Banco de horas" }, { chave: "he", rotulo: "Hora extra 50%", tipo: "dinheiro" },
+        { chave: "salario", rotulo: "Salário (ficha)", tipo: "dinheiro" }, { chave: "dias", rotulo: "Dias pagos (de 30)" }, { chave: "salarioMes", rotulo: "Salário do mês", tipo: "dinheiro" }, { chave: "liquido", rotulo: "Líquido holerite", tipo: "dinheiro" },
+        { chave: "banco", rotulo: "Banco de horas" }, { chave: "hePagas", rotulo: "Horas extras pagas" }, { chave: "he", rotulo: "Hora extra 50%", tipo: "dinheiro" },
         { chave: "ajuda", rotulo: "Ajuda de custo", tipo: "dinheiro" }, { chave: "comissao", rotulo: "Comissão", tipo: "dinheiro" },
-        { chave: "ajustes", rotulo: "Ajustes", tipo: "dinheiro" }, { chave: "motivos", rotulo: "Motivo dos ajustes" },
+        { chave: "bonus", rotulo: "Bônus", tipo: "dinheiro" }, { chave: "ajustes", rotulo: "Ajustes", tipo: "dinheiro" }, { chave: "extras", rotulo: "Total de extras", tipo: "dinheiro" }, { chave: "motivos", rotulo: "Motivos (bônus, comissão manual, ajustes)" },
         { chave: "totalMinasLab", rotulo: "Total MinasLab", tipo: "dinheiro" }, { chave: "pagarMLab", rotulo: "Pagar pela M Lab", tipo: "dinheiro" },
         { chave: "total", rotulo: "Total geral", tipo: "dinheiro" }, { chave: "comEncargos", rotulo: "Total com encargos", tipo: "dinheiro" },
         { chave: "holerite", rotulo: "Holerite" },
       ],
       linhas: [...linhas.map((l) => ({
-        ...l, liquido: l.liquidoHolerite ?? "", banco: l.bancoMin === null ? "" : horas(l.bancoMin),
-        motivos: l.ajustesLista.map((a) => `${n2(a.valor)} ${a.motivo}`).join("; "),
+        ...l, liquido: l.liquidoHolerite ?? "", dias: l.diasPagar ?? 30, banco: l.bancoMin === null ? "" : horas(l.bancoMin), hePagas: l.heMin ? hhmm(l.heMin) : "",
+        motivos: [...l.bonusLista.map((a) => `bônus ${n2(a.valor)} ${a.motivo}`), ...l.comissaoManualLista.map((a) => `comissão ${n2(a.valor)} ${a.motivo}`), ...l.ajustesLista.map((a) => `ajuste ${n2(a.valor)} ${a.motivo}`)].join("; "),
         holerite: [SITUACAO[l.holerite.situacao][0], ...l.holerite.avisos].join(" — "),
-      })), { nome: "Total da folha", ...t, liquido: "", banco: "", motivos: "", holerite: "" }],
+      })), { nome: "Total da folha", ...t, dias: "", liquido: "", banco: "", hePagas: "", motivos: "", holerite: "" }],
     });
   }
 
   if (erro && !registros) return <Card><p role="alert" className="text-sm text-red-700">{erro}</p></Card>;
   if (!registros) return <Card><p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" />Carregando a folha…</p></Card>;
 
-  const linhaModal = modal && linhas.find((l) => l.pessoaId === modal.pessoaId);
-  const fichaModal = modal && fichas.find((f) => f.id === modal.pessoaId);
+  const fichaAberta = aberta && fichas.find((f) => f.id === aberta);
   const divergentes = linhas.filter((l) => l.holerite.avisos.length);
   const ultimaImport = (mes?.importacoes || []).at(-1);
+  // Extras = hora extra + ajuda de custo + comissão + bônus + ajustes. O detalhe fica na janela da pessoa.
+  const COLS = ["Colaborador", "Vínculo", "Paga", "Salário", "Líquido holerite", "Banco de horas", "Extras", "Total MinasLab", "Pagar M Lab", "Total", "Com encargos", "Holerite", ""];
+  const composicao = (l) => [["Hora extra", l.he], ["Ajuda de custo", l.ajuda], ["Comissão", l.comissao], ["Bônus", l.bonus], ["Ajustes", l.ajustes]].filter(([, v]) => v).map(([r, v]) => `${r} ${n2(v)}`).join(" · ");
 
   return (
     <div className="space-y-4">
@@ -164,7 +209,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-display text-lg font-bold text-slate-900">Folha de Pagamento</h2>
-            <p className="text-xs text-slate-500">Salário da ficha, horas do Ponto, comissão do Gestão e relatórios da contabilidade.</p>
+            <p className="text-xs text-slate-500">Clique em uma pessoa para ver o detalhe e lançar hora extra, ajuda de custo, comissão, bônus, ajustes e salário proporcional.</p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-slate-600">Mês
@@ -187,7 +232,7 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          Importe a <b>Relação de Eventos</b> de cada empresa (a da M Lab e a da MinasLab). A Relação de Líquidos também serve de conferência. Os demais relatórios não precisam.
+          Importe a <b>Relação de Eventos</b> (ou a Relação de Líquidos) de cada empresa: os valores entram na folha e a ficha de cada pessoa é atualizada (cadastro na folha, empresa que paga e salário do mês cheio).
           {ultimaImport && <> Última importação: {ultimaImport.arquivo} ({ultimaImport.empresa}).</>}
         </p>
       </Card>
@@ -211,54 +256,28 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
       <Card className="p-0">
         {linhas.length === 0 ? <Empty>Ninguém no quadro neste mês.</Empty> : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1400px] text-sm">
+            <table className="w-full min-w-[1100px] text-sm">
               <thead className="bg-slate-50 text-left text-xs text-slate-600">
-                <tr>
-                  {["Colaborador", "Vínculo", "Paga", "Salário", "Líquido holerite", "Banco de horas", "Liberar HE", "HE 50%", "Ajuda de custo", "Comissão", "Ajustes", "Total MinasLab", "Pagar M Lab", "Total", "Com encargos", "Holerite", ""].map((h, i) => (
-                    <th key={h || i} className={clsx("px-2 py-2.5 font-semibold", i >= 3 && i <= 14 && i !== 6 && "text-right", i === 6 && "text-center")}>{h}</th>
-                  ))}
-                </tr>
+                <tr>{COLS.map((h, i) => <th key={h || i} className={clsx("px-2 py-2.5 font-semibold", i >= 3 && i <= 10 && "text-right")}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {linhas.map((l) => {
                   const [rotulo, cor] = SITUACAO[l.holerite.situacao];
                   return (
-                    <tr key={l.pessoaId} className={clsx("border-t", l.holerite.avisos.length && "bg-amber-50/50")} style={{ borderColor: "var(--hairline)" }}>
-                      <td className="px-2 py-2 font-medium text-slate-900">{l.nome}</td>
+                    <tr key={l.pessoaId} onClick={() => setAberta(l.pessoaId)} className={clsx("cursor-pointer border-t hover:bg-teal-50/60", l.holerite.avisos.length && "bg-amber-50/50")} style={{ borderColor: "var(--hairline)" }}>
+                      <td className="px-2 py-2"><button type="button" className="text-left font-medium text-slate-900 hover:text-teal-800 hover:underline" onClick={(e) => { e.stopPropagation(); setAberta(l.pessoaId); }}>{l.nome}</button></td>
                       <td className="px-2 py-2">{l.vinculo}</td>
                       <td className="px-2 py-2">{l.paga}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{n2(l.salario)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{n2(l.salarioMes)}{l.diasPagar !== null && <span className="block text-[11px] text-amber-700">{l.diasPagar} de 30 dias</span>}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{l.liquidoHolerite === null ? vazio() : n2(l.liquidoHolerite)}</td>
                       <td className={clsx("px-2 py-2 text-right tabular-nums font-semibold", l.bancoMin > 0 ? "text-teal-700" : l.bancoMin < 0 ? "text-red-700" : "text-slate-500")}>{l.bancoMin === null ? vazio() : horas(l.bancoMin)}</td>
-                      <td className="px-2 py-2 text-center">
-                        {l.vinculo === "CLT" ? (
-                          <button type="button" role="switch" aria-checked={l.heLiberada} disabled={!editavel} onClick={() => void alternarHE(l)}
-                            aria-label={`Liberar hora extra de ${l.nome}`} className={clsx("relative inline-block h-6 w-11 rounded-full transition", l.heLiberada ? "bg-teal-700" : "bg-slate-300")}>
-                            <span className={clsx("absolute top-1 h-4 w-4 rounded-full bg-white transition-all", l.heLiberada ? "left-6" : "left-1")} />
-                          </button>
-                        ) : vazio()}
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums">{l.he ? n2(l.he) : vazio()}</td>
-                      <td className="px-2 py-2 text-right tabular-nums" title={l.ajuda ? `${l.dias} dias no Ponto` : undefined}>{l.ajuda ? n2(l.ajuda) : vazio()}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{l.comissao ? n2(l.comissao) : vazio()}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">
-                        <button type="button" className="rounded px-1 underline decoration-dotted underline-offset-2 hover:bg-slate-100 disabled:no-underline" disabled={!editavel && !l.ajustesLista.length}
-                          title={l.ajustesLista.map((a) => `${n2(a.valor)} — ${a.motivo}`).join("\n") || "Lançar ajuste"} onClick={() => setModal({ tipo: "ajustes", pessoaId: l.pessoaId })}>
-                          {l.ajustes ? (l.ajustes > 0 ? "+" : "") + n2(l.ajustes) : (editavel ? "lançar" : "—")}
-                        </button>
-                      </td>
+                      <td className="px-2 py-2 text-right font-semibold tabular-nums" title={composicao(l)}>{l.extras ? n2(l.extras) : vazio()}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{n2(l.totalMinasLab)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{l.pagarMLab ? n2(l.pagarMLab) : vazio()}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{valorOuVazio(l.pagarMLab)}</td>
                       <td className="px-2 py-2 text-right font-semibold tabular-nums">{n2(l.total)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{n2(l.comEncargos)}</td>
-                      <td className="px-2 py-2">
-                        {l.holerite.situacao === "nao_se_aplica" ? <span className="text-xs text-slate-500">não se aplica</span> : (
-                          <button type="button" onClick={() => setModal({ tipo: "holerite", pessoaId: l.pessoaId })} className={clsx("rounded-full px-2 py-0.5 text-xs font-semibold", cor)}>{rotulo}</button>
-                        )}
-                      </td>
-                      <td className="px-1 py-2">
-                        {editavel && <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setModal({ tipo: "config", pessoaId: l.pessoaId })} aria-label={`Configurar ${l.nome}`} title="Empresa que paga e ajuda de custo"><Settings2 size={15} /></button>}
-                      </td>
+                      <td className="px-2 py-2">{l.holerite.situacao === "nao_se_aplica" ? <span className="text-xs text-slate-500">não se aplica</span> : <span className={clsx("rounded-full px-2 py-0.5 text-xs font-semibold", cor)}>{rotulo}</span>}</td>
+                      <td className="px-1 py-2 text-slate-400"><ChevronRight size={16} aria-hidden="true" /></td>
                     </tr>
                   );
                 })}
@@ -266,16 +285,9 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
               <tfoot className="border-t-2 bg-slate-50 font-bold text-slate-900" style={{ borderColor: "var(--hairline)" }}>
                 <tr>
                   <td className="px-2 py-2.5" colSpan={3}>Total da folha</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.salario)}</td>
-                  <td colSpan={3} />
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.he)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.ajuda)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.comissao)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.ajustes)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.totalMinasLab)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.pagarMLab)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.total)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.comEncargos)}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums">{n2(t.salarioMes)}</td>
+                  <td colSpan={2} />
+                  {[t.extras, t.totalMinasLab, t.pagarMLab, t.total, t.comEncargos].map((v, i) => <td key={i} className="px-2 py-2.5 text-right tabular-nums">{n2(v)}</td>)}
                   <td colSpan={2} />
                 </tr>
               </tfoot>
@@ -283,118 +295,229 @@ export default function AbaFolhaPagamento({ pessoas = [], editavel, setAviso }) 
           </div>
         )}
       </Card>
-      <p className="text-xs text-slate-500">HE 50% = horas do banco × (salário ÷ 220) × 1,5, só quando liberada; depois de pagar, lance o débito no banco de horas. Ajuda de custo = km ida + volta ÷ consumo × gasolina × dias com batida no Ponto. Todo ajuste leva motivo.</p>
+      <p className="text-xs text-slate-500">Extras = hora extra + ajuda de custo + comissão + bônus + ajustes (passe o mouse para ver a soma; clique na pessoa para o detalhe). Salário proporcional = salário ÷ 30 × dias. HE 50% = horas pagas × (salário ÷ 220) × 1,5; depois de pagar, lance o débito no banco de horas.</p>
 
-      {modal?.tipo === "ajustes" && linhaModal && <ModalAjustes linha={linhaModal} editavel={editavel} aoFechar={() => setModal(null)}
-        aoSalvar={async (ajustes) => { await gravarRegistro({ ...registroDe(linhaModal.pessoaId), ajustes }); }} />}
-      {modal?.tipo === "config" && fichaModal && <ModalConfig ficha={fichaModal} aoFechar={() => setModal(null)}
-        aoSalvar={async (campos) => { const r = await salvar("rh_pessoas", { ...fichaModal, ...campos }); setFichasEditadas((m) => ({ ...m, [r.id]: r })); setModal(null); }} />}
-      {modal?.tipo === "holerite" && linhaModal && <ModalHolerite linha={linhaModal} registro={regPorId.get(idDaLinha(competencia, linhaModal.pessoaId))} aoFechar={() => setModal(null)} />}
+      {fichaAberta && (
+        <JanelaPessoa
+          ficha={fichaAberta} registro={registroDe(fichaAberta.id)} contexto={contexto} competencia={competencia} editavel={editavel}
+          aoFechar={() => setAberta(null)}
+          aoSalvar={async (registro, camposFicha) => {
+            if (Object.keys(camposFicha).length) await gravarFicha(fichaAberta, camposFicha);
+            await gravarRegistro(registro);
+            setAberta(null);
+            setAviso?.({ tipo: "ok", texto: `Folha de ${fichaAberta.nome} gravada.` });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ModalAjustes({ linha, editavel, aoFechar, aoSalvar }) {
-  const [lista, setLista] = useState(linha.ajustesLista);
+/* ---------------------------------------------------------------- janela da pessoa */
+function Lista({ titulo, itens, setItens, editavel, exemplo }) {
   const [valor, setValor] = useState("");
   const [motivo, setMotivo] = useState("");
   const [erro, setErro] = useState("");
-  const [gravando, setGravando] = useState(false);
-  const gravar = async (nova) => { setGravando(true); setErro(""); try { await aoSalvar(nova); setLista(nova); } catch (ex) { setErro(ex.message); } finally { setGravando(false); } };
-  const adicionar = async (e) => {
-    e.preventDefault();
-    const v = Number(String(valor).replace(/\./g, "").replace(",", "."));
-    if (!Number.isFinite(v) || v === 0) return setErro("Informe o valor (negativo para desconto).");
+  const adicionar = () => {
+    const v = lerValor(valor);
+    if (v === null || Number.isNaN(v) || v === 0) return setErro("Informe o valor (negativo para descontar).");
     if (!motivo.trim()) return setErro("O motivo é obrigatório.");
-    await gravar([...lista, { valor: v, motivo: motivo.trim(), em: new Date().toISOString() }]);
-    setValor(""); setMotivo("");
+    setItens([...itens, { valor: v, motivo: motivo.trim(), em: new Date().toISOString() }]);
+    setValor(""); setMotivo(""); setErro("");
   };
   return (
-    <Modal titulo={`Ajustes de ${linha.nome}`} aberto aoFechar={aoFechar}>
-      <ul className="space-y-2">
-        {lista.length === 0 && <li className="text-sm text-slate-500">Nenhum ajuste neste mês.</li>}
-        {lista.map((a, i) => (
-          <li key={i} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--hairline)" }}>
+    <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+      <legend className="px-1 text-sm font-semibold text-slate-800">{titulo}</legend>
+      <ul className="space-y-1.5">
+        {itens.length === 0 && <li className="text-xs text-slate-500">Nenhum lançamento.</li>}
+        {itens.map((a, i) => (
+          <li key={i} className="flex items-center gap-2 text-sm">
             <span className={clsx("w-24 text-right font-semibold tabular-nums", a.valor < 0 ? "text-red-700" : "text-slate-900")}>{a.valor > 0 ? "+" : ""}{n2(a.valor)}</span>
-            <span className="min-w-0 flex-1">{a.motivo}</span>
-            {editavel && <button type="button" disabled={gravando} onClick={() => void gravar(lista.filter((_, j) => j !== i))} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-700" aria-label="Remover ajuste"><Trash2 size={14} /></button>}
+            <span className="min-w-0 flex-1 truncate" title={a.motivo}>{a.motivo}</span>
+            {editavel && <button type="button" onClick={() => setItens(itens.filter((_, j) => j !== i))} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${a.motivo}`}><Trash2 size={14} /></button>}
           </li>
         ))}
       </ul>
       {editavel && (
-        <form onSubmit={adicionar} className="mt-4 grid gap-2 sm:grid-cols-[120px_1fr_auto] sm:items-end">
-          <label className="text-xs text-slate-600">Valor (R$)<input className="input mt-1" inputMode="decimal" placeholder="249,00 ou -50,00" value={valor} onChange={(e) => setValor(e.target.value)} /></label>
-          <label className="text-xs text-slate-600">Motivo<input className="input mt-1" placeholder="Ex.: reembolso de exame admissional" value={motivo} onChange={(e) => setMotivo(e.target.value)} /></label>
-          <button type="submit" className="btn-primary" disabled={gravando}><Plus size={16} />Lançar</button>
-        </form>
+        <div className="mt-2 grid gap-2 sm:grid-cols-[110px_1fr_auto]">
+          <input className="input" inputMode="decimal" placeholder="Valor" aria-label={`Valor — ${titulo}`} value={valor} onChange={(e) => setValor(e.target.value)} />
+          <input className="input" placeholder={exemplo} aria-label={`Motivo — ${titulo}`} value={motivo} onChange={(e) => setMotivo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionar(); } }} />
+          <button type="button" className="btn-outline" onClick={adicionar}><Plus size={15} />Lançar</button>
+        </div>
       )}
-      {erro && <p role="alert" className="mt-2 text-sm text-red-700">{erro}</p>}
-    </Modal>
+      {erro && <p role="alert" className="mt-1 text-xs text-red-700">{erro}</p>}
+    </fieldset>
   );
 }
 
-function ModalConfig({ ficha, aoFechar, aoSalvar }) {
-  const [f, setF] = useState({ empresaPagadora: ficha.empresaPagadora || "", kmIda: ficha.kmIda ?? "", kmVolta: ficha.kmVolta ?? "", veiculo: ficha.veiculo || "Moto" });
+function Linha({ rotulo, valor, forte, sub }) {
+  return (
+    <div className={clsx("flex items-baseline justify-between gap-3 py-1 text-sm", forte && "border-t pt-2 font-bold text-slate-900")} style={forte ? { borderColor: "var(--hairline)" } : undefined}>
+      <span className={forte ? "" : "text-slate-600"}>{rotulo}{sub && <span className="block text-[11px] font-normal text-slate-500">{sub}</span>}</span>
+      <span className="tabular-nums">{valor}</span>
+    </div>
+  );
+}
+
+function JanelaPessoa({ ficha, registro, contexto, competencia, editavel, aoFechar, aoSalvar }) {
+  const [f, setF] = useState(() => ({
+    heLiberada: registro.heLiberada === true,
+    horasPagar: registro.horasPagarMin === null || registro.horasPagarMin === undefined ? "" : hhmm(registro.horasPagarMin),
+    kmIda: ficha.kmIda ?? "", kmVolta: ficha.kmVolta ?? "", veiculo: ficha.veiculo || "Moto",
+    ajudaFixa: registro.ajudaFixa === null || registro.ajudaFixa === undefined ? "" : String(registro.ajudaFixa).replace(".", ","),
+    empresaPagadora: ficha.empresaPagadora || "",
+    diasPagar: registro.diasPagar === null || registro.diasPagar === undefined ? "" : String(registro.diasPagar),
+    bonus: registro.bonus || [], comissaoManual: registro.comissaoManual || [], ajustes: registro.ajustes || [],
+  }));
   const [erro, setErro] = useState("");
   const [gravando, setGravando] = useState(false);
-  const campo = (k) => (e) => setF((v) => ({ ...v, [k]: e.target.value }));
-  const enviar = async (e) => {
-    e.preventDefault(); setGravando(true); setErro("");
-    const km = (s) => (s === "" ? "" : Number(String(s).replace(",", ".")));
-    try { await aoSalvar({ empresaPagadora: f.empresaPagadora, kmIda: km(f.kmIda), kmVolta: km(f.kmVolta), veiculo: f.veiculo }); }
-    catch (ex) { setErro(ex.message); setGravando(false); }
-  };
-  return (
-    <Modal titulo={`Folha de ${ficha.nome}`} aberto aoFechar={aoFechar}>
-      <form onSubmit={enviar} className="space-y-3">
-        <label className="block text-xs text-slate-600">Quem paga
-          <select className="select mt-1 block w-full" value={f.empresaPagadora} onChange={campo("empresaPagadora")}>
-            <option value="">Automático (pelo holerite / CLT na M Lab)</option>
-            <option value="M Lab">M Lab</option>
-            <option value="MinasLab">MinasLab</option>
-          </select>
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          <label className="text-xs text-slate-600">Km ida<input className="input mt-1" inputMode="decimal" value={f.kmIda} onChange={campo("kmIda")} /></label>
-          <label className="text-xs text-slate-600">Km volta<input className="input mt-1" inputMode="decimal" value={f.kmVolta} onChange={campo("kmVolta")} /></label>
-          <label className="text-xs text-slate-600">Veículo<select className="select mt-1 block w-full" value={f.veiculo} onChange={campo("veiculo")}><option>Moto</option><option>Carro</option></select></label>
-        </div>
-        <p className="text-xs text-slate-500">Salário e vínculo vêm da ficha da pessoa (aba Pessoas). Consumo: moto 35 km/l, carro 12 km/l.</p>
-        {erro && <p role="alert" className="text-sm text-red-700">{erro}</p>}
-        <div className="flex justify-end gap-2"><button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button><button type="submit" className="btn-primary" disabled={gravando}>{gravando ? "Gravando…" : "Gravar"}</button></div>
-      </form>
-    </Modal>
-  );
-}
+  const campo = (k) => (e) => setF((v) => ({ ...v, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  const km = (s) => (String(s).trim() === "" ? "" : Number(String(s).replace(",", ".")));
 
-function ModalHolerite({ linha, registro, aoFechar }) {
-  const hs = Object.entries(registro?.holerites || {});
+  const horasPagarMin = lerHoras(f.horasPagar);
+  const ajudaFixa = lerValor(f.ajudaFixa);
+  const diasPagar = String(f.diasPagar).trim() === "" ? null : Number(String(f.diasPagar).replace(",", "."));
+  const diasInvalido = diasPagar !== null && !(Number.isFinite(diasPagar) && diasPagar >= 0 && diasPagar <= 30);
+  const camposFicha = useMemo(() => {
+    const c = {};
+    if (String(km(f.kmIda)) !== String(ficha.kmIda ?? "")) c.kmIda = km(f.kmIda);
+    if (String(km(f.kmVolta)) !== String(ficha.kmVolta ?? "")) c.kmVolta = km(f.kmVolta);
+    if (f.veiculo !== (ficha.veiculo || "Moto")) c.veiculo = f.veiculo;
+    if (f.empresaPagadora !== (ficha.empresaPagadora || "")) c.empresaPagadora = f.empresaPagadora;
+    return c;
+  }, [f, ficha]);
+  const novoRegistro = {
+    ...registro, heLiberada: f.heLiberada, horasPagarMin: Number.isNaN(horasPagarMin) ? null : horasPagarMin,
+    ajudaFixa: ajudaFixa === null || Number.isNaN(ajudaFixa) ? null : ajudaFixa,
+    diasPagar: diasPagar === null || diasInvalido ? null : diasPagar,
+    bonus: f.bonus, comissaoManual: f.comissaoManual, ajustes: f.ajustes,
+  };
+  // Prévia ao vivo: a mesma conta da tabela, com o que está digitado na janela.
+  const l = linhaDaFolha({ ...contexto, ficha: { ...ficha, ...camposFicha }, registro: novoRegistro });
+  const hs = Object.entries(registro.holerites || {});
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    if (Number.isNaN(horasPagarMin)) return setErro("Horas a pagar: use 10:30 ou 10,5.");
+    if (Number.isNaN(ajudaFixa)) return setErro("Ajuda de custo fixa: valor inválido.");
+    if (diasInvalido) return setErro("Dias a pagar: de 0 a 30.");
+    if ([f.kmIda, f.kmVolta].some((v) => String(v).trim() !== "" && !Number.isFinite(km(v)))) return setErro("Km inválido.");
+    setGravando(true); setErro("");
+    try { await aoSalvar(novoRegistro, camposFicha); } catch (ex) { setErro(ex.message); setGravando(false); }
+  };
+
   return (
-    <Modal titulo={`Holerite de ${linha.nome}`} aberto aoFechar={aoFechar} largura="max-w-2xl">
-      {linha.holerite.avisos.length > 0 && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{linha.holerite.avisos.join("; ")}.</p>}
-      {hs.length === 0 && <p className="text-sm text-slate-500">Nenhum relatório da contabilidade importado para esta pessoa neste mês.</p>}
-      {hs.map(([codigo, h]) => (
-        <div key={codigo} className="mb-4">
-          <p className="mb-1 text-sm font-semibold text-slate-800">{h.empresa || EMPRESAS[codigo] || codigo} · cadastro {h.cadastro} {h.rescisao && <span className="ml-1 rounded bg-slate-100 px-1.5 text-xs">rescisão</span>}</p>
-          {h.eventos?.length > 0 && (
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-slate-500"><tr><th className="py-1">Evento</th><th className="py-1 text-right">Ref.</th><th className="py-1 text-right">Proventos</th><th className="py-1 text-right">Descontos</th></tr></thead>
-              <tbody>
-                {h.eventos.map((e, i) => (
-                  <tr key={i} className="border-t" style={{ borderColor: "var(--hairline)" }}>
-                    <td className="py-1">{e.codigo} {e.descricao}{e.tipo === "informativo" && <span className="text-xs text-slate-500"> (encargo, não entra no líquido)</span>}</td>
-                    <td className="py-1 text-right tabular-nums">{e.referencia ? n2(e.referencia) : ""}</td>
-                    <td className="py-1 text-right tabular-nums">{e.tipo === "provento" ? n2(e.valor) : ""}</td>
-                    <td className="py-1 text-right tabular-nums">{e.tipo === "desconto" ? n2(e.valor) : e.tipo === "informativo" ? <span className="text-slate-400">{n2(e.valor)}</span> : ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <Modal titulo={`${ficha.nome} — ${rotuloMes(competencia)}`} aberto aoFechar={aoFechar} largura="max-w-4xl">
+      <form onSubmit={enviar} className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">{l.vinculo} · salário da ficha {moeda(l.salario)}{ficha.cadastroFolha ? ` · cadastro na folha ${ficha.cadastroFolha}` : ""}</p>
+
+          <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <legend className="px-1 text-sm font-semibold text-slate-800">Salário do mês</legend>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-xs text-slate-600">Dias a pagar (de 30)
+                <input className="input mt-1 block w-28" inputMode="numeric" placeholder={l.diasSugeridos === null ? "30 (cheio)" : String(l.diasSugeridos)} value={f.diasPagar} disabled={!editavel} onChange={campo("diasPagar")} />
+              </label>
+              <p className="pb-2 text-sm">{moeda(l.salario)} ÷ 30 × {l.diasPagar ?? 30} = <b>{moeda(l.salarioMes)}</b></p>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {l.diasSugeridos !== null
+                ? `Pela ficha (${ficha.admissao?.startsWith(competencia) ? `admissão em ${ficha.admissao.split("-").reverse().join("/")}` : ""}${ficha.admissao?.startsWith(competencia) && ficha.desligadoEm?.startsWith(competencia) ? ", " : ""}${ficha.desligadoEm?.startsWith(competencia) ? `desligamento em ${ficha.desligadoEm.split("-").reverse().join("/")}` : ""}) o mês é de ${l.diasSugeridos} dias — já aplicado. Digite outro número para trocar.`
+                : "Vazio = mês cheio. Para quem trabalhou só parte do mês (ex.: 10 dias), digite os dias."}
+              {l.vinculo === "CLT" && l.liquidoHolerite !== null && " Com holerite importado, o valor pago é o líquido do holerite (a contabilidade já fez a conta)."}
+            </p>
+          </fieldset>
+
+          {l.vinculo === "CLT" && (
+            <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+              <legend className="px-1 text-sm font-semibold text-slate-800">Hora extra</legend>
+              <p className="text-sm">Saldo do banco no fim do mês: <b className={l.bancoMin > 0 ? "text-teal-700" : l.bancoMin < 0 ? "text-red-700" : ""}>{horas(l.bancoMin)}</b></p>
+              <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5 accent-teal-700" checked={f.heLiberada} disabled={!editavel || !(l.bancoMin > 0)} onChange={campo("heLiberada")} />Pagar hora extra neste mês</label>
+              {f.heLiberada && (
+                <label className="mt-2 block text-xs text-slate-600">Horas a pagar (vazio = saldo inteiro)
+                  <input className="input mt-1 w-36" placeholder={hhmm(l.bancoMin || 0)} value={f.horasPagar} disabled={!editavel} onChange={campo("horasPagar")} />
+                </label>
+              )}
+              {!(l.bancoMin > 0) && <p className="mt-1 text-xs text-slate-500">Sem saldo positivo: não há hora extra a pagar.</p>}
+            </fieldset>
           )}
-          <p className="mt-1 text-sm">Líquido: <b>{h.liquido === null || h.liquido === undefined ? "—" : moeda(h.liquido)}</b>{h.confere === true && <span className="text-emerald-700"> · soma confere</span>}{h.confere === false && <span className="text-amber-800"> · a soma não fecha com o líquido</span>}</p>
-          <p className="text-xs text-slate-500">{h.arquivo} · importado em {h.importadoEm ? new Date(h.importadoEm).toLocaleString("pt-BR") : "—"}</p>
+
+          <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <legend className="px-1 text-sm font-semibold text-slate-800">Ajuda de custo</legend>
+            <div className="grid grid-cols-3 gap-2">
+              <label className="text-xs text-slate-600">Km ida<input className="input mt-1" inputMode="decimal" value={f.kmIda} disabled={!editavel} onChange={campo("kmIda")} /></label>
+              <label className="text-xs text-slate-600">Km volta<input className="input mt-1" inputMode="decimal" value={f.kmVolta} disabled={!editavel} onChange={campo("kmVolta")} /></label>
+              <label className="text-xs text-slate-600">Veículo<select className="select mt-1 block w-full" value={f.veiculo} disabled={!editavel} onChange={campo("veiculo")}><option>Moto</option><option>Carro</option></select></label>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Conta: {l.dias} dias com batida no Ponto × gasolina {contexto.mes.gasolina ? moeda(contexto.mes.gasolina) : "(informe na tela)"} · {f.veiculo === "Carro" ? CONSUMO_PADRAO.carro : CONSUMO_PADRAO.moto} km/l = <b>{moeda(l.ajudaCalculada)}</b>
+            </p>
+            <label className="mt-2 block text-xs text-slate-600">Valor fixo neste mês (opcional, substitui a conta)
+              <input className="input mt-1 w-36" inputMode="decimal" placeholder="—" value={f.ajudaFixa} disabled={!editavel} onChange={campo("ajudaFixa")} />
+            </label>
+          </fieldset>
+
+          <fieldset className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+            <legend className="px-1 text-sm font-semibold text-slate-800">Comissão</legend>
+            <p className="text-sm">Do fechamento do Gestão: <b>{moeda(l.comissaoGestao)}</b></p>
+          </fieldset>
+          <Lista titulo="Comissão lançada à mão" itens={f.comissaoManual} setItens={(v) => setF((x) => ({ ...x, comissaoManual: v }))} editavel={editavel} exemplo="Ex.: comissão de venda fora do Gestão" />
+          <Lista titulo="Bônus" itens={f.bonus} setItens={(v) => setF((x) => ({ ...x, bonus: v }))} editavel={editavel} exemplo="Ex.: 8 coletas" />
+          <Lista titulo="Ajustes" itens={f.ajustes} setItens={(v) => setF((x) => ({ ...x, ajustes: v }))} editavel={editavel} exemplo="Ex.: reembolso de exame admissional" />
+
+          <label className="block text-xs text-slate-600">Quem paga
+            <select className="select mt-1 block w-full sm:w-72" value={f.empresaPagadora} disabled={!editavel} onChange={campo("empresaPagadora")}>
+              <option value="">Automático (pelo holerite / CLT na M Lab)</option>
+              <option value="M Lab">M Lab</option>
+              <option value="MinasLab">MinasLab</option>
+            </select>
+          </label>
+
+          {hs.length > 0 && (
+            <details className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">Holerite da contabilidade</summary>
+              {hs.map(([codigo, h]) => (
+                <div key={codigo} className="mt-2">
+                  <p className="text-xs font-semibold text-slate-700">{h.empresa || EMPRESAS[codigo] || codigo} · cadastro {h.cadastro}{h.rescisao ? " · rescisão" : ""}</p>
+                  <table className="mt-1 w-full text-xs">
+                    <tbody>
+                      {(h.eventos || []).map((ev, i) => (
+                        <tr key={i} className="border-t" style={{ borderColor: "var(--hairline)" }}>
+                          <td className="py-1">{ev.codigo} {ev.descricao}</td>
+                          <td className="py-1 text-right tabular-nums">{ev.referencia ? n2(ev.referencia) : ""}</td>
+                          <td className={clsx("py-1 text-right tabular-nums", ev.tipo === "desconto" && "text-red-700", ev.tipo === "informativo" && "text-slate-400")}>{ev.tipo === "desconto" ? "−" : ""}{n2(ev.valor)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-1 text-xs">Líquido {h.liquido === null || h.liquido === undefined ? "—" : moeda(h.liquido)}{h.confere === true ? " · soma confere" : h.confere === false ? " · a soma não fecha" : ""} · {h.arquivo}</p>
+                </div>
+              ))}
+            </details>
+          )}
         </div>
-      ))}
+
+        <aside className="h-fit rounded-xl bg-slate-50 p-3 lg:sticky lg:top-0">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo do mês</p>
+          {l.holerite.avisos.length > 0 && <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900">{l.holerite.avisos.join("; ")}.</p>}
+          <Linha rotulo={l.paga === "M Lab" ? "Salário (pago pela M Lab)" : "Salário"} valor={moeda(l.liquidoHolerite ?? l.salarioMes)} sub={l.liquidoHolerite !== null ? "líquido do holerite" : l.diasPagar !== null ? `proporcional: ${l.diasPagar} de 30 dias` : l.vinculo === "CLT" ? "estimado: sem holerite importado" : undefined} />
+          <Linha rotulo="Hora extra 50%" valor={moeda(l.he)} sub={l.heMin ? `${hhmm(l.heMin)} pagas` : undefined} />
+          <Linha rotulo="Ajuda de custo" valor={moeda(l.ajuda)} sub={l.ajudaFixa ? "valor fixo do mês" : undefined} />
+          <Linha rotulo="Comissão" valor={moeda(l.comissao)} />
+          <Linha rotulo="Bônus" valor={moeda(l.bonus)} />
+          <Linha rotulo="Ajustes" valor={moeda(l.ajustes)} />
+          <Linha rotulo="Total de extras" valor={moeda(l.extras)} forte />
+          <Linha rotulo="Total MinasLab" valor={moeda(l.totalMinasLab)} forte />
+          <Linha rotulo="Pagar pela M Lab" valor={moeda(l.pagarMLab)} />
+          <Linha rotulo="Total" valor={moeda(l.total)} forte />
+          <Linha rotulo="Com encargos" valor={moeda(l.comEncargos)} />
+          {erro && <p role="alert" className="mt-2 text-sm text-red-700">{erro}</p>}
+          <div className="mt-3 flex gap-2">
+            <button type="button" className="btn-outline flex-1" onClick={aoFechar}>{editavel ? "Cancelar" : "Fechar"}</button>
+            {editavel && <button type="submit" className="btn-primary flex-1" disabled={gravando}>{gravando ? "Gravando…" : "Gravar"}</button>}
+          </div>
+        </aside>
+      </form>
     </Modal>
   );
 }

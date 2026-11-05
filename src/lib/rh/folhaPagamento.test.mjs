@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ajudaDeCusto, empresaPagadora, linhaDaFolha, saldoBancoAte, situacaoHolerite, totaisDaFolha, valorHoraExtra, vinculoDe, distribuirRelatorio } from "./folhaPagamento.js";
+import { diasProporcionais, salarioProporcional, ajudaDeCusto, camposDaFichaPeloHolerite, minutosAPagar, empresaPagadora, linhaDaFolha, saldoBancoAte, situacaoHolerite, totaisDaFolha, valorHoraExtra, vinculoDe, distribuirRelatorio } from "./folhaPagamento.js";
 
 // Dados FICTÍCIOS — este repositório é público.
 const clt = { id: "p1", nome: "MARIA TESTE DA SILVA", tipoContrato: "CLT", salario: "2200", kmIda: 5, kmVolta: 5, veiculo: "Moto" };
@@ -79,4 +79,51 @@ test("distribuir o relatório pelas fichas e listar quem não foi encontrado", (
   const r = distribuirRelatorio({ tipo: "eventos", empresa: { codigo: "0423", nome: "E" }, pessoas: [{ cadastro: "7", nome: "Maria Teste da Silva", liquido: 10, eventos: [] }, { cadastro: "8", nome: "Ninguém Daqui", liquido: 5, eventos: [] }] }, [clt]);
   assert.deepEqual(Object.keys(r.porPessoa), ["p1"]);
   assert.deepEqual(r.naoEncontrados, ["Ninguém Daqui"]);
+});
+
+test("hora extra parcial: paga só as horas escolhidas, nunca mais que o saldo", () => {
+  assert.equal(minutosAPagar(600, { heLiberada: true }), 600);
+  assert.equal(minutosAPagar(600, { heLiberada: true, horasPagarMin: 240 }), 240);
+  assert.equal(minutosAPagar(600, { heLiberada: true, horasPagarMin: 900 }), 600);
+  assert.equal(minutosAPagar(600, { heLiberada: false, horasPagarMin: 240 }), 0);
+});
+
+test("bônus, comissão manual e ajuda fixa entram no total da MinasLab", () => {
+  const l = linhaDaFolha({
+    ficha: { id: "p3", nome: "Y", tipoContrato: "Prestador", salario: 1000, kmIda: 5, kmVolta: 5 }, competencia: "2026-10",
+    registro: { bonus: [{ valor: 800, motivo: "8 coletas" }], comissaoManual: [{ valor: 99, motivo: "venda direta" }], ajudaFixa: 50 },
+    mes: { gasolina: 6.66 },
+  });
+  assert.equal(l.bonus, 800);
+  assert.equal(l.comissao, 99);
+  assert.equal(l.ajuda, 50);
+  assert.equal(l.totalMinasLab, 1949);
+});
+
+test("o relatório alimenta a ficha: salário de mês cheio corrige, mês quebrado não", () => {
+  const cheio = { cadastro: "3", eventos: [{ descricao: "Horas Normais", referencia: 220, valor: 2500 }] };
+  const r = camposDaFichaPeloHolerite({ salario: "1800" }, cheio, "0423");
+  assert.deepEqual(r.campos, { cadastroFolha: "3", empresaPagadora: "M Lab", salario: "2500" });
+  assert.equal(r.mudancas.length, 3);
+  const quebrado = { cadastro: "9", eventos: [{ descricao: "Horas Normais", referencia: 212.4, valor: 1740 }] };
+  assert.equal(camposDaFichaPeloHolerite({ salario: "1621", cadastroFolha: "9", empresaPagadora: "M Lab" }, quebrado, "0423").campos.salario, undefined);
+  assert.deepEqual(camposDaFichaPeloHolerite({ salario: "2500", cadastroFolha: "3", empresaPagadora: "M Lab" }, cheio, "0423").campos, {}, "nada a mudar");
+  assert.equal(camposDaFichaPeloHolerite({ salario: "1500" }, { ...cheio, rescisao: true }, "0423").campos.salario, undefined, "rescisão não ensina salário");
+});
+
+test("salário proporcional: 1.700 por 10 dias = 566,67 (mês comercial de 30)", () => {
+  assert.equal(salarioProporcional(1700, 10), 566.67);
+  assert.equal(salarioProporcional(1700, null), 1700);
+  assert.equal(diasProporcionais({ admissao: "2026-10-21" }, "2026-10"), 10);
+  assert.equal(diasProporcionais({ admissao: "2026-09-21" }, "2026-10"), null, "entrou antes: mês cheio");
+  assert.equal(diasProporcionais({ desligadoEm: "2026-10-10" }, "2026-10"), 10);
+  assert.equal(diasProporcionais({ admissao: "2026-10-01" }, "2026-10"), null);
+  const ficha = { id: "p4", nome: "Z", tipoContrato: "Prestador", salario: 1700 };
+  const l = linhaDaFolha({ ficha, competencia: "2026-10", registro: { diasPagar: 10, bonus: [{ valor: 100, motivo: "x" }] } });
+  assert.equal(l.salarioMes, 566.67);
+  assert.equal(l.extras, 100);
+  assert.equal(l.total, 666.67);
+  const clt10 = linhaDaFolha({ ficha: { ...clt, admissao: "2026-10-21" }, competencia: "2026-10" });
+  assert.equal(clt10.diasPagar, 10);
+  assert.equal(clt10.comEncargos, 1246.66, "encargos sobre o proporcional (733,33 × 1,7)");
 });
