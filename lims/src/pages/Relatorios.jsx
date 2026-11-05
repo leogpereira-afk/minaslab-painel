@@ -120,7 +120,6 @@ export function DashboardFinanceiro() {
   const { dados } = useDados();
   const hoje = isoDia(0);
   const receber = dados.contas_receber.filter((r) => r.status !== "Cancelado");
-  const pagar = dados.contas_pagar;
   const meses = useMemo(() => {
     const out = [];
     const d = new Date();
@@ -129,8 +128,7 @@ export function DashboardFinanceiro() {
   }, []);
   const soma = (l, f) => l.reduce((s, r) => s + (Number(f(r)) || 0), 0);
   const recebido = meses.map((m) => soma(receber.filter((r) => r.status === "Pago" && (r.pagoEm || "").startsWith(m)), (r) => r.valorPago ?? r.valor));
-  const pago = meses.map((m) => soma(pagar.filter((p) => p.statusPagamento === "Pago" && (p.dataPagamento || "").startsWith(m)), (p) => p.valorPago || p.valor));
-  const max = Math.max(1, ...recebido, ...pago);
+  const max = Math.max(1, ...recebido);
   const abertos = receber.filter((r) => r.status === "Em aberto");
   const porCliente = Object.entries(abertos.reduce((t, r) => ({ ...t, [r.clienteId]: (t[r.clienteId] || 0) + (Number(r.valor) || 0) }), {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const W = 640, H = 220, P = 30, bw = (W - 2 * P) / meses.length;
@@ -140,18 +138,15 @@ export function DashboardFinanceiro() {
         <div className="kpi"><span>A receber (em aberto)</span><b>{brl(soma(abertos, (r) => r.valor))}</b></div>
         <div className="kpi ruim"><span>Vencido a receber</span><b>{brl(soma(abertos.filter((r) => r.venc < hoje), (r) => r.valor))}</b></div>
         <div className="kpi bom"><span>Recebido no mês</span><b>{brl(recebido[5])}</b></div>
-        <div className="kpi"><span>A pagar (em aberto)</span><b>{brl(soma(pagar.filter((p) => p.statusPagamento !== "Pago"), (p) => p.valor))}</b></div>
         <div className="kpi"><span>Amostras aguardando faturamento</span><b>{dados.amostras.filter((a) => a.status === "Faturamento").length}</b></div>
       </div>
-      <Caixa titulo="Recebido × pago (últimos 6 meses)">
-        <div className="legend"><span><i style={{ background: "#16a897" }} />Recebido</span><span><i style={{ background: "#24444f" }} />Pago</span></div>
-        <svg className="ch" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Recebido e pago por mês">
+      <Caixa titulo="Recebido (últimos 6 meses)">
+        <svg className="ch" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Recebido por mês">
           {meses.map((m, i) => {
-            const x = P + i * bw, hR = (recebido[i] / max) * (H - 50), hP = (pago[i] / max) * (H - 50);
+            const x = P + i * bw, hR = (recebido[i] / max) * (H - 50);
             return (
               <g key={m}>
-                <rect x={x + bw * 0.15} y={H - 24 - hR} width={bw * 0.32} height={hR} fill="#16a897" rx="2"><title>{`Recebido ${brl(recebido[i])}`}</title></rect>
-                <rect x={x + bw * 0.52} y={H - 24 - hP} width={bw * 0.32} height={hP} fill="#24444f" rx="2"><title>{`Pago ${brl(pago[i])}`}</title></rect>
+                <rect x={x + bw * 0.25} y={H - 24 - hR} width={bw * 0.5} height={hR} fill="#16a897" rx="2"><title>{`Recebido ${brl(recebido[i])}`}</title></rect>
                 <text x={x + bw / 2} y={H - 6} textAnchor="middle">{MESES[Number(m.slice(5)) - 1]}/{m.slice(2, 4)}</text>
               </g>
             );
