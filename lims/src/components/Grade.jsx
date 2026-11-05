@@ -54,6 +54,31 @@ function EscolherColunas({ colunas, ocultas, setOcultas }) {
   );
 }
 
+// Botão com lista de opções (ex.: "Status" → Todos / Ativo / Inativo, como no GerenciaLab).
+function MenuBotao({ b }) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const fechar = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false); };
+    const esc = (e) => { if (e.key === "Escape") setAberto(false); };
+    document.addEventListener("mousedown", fechar);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", fechar); document.removeEventListener("keydown", esc); };
+  }, [aberto]);
+  const atual = b.menu.find((o) => o.marcado);
+  return (
+    <div className="colunas-sel" ref={ref}>
+      <button type="button" className={`dbtn${atual && !atual.padrao ? " on" : ""}`} aria-expanded={aberto} aria-haspopup="menu" onClick={() => setAberto((v) => !v)}>{b.rotulo}{atual && !atual.padrao ? `: ${atual.rotulo}` : ""}</button>
+      {aberto && (
+        <div className="menu-pop" role="menu">
+          {b.menu.map((o) => <button key={o.rotulo} type="button" role="menuitemradio" aria-checked={!!o.marcado} className={o.marcado ? "on" : ""} onClick={() => { o.acao(); setAberto(false); }}>{o.rotulo}</button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"], filtrosColuna = false, opcoesFiltro = {}, selecao, aoSelecionar, aoAbrir, multipla = false, porPaginaInicial = 25, rotuloPorPagina, exportar, ocultasPadrao = [] }) {
   const [ocultas, setOcultasEstado] = useState(() => lerOcultas(id, ocultasPadrao));
   const setOcultas = (v) => { setOcultasEstado(v); gravarOcultas(id, v); };
@@ -89,7 +114,7 @@ export function Grade({ id, linhas, colunas, botoes, ordemInicial = [0, "desc"],
         <div className="dt-btns">
           {exportar && <><button type="button" className="dbtn" onClick={() => baixar(`${exportar}-${isoDia(0)}.csv`, paraCSV(visiveis, mostradas.map((m) => m.c)))}>Criar Excel</button><button type="button" className="dbtn" onClick={() => window.print()}>Imprimir</button></>}
           <EscolherColunas colunas={colunas} ocultas={ocultas} setOcultas={setOcultas} />
-          {botoes.map((b) => <button key={b.rotulo} type="button" className="dbtn" disabled={b.desativado} onClick={b.acao}>{b.rotulo}</button>)}
+          {botoes.map((b) => (b.menu ? <MenuBotao key={b.rotulo} b={b} /> : <button key={b.rotulo} type="button" className="dbtn" disabled={b.desativado} onClick={b.acao}>{b.rotulo}</button>))}
         </div>
         {!filtrosColuna && (
           <div className="dt-search"><label htmlFor={`q-${id}`}>Pesquisar</label><input id={`q-${id}`} type="search" value={q} onChange={(e) => { setQ(e.target.value); setPagina(0); }} /></div>
