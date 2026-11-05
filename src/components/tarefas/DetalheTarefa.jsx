@@ -148,6 +148,7 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   const ocupado = pendentes > 0;
   const [novoItem, setNovoItem] = useState("");
   const [editando, setEditando] = useState(false);
+  const [itemEditado, setItemEditado] = useState(null); // { id, texto } do item da lista sendo corrigido
   const [menu, setMenu] = useState(false);
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [delegando, setDelegando] = useState(false);
@@ -208,6 +209,13 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
   const marcarItem = (item, feito) => {
     setDados((d) => (d ? { ...d, checklist: d.checklist.map((x) => (x.id === item.id ? { ...x, feito } : x)) } : d));
     void executar(() => tarefaChecklist(id, "marcar", { item_id: item.id, feito }));
+  };
+  const salvarItem = () => {
+    const t = itemEditado?.texto.trim();
+    const item = dados?.checklist.find((x) => x.id === itemEditado?.id);
+    setItemEditado(null);
+    if (!item || !t || t === item.texto) return;
+    void executar(() => tarefaChecklist(id, "renomear", { item_id: item.id, texto: t }));
   };
   const adicionarItem = () => { const t = novoItem.trim(); if (!t) return; setNovoItem(""); void executar(() => tarefaChecklist(id, "adicionar", { texto: t })); };
 
@@ -281,8 +289,21 @@ export default function DetalheTarefa({ id, usuarios, agora, aoFechar, aoMudou, 
                     {itens.map((i) => (
                       <li key={i.id} className="group flex items-start gap-2 rounded-lg px-1 py-1 hover:bg-slate-50">
                         <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-emerald-600" checked={i.feito} disabled={!pode.colaborar} aria-label={i.texto} onChange={(e) => marcarItem(i, e.target.checked)} />
-                        <span className={clsx("min-w-0 flex-1 text-sm [overflow-wrap:anywhere]", i.feito && "text-slate-400 line-through")}>{i.texto}{i.feito && i.feito_por && <span className="ml-1.5 text-[11px] no-underline text-slate-400">({nomes[i.feito_por] || i.feito_por})</span>}</span>
-                        {pode.colaborar && <button type="button" className="shrink-0 text-slate-300 opacity-0 transition hover:text-red-600 group-hover:opacity-100 focus:opacity-100" aria-label={`Remover ${i.texto}`} onClick={() => executar(() => tarefaChecklist(id, "remover", { item_id: i.id }))}><X size={14} /></button>}
+                        {itemEditado?.id === i.id ? (
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                            <input className="input h-8 min-h-0 min-w-0 flex-1 text-sm" aria-label="Texto do item" value={itemEditado.texto} maxLength={300} autoFocus
+                              onChange={(e) => setItemEditado({ id: i.id, texto: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); salvarItem(); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setItemEditado(null); } }} />
+                            <button type="button" className="btn-primary h-8 min-h-0 px-3 text-xs" disabled={!itemEditado.texto.trim()} onClick={salvarItem}>Salvar</button>
+                            <button type="button" className="btn-outline h-8 min-h-0 px-3 text-xs" onClick={() => setItemEditado(null)}>Cancelar</button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className={clsx("min-w-0 flex-1 text-sm [overflow-wrap:anywhere]", i.feito && "text-slate-400 line-through")}>{i.texto}{i.feito && i.feito_por && <span className="ml-1.5 text-[11px] no-underline text-slate-400">({nomes[i.feito_por] || i.feito_por})</span>}</span>
+                            {pode.colaborar && <button type="button" className="shrink-0 text-slate-400 transition hover:text-brand-700 focus:opacity-100 sm:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100" aria-label={`Editar ${i.texto}`} title="Editar o texto" onClick={() => setItemEditado({ id: i.id, texto: i.texto })}><Pencil size={14} /></button>}
+                            {pode.colaborar && <button type="button" className="shrink-0 text-slate-400 transition hover:text-red-600 focus:opacity-100 sm:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100" aria-label={`Remover ${i.texto}`} title="Apagar o item" onClick={() => executar(() => tarefaChecklist(id, "remover", { item_id: i.id }))}><X size={14} /></button>}
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>
