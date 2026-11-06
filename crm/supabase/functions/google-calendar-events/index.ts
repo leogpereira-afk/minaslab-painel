@@ -14,6 +14,7 @@ const MAX_PAGES = 4;
 
 const ALLOWED_ORIGINS = new Set([
   'https://leogpereira-afk.github.io',
+  'https://www.minaslab.online',
   'http://localhost:5173',
 ]);
 

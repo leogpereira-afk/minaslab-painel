@@ -12,6 +12,7 @@ const STATE_TTL_MS = 10 * 60_000;
 // Para onde voltar depois do Google, conforme a origem de quem clicou.
 const RETURN_BY_ORIGIN: Record<string, string> = {
   'https://leogpereira-afk.github.io': 'https://leogpereira-afk.github.io/minaslab-painel/crm',
+  'https://www.minaslab.online': 'https://www.minaslab.online/crm',
   'http://localhost:5173': 'http://localhost:5173',
 };
 const DEFAULT_ORIGIN = 'https://leogpereira-afk.github.io';
