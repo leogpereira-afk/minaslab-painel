@@ -31,6 +31,7 @@ export const lerQualidade = () => chamar("qualidade");
 export const salvarRegistro = (modulo, registro) => chamar("salvar", { modulo, registro }).then((r) => r.registro);
 export const excluirRegistro = (modulo, id) => chamar("excluir", { modulo, id });
 export const confirmarLeitura = (id) => chamar("ler", { id });
+export const verificarExternos = (ids, data) => chamar("verificarExternos", { ids, data });
 export const registrarCalibracao = (dados) => chamar("calibrar", dados);
 export const salvarMeta = (chave, meta) => chamar("metaSalvar", { chave, meta });
 export const enviarArquivo = (ref_tipo, ref_id, nome, base64) => chamar("arquivoEnviar", { ref_tipo, ref_id, nome, base64 }).then((r) => r.arquivo);
