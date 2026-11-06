@@ -35,11 +35,15 @@ export default function DetalheEventoEquipe({ evento: e, nomes, aoFechar, aoEdit
           <>
             <div><p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{e.tipo === "ferias" ? "De férias" : "Ausente"}</p><Pessoas usuarios={e.ausentes} nomes={nomes} /></div>
             <div><p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"><UserCheck size={13} aria-hidden="true" />Responsável no período</p><Pessoas usuarios={e.responsaveis} nomes={nomes} /></div>
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"><Users size={13} aria-hidden="true" />Quem mais vê</p>
+              {e.paraTodos ? <p className="text-sm text-slate-700">Toda a equipe</p> : e.participantes.length ? <Pessoas usuarios={e.participantes} nomes={nomes} /> : <p className="text-sm text-slate-500">Só os envolvidos</p>}
+            </div>
           </>
         ) : (
           <div>
             <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"><Users size={13} aria-hidden="true" />Quem participa</p>
-            {e.paraTodos ? <p className="text-sm text-slate-700">Todos da equipe</p> : <Pessoas usuarios={[e.criador, ...e.participantes.filter((u) => u !== e.criador)]} nomes={nomes} />}
+            {e.paraTodos ? <p className="text-sm text-slate-700">Toda a equipe</p> : <Pessoas usuarios={[e.criador, ...e.participantes.filter((u) => u !== e.criador)]} nomes={nomes} />}
           </div>
         )}
         {e.descricao && <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700 [overflow-wrap:anywhere]">{e.descricao}</p>}

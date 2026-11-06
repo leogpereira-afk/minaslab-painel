@@ -35,6 +35,7 @@ import {
 import CalendarioMes from "../components/CalendarioMes.jsx";
 import FormEventoEquipe from "../components/agenda/FormEventoEquipe.jsx";
 import DetalheEventoEquipe from "../components/agenda/DetalheEventoEquipe.jsx";
+import SeletorPessoas from "../components/tarefas/SeletorPessoas.jsx";
 import { agendaListar, agendaUsuarios } from "../services/agenda.js";
 import { expandirEventos, foraNoDia, tipoDaAgenda } from "../lib/agendaEquipe.js";
 
@@ -124,6 +125,7 @@ const TIPOS_MANUTENCAO = [
 const VAZIO_NOVO = {
   oQue: "compromisso",
   titulo: "", compTipo: "reuniao", cliente: "", hora: "", obs: "",
+  compParaTodos: false, compParticipantes: [],
   alvoTipo: "carro", alvoId: "", manTipo: "preventiva", descricao: "",
   pessoaId: "", retorno: "",
 };
@@ -274,7 +276,7 @@ function ODia({ diaISO, hojeISO, eventos, podeCriar, aoNovo, podeEquipe, aoEquip
    algo que talvez já exista. */
 function FormNovo({
   form, setForm, diaISO, direcao, carros, equipamentos, pessoas, ferias,
-  salvando, aoSalvar, aoFechar,
+  usuarios = [], eu = "", salvando, aoSalvar, aoFechar,
 }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
@@ -348,6 +350,23 @@ function FormNovo({
             <div>
               <label className="label" htmlFor="nv-obs">Observações</label>
               <textarea id="nv-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
+            </div>
+            {/* Mesma régua de Compromissos: toda a equipe, pessoas escolhidas ou, sem ninguém, só você. */}
+            <div>
+              <span className="label">Quem participa</span>
+              <Segmented
+                opcoes={[{ valor: "todos", rotulo: "Toda a equipe" }, { valor: "pessoas", rotulo: "Escolher pessoas" }]}
+                valor={form.compParaTodos ? "todos" : "pessoas"}
+                onChange={(v) => setForm({ ...form, compParaTodos: v === "todos" })}
+              />
+              {!form.compParaTodos && (
+                <div className="mt-2">
+                  <SeletorPessoas usuarios={usuarios} valor={form.compParticipantes} onChange={(v) => setForm({ ...form, compParticipantes: v })} ocultar={[eu]} vazio="Só você" />
+                </div>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                {form.compParaTodos ? "Aparece para todos." : form.compParticipantes.length ? "Só as pessoas escolhidas e você veem." : "Sem ninguém escolhido, só você vê."}
+              </p>
             </div>
           </>
         )}
@@ -695,6 +714,9 @@ export default function Calendario() {
         hora: f.hora,
         obs: f.obs.trim(),
         feito: false,
+        criador: getSessao()?.usuario || "",
+        paraTodos: !!f.compParaTodos,
+        participantes: f.compParaTodos ? [] : f.compParticipantes,
       };
     } else if (f.oQue === "manutencao") {
       const alvo = ((f.alvoTipo === "carro" ? carros : equipamentos) || []).find((a) => a.id === f.alvoId);
@@ -878,6 +900,8 @@ export default function Calendario() {
         <FormNovo
           form={formNovo}
           setForm={setFormNovo}
+          usuarios={agendaUsers.usuarios}
+          eu={agendaUsers.eu}
           diaISO={diaVisto}
           direcao={direcao}
           carros={carros}

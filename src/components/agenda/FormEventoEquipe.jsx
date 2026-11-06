@@ -73,17 +73,20 @@ export default function FormEventoEquipe({ dia, usuarios, eu, direcao, evento, t
         </div>
         {!aus && <p className="-mt-2 text-xs text-slate-500">Sem hora, o evento vale o dia inteiro.</p>}
 
-        {!aus && (
-          <>
-            <div><label className="label" htmlFor="ag-local">Local</label><input id="ag-local" className="input" value={f.local} maxLength={120} onChange={set("local")} placeholder="Sala, endereço ou link" /></div>
-            <div>
-              <span className="label">Quem participa</span>
-              <Segmented opcoes={[{ valor: "todos", rotulo: "Todos da equipe" }, { valor: "pessoas", rotulo: "Escolher pessoas" }]} valor={f.paraTodos ? "todos" : "pessoas"} onChange={(v) => setF((x) => ({ ...x, paraTodos: v === "todos" }))} />
-              {!f.paraTodos && <div className="mt-2"><SeletorPessoas usuarios={usuarios} valor={f.participantes} onChange={(v) => setF((x) => ({ ...x, participantes: v }))} ocultar={[eu]} vazio="Só você, por enquanto" /></div>}
-              <p className="mt-1 text-xs text-slate-500">{f.paraTodos ? "Aparece no calendário de todos e cada um recebe um aviso." : "Só quem você escolher vê e recebe o aviso."}</p>
-            </div>
-          </>
-        )}
+        {!aus && <div><label className="label" htmlFor="ag-local">Local</label><input id="ag-local" className="input" value={f.local} maxLength={120} onChange={set("local")} placeholder="Sala, endereço ou link" /></div>}
+        {/* Quem vê: vale para todos os tipos, ao marcar e ao editar. Toda a equipe, pessoas escolhidas ou, sem ninguém, só você. */}
+        <div>
+          <span className="label">{aus ? "Quem mais vê no calendário" : "Quem participa"}</span>
+          <Segmented opcoes={[{ valor: "todos", rotulo: "Toda a equipe" }, { valor: "pessoas", rotulo: "Escolher pessoas" }]} valor={f.paraTodos ? "todos" : "pessoas"} onChange={(v) => setF((x) => ({ ...x, paraTodos: v === "todos" }))} />
+          {!f.paraTodos && <div className="mt-2"><SeletorPessoas usuarios={usuarios} valor={f.participantes} onChange={(v) => setF((x) => ({ ...x, participantes: v }))} ocultar={aus ? [eu, ...f.ausentes, ...f.responsaveis] : [eu]} vazio={aus ? "Ninguém além dos envolvidos" : "Só você"} /></div>}
+          <p className="mt-1 text-xs text-slate-500">
+            {f.paraTodos
+              ? "Aparece no calendário de todos e cada um recebe um aviso."
+              : aus
+                ? (f.participantes.length ? "Só quem você escolher vê, além de você, da pessoa ausente e do responsável." : "Sem ninguém escolhido, só você, a pessoa ausente e o responsável veem.")
+                : (f.participantes.length ? "Só quem você escolher vê e recebe o aviso." : "Sem ninguém escolhido, só você vê.")}
+          </p>
+        </div>
 
         <div><label className="label" htmlFor="ag-desc">Descrição (opcional)</label><textarea id="ag-desc" className="input" rows={2} maxLength={1000} value={f.descricao} onChange={set("descricao")} /></div>
 
