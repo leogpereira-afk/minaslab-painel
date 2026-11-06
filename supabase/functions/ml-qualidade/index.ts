@@ -420,7 +420,7 @@ Deno.serve(async (req) => {
     if (acao === "excluir") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const modulo = txt(body.modulo), id = uuid(body.id);
-      if (!id || !["auditoria", "proficiencia", "calibracao"].includes(modulo)) return json({ erro: "Esse registro não pode ser excluído; use o status." }, 400);
+      if (!id || !["auditoria", "proficiencia", "calibracao", "externo"].includes(modulo)) return json({ erro: "Esse registro não pode ser excluído; use o status." }, 400);
       const t = modulo === "calibracao" ? "qualidade_calibracoes" : MODULOS[modulo].t;
       const { error } = await sb.from(t).delete().eq("id", id);
       if (error) throw error;

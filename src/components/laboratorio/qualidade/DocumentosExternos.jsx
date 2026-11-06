@@ -7,8 +7,8 @@
 // - Atualização: sai do resultado da última verificação; "Pendente de atualizar" quando existe versão
 //   mais nova ou o documento foi cancelado/revogado.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarCheck2, CheckCircle2, Download, ExternalLink, FileWarning, Filter, FolderOpen, HelpCircle, Library, Pencil, Plus, RefreshCw, Search, X } from "lucide-react";
-import { salvarRegistro, verificarExternos } from "../../../services/qualidade.js";
+import { AlertTriangle, CalendarCheck2, CheckCircle2, Download, ExternalLink, FileWarning, Filter, FolderOpen, HelpCircle, Library, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { excluirRegistro, salvarRegistro, verificarExternos } from "../../../services/qualidade.js";
 import { baixarPlanilha } from "../../../lib/planilha.js";
 import { StatCard, Modal } from "../../ui.jsx";
 import PaginacaoFinanceiro from "../../financeiro/PaginacaoFinanceiro.jsx";
@@ -95,7 +95,7 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
   const setF = (c) => (v) => setFiltros((x) => ({ ...x, [c]: v }));
   const filtrosAtivos = busca || Object.values(filtros).some(Boolean);
 
-  const ativosPagina = itensPagina.filter((d) => d.ativo !== false);
+  const ativosPagina = itensPagina;
   const todosPagina = ativosPagina.length > 0 && ativosPagina.every((d) => selecionados.includes(d.id));
   const alternarPagina = () => setSelecionados((s) => (todosPagina ? s.filter((id) => !ativosPagina.some((d) => d.id === id)) : [...new Set([...s, ...ativosPagina.map((d) => d.id)])]));
   const alternar = (id) => setSelecionados((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -117,6 +117,20 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
     try { const r = await verificarExternos(lista.map((d) => d.id), hoje); setSelecionados([]); avisar({ tipo: "ok", texto: `Verificação registrada em ${r.feitos} documento(s).` }); await recarregar(); }
     catch (e) { avisar({ tipo: "erro", texto: e.message }); }
     finally { setSalvando(false); }
+  }
+  // Excluir de vez (some da lista e do banco). Para manter o histórico, use "Tirar de uso".
+  async function excluir(lista) {
+    if (!lista.length) return;
+    const nomes = lista.length === 1 ? `o item ${lista[0].item ?? ""} (${String(lista[0].documento).slice(0, 80)})` : `${lista.length} documentos`;
+    if (!window.confirm(`Excluir ${nomes}? Essa ação não pode ser desfeita. Se quiser só tirar da lista mantendo o histórico, use "Tirar de uso".`)) return;
+    setSalvando(true);
+    let feitos = 0;
+    try {
+      for (const d of lista) { await excluirRegistro("externo", d.id); feitos += 1; }
+      setSelecionados([]); setEditando(null);
+      avisar({ tipo: "ok", texto: `${feitos} documento(s) excluído(s).` });
+    } catch (e) { avisar({ tipo: "erro", texto: `${feitos ? `${feitos} excluído(s); ` : ""}${e.message}` }); }
+    finally { setSalvando(false); await recarregar(); }
   }
   function exportar() {
     baixarPlanilha({
@@ -180,7 +194,8 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
             <span className="font-medium text-blue-900"><b>{escolhidos.length}</b> documento(s) selecionado(s)</span>
             <span className="flex flex-wrap gap-2">
               <button type="button" className="btn-outline px-3 py-1.5 text-xs" onClick={() => setSelecionados([])}>Limpar seleção</button>
-              <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={salvando} onClick={() => registrarVerificacao(escolhidos)}><CheckCircle2 size={14} aria-hidden="true" />Registrar verificação de hoje</button>
+              <button type="button" className="btn-outline px-3 py-1.5 text-xs text-bad-700" disabled={salvando} onClick={() => excluir(escolhidos)}><Trash2 size={14} aria-hidden="true" />Excluir</button>
+              <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={salvando} onClick={() => registrarVerificacao(escolhidos.filter((d) => d.ativo !== false))}><CheckCircle2 size={14} aria-hidden="true" />Registrar verificação de hoje</button>
             </span>
           </div>
         )}
@@ -219,7 +234,7 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
                   <tr key={d.id} className="group cursor-pointer" onClick={(ev) => abrirLinha(ev, d)}>
                     <td className={`sticky left-0 z-10 min-w-[320px] max-w-[420px] border-r border-t px-2 py-2 align-top ${bg}`}>
                       <span className="flex items-start gap-2">
-                        {podeEscrever && <input type="checkbox" className={`mt-0.5 ${d.ativo === false ? "invisible" : ""}`} disabled={d.ativo === false} checked={selecionados.includes(d.id)} onChange={() => alternar(d.id)} aria-label={`Selecionar item ${d.item}`} />}
+                        {podeEscrever && <input type="checkbox" className="mt-0.5" checked={selecionados.includes(d.id)} onChange={() => alternar(d.id)} aria-label={`Selecionar item ${d.item}`} />}
                         <span><b className="mr-1 text-slate-400">{d.item ?? "—"}</b><span className={`font-medium ${d.ativo === false ? "text-slate-400 line-through" : "text-slate-800"}`}>{d.documento}</span></span>
                       </span>
                     </td>
@@ -259,6 +274,7 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
         {editando && <FormExterno d={editando} setD={setEditando} pode={podeEscrever} salvando={salvando}
           aoSalvar={() => gravar(editando, editando.id ? `Item ${editando.item ?? ""} gravado.` : "Documento externo cadastrado.")}
           aoVerificar={() => registrarVerificacao([editando])}
+          aoExcluir={() => excluir([editando])}
           aoTirarDeUso={() => { if (window.confirm("Tirar este documento de uso? Ele sai da lista (fica na aba “Fora de uso”).")) gravar({ id: editando.id, ativo: false }, `Item ${editando.item ?? ""} fora de uso.`); }}
           aoVoltarAoUso={() => gravar({ id: editando.id, ativo: true }, `Item ${editando.item ?? ""} de volta à lista.`)} />}
       </Modal>
@@ -266,7 +282,7 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
   );
 }
 
-function FormExterno({ d, setD, pode, salvando, aoSalvar, aoVerificar, aoTirarDeUso, aoVoltarAoUso }) {
+function FormExterno({ d, setD, pode, salvando, aoSalvar, aoVerificar, aoExcluir, aoTirarDeUso, aoVoltarAoUso }) {
   const st = statusVerificacao(d);
   const set = (c) => (e) => setD({ ...d, [c]: e.target.value });
   return (
@@ -288,6 +304,7 @@ function FormExterno({ d, setD, pode, salvando, aoSalvar, aoVerificar, aoTirarDe
         {d.id && (d.ativo !== false
           ? <button type="button" disabled={salvando} onClick={aoTirarDeUso} className="btn-ghost ml-auto text-bad-700">Tirar de uso</button>
           : <button type="button" disabled={salvando} onClick={aoVoltarAoUso} className="btn-ghost ml-auto">Voltar à lista</button>)}
+        {d.id && <button type="button" disabled={salvando} onClick={aoExcluir} className="btn-outline inline-flex items-center gap-1.5 text-bad-700"><Trash2 className="h-4 w-4" aria-hidden />Excluir</button>}
       </div>}
     </form>
   );
