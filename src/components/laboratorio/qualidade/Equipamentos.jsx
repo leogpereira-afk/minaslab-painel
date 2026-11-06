@@ -1,11 +1,11 @@
 // Qualidade › Equipamentos (ISO/IEC 17025 · 6.4 e 6.5): calibração, verificação e validação com vencimento,
 // histórico com certificado e verificação diária. Reprovação abre não conformidade automaticamente.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardPlus, Download, Pencil, Plus, Search, Wrench } from "lucide-react";
 import { salvarRegistro, registrarCalibracao, excluirRegistro } from "../../../services/qualidade.js";
 import { baixarPlanilha } from "../../../lib/planilha.js";
 import { StatCard, Modal } from "../../ui.jsx";
-import { Anexos, Cabecalho, Campo, Pill, diasAte, fmtData, hojeYmd, nomeDe } from "./comum.jsx";
+import { Anexos, Cabecalho, Campo, Pill, diasAte, fmtData, hojeYmd, nomeDe, Paginacao } from "./comum.jsx";
 
 const CONTROLES = { CALIBRACAO: "Calibração externa", VERIFICACAO: "Verificação com padrão", VALIDACAO: "Validação", DIARIA: "Verificação diária", NENHUM: "Sem controle" };
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -23,6 +23,7 @@ export function situacaoEquip(e) {
 export default function Equipamentos({ q, voltar, recarregar, avisar }) {
   const { equipamentos, calibracoes, ncs, contas, arquivos, podeEscrever } = q;
   const [busca, setBusca] = useState(""); const [setor, setSetor] = useState("TODOS"); const [soVencidos, setSoVencidos] = useState(false);
+  const [filtro, setFiltro] = useState(null); const [pagina, setPagina] = useState(1);
   const [selId, setSelId] = useState(null); const [form, setForm] = useState(null); const [cal, setCal] = useState(null); const [salvando, setSalvando] = useState(false);
   const hoje = hojeYmd();
   const ativos = equipamentos.filter((e) => e.situacao !== "INATIVO");
@@ -31,8 +32,19 @@ export default function Equipamentos({ q, voltar, recarregar, avisar }) {
   const diarios = ativos.filter((e) => e.controle === "DIARIA" && e.situacao === "ATIVO");
   const feitosHoje = diarios.filter((e) => calibracoes.some((c) => c.equipamento_id === e.id && c.tipo === "DIARIA" && c.data === hoje));
   const setores = [...new Set(equipamentos.map((e) => e.setor).filter(Boolean))].sort();
+  // Filtros dos cards: clicar mostra só aqueles equipamentos; clicar de novo limpa.
+  const FILTROS = {
+    ATIVOS: ["Equipamentos ativos", (e) => e.situacao !== "INATIVO"],
+    VENCIDOS: ["Controle vencido", (e) => e.situacao !== "INATIVO" && situacaoEquip(e)[1] === "bad"],
+    VENCE30: ["Vence em 30 dias", (e) => e.situacao !== "INATIVO" && situacaoEquip(e)[1] === "warn"],
+    MANUTENCAO: ["Em manutenção", (e) => e.situacao === "MANUTENCAO"],
+    DIA: ["Verificações do dia pendentes", (e) => diarios.includes(e) && !feitosHoje.includes(e)],
+  };
+  const alternar = (f) => setFiltro((atual) => (atual === f ? null : f));
   const lista = useMemo(() => equipamentos.filter((e) => (setor === "TODOS" || e.setor === setor) && (!soVencidos || ["bad", "warn"].includes(situacaoEquip(e)[1]))
-    && (!busca || `${e.codigo} ${e.nome} ${e.local || ""}`.toLowerCase().includes(busca.toLowerCase()))), [equipamentos, setor, soVencidos, busca]);
+    && (!filtro || FILTROS[filtro][1](e))
+    && (!busca || `${e.codigo} ${e.nome} ${e.local || ""}`.toLowerCase().includes(busca.toLowerCase()))), [equipamentos, setor, soVencidos, busca, filtro, calibracoes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPagina(1); }, [busca, setor, soVencidos, filtro]);
   const sel = equipamentos.find((e) => e.id === selId) || null;
   const hist = sel ? calibracoes.filter((c) => c.equipamento_id === sel.id) : [];
   const meses = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + i); const ym = d.toLocaleDateString("en-CA").slice(0, 7); return { rot: MESES[d.getMonth()], n: ativos.filter((e) => (e.proxima || "").startsWith(ym) && !["DIARIA", "NENHUM"].includes(e.controle)).length + (i === 0 ? vencidos.length : 0) }; });
@@ -63,12 +75,13 @@ export default function Equipamentos({ q, voltar, recarregar, avisar }) {
         {podeEscrever && <button type="button" onClick={() => setForm({ controle: "CALIBRACAO", periodicidade_meses: 12, situacao: "ATIVO" })} className="btn-primary inline-flex items-center gap-1.5"><Plus className="h-4 w-4" aria-hidden /> Novo equipamento</button>}
       </>} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard rotulo="Equipamentos ativos" valor={ativos.length} sub={setores.join(", ") || "cadastre os equipamentos"} />
-        <StatCard rotulo="Controle vencido" valor={vencidos.length} tom={vencidos.length ? "bad" : "neutral"} sub={vencidos.map((e) => e.codigo).slice(0, 3).join(", ") || "nenhum"} onClick={() => setSoVencidos(true)} />
-        <StatCard rotulo="Vence em 30 dias" valor={vence30.length} tom={vence30.length ? "warn" : "neutral"} sub="agendar calibração" onClick={() => setSoVencidos(true)} />
-        <StatCard rotulo="Em manutenção" valor={equipamentos.filter((e) => e.situacao === "MANUTENCAO").length} sub="fora de uso" />
-        <StatCard rotulo="Verificações do dia" valor={diarios.length ? `${feitosHoje.length} de ${diarios.length}` : "—"} tom={feitosHoje.length < diarios.length ? "warn" : "ok"} sub={diarios.filter((e) => !feitosHoje.includes(e)).map((e) => e.codigo).slice(0, 2).join(", ") || "tudo registrado"} />
+        <StatCard rotulo="Equipamentos ativos" valor={ativos.length} sub={setores.join(", ") || "cadastre os equipamentos"} onClick={() => alternar("ATIVOS")} ativo={filtro === "ATIVOS"} />
+        <StatCard rotulo="Controle vencido" valor={vencidos.length} tom={vencidos.length ? "bad" : "neutral"} sub={vencidos.map((e) => e.codigo).slice(0, 3).join(", ") || "nenhum"} onClick={() => alternar("VENCIDOS")} ativo={filtro === "VENCIDOS"} />
+        <StatCard rotulo="Vence em 30 dias" valor={vence30.length} tom={vence30.length ? "warn" : "neutral"} sub="agendar calibração" onClick={() => alternar("VENCE30")} ativo={filtro === "VENCE30"} />
+        <StatCard rotulo="Em manutenção" valor={equipamentos.filter((e) => e.situacao === "MANUTENCAO").length} sub="fora de uso" onClick={() => alternar("MANUTENCAO")} ativo={filtro === "MANUTENCAO"} />
+        <StatCard rotulo="Verificações do dia" valor={diarios.length ? `${feitosHoje.length} de ${diarios.length}` : "—"} tom={feitosHoje.length < diarios.length ? "warn" : "ok"} sub={diarios.filter((e) => !feitosHoje.includes(e)).map((e) => e.codigo).slice(0, 2).join(", ") || "tudo registrado"} onClick={() => alternar("DIA")} ativo={filtro === "DIA"} />
       </div>
+      {filtro && <div className="flex items-center gap-2 text-sm text-slate-600">Mostrando: <b>{FILTROS[filtro][0]}</b><button type="button" onClick={() => setFiltro(null)} className="text-brand-700 underline">limpar</button></div>}
       <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
         <div className="card overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b p-3">
@@ -78,12 +91,13 @@ export default function Equipamentos({ q, voltar, recarregar, avisar }) {
           </div>
           <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2.5">Código</th><th className="px-3 py-2.5">Equipamento</th><th className="px-3 py-2.5">Controle</th><th className="px-3 py-2.5">Próxima</th><th className="px-3 py-2.5">Situação</th><th className="px-3 py-2.5">Critério</th></tr></thead>
-            <tbody>{lista.map((e) => { const [t, tom] = situacaoEquip(e); return (
+            <tbody>{lista.slice((pagina - 1) * 25, pagina * 25).map((e) => { const [t, tom] = situacaoEquip(e); return (
               <tr key={e.id} onClick={() => setSelId(e.id)} className={`cursor-pointer border-t hover:bg-slate-50 ${selId === e.id ? "bg-brand-50/60" : ""}`}>
                 <td className="whitespace-nowrap px-3 py-2.5 font-semibold">{e.codigo}</td><td className="px-3 py-2.5">{e.nome}<span className="block text-xs text-slate-400">{[e.setor, e.local].filter(Boolean).join(" · ")}</span></td>
                 <td className="px-3 py-2.5">{CONTROLES[e.controle]}</td><td className="whitespace-nowrap px-3 py-2.5">{["DIARIA", "NENHUM"].includes(e.controle) ? "—" : fmtData(e.proxima)}</td><td className="px-3 py-2.5"><Pill tom={tom}>{t}</Pill></td><td className="px-3 py-2.5 text-slate-500">{e.criterio || "—"}</td>
               </tr>); })}</tbody>
           </table>{lista.length === 0 && <p className="p-10 text-center text-sm text-slate-500">{equipamentos.length ? "Nenhum equipamento com esse filtro." : "Nenhum equipamento cadastrado ainda. Comece em “Novo equipamento”."}</p>}</div>
+          <Paginacao total={lista.length} pagina={pagina} setPagina={setPagina} />
         </div>
 
         <div className="space-y-4">

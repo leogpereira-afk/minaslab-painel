@@ -1,13 +1,24 @@
 // Qualidade › Documentos e POPs (ISO/IEC 17025 · 8.3 e 8.4): lista mestra, revisões, vigência, leitura confirmada.
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { BookOpenCheck, Download, FilePlus2, Pencil, RefreshCcw, Search } from "lucide-react";
 import { salvarRegistro, confirmarLeitura } from "../../../services/qualidade.js";
 import { baixarPlanilha } from "../../../lib/planilha.js";
 import { StatCard, Modal } from "../../ui.jsx";
-import { Anexos, Cabecalho, Campo, Pill, SelectPessoa, diasAte, fmtData, hojeYmd, nomeDe, somaMeses } from "./comum.jsx";
+import { Anexos, Cabecalho, Campo, Paginacao, Pill, SelectPessoa, diasAte, fmtData, hojeYmd, nomeDe, somaMeses } from "./comum.jsx";
 
 const TIPOS = [["PG", "Procedimento de gestão"], ["PT", "Procedimento técnico"], ["POP", "Procedimento operacional"], ["IT", "Instrução operacional (IO)"], ["FOR", "Formulário"], ["MQ", "Manual da qualidade"], ["OUTRO", "Outro"]];
 const STATUS = { ELABORACAO: ["Em elaboração", "gray"], EM_APROVACAO: ["Em aprovação", "sky"], VIGENTE: ["Vigente", "ok"], OBSOLETO: ["Obsoleto", "gray"] };
+const POR_PAGINA = 25;
+const temAviso = (d) => /ATENÇÃO|DIVERGÊNCIA/.test(d.observacao || "");
+// Filtros dos cards: clicar mostra só aqueles documentos na lista; clicar de novo limpa.
+const FILTROS = {
+  VIGENTES: ["Documentos vigentes", (d) => d.status === "VIGENTE"],
+  VENCENDO: ["Revisão vencendo (60 dias)", (d) => { const x = diasAte(d.proxima_revisao); return d.status === "VIGENTE" && x != null && x >= 0 && x <= 60; }],
+  VENCIDAS: ["Revisão vencida", (d) => { const x = diasAte(d.proxima_revisao); return d.status === "VIGENTE" && x != null && x < 0; }],
+  APROVACAO: ["Em aprovação", (d) => d.status === "EM_APROVACAO"],
+  LEITURA: ["Leitura pendente", null],
+  AVISO: ["Com aviso para a Qualidade", (d) => d.status !== "OBSOLETO" && temAviso(d)],
+};
 const proxRev = (r) => { const n = parseInt(r, 10); return Number.isFinite(n) ? String(n + 1).padStart(String(r).length || 2, "0") : r; };
 
 function situacao(d) {
@@ -22,6 +33,7 @@ function situacao(d) {
 export default function Documentos({ q, voltar, recarregar, avisar }) {
   const { documentos, revisoes, leituras, contas, arquivos, podeEscrever, eu } = q;
   const [busca, setBusca] = useState(""); const [tipo, setTipo] = useState("TODOS"); const [verObsoletos, setVerObsoletos] = useState(false);
+  const [filtro, setFiltro] = useState(null); const [pagina, setPagina] = useState(1);
   const [selId, setSelId] = useState(null); const [form, setForm] = useState(null); const [salvando, setSalvando] = useState(false);
 
   const pendentes = (d) => (d.leitores || []).filter((u) => !leituras.some((l) => l.documento_id === d.id && l.revisao === d.revisao && l.usuario === u));
@@ -31,8 +43,18 @@ export default function Documentos({ q, voltar, recarregar, avisar }) {
   const leituraPend = vigentes.reduce((n, d) => n + pendentes(d).length, 0);
   const minhasPend = vigentes.filter((d) => pendentes(d).includes(eu));
 
-  const lista = useMemo(() => documentos.filter((d) => (verObsoletos || d.status !== "OBSOLETO") && (tipo === "TODOS" || d.tipo === tipo)
-    && (!busca || `${d.codigo} ${d.titulo} ${d.setor || ""}`.toLowerCase().includes(busca.toLowerCase()))), [documentos, verObsoletos, tipo, busca]);
+  const avisos = documentos.filter(FILTROS.AVISO[1]);
+  const passaFiltro = (d) => !filtro || (filtro === "LEITURA" ? d.status === "VIGENTE" && pendentes(d).length > 0 : FILTROS[filtro][1](d));
+  const base = documentos.filter((d) => (verObsoletos || d.status !== "OBSOLETO") && passaFiltro(d)
+    && (!busca || `${d.codigo} ${d.titulo} ${d.setor || ""} ${d.observacao || ""}`.toLowerCase().includes(busca.toLowerCase())));
+  const lista = base.filter((d) => tipo === "TODOS" || d.tipo === tipo)
+    .sort((x, y) => x.codigo.localeCompare(y.codigo, "pt-BR", { numeric: true }));
+  const porTipo = (t) => (t === "TODOS" ? base.length : base.filter((d) => d.tipo === t).length);
+  const tiposComDoc = ["TODOS", ...TIPOS.map(([v]) => v).filter((t) => documentos.some((d) => d.tipo === t))];
+  const nomeTipo = (t) => ({ TODOS: "Todos", FOR: "Formulários", IT: "IO", MQ: "Manual" }[t] || t);
+  useEffect(() => { setPagina(1); }, [busca, tipo, verObsoletos, filtro]);
+  const paginaLista = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+  const alternar = (f) => setFiltro((atual) => (atual === f ? null : f));
   const sel = documentos.find((d) => d.id === selId) || null;
 
   function novo() { const hoje = hojeYmd(); setForm({ tipo: "POP", revisao: "00", status: "VIGENTE", vigencia_inicio: hoje, proxima_revisao: somaMeses(hoje, 12), leitores: [] }); }
@@ -60,28 +82,31 @@ export default function Documentos({ q, voltar, recarregar, avisar }) {
         {podeEscrever && <button type="button" onClick={novo} className="btn-primary inline-flex items-center gap-1.5"><FilePlus2 className="h-4 w-4" aria-hidden /> Novo documento</button>}
       </>} />
       {minhasPend.length > 0 && <div className="rounded-2xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-700"><b>Você tem {minhasPend.length} documento(s) para ler:</b> {minhasPend.map((d) => <button key={d.id} type="button" onClick={() => setSelId(d.id)} className="ml-2 underline">{d.codigo} rev. {d.revisao}</button>)}</div>}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard rotulo="Documentos vigentes" valor={vigentes.length} sub="PG, POP, IT e formulários" />
-        <StatCard rotulo="Revisão vencendo (60 dias)" valor={vencendo.length} tom={vencendo.length ? "warn" : "neutral"} sub={vencendo[0] ? `${vencendo[0].codigo} em ${diasAte(vencendo[0].proxima_revisao)} dias` : "nenhuma"} />
-        <StatCard rotulo="Revisão vencida" valor={vencidas.length} tom={vencidas.length ? "bad" : "neutral"} sub={vencidas.map((d) => d.codigo).slice(0, 2).join(", ") || "nenhuma"} />
-        <StatCard rotulo="Em aprovação" valor={documentos.filter((d) => d.status === "EM_APROVACAO").length} sub="aguardando quem aprova" />
-        <StatCard rotulo="Leitura pendente" valor={leituraPend} tom={leituraPend ? "warn" : "neutral"} sub="pessoas sem confirmar leitura" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard rotulo="Documentos vigentes" valor={vigentes.length} sub="PG, PT, POP, IO e formulários" onClick={() => alternar("VIGENTES")} ativo={filtro === "VIGENTES"} />
+        <StatCard rotulo="Revisão vencendo (60 dias)" valor={vencendo.length} tom={vencendo.length ? "warn" : "neutral"} sub={vencendo[0] ? `${vencendo[0].codigo} em ${diasAte(vencendo[0].proxima_revisao)} dias` : "nenhuma"} onClick={() => alternar("VENCENDO")} ativo={filtro === "VENCENDO"} />
+        <StatCard rotulo="Revisão vencida" valor={vencidas.length} tom={vencidas.length ? "bad" : "neutral"} sub={vencidas.map((d) => d.codigo).slice(0, 2).join(", ") || "nenhuma"} onClick={() => alternar("VENCIDAS")} ativo={filtro === "VENCIDAS"} />
+        <StatCard rotulo="Em aprovação" valor={documentos.filter((d) => d.status === "EM_APROVACAO").length} sub="aguardando quem aprova" onClick={() => alternar("APROVACAO")} ativo={filtro === "APROVACAO"} />
+        <StatCard rotulo="Leitura pendente" valor={leituraPend} tom={leituraPend ? "warn" : "neutral"} sub="pessoas sem confirmar leitura" onClick={() => alternar("LEITURA")} ativo={filtro === "LEITURA"} />
+        <StatCard rotulo="Com aviso" valor={avisos.length} tom={avisos.length ? "warn" : "neutral"} sub="código repetido, revisão que não bate" onClick={() => alternar("AVISO")} ativo={filtro === "AVISO"} />
       </div>
+      {filtro && <div className="flex items-center gap-2 text-sm text-slate-600">Mostrando: <b>{FILTROS[filtro][0]}</b><button type="button" onClick={() => setFiltro(null)} className="text-brand-700 underline">limpar</button></div>}
       <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
         <div className="card overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b p-3">
             <div className="relative w-full max-w-xs"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden /><input className="input pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar código ou título…" /></div>
-            {["TODOS", "PG", "POP", "IT", "FOR"].map((t) => <button key={t} type="button" onClick={() => setTipo(t)} className={`rounded-full border px-3 py-1 text-xs ${tipo === t ? "border-brand-300 bg-brand-50 font-semibold text-brand-700" : "text-slate-600"}`}>{t === "TODOS" ? "Todos" : t === "FOR" ? "Formulários" : t}</button>)}
+            {tiposComDoc.map((t) => <button key={t} type="button" onClick={() => setTipo(t)} className={`rounded-full border px-3 py-1 text-xs ${tipo === t ? "border-brand-300 bg-brand-50 font-semibold text-brand-700" : "text-slate-600"}`}>{nomeTipo(t)} <span className="text-slate-400">{porTipo(t)}</span></button>)}
             <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={verObsoletos} onChange={(e) => setVerObsoletos(e.target.checked)} /> Obsoletos</label>
           </div>
           <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2.5">Código</th><th className="px-3 py-2.5">Título</th><th className="px-3 py-2.5">Rev.</th><th className="px-3 py-2.5">Vigência</th><th className="px-3 py-2.5">Próx. revisão</th><th className="px-3 py-2.5">Situação</th></tr></thead>
-            <tbody>{lista.map((d) => { const [txt, tom] = situacao(d); return (
+            <tbody>{paginaLista.map((d) => { const [txt, tom] = situacao(d); return (
               <tr key={d.id} onClick={() => setSelId(d.id)} className={`cursor-pointer border-t hover:bg-slate-50 ${selId === d.id ? "bg-brand-50/60" : ""}`}>
                 <td className="whitespace-nowrap px-3 py-2.5 font-semibold">{d.codigo}</td><td className="px-3 py-2.5">{d.titulo}<span className="block text-xs text-slate-400">{d.tipo}{d.setor ? ` · ${d.setor}` : ""}</span></td>
-                <td className="px-3 py-2.5">{d.revisao}</td><td className="whitespace-nowrap px-3 py-2.5">{fmtData(d.vigencia_inicio)}</td><td className="whitespace-nowrap px-3 py-2.5">{fmtData(d.proxima_revisao)}</td><td className="px-3 py-2.5"><Pill tom={tom}>{txt}</Pill></td>
+                <td className="px-3 py-2.5">{d.revisao}</td><td className="whitespace-nowrap px-3 py-2.5">{fmtData(d.vigencia_inicio)}</td><td className="whitespace-nowrap px-3 py-2.5">{fmtData(d.proxima_revisao)}</td><td className="px-3 py-2.5"><Pill tom={tom}>{txt}</Pill>{temAviso(d) && d.status !== "OBSOLETO" && <span className="ml-1"><Pill tom="warn">aviso</Pill></span>}</td>
               </tr>); })}</tbody>
           </table>{lista.length === 0 && <p className="p-10 text-center text-sm text-slate-500">{documentos.length ? "Nenhum documento com esse filtro." : "Nenhum documento cadastrado ainda. Comece pela lista mestra: “Novo documento”."}</p>}</div>
+          <Paginacao total={lista.length} pagina={pagina} setPagina={setPagina} porPagina={POR_PAGINA} />
         </div>
 
         <div className="space-y-4">
