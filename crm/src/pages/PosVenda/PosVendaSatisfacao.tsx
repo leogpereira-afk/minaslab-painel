@@ -13,10 +13,11 @@ import { supabase } from '../../services/supabase'
 
 type Client = { id: string; razao_social: string | null; nome_fantasia: string | null }
 type Os = { id: string; numero_os: string | null; cliente_id: string | null; data_recepcao: string | null }
+type Contrato = { id: string; numero_contrato: string | null; cliente_id: string | null; status: string | null }
 type Contato = { id: string; cliente_id: string; nome: string | null; email: string | null; whatsapp_e164: string | null; telefone_e164: string | null }
 type Person = { id: string; nome: string | null }
-type Envio = { id: string; token: string; cliente_id: string | null; ordem_servico_id: string | null; contato_id: string | null; empresa_nome: string | null; canal: string; destino: string | null; enviado_por: string | null; enviado_em: string; expira_em: string; respondido_em: string | null; cancelado_em: string | null }
-type Resposta = { id: string; envio_id: string | null; cliente_id: string | null; ordem_servico_id: string | null; empresa_nome: string | null; servicos: string[]; notas: Record<string, number>; nota_coleta: number | null; nps: number; gostou: string | null; mudaria: string | null; melhorar: string | null; explicacao_nps: string | null; autoriza_anonimo: boolean; insatisfeito: boolean; melhoria_status: string; origem: string; respondido_em: string }
+type Envio = { id: string; token: string; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; contato_id: string | null; empresa_nome: string | null; canal: string; destino: string | null; enviado_por: string | null; enviado_em: string; expira_em: string; respondido_em: string | null; cancelado_em: string | null }
+type Resposta = { id: string; envio_id: string | null; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; empresa_nome: string | null; servicos: string[]; notas: Record<string, number>; nota_coleta: number | null; nps: number; gostou: string | null; mudaria: string | null; melhorar: string | null; explicacao_nps: string | null; autoriza_anonimo: boolean; insatisfeito: boolean; melhoria_status: string; origem: string; respondido_em: string }
 type Tratativa = { id: string; resposta_id: string; cliente_id: string | null; motivo: string; prazo: string; status: string; responsavel_id: string | null; tarefa_id: string | null; causa: string | null; acao: string | null; retorno_cliente: string | null; concluida_em: string | null }
 type QueryResult<T> = { data: T[] | null; error: { message: string } | null }
 
@@ -48,24 +49,25 @@ export function PosVendaSatisfacao() {
   const [tab, setTab] = useState<'geral' | 'respostas' | 'tratativas' | 'envios'>('geral')
   const [loading, setLoading] = useState(true), [error, setError] = useState('')
   const [envios, setEnvios] = useState<Envio[]>([]), [respostas, setRespostas] = useState<Resposta[]>([]), [tratativas, setTratativas] = useState<Tratativa[]>([])
-  const [clients, setClients] = useState<Client[]>([]), [oss, setOss] = useState<Os[]>([]), [people, setPeople] = useState<Person[]>([])
+  const [clients, setClients] = useState<Client[]>([]), [oss, setOss] = useState<Os[]>([]), [contratos, setContratos] = useState<Contrato[]>([]), [people, setPeople] = useState<Person[]>([])
   const [period, setPeriod] = useState<PeriodFilter>(ALL_PERIOD)
   const [ver, setVer] = useState<Resposta | null>(null), [trat, setTrat] = useState<Tratativa | null>(null)
   const [enviarOpen, setEnviarOpen] = useState(false)
 
   async function load() {
     setLoading(true)
-    const [e, r, t, c, o, p] = await Promise.all([
+    const [e, r, t, c, o, p, k] = await Promise.all([
       fetchAll<Envio>((f, to) => supabase.from('satisfacao_envios').select('*').order('enviado_em', { ascending: false }).range(f, to)),
       fetchAll<Resposta>((f, to) => supabase.from('satisfacao_respostas').select('*').is('deleted_at', null).order('respondido_em', { ascending: false }).range(f, to)),
       fetchAll<Tratativa>((f, to) => supabase.from('satisfacao_tratativas').select('*').order('prazo').range(f, to)),
       fetchAll<Client>((f, to) => supabase.from('clientes').select('id,razao_social,nome_fantasia').is('deleted_at', null).order('razao_social').range(f, to)),
       fetchAll<Os>((f, to) => supabase.from('ordens_servico').select('id,numero_os,cliente_id,data_recepcao').is('deleted_at', null).order('data_recepcao', { ascending: false }).range(f, to)),
       fetchAll<Person>((f, to) => supabase.from('profiles').select('id,nome').order('nome').range(f, to)),
+      fetchAll<Contrato>((f, to) => supabase.from('contratos').select('id,numero_contrato,cliente_id,status').is('deleted_at', null).order('numero_contrato').range(f, to)),
     ])
-    const err = [e, r, t, c, o, p].find(x => x.error)?.error
+    const err = [e, r, t, c, o, p, k].find(x => x.error)?.error
     if (err) setError(err.message); else setError('')
-    setEnvios(e.data); setRespostas(r.data); setTratativas(t.data.filter(x => r.data.some(y => y.id === x.resposta_id))); setClients(c.data); setOss(o.data); setPeople(p.data)
+    setEnvios(e.data); setRespostas(r.data); setTratativas(t.data.filter(x => r.data.some(y => y.id === x.resposta_id))); setClients(c.data); setOss(o.data); setContratos(k.data); setPeople(p.data)
     setLoading(false)
   }
   useEffect(() => { void load() }, [])
@@ -73,6 +75,8 @@ export function PosVendaSatisfacao() {
 
   const clientMap = useMemo(() => Object.fromEntries(clients.map(c => [c.id, c])), [clients])
   const osMap = useMemo(() => Object.fromEntries(oss.map(o => [o.id, o])), [oss])
+  const ctMap = useMemo(() => Object.fromEntries(contratos.map(k => [k.id, k])), [contratos])
+  const vinculo = (x: { contrato_id: string | null; ordem_servico_id: string | null }) => [x.contrato_id && ctMap[x.contrato_id]?.numero_contrato ? `Contrato ${ctMap[x.contrato_id].numero_contrato}` : '', x.ordem_servico_id && osMap[x.ordem_servico_id]?.numero_os || ''].filter(Boolean).join(' · ') || 'Sem vínculo'
   const personMap = useMemo(() => Object.fromEntries(people.map(p => [p.id, p])), [people])
   const years = useMemo(() => yearsFrom([...respostas.map(r => r.respondido_em), ...envios.map(e => e.enviado_em)]), [respostas, envios])
   const rPer = useMemo(() => respostas.filter(r => inPeriod(r.respondido_em, period)), [respostas, period])
@@ -134,7 +138,7 @@ export function PosVendaSatisfacao() {
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Cliente / OS</th><th className="px-4 py-3">NPS</th><th className="px-4 py-3">Geral</th><th className="px-4 py-3">Sugestão de melhoria</th><th className="px-4 py-3">Status da melhoria</th></tr></thead>
         <tbody>{rPer.map(r => <tr key={r.id} className="border-t align-top hover:bg-slate-50">
           <td className="whitespace-nowrap px-4 py-3">{fmtData(r.respondido_em)}{r.origem !== 'LINK' && <span className="block text-xs text-slate-400">{r.origem === 'GOOGLE_FORMS' ? 'Google Forms' : 'Manual'}</span>}</td>
-          <td className="px-4 py-3"><button onClick={() => setVer(r)} className="text-left font-semibold text-teal-800 hover:underline">{nome(r)}</button><span className="block text-xs text-slate-500">{osMap[r.ordem_servico_id || '']?.numero_os || '—'}</span></td>
+          <td className="px-4 py-3"><button onClick={() => setVer(r)} className="text-left font-semibold text-teal-800 hover:underline">{nome(r)}</button><span className="block text-xs text-slate-500">{vinculo(r)}</span></td>
           <td className="px-4 py-3"><Nps n={r.nps} />{r.insatisfeito && <span className="mt-1 block text-xs font-semibold text-red-700">insatisfação</span>}</td>
           <td className="px-4 py-3">{r.notas?.satisfacao_geral ?? '—'}</td>
           <td className="max-w-md px-4 py-3 text-slate-600">{[r.mudaria, r.melhorar].filter(Boolean).join(' · ') || '—'}</td>
@@ -156,7 +160,7 @@ export function PosVendaSatisfacao() {
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Enviado em</th><th className="px-4 py-3">Cliente / OS</th><th className="px-4 py-3">Canal</th><th className="px-4 py-3">Por</th><th className="px-4 py-3">Situação</th><th className="px-4 py-3" /></tr></thead>
         <tbody>{ePer.map(e => { const sit = e.respondido_em ? 'Respondida' : new Date(e.expira_em) < new Date() ? 'Expirada' : 'Aguardando'; return <tr key={e.id} className="border-t">
           <td className="whitespace-nowrap px-4 py-3">{fmtData(e.enviado_em)}</td>
-          <td className="px-4 py-3"><b>{nome(e)}</b><span className="block text-xs text-slate-500">{osMap[e.ordem_servico_id || '']?.numero_os || '—'}</span></td>
+          <td className="px-4 py-3"><b>{nome(e)}</b><span className="block text-xs text-slate-500">{vinculo(e)}</span></td>
           <td className="px-4 py-3">{e.canal === 'WHATSAPP' ? 'WhatsApp' : e.canal === 'EMAIL' ? 'E-mail' : 'Link'}{e.destino && <span className="block text-xs text-slate-500">{e.destino}</span>}</td>
           <td className="px-4 py-3">{personMap[e.enviado_por || '']?.nome || '—'}</td>
           <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sit === 'Respondida' ? 'bg-emerald-50 text-emerald-700' : sit === 'Expirada' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>{sit}</span>{e.respondido_em && <span className="block text-xs text-slate-500">{fmtData(e.respondido_em)}</span>}</td>
@@ -164,27 +168,28 @@ export function PosVendaSatisfacao() {
         </tr> })}</tbody></table>{ePer.length === 0 && <div className="p-10 text-center text-slate-500">Nenhum envio no período.</div>}</div></section>}
     </>}
 
-    {enviarOpen && <EnviarModal clients={clients} oss={oss} profileId={profile?.id ?? null} onClose={() => setEnviarOpen(false)} onSaved={load} />}
-    {ver && <Modal open title={`Resposta — ${nome(ver)}`} onClose={() => setVer(null)}><RespostaDetalhe r={ver} os={osMap[ver.ordem_servico_id || '']?.numero_os} /></Modal>}
+    {enviarOpen && <EnviarModal clients={clients} oss={oss} contratos={contratos} profileId={profile?.id ?? null} onClose={() => setEnviarOpen(false)} onSaved={load} />}
+    {ver && <Modal open title={`Resposta — ${nome(ver)}`} onClose={() => setVer(null)}><RespostaDetalhe r={ver} os={vinculo(ver) === 'Sem vínculo' ? null : vinculo(ver)} /></Modal>}
     {trat && <TratativaModal t={trat} resposta={respostas.find(r => r.id === trat.resposta_id)} canWrite={canWrite} profileId={profile?.id ?? null} onClose={() => setTrat(null)} onSaved={async () => { setTrat(null); await load() }} />}
   </PageShell>
 }
 
-function EnviarModal({ clients, oss, profileId, onClose, onSaved }: { clients: Client[]; oss: Os[]; profileId: string | null; onClose: () => void; onSaved: () => Promise<void> }) {
-  const [busca, setBusca] = useState(''), [clienteId, setClienteId] = useState(''), [osId, setOsId] = useState(''), [contatoId, setContatoId] = useState('')
+function EnviarModal({ clients, oss, contratos, profileId, onClose, onSaved }: { clients: Client[]; oss: Os[]; contratos: Contrato[]; profileId: string | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [busca, setBusca] = useState(''), [clienteId, setClienteId] = useState(''), [osId, setOsId] = useState(''), [contratoId, setContratoId] = useState(''), [contatoId, setContatoId] = useState('')
   const [contatos, setContatos] = useState<Contato[]>([]), [link, setLink] = useState(''), [envioId, setEnvioId] = useState(''), [erro, setErro] = useState(''), [salvando, setSalvando] = useState(false), [copiado, setCopiado] = useState(false)
   const label = (c: Client) => `${clientName(c)}${c.razao_social && c.nome_fantasia && c.razao_social !== c.nome_fantasia ? ` — ${c.razao_social}` : ''}`
   const osCliente = oss.filter(o => o.cliente_id === clienteId).slice(0, 40)
+  const ctCliente = contratos.filter(k => k.cliente_id === clienteId)
   const contato = contatos.find(c => c.id === contatoId)
-  useEffect(() => { setOsId(''); setContatoId(''); setLink(''); setContatos([]); if (!clienteId) return; void supabase.from('contatos').select('id,cliente_id,nome,email,whatsapp_e164,telefone_e164').eq('cliente_id', clienteId).is('deleted_at', null).order('nome').then(({ data }) => setContatos((data ?? []) as Contato[])) }, [clienteId])
-  useEffect(() => { setLink('') }, [osId, contatoId])
+  useEffect(() => { setOsId(''); setContratoId(''); setContatoId(''); setLink(''); setContatos([]); if (!clienteId) return; void supabase.from('contatos').select('id,cliente_id,nome,email,whatsapp_e164,telefone_e164').eq('cliente_id', clienteId).is('deleted_at', null).order('nome').then(({ data }) => setContatos((data ?? []) as Contato[])) }, [clienteId])
+  useEffect(() => { setLink('') }, [osId, contratoId, contatoId])
   function escolher(v: string) { setBusca(v); const c = clients.find(x => label(x).toLowerCase() === v.trim().toLowerCase()); setClienteId(c?.id || '') }
   async function gerar(canal: 'LINK' | 'WHATSAPP' | 'EMAIL') {
     setErro('')
     if (!clienteId) { setErro('Escolha o cliente.'); return null }
     if (link && envioId) { await supabase.from('satisfacao_envios').update({ canal, destino: canal === 'WHATSAPP' ? contato?.whatsapp_e164 || contato?.telefone_e164 : canal === 'EMAIL' ? contato?.email : null }).eq('id', envioId); return link }
     setSalvando(true)
-    const { data, error } = await supabase.from('satisfacao_envios').insert({ cliente_id: clienteId, ordem_servico_id: osId || null, contato_id: contatoId || null, empresa_nome: clientName(clients.find(c => c.id === clienteId)), canal, destino: canal === 'WHATSAPP' ? contato?.whatsapp_e164 || contato?.telefone_e164 || null : canal === 'EMAIL' ? contato?.email || null : null, enviado_por: profileId }).select('id,token').single()
+    const { data, error } = await supabase.from('satisfacao_envios').insert({ cliente_id: clienteId, contrato_id: contratoId || null, ordem_servico_id: osId || null, contato_id: contatoId || null, empresa_nome: clientName(clients.find(c => c.id === clienteId)), canal, destino: canal === 'WHATSAPP' ? contato?.whatsapp_e164 || contato?.telefone_e164 || null : canal === 'EMAIL' ? contato?.email || null : null, enviado_por: profileId }).select('id,token').single()
     setSalvando(false)
     if (error || !data) { setErro(error?.message || 'Não foi possível gerar o link.'); return null }
     const l = linkDe(String(data.token)); setLink(l); setEnvioId(String(data.id)); void onSaved(); return l
@@ -196,8 +201,9 @@ function EnviarModal({ clients, oss, profileId, onClose, onSaved }: { clients: C
     <div className="grid gap-4">
       <label><span className="mb-1 block text-sm font-medium">Cliente *</span><input list="pesq-clientes" value={busca} onChange={e => escolher(e.target.value)} placeholder="Digite para buscar..." className="w-full rounded-xl border px-3 py-2.5" /><datalist id="pesq-clientes">{clients.map(c => <option key={c.id} value={label(c)} />)}</datalist></label>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label><span className="mb-1 block text-sm font-medium">Ordem de serviço</span><select value={osId} onChange={e => setOsId(e.target.value)} disabled={!clienteId} className="w-full rounded-xl border px-3 py-2.5"><option value="">Sem OS (geral)</option>{osCliente.map(o => <option key={o.id} value={o.id}>{o.numero_os} · {fmtData(o.data_recepcao)}</option>)}</select></label>
-        <label><span className="mb-1 block text-sm font-medium">Contato</span><select value={contatoId} onChange={e => setContatoId(e.target.value)} disabled={!clienteId} className="w-full rounded-xl border px-3 py-2.5"><option value="">—</option>{contatos.map(c => <option key={c.id} value={c.id}>{c.nome || c.email || c.whatsapp_e164}</option>)}</select></label>
+        <label><span className="mb-1 block text-sm font-medium">Contrato <span className="font-normal text-slate-400">(opcional)</span></span><select value={contratoId} onChange={e => setContratoId(e.target.value)} disabled={!clienteId} className="w-full rounded-xl border px-3 py-2.5"><option value="">Sem contrato</option>{ctCliente.map(k => <option key={k.id} value={k.id}>{k.numero_contrato || 'Sem número'}{k.status ? ` · ${k.status}` : ''}</option>)}</select></label>
+        <label><span className="mb-1 block text-sm font-medium">Ordem de serviço <span className="font-normal text-slate-400">(opcional)</span></span><select value={osId} onChange={e => setOsId(e.target.value)} disabled={!clienteId} className="w-full rounded-xl border px-3 py-2.5"><option value="">Sem OS</option>{osCliente.map(o => <option key={o.id} value={o.id}>{o.numero_os} · {fmtData(o.data_recepcao)}</option>)}</select></label>
+        <label className="sm:col-span-2"><span className="mb-1 block text-sm font-medium">Contato <span className="font-normal text-slate-400">(para WhatsApp/e-mail)</span></span><select value={contatoId} onChange={e => setContatoId(e.target.value)} disabled={!clienteId} className="w-full rounded-xl border px-3 py-2.5"><option value="">—</option>{contatos.map(c => <option key={c.id} value={c.id}>{c.nome || c.email || c.whatsapp_e164}</option>)}</select></label>
       </div>
       {erro && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
       <div className="grid gap-2 sm:grid-cols-3">
@@ -213,7 +219,7 @@ function EnviarModal({ clients, oss, profileId, onClose, onSaved }: { clients: C
 
 function RespostaDetalhe({ r, os }: { r: Resposta; os?: string | null }) {
   return <div className="grid gap-4 text-sm">
-    <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600"><span>Respondida em <b>{fmtData(r.respondido_em)}</b></span>{os && <span>OS <b>{os}</b></span>}<span>Serviços: <b>{r.servicos?.join(', ') || '—'}</b></span></div>
+    <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600"><span>Respondida em <b>{fmtData(r.respondido_em)}</b></span>{os && <span>Vínculo: <b>{os}</b></span>}<span>Serviços: <b>{r.servicos?.join(', ') || '—'}</b></span></div>
     <div className="grid gap-1.5 rounded-2xl border p-3">{ITENS.map(([k, l]) => <div key={k} className="flex justify-between gap-4"><span>{l}</span><b className={(r.notas?.[k] ?? 5) <= 2 ? 'text-red-700' : ''}>{r.notas?.[k] ?? '—'}</b></div>)}<div className="flex justify-between gap-4"><span>Processo de coleta/amostragem</span><b>{r.nota_coleta ?? 'N/A'}</b></div></div>
     <div className="flex items-center gap-2">Recomendação: <Nps n={r.nps} /></div>
     {[['O que mais gostou', r.gostou], ['O que mudaria', r.mudaria], ['O que podemos melhorar', r.melhorar], ['Explicação da nota 0–6', r.explicacao_nps]].map(([t, v]) => v ? <div key={t as string}><span className="text-xs font-semibold uppercase text-slate-500">{t}</span><p className="mt-0.5 whitespace-pre-line">{v}</p></div> : null)}

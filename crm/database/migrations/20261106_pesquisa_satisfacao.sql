@@ -180,3 +180,9 @@ revoke execute on function public.satisfacao_pesquisa_abrir(text) from public;
 revoke execute on function public.satisfacao_pesquisa_responder(text, jsonb) from public;
 grant execute on function public.satisfacao_pesquisa_abrir(text) to anon, authenticated;
 grant execute on function public.satisfacao_pesquisa_responder(text, jsonb) to anon, authenticated;
+
+-- Vínculo opcional com contrato (além da OS, também opcional).
+alter table public.satisfacao_envios add column if not exists contrato_id uuid references public.contratos(id) on delete set null;
+alter table public.satisfacao_respostas add column if not exists contrato_id uuid references public.contratos(id) on delete set null;
+-- satisfacao_pesquisa_abrir passa a devolver também o número do contrato; a resposta herda o contrato do envio
+-- (trigger trg_satisfacao_resposta_contrato). Ver migração aplicada "pesquisa_satisfacao_contrato_opcional".
