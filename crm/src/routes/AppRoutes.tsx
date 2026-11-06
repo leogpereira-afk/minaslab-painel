@@ -39,6 +39,7 @@ import { PosVendaVisaoGeral } from '../pages/PosVenda/PosVendaVisaoGeral'
 import { PosVendaAcompanhamentos } from '../pages/PosVenda/PosVendaAcompanhamentos'
 import { PosVendaNps } from '../pages/PosVenda/PosVendaNps'
 import { PosVendaHistorico } from '../pages/PosVenda/PosVendaHistorico'
+import { PosVendaSatisfacao } from '../pages/PosVenda/PosVendaSatisfacao'
 import { ImportacaoDetalhe } from '../pages/ImportacaoDetalhe/ImportacaoDetalhe'
 import { LeadDetalhe } from '../pages/LeadDetalhe/LeadDetalhe'
 import { Inteligencia } from '../pages/Inteligencia/Inteligencia'
@@ -63,7 +64,7 @@ export function AppRoutes(){return <Routes>
     <Route path="/" element={<HomeRedirect/>}/><Route path="/meu-perfil" element={<MeuPerfil/>}/>
     <Route element={<PermissionRoute anyOf={['crm.read','operational.read']}/>}>
       <Route path="/dashboard" element={<Dashboard/>}/><Route path="/provedores" element={<AcompanhamentoProvedores/>}/><Route path="/catalogo" element={<Catalogo/>}/><Route path="/relatorios" element={<Relatorios/>}/>
-      <Route path="/pos-venda/visao-geral" element={<PosVendaVisaoGeral/>}/><Route path="/pos-venda/clientes-recorrentes" element={<PosVenda/>}/><Route path="/pos-venda/acompanhamentos" element={<PosVendaAcompanhamentos/>}/><Route path="/pos-venda/nps" element={<PosVendaNps/>}/><Route path="/pos-venda/historico" element={<PosVendaHistorico/>}/>
+      <Route path="/pos-venda/visao-geral" element={<PosVendaVisaoGeral/>}/><Route path="/pos-venda/clientes-recorrentes" element={<PosVenda/>}/><Route path="/pos-venda/acompanhamentos" element={<PosVendaAcompanhamentos/>}/><Route path="/pos-venda/nps" element={<PosVendaNps/>}/><Route path="/pos-venda/satisfacao" element={<PosVendaSatisfacao/>}/><Route path="/pos-venda/historico" element={<PosVendaHistorico/>}/>
     </Route>
     <Route element={<PermissionRoute anyOf={['crm.read']}/>}>
       <Route path="/licitacoes" element={<Licitacoes/>}/>
