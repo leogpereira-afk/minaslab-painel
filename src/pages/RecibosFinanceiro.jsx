@@ -11,7 +11,7 @@ import {
 import { COLECAO_COMISSOES, pagamentosDeComissao, propostasDoPagamento, mesDaFolha, aplicarComissao, recibosPorComissao } from "../lib/recibosComissao.js";
 
 const CHAVE_RASCUNHO = "financeiro.recibos.rascunho.v1";
-const COLECAO_HISTORICO = "fin_recibos"; // prefixo fin_: só a direção lê e grava (regra do ml-sync)
+const COLECAO_HISTORICO = "fin_recibos"; // prefixo fin_: direção, ou quem tem "financas/recibos" em Acessos (gravar: papel equipe) — regra do ml-sync
 const hoje = () => new Date().toISOString().slice(0, 10);
 
 const MODELOS = [

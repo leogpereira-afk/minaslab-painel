@@ -9,7 +9,7 @@ export const GRUPOS_PERMISSOES = [
   { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["lims", "MinasLab LIMS"]] },
   { titulo: "Negócios", paginas: [["licitacoes", "Licitações"], ["marketing", "Marketing"], ["crm", "CRM"], ["gestao", "Gestão"], ["curva-abc", "Curva ABC"]] },
   { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["folha-pagamento", "Folha de Pagamento"], ["ponto", "Ponto"], ["acessos", "Acessos"]] },
-  { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
+  { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/recibos", "Recibos de comissão"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
 
 // Menus que todo mundo do painel já tem (não dependem de liberação).
@@ -35,6 +35,11 @@ export const SUBPAGINAS_PERMISSOES = {
   "financas/configuracoes": [["categorias", "Categorias"], ["contas", "Contas bancárias"], ["centros", "Centros de custo"], ["formas", "Formas de pagamento"], ["plano-contas", "Plano de contas"], ["omie", "Integração Omie"]],
 };
 
+// Páginas cujas abas se liberam uma a uma, à parte da página: marcar a página NÃO
+// libera as abas (o servidor exige a chave exata de cada uma). Ex.: Notas não dá
+// Emitir/Cancelar NFS-e; Configurações abre o hub, cada seção se libera à parte.
+export const SUBPAGINAS_INDEPENDENTES = new Set(["financas/notas", "financas/configuracoes"]);
+
 // Liberações suportadas de ponta a ponta pelo servidor. Nunca marque uma página
 // como concedida se suas chamadas de dados ainda exigem papel de direção.
 export const PERMISSOES_DISPONIVEIS = new Set([
@@ -45,6 +50,14 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
   "manutencoes", "laboratorio", "laboratorio/inicio", "laboratorio/entradas", "laboratorio/qualidade", "laboratorio/microbiologia", "laboratorio/fisicoquimico",
   "financas/servicos-gerados",
+  // Finanças por página (Ana, 06/11/2026). As funções do financeiro conferem ao vivo
+  // (supabase/functions/_shared/acesso-financeiro.ts); "leitura" só consulta.
+  "financas/visao-geral", "financas/receber", "financas/pagar", "financas/bancos", "financas/conciliacao",
+  "financas/notas", "financas/notas/emitir", "financas/notas/cancelar", "financas/notas/importar-historico",
+  "financas/recibos", "financas/aplicacoes", "financas/socios", "financas/conferencia", "financas/fluxo-caixa",
+  "financas/relatorios", "financas/clientes", "financas/configuracoes",
+  "financas/configuracoes/categorias", "financas/configuracoes/contas", "financas/configuracoes/centros",
+  "financas/configuracoes/formas", "financas/configuracoes/plano-contas", "financas/configuracoes/omie",
   // MinasLab LIMS inteiro (o servidor ml-lims confere esta liberação ao vivo).
   "lims",
   // RH (todas as abas, menos a Folha de Pagamento), a Folha de Pagamento (aba do RH,

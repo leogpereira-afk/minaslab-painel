@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
 
 const U=Deno.env.get("SUPABASE_URL")!;
 const K=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??Deno.env.get("SB_SECRET_KEY")!;
@@ -11,11 +12,12 @@ const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...c
 const txt=(v:any)=>String(v??"").trim();
 const num=(v:any)=>Number.isFinite(Number(v))?Number(v):0;
 function b64u(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
-async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!J)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",enc.encode(J),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000))||txt(x.papel)!=="direcao")return null;return x}catch{return null}}
+async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!J)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",enc.encode(J),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(dec.decode(b64u(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000)))return null;return x}catch{return null}}
 
 Deno.serve(async req=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   const user=await auth(req);if(!user)return json({erro:"Sessão inválida ou sem permissão."},401);
+  {/* Conciliação ou Bancos (tela Acessos); grava. */const acesso=await acessoFinanceiro(sb,user,["financas/conciliacao","financas/bancos"],true);if(!acesso.ok)return json({erro:acesso.erro,...(acesso.status===401?{semSessao:true}:{semPermissao:true})},acesso.status);}
   try{
     const b=await req.json();
     const action=txt(b.action);

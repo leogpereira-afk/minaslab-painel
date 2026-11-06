@@ -1,6 +1,7 @@
 import { FINANCEIRO } from '../lib/api.js';
 import { aoMudarSessao, comCracha, getSessao, getToken, mensagemDoStatus } from '../lib/sessao.js';
 import { sincronizarCopia } from '../lib/financeiroCache.js';
+import { usaListasFinanceiro } from '../lib/rotasFinanceiro.js';
 
 const BANCO = 'minaslab-financeiro-v1';
 const REVISAO = 'ml.financeiro.revisao';
@@ -24,7 +25,11 @@ function guardar(chave, valor, modo = 'readwrite') {
 aoMudarSessao(() => { if (!getToken()) guardar(null).catch(() => {}); });
 async function lerCopiaFinanceira({ atualizar = false } = {}) {
   const sessao = getSessao(), token = getToken();
-  if (!sessao || sessao.papel !== 'direcao' || !token) throw new Error('Entre novamente para acessar o financeiro.');
+  // Direção, ou quem tem página do financeiro que lista títulos (tela Acessos). O servidor confere
+  // cada lista; a lista que a pessoa não pode ver chega vazia (abaixo), sem derrubar a cópia.
+  const direcao = sessao?.papel === 'direcao';
+  if (!sessao || !token) throw new Error('Entre novamente para acessar o financeiro.');
+  if (!direcao && !usaListasFinanceiro(sessao.paginas_consulta)) throw new Error('Esta página do financeiro não está liberada para você. Peça à direção (tela Acessos).');
   let validade = 0;
   try { validade = Number(JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).exp) * 1000; } catch { /* invalid token */ }
   if (!validade || validade <= Date.now()) throw new Error("Sua sessão expirou. Entre novamente para acessar o financeiro.");
@@ -42,7 +47,11 @@ async function lerCopiaFinanceira({ atualizar = false } = {}) {
     const nova = await sincronizarCopia(anterior, async (action, corpo) => {
       const resp = await comCracha(FINANCEIRO, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...corpo }) });
       const body = await resp.json();
-      if (!resp.ok) { const erro = new Error(body?.erro || mensagemDoStatus(resp.status)); erro.status = resp.status; throw erro; }
+      if (!resp.ok) {
+        // Fora da direção, lista não liberada (403) vira lista vazia; 401 e falhas seguem como erro.
+        if (!direcao && resp.status === 403 && action !== 'opcoes' && body?.semPermissao) return { itens: [], cobertura: { completa: true, registros: 0 } };
+        const erro = new Error(body?.erro || mensagemDoStatus(resp.status)); erro.status = resp.status; throw erro;
+      }
       return body;
     });
     validarSessao();

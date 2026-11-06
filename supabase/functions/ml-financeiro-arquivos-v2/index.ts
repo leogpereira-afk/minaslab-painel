@@ -14,9 +14,11 @@ const br=(v:any)=>{const s=t(v).slice(0,10),p=s.split("-");return p.length===3?`
 const moeda=(v:any)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 function emailFrom(){const m=FROM_SECRET.match(/<([^>]+)>/);const email=(m?.[1]||FROM_SECRET).trim();return `Financeiro <${email}>`}
 function replyTo(){const m=FROM_SECRET.match(/<([^>]+)>/);return (m?.[1]||FROM_SECRET).trim()}
-async function authOk(auth:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"emailEstado"})});return r.status}
+// A conferência do crachá e da página (tela Acessos) fica só na função antiga: a v2 pergunta a ela,
+// pela ação "porta", se quem chamou pode fazer a ação em "para". Uma única regra para as duas.
+async function authOk(auth:string,para:string){const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json"},body:JSON.stringify({action:"porta",para})});const j=await r.json().catch(()=>null);return {status:r.status,j}}
 // Só crachá recusado desloga (401). Um tropeço do serviço (503, 546, 429) não é sessão vencida.
-async function porta(auth:string){const st=await authOk(auth);if(st===401)return out({erro:"Entre no sistema.",semSessao:true},401);if(st===403)return out({erro:"Sem permissão para os arquivos do financeiro."},403);if(st<200||st>=300)return out({erro:"O serviço de arquivos não respondeu. Tente de novo em instantes."},503);return null}
+async function porta(auth:string,para:string,quem?:{usuario:string,direcao:boolean}){const {status:st,j}=await authOk(auth,para);if(st===401)return out({erro:t(j?.erro)||"Entre no sistema.",semSessao:true},401);if(st===403)return out({erro:t(j?.erro)||"Sem permissão para os arquivos do financeiro.",semPermissao:true},403);if(st<200||st>=300||j?.ok!==true)return out({erro:"O serviço de arquivos não respondeu. Tente de novo em instantes."},503);if(quem){quem.usuario=t(j.usuario);quem.direcao=j.direcao===true}return null}
 // Regenerar o DANFSe leva 11–20 s. Só vale a pena quando o PDF guardado não existe ou foi gerado ANTES da última mudança
 // de layout do DANFSe. Ao mudar o layout em ml-financeiro-nfse-danfse, atualize esta data: as notas se atualizam na próxima abertura.
 const LAYOUT_DANFSE_EM=Date.parse("2026-09-28T14:38:00Z");
@@ -59,13 +61,16 @@ Deno.serve(async req=>{
    /* CONFERE ANTES DE REGENERAR (auditoria de 28/09/2026). Antes a nota era
       regenerada no servidor e só DEPOIS a função antiga conferia o crachá:
       quem não tinha login não levava o link, mas disparava a gravação. */
-   {const barrado=await porta(auth);if(barrado)return barrado}
+   {const barrado=await porta(auth,"urlAssinada");if(barrado)return barrado}
    try{body={...body,path:await regenerarPorPath(t(body.path),auth)}}catch(e){return out({erro:e instanceof Error?e.message:String(e)},500)}
   }
   const r=await fetch(OLD,{method:"POST",headers:{"Authorization":auth,"Content-Type":"application/json","Cache-Control":"no-cache"},body:JSON.stringify(body),cache:"no-store"});
   return new Response(await r.text(),{status:r.status,headers:{...CORS,"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate"}})
  }
- {const barrado=await porta(auth);if(barrado)return barrado}
+ const quem={usuario:"",direcao:false};
+ {const barrado=await porta(auth,action,quem);if(barrado)return barrado}
+ // A direção continua registrada como "direcao"; quem mais enviar fica registrado pelo usuário.
+ const enviadoPor=quem.direcao?"direcao":(quem.usuario||"desconhecido");
  if(action==="emailEstado")return out({configurado:!!RESEND&&!!FROM_SECRET});
  if(!RESEND||!FROM_SECRET)return out({erro:"Envio de e-mail ainda não configurado."},503);
  const notaId=t(body.notaId),destinos=listaEmails(body.emails??body.email),destino=destinos.join("; ");
@@ -80,8 +85,8 @@ Deno.serve(async req=>{
  const mensagem=`Olá,\n\nSegue a Nota Fiscal de Serviço Eletrônica.\n\nEmitente: ${emitente}\nCNPJ: ${t(nota.cnpj_emitente)||t(nota.empresa?.cnpj)||"—"}\nNº da NFS-e: ${t(nota.numero_nf)||"—"}\nData de Emissão: ${br(nota.data_emissao)}\nVencimento: ${br(nota.data_vencimento)}\nValor: ${moeda(nota.valor_total)}\n\nA Nota Fiscal segue anexa a este e-mail.\n\nAtenciosamente,\nMINASLAB LTDA`;
  const envio=await fetch("https://api.resend.com/emails",{method:"POST",headers:{"Authorization":`Bearer ${RESEND}`,"Content-Type":"application/json"},body:JSON.stringify({from:emailFrom(),to:destinos,reply_to:replyTo(),bcc:[COPY_EMAIL],subject:assunto,text:mensagem,attachments:anexos})});
  const ret=await envio.json().catch(()=>({}));
- if(!envio.ok){await sb.from("log_envios_nf").insert({nota_fiscal_id:nota.id,empresa_id:nota.empresa_id,numero_nf:nota.numero_nf,email_destino:destino,status:"ERRO",observacao:t(ret?.message)||`HTTP ${envio.status}`,anexos:anexos.map(a=>a.filename),enviado_por:"direcao"});return out({erro:t(ret?.message)||`Falha ao enviar e-mail (HTTP ${envio.status}).`},envio.status)}
- await sb.from("log_envios_nf").insert({nota_fiscal_id:nota.id,empresa_id:nota.empresa_id,numero_nf:nota.numero_nf,email_destino:destino,status:"ENVIADO",observacao:t(ret?.id)||null,anexos:anexos.map(a=>a.filename),enviado_por:"direcao"});
- await sb.from("notas_fiscais").update({email_destino:destino,status_envio:"ENVIADO",enviado_em:new Date().toISOString(),enviado_por:"direcao",updated_at:new Date().toISOString()}).eq("id",nota.id);
+ if(!envio.ok){await sb.from("log_envios_nf").insert({nota_fiscal_id:nota.id,empresa_id:nota.empresa_id,numero_nf:nota.numero_nf,email_destino:destino,status:"ERRO",observacao:t(ret?.message)||`HTTP ${envio.status}`,anexos:anexos.map(a=>a.filename),enviado_por:enviadoPor});return out({erro:t(ret?.message)||`Falha ao enviar e-mail (HTTP ${envio.status}).`},envio.status)}
+ await sb.from("log_envios_nf").insert({nota_fiscal_id:nota.id,empresa_id:nota.empresa_id,numero_nf:nota.numero_nf,email_destino:destino,status:"ENVIADO",observacao:t(ret?.id)||null,anexos:anexos.map(a=>a.filename),enviado_por:enviadoPor});
+ await sb.from("notas_fiscais").update({email_destino:destino,status_envio:"ENVIADO",enviado_em:new Date().toISOString(),enviado_por:enviadoPor,updated_at:new Date().toISOString()}).eq("id",nota.id);
  return out({ok:true,id:ret?.id||null,destinos,anexos:anexos.map(a=>a.filename),assunto,mensagem,from:emailFrom(),replyTo:replyTo(),copiaOculta:COPY_EMAIL});
 });

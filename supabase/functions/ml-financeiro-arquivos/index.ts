@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -85,6 +86,18 @@ async function baixar(path: string) {
   return new Uint8Array(await data.arrayBuffer());
 }
 
+// Páginas do financeiro que liberam cada ação (tela Acessos) e se a ação grava.
+// Fora desta lista: só a direção. ml-financeiro-arquivos-v2 repassa o mesmo crachá para cá.
+// "porta" é a sondagem da v2: confere o acesso à ação em "para" e não faz mais nada.
+const REGRAS_ACAO: Record<string, [string[], boolean]> = {
+  estado: [["financas/pagar", "financas/notas", "financas/notas/emitir"], false],
+  urlAssinada: [["financas/pagar", "financas/notas", "financas/notas/emitir"], false],
+  upload: [["financas/pagar", "financas/notas"], true],
+  salvarNotaXml: [["financas/notas", "financas/notas/emitir"], true],
+  emailEstado: [["financas/notas", "financas/notas/emitir"], false],
+  emailEnviar: [["financas/notas", "financas/notas/emitir"], true],
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return resp({ erro: "Use POST." }, 405);
@@ -94,9 +107,17 @@ Deno.serve(async (req) => {
   const auth = texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);
   const cracha = auth ? await verificarJwt(auth[1]) : null;
   if (!cracha) return resp({ erro: "Entre no sistema.", semSessao: true }, 401);
-  if (texto(cracha.papel) !== "direcao") return resp({ erro: "O financeiro é somente da direção.", semPermissao: true }, 403);
-  const usuario = texto(cracha.sub) || "direcao";
   const action = texto(body.action);
+  {
+    const alvo = action === "porta" ? texto(body.para) : action;
+    const regra = Object.prototype.hasOwnProperty.call(REGRAS_ACAO, alvo) ? REGRAS_ACAO[alvo] : null;
+    const acesso = regra
+      ? await acessoFinanceiro(sb, cracha, regra[0], regra[1])
+      : (texto(cracha.papel) === "direcao" ? { ok: true as const } : { ok: false as const, status: 403, erro: "O financeiro é somente da direção." });
+    if (!acesso.ok) return resp({ erro: acesso.erro, ...(acesso.status === 401 ? { semSessao: true } : { semPermissao: true }) }, acesso.status);
+  }
+  const usuario = texto(cracha.sub) || "direcao";
+  if (action === "porta") return resp({ ok: true, usuario, direcao: texto(cracha.papel) === "direcao" });
 
   try {
     if (action === "estado") {
@@ -129,6 +150,12 @@ Deno.serve(async (req) => {
     if (action === "urlAssinada") {
       const path = texto(body.path);
       if (!path.startsWith("financeiro/")) return resp({ erro: "Caminho de arquivo inválido." }, 400);
+      // Comprovantes de pagamento (financeiro/<empresa>/comprovante/...) só com a página Pagar;
+      // XML e PDF de notas seguem a regra geral da ação (Pagar, Notas ou Emitir NFS-e).
+      if (texto(cracha.papel) !== "direcao" && path.split("/")[2] === "comprovante") {
+        const deComprovante = await acessoFinanceiro(sb, cracha, ["financas/pagar"], false);
+        if (!deComprovante.ok) return resp({ erro: deComprovante.erro, semPermissao: true }, 403);
+      }
       const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 600, { download: texto(body.nome) || undefined });
       if (error || !data?.signedUrl) throw new Error(error?.message || "Não foi possível abrir o arquivo.");
       return resp({ ok: true, url: data.signedUrl, expiraEmSegundos: 600 });

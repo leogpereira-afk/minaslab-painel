@@ -4,7 +4,8 @@ import { LayoutDashboard, ArrowDownCircle, ArrowUpCircle, FileText, Landmark, Li
 import { servicosGeradosBaixarModelo } from "../../services/servicosGerados.js";
 import ServicosGeradosPrintButton from "./ServicosGeradosPrintButton.jsx";
 import "./financeiro-redesign.css";
-import { ehDirecao } from "../../lib/sessao.js";
+import { ehDirecao, getSessao } from "../../lib/sessao.js";
+import { podeAbrirRotaFinanceiro } from "../../lib/rotasFinanceiro.js";
 
 const PERIODO_KEY="financeiro.periodo.global.v1";
 const principais=[
@@ -36,6 +37,8 @@ function selectPorRotulo(rotulo){return [...document.querySelectorAll(".financei
 function valorSelect(rotulo){return selectPorRotulo(rotulo)?.value||""}
 export default function FinanceiroLayout(){
  const direcao=ehDirecao();
+ // Fora da direção, o menu mostra só as páginas liberadas na tela Acessos.
+ const paginas=getSessao()?.paginas_consulta||[],pode=to=>direcao||podeAbrirRotaFinanceiro(to,paginas);
  const navigate=useNavigate(),location=useLocation();const [periodo,setPeriodo]=useState(periodoSalvo);const [baixandoModelo,setBaixandoModelo]=useState(false);const usaPeriodo=rotaPeriodo(location.pathname),listaPeriodo=rotaListaPeriodo(location.pathname),conciliacaoPeriodo=location.pathname.startsWith("/financas/conciliacao-titulos"),fluxo=location.pathname==="/financas/fluxo-caixa";
  useEffect(()=>{try{sessionStorage.setItem(PERIODO_KEY,JSON.stringify(periodo))}catch{void 0}},[periodo]);
  /* Os filtros do cartão do painel vão no state da navegação e a lista os lê no primeiro render
@@ -51,13 +54,13 @@ export default function FinanceiroLayout(){
  const classes=["financeiro-shell","space-y-4",listaPeriodo?"financeiro-periodo-listas":"",conciliacaoPeriodo?"financeiro-periodo-conciliacao":"",fluxo?"financeiro-fluxo":""].filter(Boolean).join(" ");
  return <div className={classes} onClickCapture={capturarCliqueContextual}>
   <nav className="financeiro-navegacao" aria-label="Menu financeiro">
-   {[principais,complementares].map((grupo,i)=><div className="financeiro-nav-linha" key={i}>
-    {grupo.map(({label,curto,to,end,icon:Icon,descricao})=>!direcao&&to!=="/financas/servicos-gerados"?<span key={to} aria-disabled="true" title={`${label} — sem acesso`} className="financeiro-nav-link cursor-not-allowed opacity-50"><Icon size={18} aria-hidden="true"/><span>{curto||label}</span></span>:<NavLink key={to} to={to} end={end} aria-label={label} title={descricao?`${label}: ${descricao}`:label} className={`financeiro-nav-link${ativa(location,label,to)?" financeiro-nav-link-ativo":""}`}><Icon size={18} aria-hidden="true"/><span>{curto||label}</span></NavLink>)}
+   {[principais,complementares].map(grupo=>grupo.filter(({to})=>pode(to))).filter(grupo=>grupo.length).map((grupo,i)=><div className="financeiro-nav-linha" key={i}>
+    {grupo.map(({label,curto,to,end,icon:Icon,descricao})=><NavLink key={to} to={to} end={end} aria-label={label} title={descricao?`${label}: ${descricao}`:label} className={`financeiro-nav-link${ativa(location,label,to)?" financeiro-nav-link-ativo":""}`}><Icon size={18} aria-hidden="true"/><span>{curto||label}</span></NavLink>)}
    </div>)}
   </nav>
   {usaPeriodo&&<section className="financeiro-periodo-bar flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between"><div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><CalendarRange size={19}/></span><div><p className="text-sm font-bold text-slate-900">Período</p><p className="text-xs text-slate-500">Filtra os registros pela data da tela, sem limitar a um único mês.</p></div></div><div className="grid gap-2 sm:grid-cols-[160px_160px_auto_auto]"><label><span className="label">De</span><input className="input" type="date" value={periodo.de} onChange={e=>setData("de",e.target.value)}/></label><label><span className="label">Até</span><input className="input" type="date" value={periodo.ate} onChange={e=>setData("ate",e.target.value)}/></label><button type="button" className="btn-outline self-end" onClick={definirMesAtual}>Este mês</button><button type="button" className="btn-ghost self-end" onClick={limparPeriodo}><RotateCcw size={15}/>Todo período</button></div></section>}
   {location.pathname==="/financas/servicos-gerados"&&<section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2.5 shadow-sm"><div><p className="text-sm font-bold text-slate-900">Modelo de importação — Serviços Gerados</p><p className="text-xs text-slate-600">Baixe o modelo aprovado, mantenha a aba <b>Serviços</b> e as 20 colunas na mesma ordem e importe o arquivo preenchido nesta tela.</p></div><div className="flex flex-wrap items-center gap-2"><ServicosGeradosPrintButton/><button type="button" className="btn-outline h-9 px-3 py-2 text-xs" onClick={baixarModelo} disabled={!direcao||baixandoModelo}><Download size={15}/>{baixandoModelo?"Baixando...":"Baixar modelo"}</button></div></section>}
-  {location.pathname.startsWith("/financas/notas-fiscais")&&<section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm"><div><p className="font-bold text-slate-900">Central de Notas Fiscais</p><p className="text-sm text-slate-500">MinasLab acompanha as notas da Omie; M Lab emite e gerencia NFS-e pelo sistema.</p></div><button className="btn-primary" onClick={()=>navigate("/financas/notas-fiscais/emitir")}><ReceiptText size={16}/>Emitir NFS-e M Lab</button></section>}
+  {location.pathname.startsWith("/financas/notas-fiscais")&&<section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm"><div><p className="font-bold text-slate-900">Central de Notas Fiscais</p><p className="text-sm text-slate-500">MinasLab acompanha as notas da Omie; M Lab emite e gerencia NFS-e pelo sistema.</p></div>{pode("/financas/notas-fiscais/emitir")&&<button className="btn-primary" onClick={()=>navigate("/financas/notas-fiscais/emitir")}><ReceiptText size={16}/>Emitir NFS-e M Lab</button>}</section>}
   <Outlet key={`${location.pathname}|${usaPeriodo?periodo.de:""}|${usaPeriodo?periodo.ate:""}`}/>
  </div>;
 }
