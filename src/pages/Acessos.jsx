@@ -14,7 +14,7 @@ import { contaEditar, contaPaginas, contasPadraoLer, contasPadraoNome } from "..
 import { getSessao } from "../lib/sessao.js";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import FotoConta from "../components/acessos/FotoConta.jsx";
-import { GRUPOS_PERMISSOES, PAGINAS_COM_ACESSO_PROPRIO, PAGINAS_DE_TODOS, PAGINAS_SO_DIRECAO, PERMISSOES_DISPONIVEIS, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
+import { GRUPOS_PERMISSOES, PAGINAS_COM_ACESSO_PROPRIO, PAGINAS_DE_TODOS, PAGINAS_SO_DIRECAO, PERMISSOES_DISPONIVEIS, SUBPAGINAS_INDEPENDENTES, SUBPAGINAS_PERMISSOES } from "../lib/catalogoPermissoes.js";
 import { dataLonga } from "../lib/format.js";
 import {
   PageTitle, Card, Empty, CarregandoModulo, ErroModulo, Aviso, Modal,
@@ -28,8 +28,8 @@ const PAPEIS = [
 ];
 const papelDe = (valor) => PAPEIS.find((p) => p.valor === valor) || { rotulo: valor || "—", desc: "" };
 // Contas antigas (antes da matriz) herdavam o operacional; os menus que só a direção
-// via antes (Patrimônio, Curva ABC, LIMS, RH, Folha, Ponto) NÃO entram nessa herança.
-const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !["patrimonio", "curva-abc", "lims", "rh", "folha-pagamento", "ponto"].includes(p));
+// via antes (Patrimônio, Curva ABC, LIMS, RH, Folha, Ponto, Finanças) NÃO entram nessa herança.
+const PAGINAS_LEGADAS = [...PERMISSOES_DISPONIVEIS].filter(p => !p.includes("/") && !p.startsWith("financas/") && !["patrimonio", "curva-abc", "lims", "rh", "folha-pagamento", "ponto"].includes(p));
 const paginasDaConta = (conta) => {
   const anteriores = conta.paginas_consulta || [];
   return anteriores.includes("__matriz_v1") || conta.papel === "direcao"
@@ -42,11 +42,15 @@ const ajustarNome = (v, maiusculas) => (maiusculas ? String(v || "").toLocaleUpp
 
 function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
   // A Folha de Pagamento é uma aba do RH: marcá-la marca o RH; desmarcar o RH tira a Folha.
-  const alternarPagina = (id, marcado) => onChange(marcado
+  // Notas e Configurações do financeiro: página e abas se marcam uma a uma (SUBPAGINAS_INDEPENDENTES).
+  const alternarPagina = (id, marcado) => SUBPAGINAS_INDEPENDENTES.has(id)
+    ? onChange(marcado ? [...new Set([...paginas, id])] : paginas.filter(p => p !== id))
+    : onChange(marcado
     ? [...new Set([...paginas.filter(p => !p.startsWith(`${id}/`)), id, ...(id === "folha-pagamento" ? ["rh"] : [])])]
     : paginas.filter(p => p !== id && !p.startsWith(`${id}/`) && !(id === "rh" && p === "folha-pagamento")));
   const alternarSecao = (id, secao, marcado) => {
     const chave = `${id}/${secao}`;
+    if (SUBPAGINAS_INDEPENDENTES.has(id)) return onChange(marcado ? [...new Set([...paginas, chave])] : paginas.filter(p => p !== chave));
     const herdadas = paginas.includes(id)
       ? (SUBPAGINAS_PERMISSOES[id] || []).map(([s]) => `${id}/${s}`)
       : paginas.filter(p => p.startsWith(`${id}/`));
@@ -69,18 +73,18 @@ function MatrizPaginas({ paginas = [], onChange, direcao = false }) {
           <span className="mt-1 inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-slate-300" aria-hidden="true"/>
           <span>{rotulo}<small className="block text-xs text-slate-500">{PAGINAS_COM_ACESSO_PROPRIO[id]} <a className="font-semibold text-blue-700 underline" href={`${import.meta.env.BASE_URL}gestao/#/acessos`} target="_blank" rel="noreferrer">Abrir Acessos da Gestão</a></small></span>
         </div>;
-        const disponivel = PERMISSOES_DISPONIVEIS.has(id);
+        const disponivel = PERMISSOES_DISPONIVEIS.has(id), independente = SUBPAGINAS_INDEPENDENTES.has(id);
         return <div key={id}>
           <label className={`flex items-start gap-2 text-sm ${disponivel ? "text-slate-700" : "text-slate-400"}`} title={disponivel ? "" : "Acesso individual ainda não disponível nesta página"}>
-            <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`)))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
+            <input type="checkbox" className="mt-1 accent-blue-600" checked={direcao || paginas.includes(id) || (!independente && !!(SUBPAGINAS_PERMISSOES[id]?.length && SUBPAGINAS_PERMISSOES[id].every(([s]) => paginas.includes(`${id}/${s}`))))} disabled={direcao || !disponivel} onChange={e => alternarPagina(id, e.target.checked)}/>
             <span>{rotulo}{id === "crm" && <small className="block text-xs text-slate-500">Exibe o atalho. O acesso ao CRM depende do login e das permissões no próprio CRM.</small>}{id === "lims" && <small className="block text-xs text-slate-500">O LIMS inteiro (todos os menus dele).</small>}{id === "rh" && <small className="block text-xs text-slate-500">Inclui fichas com salário, documentos, férias, exames e o ponto da equipe.</small>}{id === "folha-pagamento" && <small className="block text-xs text-slate-500">Aba do RH com líquidos, extras e comissões. Marca o RH junto.</small>}{id === "ponto" && <small className="block text-xs text-slate-500">Ponto de toda a equipe: conferência, ajustes, faltas e folha mensal. Vê as fichas (com salário, usado no desconto de faltas), sem poder alterá-las.</small>}{!disponivel && <small className="block text-xs">Permissão individual em preparação</small>}</span>
           </label>
           {SUBPAGINAS_PERMISSOES[id] && <div className="ml-3 mt-1 space-y-1 border-l border-slate-200 pl-3">
             {SUBPAGINAS_PERMISSOES[id].map(([secao, nome]) => <label key={secao} className="flex items-center gap-2 text-xs text-slate-500" title={PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`) ? `Liberar somente ${nome}` : "Seleção individual ainda exige proteção dos dados desta aba no servidor"}>
-              <input type="checkbox" disabled={direcao || !PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`)} checked={direcao || (disponivel && paginas.includes(id)) || paginas.includes(`${id}/${secao}`)} onChange={e => alternarSecao(id, secao, e.target.checked)} aria-label={`${rotulo} — ${nome}`}/>
+              <input type="checkbox" disabled={direcao || !PERMISSOES_DISPONIVEIS.has(`${id}/${secao}`)} checked={direcao || (!independente && disponivel && paginas.includes(id)) || paginas.includes(`${id}/${secao}`)} onChange={e => alternarSecao(id, secao, e.target.checked)} aria-label={`${rotulo} — ${nome}`}/>
               <span>{nome}</span>
             </label>)}
-            <small className="block text-[11px] text-slate-400">{["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(id) ? `Marque ${rotulo} para todas as abas ou escolha cada uma.` : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
+            <small className="block text-[11px] text-slate-400">{independente ? `Cada item se libera à parte: marcar ${rotulo} não libera os de baixo.` : ["compras", "gestao-estoque", "patrimonio", "curva-abc"].includes(id) ? `Marque ${rotulo} para todas as abas ou escolha cada uma.` : "Abas liberadas juntas com a página; separação individual em preparação."}</small>
           </div>}
         </div>;
       })}</div>

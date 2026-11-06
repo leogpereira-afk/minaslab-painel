@@ -8,6 +8,7 @@
 // crachá e o papel em toda chamada (supabase/functions/ml-sync).
 
 import { SYNC } from "./api.js";
+import { temFinanceiro } from "./rotasFinanceiro.js";
 
 const K_TOKEN = "ml_auth_token";
 const K_SESSAO = "ml_auth_sessao";
@@ -162,7 +163,8 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (!sessao) return false;
   if (ehDirecao(sessao)) return true;
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
-    if (modulo === "financas") return sessao.paginas_consulta.includes("financas/servicos-gerados");
+    // Finanças abre com qualquer página do financeiro liberada (cada rota confere a sua).
+    if (modulo === "financas") return temFinanceiro(sessao.paginas_consulta);
     return modulo === "inicio" || modulo === "canais" || modulo === "guia" || modulo === "tarefas" || modulo === "mensagens" || sessao.paginas_consulta.includes(modulo) ||
       (["compras", "gestao-estoque", "patrimonio", "curva-abc", "laboratorio"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }

@@ -6,7 +6,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import Layout from "./components/Layout.jsx";
 import FinanceiroLayout from "./components/financeiro/FinanceiroLayout.jsx";
 import { CarregandoModulo } from "./components/ui.jsx";
-import { getSessao, aoMudarSessao, podeAbrir, ehDirecao, podeVerServicoGerado, soColaborador } from "./lib/sessao.js";
+import { getSessao, aoMudarSessao, podeAbrir, ehDirecao, soColaborador } from "./lib/sessao.js";
+import { podeAbrirRotaFinanceiro, primeiraRotaFinanceiro } from "./lib/rotasFinanceiro.js";
 
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Home = lazy(() => import("./pages/Home.jsx"));
@@ -57,7 +58,9 @@ function Guarda({ modulo, children }) { const sessao=getSessao(); const location
 
 function Inicio() { return soColaborador(getSessao()) ? <Navigate to="/canais" replace/> : <Home/>; }
 
-function GuardaFinanceiro({children}) { const s=getSessao(), l=useLocation(); if(!s)return <Navigate to="/entrar" replace/>; if(ehDirecao(s))return children; return podeVerServicoGerado(s)&&l.pathname==="/financas/servicos-gerados"?children:<Navigate to={podeVerServicoGerado(s)?"/financas/servicos-gerados":"/"} replace/>; }
+// Finanças por página (tela Acessos): fora da direção, cada rota pede a sua liberação
+// (src/lib/rotasFinanceiro.js); sem ela, vai para a primeira página liberada.
+function GuardaFinanceiro({children}) { const s=getSessao(), l=useLocation(); if(!s)return <Navigate to="/entrar" replace/>; if(ehDirecao(s))return children; const paginas=s.paginas_consulta||[]; if(podeAbrirRotaFinanceiro(l.pathname,paginas))return children; const destino=primeiraRotaFinanceiro(paginas); return <Navigate to={destino&&destino!==l.pathname?destino:"/"} replace/>; }
 function PaginaServicos() { return <ServicosGerados somenteLeitura={!ehDirecao(getSessao())}/>; }
 
 export default function App(){
