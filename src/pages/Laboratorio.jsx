@@ -18,7 +18,7 @@ import QualidadeLaboratorio from "../components/laboratorio/QualidadeLaboratorio
 const SECOES = [
   { valor: "inicio", rotulo: "Início", descricao: "O que pede atenção hoje e as áreas do laboratório." },
   { valor: "entradas", rotulo: "Entradas de amostras", descricao: "Protocolo de recebimento, análise, liberação e descarte das amostras." },
-  { valor: "qualidade", rotulo: "Qualidade", descricao: "Gestão da qualidade do laboratório: pesquisa de satisfação de clientes (demais funções em desenvolvimento)." },
+  { valor: "qualidade", rotulo: "Qualidade", descricao: "Gestão da qualidade do laboratório: pesquisa de satisfação de clientes e, em breve, documentos, equipamentos, não conformidades e auditorias." },
   { valor: "microbiologia", rotulo: "Microbiologia", descricao: "Análises microbiológicas (em desenvolvimento)." },
   { valor: "fisicoquimico", rotulo: "Físico-Químico", descricao: "Análises físico-químicas (em desenvolvimento)." },
 ];
@@ -40,7 +40,7 @@ export default function Laboratorio() {
       <Segmented opcoes={liberadas} valor={secao.valor} onChange={(v) => ir(v)} className="w-full sm:w-fit" />
       {secao.valor === "inicio" && <InicioLaboratorio irPara={ir} />}
       {secao.valor === "entradas" && <EntradasAmostras key={params.get("aba") || ""} abaInicial={params.get("aba")} />}
-      {secao.valor === "qualidade" && <QualidadeLaboratorio voltar={() => ir("inicio")} />}
+      {secao.valor === "qualidade" && <QualidadeLaboratorio key={params.get("aba") || ""} aba={params.get("aba")} ir={ir} />}
       {["microbiologia", "fisicoquimico"].includes(secao.valor) && <AreaEmBreve area={secao.valor} voltar={() => ir("inicio")} />}
     </div>
   );
