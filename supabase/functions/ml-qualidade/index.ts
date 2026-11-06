@@ -6,6 +6,8 @@
 //
 // Ações: satisfacao (tudo da tela) · vinculos (contratos, OS e contatos de um cliente) · enviar · canal ·
 //        cancelar · melhoria · tratativa · perguntaSalvar · perguntasOrdem · revisao (editor de perguntas, só aqui)
+// Demais páginas da Qualidade: qualidade (tudo) · salvar {modulo} · excluir · ler (documento) · calibrar ·
+//        metaSalvar · arquivoEnviar · arquivoBaixar · arquivoApagar
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -48,6 +50,51 @@ async function todos<T>(q: (de: number, ate: number) => PromiseLike<{ data: T[] 
     if ((data ?? []).length < 1000) return out;
   }
 }
+
+
+// ---------------------------------------------------------------- páginas da Qualidade
+const MODULOS: Record<string, { t: string; campos: string[] }> = {
+  documento: { t: "qualidade_documentos", campos: ["codigo", "titulo", "tipo", "setor", "revisao", "vigencia_inicio", "proxima_revisao", "elaborado_por", "aprovado_por", "status", "leitores", "observacao"] },
+  equipamento: { t: "qualidade_equipamentos", campos: ["codigo", "nome", "setor", "local", "fabricante", "modelo", "serie", "controle", "periodicidade_meses", "proxima", "criterio", "ensaios_afetados", "situacao", "observacao"] },
+  nc: { t: "qualidade_nc", campos: ["titulo", "descricao", "origem", "etapa", "responsavel", "prazo", "trabalho_afetado", "impacto", "porques", "causa_raiz", "acao", "eficacia_em", "eficacia_resultado", "eficaz"] },
+  auditoria: { t: "qualidade_auditorias", campos: ["ano", "requisito", "mes", "data", "status", "auditor", "constatacoes", "n_constatacoes"] },
+  proficiencia: { t: "qualidade_proficiencia", campos: ["provedor", "rodada", "matriz", "parametro", "data", "z", "resultado", "observacao"] },
+};
+const DATAS = ["vigencia_inicio", "proxima_revisao", "proxima", "prazo", "eficacia_em", "data"];
+const NUMEROS = ["periodicidade_meses", "ano", "mes", "n_constatacoes", "z"];
+const BUCKET = "ml-arquivos";
+const TIPOS_ARQ: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", txt: "text/plain" };
+function limpar(campos: string[], r: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const c of campos) {
+    if (!(c in r)) continue;
+    const v = r[c];
+    if (c === "leitores" || c === "porques") out[c] = (Array.isArray(v) ? v : []).map((x) => txt(x).slice(0, 500)).filter(Boolean).slice(0, 40);
+    else if (c === "trabalho_afetado") out[c] = v === true;
+    else if (c === "eficaz") out[c] = v === true ? true : v === false ? false : null;
+    else if (DATAS.includes(c)) out[c] = /^\d{4}-\d{2}-\d{2}$/.test(txt(v)) ? txt(v) : null;
+    else if (NUMEROS.includes(c)) { const n = Number(String(v ?? "").replace(",", ".")); out[c] = txt(v) === "" || !Number.isFinite(n) ? null : n; }
+    else out[c] = txt(v).slice(0, 4000) || null;
+  }
+  return out;
+}
+const somaMeses = (ymd: string, m: number) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + m); return d.toISOString().slice(0, 10); };
+async function proximoCodigoNc() {
+  const ano = new Date().getFullYear();
+  const { data } = await sb.from("qualidade_nc").select("codigo").like("codigo", `NC ${ano}-%`);
+  const max = Math.max(0, ...((data ?? []) as { codigo: string }[]).map((x) => Number(x.codigo.split("-")[1]) || 0));
+  return `NC ${ano}-${String(max + 1).padStart(2, "0")}`;
+}
+async function abrirNc(dados: Record<string, unknown>, usuario: string) {
+  const codigo = await proximoCodigoNc();
+  const { data, error } = await sb.from("qualidade_nc").insert({ ...dados, codigo, registrada_por: usuario, atualizado_por: usuario }).select("id,codigo,titulo,responsavel").single();
+  if (error) throw error;
+  if (data.responsavel && data.responsavel !== usuario) {
+    await sb.from("ml_notificacoes").insert({ usuario: data.responsavel, tipo: "qualidade_nc", titulo: `Não conformidade ${data.codigo} para você`, corpo: String(data.titulo).slice(0, 200), link: "/laboratorio?secao=qualidade&aba=nc", ref_tipo: "qualidade_nc", ref_id: data.id });
+  }
+  return data;
+}
+const resultadoDoZ = (z: number) => Math.abs(z) <= 2 ? "SATISFATORIO" : Math.abs(z) < 3 ? "QUESTIONAVEL" : "INSATISFATORIO";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -217,6 +264,177 @@ Deno.serve(async (req) => {
       const revisao = txt(body.revisao).slice(0, 20);
       if (!revisao) return json({ erro: "Informe a revisão." }, 400);
       const { error } = await sb.from("satisfacao_config").update({ revisao, atualizado_em: new Date().toISOString(), atualizado_por: usuario }).eq("id", 1);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (acao === "qualidade") {
+      const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
+      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas] = await Promise.all([
+        sb.from("qualidade_documentos").select("*").order("codigo"),
+        sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
+        sb.from("qualidade_documento_leituras").select("documento_id,revisao,usuario,confirmado_em"),
+        sb.from("qualidade_equipamentos").select("*").order("codigo"),
+        sb.from("qualidade_calibracoes").select("*").order("data", { ascending: false }).limit(2000),
+        sb.from("qualidade_nc").select("*").order("criado_em", { ascending: false }),
+        sb.from("qualidade_auditorias").select("*").order("ano").order("mes"),
+        sb.from("qualidade_proficiencia").select("*").order("data", { ascending: false }),
+        sb.from("qualidade_metas").select("*"),
+        sb.from("qualidade_arquivos").select("id,ref_tipo,ref_id,nome,tamanho,autor,criado_em").eq("apagado", false).order("criado_em", { ascending: false }),
+        sb.from("ml_contas").select("usuario,nome,ativo").order("nome"),
+        todos((a, b) => sb.from("ml_registros").select("registro").eq("colecao", "lab_entradas").eq("apagado", false).gte("atualizado_em", umAno).range(a, b)),
+      ]);
+      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas]) if (r.error) throw r.error;
+      return json({
+        podeEscrever, eu: usuario,
+        documentos: docs.data, revisoes: revs.data, leituras: leits.data, equipamentos: eqs.data, calibracoes: cals.data,
+        ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
+        contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
+        entradas: (entradas as { registro: Record<string, unknown> }[]).map((x) => x.registro).filter((r) => r && r.cancelada !== true)
+          .map((r) => ({ rec: r.recebidoEm || null, lib: r.liberadoEm || null })).filter((r) => r.rec),
+      });
+    }
+
+    if (acao === "salvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const mod = MODULOS[txt(body.modulo)];
+      if (!mod) return json({ erro: "Página inválida." }, 400);
+      const reg = (body.registro ?? {}) as Record<string, unknown>;
+      const dados = limpar(mod.campos, reg);
+      const id = uuid(reg.id);
+      const agora = new Date().toISOString();
+      const modulo = txt(body.modulo);
+      if (modulo === "documento" && (!dados.codigo || !dados.titulo) && !id) return json({ erro: "Informe código e título." }, 400);
+      if (modulo === "equipamento" && (!dados.codigo || !dados.nome) && !id) return json({ erro: "Informe código e nome do equipamento." }, 400);
+      if (modulo === "nc" && !id && !dados.titulo) return json({ erro: "Descreva a não conformidade." }, 400);
+      if (modulo === "nc" && dados.etapa === "ENCERRADA" && !txt(reg.acao) && !id) return json({ erro: "Para encerrar, registre a ação." }, 400);
+      if (modulo === "proficiencia") {
+        if (typeof dados.z === "number" && !["CORRETO", "INCORRETO"].includes(String(dados.resultado))) dados.resultado = resultadoDoZ(dados.z);
+      }
+      let salvo: Record<string, unknown>;
+      if (id) {
+        const { data: antes } = await sb.from(mod.t).select("*").eq("id", id).maybeSingle();
+        if (!antes) return json({ erro: "Registro não encontrado." }, 404);
+        if (modulo === "nc") {
+          if (dados.etapa === "ENCERRADA" && antes.etapa !== "ENCERRADA") {
+            if (!txt(dados.acao ?? antes.acao)) return json({ erro: "Para encerrar, registre a ação corretiva." }, 400);
+            Object.assign(dados, { encerrada_em: agora, encerrada_por: usuario });
+          }
+          if (dados.etapa && dados.etapa !== "ENCERRADA") Object.assign(dados, { encerrada_em: null, encerrada_por: null });
+        }
+        const { data, error } = await sb.from(mod.t).update({ ...dados, atualizado_em: agora, atualizado_por: usuario }).eq("id", id).select("*").single();
+        if (error) throw error;
+        salvo = data;
+        if (modulo === "documento" && dados.revisao && dados.revisao !== antes.revisao) {
+          await sb.from("qualidade_documento_revisoes").insert({ documento_id: id, revisao: dados.revisao, data: (dados.vigencia_inicio as string) || agora.slice(0, 10), descricao: txt(reg.motivo_revisao).slice(0, 2000) || null, autor: usuario });
+        }
+        if (modulo === "nc" && dados.responsavel && dados.responsavel !== antes.responsavel && dados.responsavel !== usuario) {
+          await sb.from("ml_notificacoes").insert({ usuario: dados.responsavel, tipo: "qualidade_nc", titulo: `Não conformidade ${antes.codigo} para você`, corpo: String(salvo.titulo).slice(0, 200), link: "/laboratorio?secao=qualidade&aba=nc", ref_tipo: "qualidade_nc", ref_id: id });
+        }
+      } else if (modulo === "nc") {
+        salvo = await abrirNc({ ...dados, ref_tipo: txt(reg.ref_tipo) || null, ref_id: uuid(reg.ref_id) }, usuario);
+      } else {
+        const { data, error } = await sb.from(mod.t).insert({ ...dados, criado_por: usuario, atualizado_por: usuario }).select("*").single();
+        if (error) {
+          if (String((error as { code?: string }).code) === "23505") return json({ erro: "Já existe um registro com esse código." }, 409);
+          throw error;
+        }
+        salvo = data;
+        if (modulo === "documento") await sb.from("qualidade_documento_revisoes").insert({ documento_id: data.id, revisao: data.revisao, data: data.vigencia_inicio || agora.slice(0, 10), descricao: "Cadastro no sistema", autor: usuario });
+      }
+      // Proficiência questionável/insatisfatória ou resultado incorreto: abre não conformidade (uma por ensaio).
+      if (modulo === "proficiencia" && ["QUESTIONAVEL", "INSATISFATORIO", "INCORRETO"].includes(String(salvo.resultado)) && !salvo.nc_id) {
+        const nc = await abrirNc({ titulo: `${salvo.parametro}${salvo.z != null ? ` com z = ${String(salvo.z).replace(".", ",")}` : " com resultado incorreto"} na ${salvo.rodada}`, origem: "PROFICIENCIA", etapa: "ABERTA", trabalho_afetado: false, prazo: somaMeses(agora.slice(0, 10), 1), ref_tipo: "proficiencia", ref_id: salvo.id, descricao: `Ensaio de proficiência ${salvo.provedor ? `(${salvo.provedor}) ` : ""}— matriz ${salvo.matriz || "—"}.` }, usuario);
+        await sb.from("qualidade_proficiencia").update({ nc_id: nc.id }).eq("id", salvo.id);
+        salvo.nc_id = nc.id;
+      }
+      return json({ ok: true, registro: salvo });
+    }
+
+    if (acao === "excluir") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const modulo = txt(body.modulo), id = uuid(body.id);
+      if (!id || !["auditoria", "proficiencia", "calibracao"].includes(modulo)) return json({ erro: "Esse registro não pode ser excluído; use o status." }, 400);
+      const t = modulo === "calibracao" ? "qualidade_calibracoes" : MODULOS[modulo].t;
+      const { error } = await sb.from(t).delete().eq("id", id);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (acao === "ler") {
+      const id = uuid(body.id);
+      const { data: doc } = id ? await sb.from("qualidade_documentos").select("revisao").eq("id", id).maybeSingle() : { data: null };
+      if (!doc) return json({ erro: "Documento não encontrado." }, 404);
+      const { error } = await sb.from("qualidade_documento_leituras").upsert({ documento_id: id, revisao: doc.revisao, usuario, confirmado_em: new Date().toISOString() }, { onConflict: "documento_id,revisao,usuario" });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (acao === "calibrar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const eqId = uuid(body.equipamento_id);
+      const { data: eq } = eqId ? await sb.from("qualidade_equipamentos").select("*").eq("id", eqId).maybeSingle() : { data: null };
+      if (!eq) return json({ erro: "Equipamento não encontrado." }, 404);
+      const tipo = ["CALIBRACAO", "VERIFICACAO", "VALIDACAO", "DIARIA"].includes(txt(body.tipo)) ? txt(body.tipo) : "CALIBRACAO";
+      const data = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.data)) ? txt(body.data) : new Date().toISOString().slice(0, 10);
+      const resultado = txt(body.resultado) === "REPROVADO" ? "REPROVADO" : "APROVADO";
+      const reg = { equipamento_id: eqId, tipo, data, resultado, leitura: txt(body.leitura).slice(0, 300) || null, certificado: txt(body.certificado).slice(0, 200) || null, laboratorio: txt(body.laboratorio).slice(0, 200) || null, observacao: txt(body.observacao).slice(0, 2000) || null, registrado_por: usuario };
+      const { data: cal, error } = await sb.from("qualidade_calibracoes").insert(reg).select("*").single();
+      if (error) throw error;
+      const mudar: Record<string, unknown> = { atualizado_em: new Date().toISOString(), atualizado_por: usuario };
+      if (resultado === "APROVADO" && tipo !== "DIARIA" && eq.periodicidade_meses) mudar.proxima = somaMeses(data, eq.periodicidade_meses);
+      await sb.from("qualidade_equipamentos").update(mudar).eq("id", eqId);
+      let nc = null;
+      if (resultado === "REPROVADO") {
+        nc = await abrirNc({ titulo: `${eq.codigo} · ${eq.nome}: ${tipo === "DIARIA" ? "verificação diária" : tipo.toLowerCase()} reprovada${reg.leitura ? ` (${reg.leitura})` : ""}`, origem: "EQUIPAMENTO", etapa: "ABERTA", trabalho_afetado: true, impacto: eq.ensaios_afetados ? `Ensaios que usam o equipamento: ${eq.ensaios_afetados}` : null, prazo: somaMeses(data, 0), ref_tipo: "calibracao", ref_id: cal.id }, usuario);
+        await sb.from("qualidade_calibracoes").update({ nc_id: nc.id }).eq("id", cal.id);
+      }
+      return json({ ok: true, calibracao: cal, nc });
+    }
+
+    if (acao === "metaSalvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const meta = Number(String(body.meta ?? "").replace(",", "."));
+      if (!txt(body.chave) || !Number.isFinite(meta)) return json({ erro: "Meta inválida." }, 400);
+      const { error } = await sb.from("qualidade_metas").update({ meta, atualizado_em: new Date().toISOString(), atualizado_por: usuario }).eq("chave", txt(body.chave));
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (acao === "arquivoEnviar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const refTipo = txt(body.ref_tipo), refId = uuid(body.ref_id);
+      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
+      const nome = txt(body.nome).replace(/[\\/]/g, "_").slice(-150);
+      const ext = nome.includes(".") ? nome.split(".").pop()!.toLowerCase() : "";
+      const tipo = TIPOS_ARQ[ext];
+      if (!tipo) return json({ erro: "Aceito PDF, imagens, Word, Excel, CSV e TXT." }, 400);
+      let bytes: Uint8Array;
+      try { const bin = atob(String(body.base64 ?? "").replace(/^data:[^;]+;base64,/, "")); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); } catch { return json({ erro: "Arquivo inválido." }, 400); }
+      if (!bytes.length) return json({ erro: "O arquivo está vazio." }, 400);
+      if (bytes.length > 8 * 1024 * 1024) return json({ erro: "O arquivo passa de 8 MB." }, 400);
+      const caminho = `qualidade/${refTipo}/${refId}/${crypto.randomUUID()}-${nome.normalize("NFD").replace(/[^\w.\-]+/g, "_")}`;
+      const { error: eUp } = await sb.storage.from(BUCKET).upload(caminho, bytes, { contentType: tipo, upsert: false });
+      if (eUp) throw eUp;
+      const { data, error } = await sb.from("qualidade_arquivos").insert({ ref_tipo: refTipo, ref_id: refId, nome, tipo, tamanho: bytes.length, caminho, autor: usuario }).select("id,ref_tipo,ref_id,nome,tamanho,autor,criado_em").single();
+      if (error) { await sb.storage.from(BUCKET).remove([caminho]); throw error; }
+      return json({ ok: true, arquivo: data });
+    }
+
+    if (acao === "arquivoBaixar") {
+      const id = uuid(body.id);
+      const { data: a } = id ? await sb.from("qualidade_arquivos").select("nome,caminho").eq("id", id).eq("apagado", false).maybeSingle() : { data: null };
+      if (!a) return json({ erro: "Arquivo não encontrado." }, 404);
+      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(a.caminho, 120, { download: a.nome });
+      if (error || !data?.signedUrl) throw error ?? new Error("sem link");
+      return json({ ok: true, url: data.signedUrl, nome: a.nome });
+    }
+
+    if (acao === "arquivoApagar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const id = uuid(body.id);
+      if (!id) return json({ erro: "Arquivo inválido." }, 400);
+      const { error } = await sb.from("qualidade_arquivos").update({ apagado: true }).eq("id", id);
       if (error) throw error;
       return json({ ok: true });
     }

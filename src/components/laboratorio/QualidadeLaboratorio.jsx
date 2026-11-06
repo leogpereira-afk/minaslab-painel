@@ -1,48 +1,61 @@
-// Laboratório › Qualidade. "Início" resume o que pede atenção e leva a cada função da Qualidade.
-// Em uso: Pesquisa de satisfação de clientes (PG 012 · PSC), com os mesmos dados do CRM, pelo crachá do painel.
-// As demais funções aparecem como "Em breve" para a equipe validar o escopo antes de construir.
-import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, BarChart3, ClipboardCheck, FileText, Gauge, SearchCheck, Send, Smile, Star, Wrench } from "lucide-react";
-import { lerSatisfacao } from "../../services/qualidade.js";
-import { StatCard } from "../ui.jsx";
+// Laboratório › Qualidade. "Início" resume o que pede atenção e leva a cada função da Qualidade:
+// Pesquisa de satisfação (mesmos dados do CRM), Documentos e POPs, Equipamentos, Não conformidades,
+// Auditorias e proficiência e Indicadores. Tudo pelo crachá do painel (Edge Function ml-qualidade).
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ArrowRight, ClipboardCheck, FileText, Gauge, SearchCheck, Smile, Wrench } from "lucide-react";
+import { lerQualidade, lerSatisfacao } from "../../services/qualidade.js";
+import { StatCard, CarregandoModulo, ErroModulo, Aviso } from "../ui.jsx";
 import PesquisaSatisfacao from "./PesquisaSatisfacao.jsx";
+import Documentos from "./qualidade/Documentos.jsx";
+import Equipamentos, { situacaoEquip } from "./qualidade/Equipamentos.jsx";
+import NaoConformidades from "./qualidade/NaoConformidades.jsx";
+import Auditorias from "./qualidade/Auditorias.jsx";
+import Indicadores from "./qualidade/Indicadores.jsx";
+import { hojeYmd } from "./qualidade/comum.jsx";
 
 const FUNCOES = [
-  { valor: "satisfacao", rotulo: "Pesquisa de satisfação", icone: Smile, cor: "bg-emerald-50 text-emerald-700", pronta: true,
-    texto: "Envio do link ao cliente, NPS, médias por pergunta, insatisfações (prazo 5 dias) e melhorias." },
-  { valor: "documentos", rotulo: "Documentos e POPs", icone: FileText, cor: "bg-sky-50 text-sky-700",
-    texto: "Versão, vigência, quem elaborou e quem aprovou; lista mestra." },
-  { valor: "equipamentos", rotulo: "Equipamentos", icone: Wrench, cor: "bg-amber-50 text-amber-700",
-    texto: "Calibração, verificação intermediária e manutenção com alerta de vencimento." },
-  { valor: "nc", rotulo: "Não conformidades", icone: ClipboardCheck, cor: "bg-rose-50 text-rose-700",
-    texto: "Registro, análise de causa, ação corretiva com responsável, prazo e eficácia." },
-  { valor: "auditorias", rotulo: "Auditorias e proficiência", icone: SearchCheck, cor: "bg-violet-50 text-violet-700",
-    texto: "Auditorias internas, ensaios de proficiência e interlaboratoriais." },
-  { valor: "indicadores", rotulo: "Indicadores", icone: Gauge, cor: "bg-slate-100 text-slate-700",
-    texto: "Prazo de liberação, retrabalho, reclamações e satisfação para a análise crítica." },
+  { valor: "satisfacao", rotulo: "Pesquisa de satisfação", icone: Smile, cor: "bg-emerald-50 text-emerald-700", texto: "Envio do link ao cliente, NPS, médias por pergunta, insatisfações (prazo 5 dias) e melhorias." },
+  { valor: "documentos", rotulo: "Documentos e POPs", icone: FileText, cor: "bg-sky-50 text-sky-700", texto: "Lista mestra com revisão, vigência, quem elaborou e aprovou e leitura confirmada." },
+  { valor: "equipamentos", rotulo: "Equipamentos", icone: Wrench, cor: "bg-amber-50 text-amber-700", texto: "Calibração, verificação intermediária e diária com alerta de vencimento e certificados." },
+  { valor: "nc", rotulo: "Não conformidades", icone: ClipboardCheck, cor: "bg-rose-50 text-rose-700", texto: "Registro, análise de causa, ação corretiva com responsável, prazo e eficácia." },
+  { valor: "auditorias", rotulo: "Auditorias e proficiência", icone: SearchCheck, cor: "bg-violet-50 text-violet-700", texto: "Programa anual de auditoria interna e ensaios de proficiência com z-score." },
+  { valor: "indicadores", rotulo: "Indicadores", icone: Gauge, cor: "bg-slate-100 text-slate-700", texto: "Prazo de liberação, reclamações, NPS, NC e proficiência com metas; pauta da análise crítica." },
 ];
+const PAGINAS = { documentos: Documentos, equipamentos: Equipamentos, nc: NaoConformidades, auditorias: Auditorias, indicadores: Indicadores };
 
 export default function QualidadeLaboratorio({ aba, ir }) {
-  if (aba === "satisfacao" || aba === "satisfacao-enviar") return <PesquisaSatisfacao voltar={() => ir("qualidade")} abrirEnvio={aba === "satisfacao-enviar"} />;
-  return <InicioQualidade abrir={(f) => ir("qualidade", f)} />;
+  const [q, setQ] = useState(null);
+  const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState(null);
+  const recarregar = useCallback(async () => {
+    try { setQ(await lerQualidade()); setErro(""); } catch (e) { setErro(e.message || "Não foi possível carregar a Qualidade."); }
+  }, []);
+  useEffect(() => { if (aba !== "satisfacao" && aba !== "satisfacao-enviar") recarregar(); }, [aba, recarregar]);
+  const voltar = () => ir("qualidade");
+
+  if (aba === "satisfacao" || aba === "satisfacao-enviar") return <PesquisaSatisfacao voltar={voltar} abrirEnvio={aba === "satisfacao-enviar"} />;
+  const Pagina = PAGINAS[aba];
+  if (Pagina) {
+    if (!q && !erro) return <CarregandoModulo />;
+    if (!q) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
+    return <><Aviso aviso={aviso} aoFechar={() => setAviso(null)} /><Pagina q={q} voltar={voltar} recarregar={recarregar} avisar={setAviso} /></>;
+  }
+  return <InicioQualidade q={q} erro={erro} abrir={(f) => ir("qualidade", f)} />;
 }
 
-function InicioQualidade({ abrir }) {
-  const [r, setR] = useState(null);
-  const [erro, setErro] = useState("");
-  const [breve, setBreve] = useState(null);
-  useEffect(() => { lerSatisfacao().then(setR).catch((e) => setErro(e.message || "Não carregou.")); }, []);
-
-  const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+function InicioQualidade({ q, erro, abrir }) {
+  const [sat, setSat] = useState(null);
+  useEffect(() => { lerSatisfacao().then(setSat).catch(() => {}); }, []);
+  const hoje = hojeYmd();
   const umAno = new Date(); umAno.setFullYear(umAno.getFullYear() - 1);
-  const rs = r ? r.respostas.filter((x) => new Date(x.respondido_em) >= umAno) : [];
+  const rs = sat ? sat.respostas.filter((x) => new Date(x.respondido_em) >= umAno) : [];
   const nps = rs.length ? Math.round(((rs.filter((x) => x.nps >= 9).length - rs.filter((x) => x.nps <= 6).length) / rs.length) * 100) : null;
-  const gerais = rs.map((x) => x.notas?.satisfacao_geral).filter((x) => typeof x === "number");
-  const geral = gerais.length ? gerais.reduce((a, b) => a + b, 0) / gerais.length : null;
-  const abertas = r ? r.tratativas.filter((t) => t.status !== "CONCLUIDA") : [];
-  const atrasadas = abertas.filter((t) => t.prazo < hoje);
-  const aguardando = r ? r.envios.filter((e) => !e.respondido_em && !e.cancelado_em && new Date(e.expira_em) > new Date()).length : 0;
-  const n = (v) => (r ? v : "…");
+  const insat = sat ? sat.tratativas.filter((t) => t.status !== "CONCLUIDA") : [];
+  const ncAbertas = q ? q.ncs.filter((n) => n.etapa !== "ENCERRADA") : [];
+  const ncVencidas = ncAbertas.filter((n) => n.prazo && n.prazo < hoje);
+  const eqVencidos = q ? q.equipamentos.filter((e) => e.situacao !== "INATIVO" && situacaoEquip(e)[1] === "bad") : [];
+  const docVencidos = q ? q.documentos.filter((d) => d.status === "VIGENTE" && d.proxima_revisao && d.proxima_revisao < hoje) : [];
+  const n = (pronto, v) => (pronto ? v : "…");
 
   return (
     <div className="space-y-5">
@@ -52,11 +65,11 @@ function InicioQualidade({ abrir }) {
           {erro ? <span className="text-xs text-bad-700">{erro}</span> : <span className="text-xs text-slate-400">Clique num número para abrir</span>}
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <StatCard rotulo="Insatisfações abertas" valor={n(abertas.length)} sub={atrasadas.length ? `${atrasadas.length} com prazo vencido` : "prazo de 5 dias"} tom={abertas.length ? "bad" : "neutral"} icone={AlertTriangle} onClick={() => abrir("satisfacao")} />
-          <StatCard rotulo="NPS (12 meses)" valor={r ? (nps == null ? "—" : `${nps > 0 ? "+" : ""}${nps}`) : "…"} sub={`${rs.length} resposta(s)`} tom="brand" icone={Smile} onClick={() => abrir("satisfacao")} />
-          <StatCard rotulo="Satisfação geral" valor={r ? (geral == null ? "—" : geral.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })) : "…"} sub="1 a 5 · meta ≥ 4,5" tom={geral != null && geral < 4.5 ? "warn" : "ok"} icone={Star} onClick={() => abrir("satisfacao")} />
-          <StatCard rotulo="Pesquisas aguardando" valor={n(aguardando)} sub="links enviados sem resposta" icone={Send} onClick={() => abrir("satisfacao")} />
-          <StatCard rotulo="Enviar pesquisa" valor="+" sub="gerar link para um cliente" icone={BarChart3} onClick={() => abrir("satisfacao-enviar")} />
+          <StatCard rotulo="Insatisfações de clientes" valor={n(sat, insat.length)} sub="tratativas abertas · prazo 5 dias" tom={insat.length ? "bad" : "neutral"} icone={AlertTriangle} onClick={() => abrir("satisfacao")} />
+          <StatCard rotulo="Não conformidades abertas" valor={n(q, ncAbertas.length)} sub={ncVencidas.length ? `${ncVencidas.length} com prazo vencido` : "dentro do prazo"} tom={ncVencidas.length ? "bad" : ncAbertas.length ? "warn" : "neutral"} icone={ClipboardCheck} onClick={() => abrir("nc")} />
+          <StatCard rotulo="Equipamentos vencidos" valor={n(q, eqVencidos.length)} sub={eqVencidos.map((e) => e.codigo).slice(0, 2).join(", ") || "calibrações em dia"} tom={eqVencidos.length ? "bad" : "ok"} icone={Wrench} onClick={() => abrir("equipamentos")} />
+          <StatCard rotulo="Documentos a revisar" valor={n(q, docVencidos.length)} sub="revisão vencida" tom={docVencidos.length ? "warn" : "ok"} icone={FileText} onClick={() => abrir("documentos")} />
+          <StatCard rotulo="NPS (12 meses)" valor={n(sat, nps == null ? "—" : `${nps > 0 ? "+" : ""}${nps}`)} sub={`${rs.length} resposta(s) da pesquisa`} tom="brand" icone={Smile} onClick={() => abrir("satisfacao")} />
         </div>
       </section>
 
@@ -66,21 +79,10 @@ function InicioQualidade({ abrir }) {
           {FUNCOES.map((f) => {
             const Icone = f.icone;
             return (
-              <button key={f.valor} type="button" onClick={() => (f.pronta ? abrir(f.valor) : setBreve(breve === f.valor ? null : f.valor))} className="card card-hover group flex flex-col gap-3 p-4 text-left">
-                <div className="flex items-center justify-between">
-                  <span className={`grid h-10 w-10 place-items-center rounded-xl ${f.cor}`}><Icone className="h-5 w-5" aria-hidden /></span>
-                  {f.pronta
-                    ? <span className="rounded-full bg-ok-50 px-2 py-0.5 text-[11px] font-semibold text-ok-700">Em uso</span>
-                    : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Em breve</span>}
-                </div>
-                <div>
-                  <p className="font-display text-base font-semibold text-slate-900">{f.rotulo}</p>
-                  <p className="mt-0.5 text-sm text-slate-500">{f.texto}</p>
-                </div>
-                <span className="mt-auto inline-flex items-center gap-1 text-sm font-medium text-brand">
-                  {f.pronta ? "Abrir" : breve === f.valor ? "Ainda em desenvolvimento — quer priorizar? É só pedir." : "Ver o que vai ter"}
-                  {f.pronta && <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden />}
-                </span>
+              <button key={f.valor} type="button" onClick={() => abrir(f.valor)} className="card card-hover group flex flex-col gap-3 p-4 text-left">
+                <span className={`grid h-10 w-10 place-items-center rounded-xl ${f.cor}`}><Icone className="h-5 w-5" aria-hidden /></span>
+                <div><p className="font-display text-base font-semibold text-slate-900">{f.rotulo}</p><p className="mt-0.5 text-sm text-slate-500">{f.texto}</p></div>
+                <span className="mt-auto inline-flex items-center gap-1 text-sm font-medium text-brand">Abrir <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
               </button>
             );
           })}

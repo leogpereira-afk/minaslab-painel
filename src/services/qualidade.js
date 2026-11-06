@@ -26,6 +26,17 @@ export const salvarPergunta = (dados) => chamar("perguntaSalvar", dados);
 export const ordenarPerguntas = (ids) => chamar("perguntasOrdem", { ids });
 export const salvarRevisao = (revisao) => chamar("revisao", { revisao });
 
+// Demais páginas da Qualidade (documentos, equipamentos, NC, auditorias, proficiência, indicadores).
+export const lerQualidade = () => chamar("qualidade");
+export const salvarRegistro = (modulo, registro) => chamar("salvar", { modulo, registro }).then((r) => r.registro);
+export const excluirRegistro = (modulo, id) => chamar("excluir", { modulo, id });
+export const confirmarLeitura = (id) => chamar("ler", { id });
+export const registrarCalibracao = (dados) => chamar("calibrar", dados);
+export const salvarMeta = (chave, meta) => chamar("metaSalvar", { chave, meta });
+export const enviarArquivo = (ref_tipo, ref_id, nome, base64) => chamar("arquivoEnviar", { ref_tipo, ref_id, nome, base64 }).then((r) => r.arquivo);
+export const baixarArquivo = (id) => chamar("arquivoBaixar", { id });
+export const apagarArquivo = (id) => chamar("arquivoApagar", { id });
+
 // Link público que o cliente abre (página /pesquisa/ do próprio painel).
 export const linkPesquisa = (token) => `${window.location.origin}${import.meta.env.BASE_URL}pesquisa/?t=${token}`;
 export const mensagemPesquisa = (link) => `Olá! Aqui é da MinasLab. Sua opinião é muito importante para nós: poderia responder nossa pesquisa de satisfação? Leva cerca de 2 minutos.\n${link}`;

@@ -18,7 +18,7 @@ import QualidadeLaboratorio from "../components/laboratorio/QualidadeLaboratorio
 const SECOES = [
   { valor: "inicio", rotulo: "Início", descricao: "O que pede atenção hoje e as áreas do laboratório." },
   { valor: "entradas", rotulo: "Entradas de amostras", descricao: "Protocolo de recebimento, análise, liberação e descarte das amostras." },
-  { valor: "qualidade", rotulo: "Qualidade", descricao: "Gestão da qualidade do laboratório: pesquisa de satisfação de clientes e, em breve, documentos, equipamentos, não conformidades e auditorias." },
+  { valor: "qualidade", rotulo: "Qualidade", descricao: "Gestão da qualidade: pesquisa de satisfação, documentos e POPs, equipamentos, não conformidades, auditorias e indicadores." },
   { valor: "microbiologia", rotulo: "Microbiologia", descricao: "Análises microbiológicas (em desenvolvimento)." },
   { valor: "fisicoquimico", rotulo: "Físico-Químico", descricao: "Análises físico-químicas (em desenvolvimento)." },
 ];
