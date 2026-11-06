@@ -31,11 +31,11 @@ function sourceLabel(value:string|null){const v=(value||'CRM').toUpperCase();if(
 
 export function TimelinePanel(props:Props){
   const {profile,hasPermission}=useAuth();const canWrite=hasPermission('crm.write')
-  const[items,setItems]=useState<Item[]>([]);const[emails,setEmails]=useState<EmailRow[]>([]);const[open,setOpen]=useState<Set<string>>(new Set());const[profiles,setProfiles]=useState<ProfileName[]>([]);const[tipo,setTipo]=useState('FOLLOW-UP');const[descricao,setDescricao]=useState('');const[error,setError]=useState('');const[saving,setSaving]=useState(false)
+  const[items,setItems]=useState<Item[]>([]);const[emails,setEmails]=useState<EmailRow[]>([]);const[pesquisas,setPesquisas]=useState<{id:string;respondido_em:string;nps:number;insatisfeito:boolean;gostou:string|null;melhorar:string|null;mudaria:string|null}[]>([]);const[open,setOpen]=useState<Set<string>>(new Set());const[profiles,setProfiles]=useState<ProfileName[]>([]);const[tipo,setTipo]=useState('FOLLOW-UP');const[descricao,setDescricao]=useState('');const[error,setError]=useState('');const[saving,setSaving]=useState(false)
   async function load(){
     const interactions=await fetchAll<Item>((from,to)=>{let q=supabase.from('interacoes').select('id,ocorrido_em,tipo,descricao,usuario_id,source_system,chat_session_id,direction,message_text,message_kind,media_name').order('ocorrido_em',{ascending:false});if(props.proposalId)q=q.eq('proposta_id',props.proposalId);if(props.opportunityId)q=q.eq('oportunidade_id',props.opportunityId);if(props.clientId)q=q.eq('cliente_id',props.clientId);if(props.leadId)q=q.eq('lead_id',props.leadId);return q.range(from,to) as unknown as PromiseLike<QueryResult<Item>>})
     const profileResult=await supabase.from('profiles').select('id,nome,avatar_url').eq('ativo',true)
-    if(props.clientId){const em=await supabase.from('email_mensagens').select('id,direcao,de_email,de_nome,para,assunto,texto_resumido,recebido_em,enviado_por,anexos').eq('cliente_id',props.clientId).order('recebido_em',{ascending:false}).limit(500);if(!em.error)setEmails((em.data??[]) as EmailRow[])}else setEmails([])
+    if(props.clientId){const em=await supabase.from('email_mensagens').select('id,direcao,de_email,de_nome,para,assunto,texto_resumido,recebido_em,enviado_por,anexos').eq('cliente_id',props.clientId).order('recebido_em',{ascending:false}).limit(500);if(!em.error)setEmails((em.data??[]) as EmailRow[]);const ps=await supabase.from('satisfacao_respostas').select('id,respondido_em,nps,insatisfeito,gostou,melhorar,mudaria').eq('cliente_id',props.clientId).is('deleted_at',null).order('respondido_em',{ascending:false}).limit(100);if(!ps.error)setPesquisas(ps.data??[])}else{setEmails([]);setPesquisas([])}
     if(interactions.error)setError(interactions.error.message);else{setItems(interactions.data);setError('')}if(!profileResult.error)setProfiles((profileResult.data??[]) as ProfileName[])
   }
   useEffect(()=>{void load()},[props.proposalId,props.opportunityId,props.clientId,props.leadId])
@@ -55,8 +55,9 @@ export function TimelinePanel(props:Props){
       const enviado=e.direcao==='SENT';const quem=enviado?(e.para??[]).join(', '):(e.de_nome?`${e.de_nome} <${e.de_email??''}>`:e.de_email||'')
       out.push({key:`mail:${e.id}`,when:e.recebido_em,tipo:'E-MAIL',fonte:'E-mail',titulo:`${enviado?'E-mail enviado para':'E-mail recebido de'} ${quem}`,texto:[e.assunto?`Assunto: ${e.assunto}`:'',e.texto_resumido||'',(e.anexos?.length??0)>0?`📎 ${e.anexos?.length} anexo(s)`:''].filter(Boolean).join('\n'),autor:enviado?e.enviado_por:null})
     }
+    for(const p of pesquisas)out.push({key:`pesq:${p.id}`,when:p.respondido_em,tipo:'PESQUISA',fonte:'Pesquisa de satisfação',titulo:`Pesquisa de satisfação respondida — recomendação ${p.nps}/10${p.insatisfeito?' (insatisfação)':''}`,texto:[p.gostou?`Gostou: ${p.gostou}`:'',p.mudaria?`Mudaria: ${p.mudaria}`:'',p.melhorar?`Melhorar: ${p.melhorar}`:''].filter(Boolean).join('\n')||'Sem comentários.',autor:null})
     return out.sort((a,b)=>new Date(b.when).getTime()-new Date(a.when).getTime())
-  },[items,emails])
+  },[items,emails,pesquisas])
   const toggle=(k:string)=>setOpen(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n})
   async function add(e:React.FormEvent){e.preventDefault();if(!descricao.trim())return;setSaving(true);setError('');const payload={descricao:descricao.trim(),tipo,usuario_id:profile?.id??null,proposta_id:props.proposalId??null,oportunidade_id:props.opportunityId??null,cliente_id:props.clientId??null,lead_id:props.leadId??null,source_system:'CRM'};const{error}=await supabase.from('interacoes').insert(payload);if(error)setError(error.message);else{setDescricao('');await load()}setSaving(false)}
   const hasCreation=Boolean(props.lead?.data_primeiro_atendimento)

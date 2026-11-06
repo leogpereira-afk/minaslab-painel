@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pesquisa de Satisfação · MinasLab</title>
+<link rel="icon" href="../crm/favicon-crm.svg">
+<style>
+  :root { --teal:#0f766e; --teal2:#14b8a6; --tealbg:#f0fdfa; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --red:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",Inter,system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:680px; margin:0 auto; padding:0 0 40px; }
+  header { background:var(--teal); color:#fff; padding:22px 20px 20px; }
+  header img { height:34px; background:#fff; border-radius:8px; padding:4px 8px; }
+  header .doc { font-size:12px; opacity:.85; margin-top:10px; }
+  header h1 { font-size:21px; margin:6px 0 0; font-weight:600; }
+  main { padding:16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin-bottom:14px; }
+  .card h2 { font-size:15px; margin:0 0 4px; }
+  .hint { font-size:13px; color:var(--mut); margin:0 0 10px; }
+  .cli { background:var(--tealbg); border:1px solid #99f6e4; }
+  .cli small { display:block; font-size:11px; color:var(--mut); }
+  label.inp { display:block; font-size:13px; font-weight:600; margin:8px 0 4px; }
+  input[type=text], textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; font-size:14px; }
+  textarea { min-height:76px; resize:vertical; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:7px 12px; font-size:13px; cursor:pointer; user-select:none; background:#fff; }
+  .chip input { display:none; }
+  .chip.on { background:#ccfbf1; border-color:#5eead4; color:var(--teal); font-weight:600; }
+  .item { padding:10px 0; border-bottom:1px solid #f1f5f9; }
+  .item:last-child { border-bottom:0; }
+  .item p { margin:0 0 8px; font-size:14px; }
+  .scale { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .scale.na { grid-template-columns:repeat(6,1fr); }
+  .scale button, .nps button { border:1px solid var(--line); background:#fff; border-radius:10px; padding:9px 0; font:inherit; font-size:14px; cursor:pointer; color:var(--ink); }
+  .scale button small { display:block; font-size:9.5px; color:var(--mut); margin-top:2px; line-height:1.1; }
+  .scale button.on, .nps button.on { background:var(--teal); border-color:var(--teal); color:#fff; font-weight:700; }
+  .scale button.on small { color:#ccfbf1; }
+  .nps { display:grid; grid-template-columns:repeat(11,1fr); gap:4px; }
+  .nps button { padding:10px 0; font-size:13px; }
+  .npsleg { display:flex; justify-content:space-between; font-size:11px; color:var(--mut); margin-top:4px; }
+  .miss { outline:2px solid #fca5a5; border-radius:12px; outline-offset:4px; }
+  .check { display:flex; gap:10px; align-items:flex-start; font-size:14px; }
+  .check input { width:20px; height:20px; margin-top:1px; accent-color:var(--teal); }
+  .btn { width:100%; background:var(--teal); color:#fff; border:0; border-radius:12px; padding:14px; font:inherit; font-size:16px; font-weight:600; cursor:pointer; }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .err { color:var(--red); font-size:14px; margin:10px 0 0; min-height:1em; }
+  .center { text-align:center; padding:40px 20px; }
+  .center .ico { font-size:44px; }
+  .hidden { display:none; }
+  footer { text-align:center; font-size:12px; color:var(--mut); margin-top:8px; }
+  @media (max-width:420px) { .nps { grid-template-columns:repeat(6,1fr); } .scale button small { display:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../crm/minaslab-logo.svg" alt="MinasLab">
+    <div class="doc">PG 012 · Pesquisa de Satisfação de Clientes · Rev. 01</div>
+    <h1>Como foi sua experiência com a MinasLab?</h1>
+  </header>
+  <main>
+    <div id="carregando" class="card center"><p class="hint">Carregando a pesquisa…</p></div>
+
+    <div id="aviso" class="card center hidden"><div class="ico" id="avisoIco">ℹ️</div><h2 id="avisoTit"></h2><p class="hint" id="avisoTxt"></p></div>
+
+    <form id="form" class="hidden" novalidate>
+      <div class="card cli">
+        <small>Empresa / cliente</small>
+        <input type="text" id="empresa" maxlength="200" aria-label="Nome da empresa ou cliente">
+        <div id="osBox" class="hidden" style="margin-top:8px"><small>Ordem de serviço</small><b id="osNum"></b></div>
+      </div>
+
+      <div class="card">
+        <h2>Serviço utilizado</h2>
+        <p class="hint">Marque todos que se aplicam.</p>
+        <div class="chips" id="servicos"></div>
+      </div>
+
+      <div class="card">
+        <h2>Você ficou satisfeito com…</h2>
+        <p class="hint">1 = muito insatisfeito · 5 = muito satisfeito</p>
+        <div id="itens"></div>
+        <div class="item" id="itColeta">
+          <p>Processo de coleta/amostragem (se aplicável)</p>
+          <div class="scale na" data-chave="nota_coleta"></div>
+        </div>
+      </div>
+
+      <div class="card" id="npsCard">
+        <h2>De 0 a 10, qual a probabilidade de você recomendar nosso laboratório a colegas ou parceiros?</h2>
+        <div class="nps" id="nps"></div>
+        <div class="npsleg"><span>0 · nada provável</span><span>10 · muito provável</span></div>
+        <div id="explicaBox" class="hidden">
+          <label class="inp" for="explicacao_nps">Sua nota foi de 0 a 6: o que poderíamos melhorar para que você nos recomendasse?</label>
+          <textarea id="explicacao_nps" maxlength="2000"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="inp" for="gostou">O que você mais gostou em nossos serviços?</label>
+        <textarea id="gostou" maxlength="2000"></textarea>
+        <label class="inp" for="mudaria">Se pudesse mudar uma coisa em nossos serviços, o que seria?</label>
+        <textarea id="mudaria" maxlength="2000"></textarea>
+        <label class="inp" for="melhorar">O que podemos melhorar para atendê-lo ainda melhor?</label>
+        <textarea id="melhorar" maxlength="2000"></textarea>
+      </div>
+
+      <div class="card">
+        <label class="check"><input type="checkbox" id="autoriza"> Podemos utilizar seus comentários de forma anônima para divulgação da qualidade dos nossos serviços?</label>
+      </div>
+
+      <button class="btn" id="enviar" type="submit">Enviar avaliação</button>
+      <p class="err" id="erro" role="alert"></p>
+    </form>
+    <footer>MinasLab · Laboratório de Controle de Qualidade</footer>
+  </main>
+</div>
+<script>
+(() => {
+  const API = 'https://reoghclxripktzpdwhiy.supabase.co/rest/v1/rpc/';
+  const KEY = 'sb_publishable_YG38KEPCwoKfiQ7PZM2EBg_8cY1vIH7';
+  const SERVICOS = ['Coleta e amostragem', 'Análises físico-químicas', 'Análises microbiológicas', 'Consultoria técnica', 'Outro'];
+  const ROTULOS = ['Muito insatisfeito', 'Insatisfeito', 'Regular', 'Satisfeito', 'Muito satisfeito'];
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const $ = (id) => document.getElementById(id);
+  const notas = {}; let nps = null; let coleta = null;
+
+  const rpc = async (fn, body) => {
+    const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('falha ' + r.status);
+    return r.json();
+  };
+  const aviso = (ico, tit, txt) => {
+    $('carregando').classList.add('hidden'); $('form').classList.add('hidden');
+    $('avisoIco').textContent = ico; $('avisoTit').textContent = tit; $('avisoTxt').textContent = txt;
+    $('aviso').classList.remove('hidden'); window.scrollTo(0, 0);
+  };
+  const MSG = {
+    respondida: ['✅', 'Esta pesquisa já foi respondida', 'Obrigado! Sua avaliação já está registrada.'],
+    expirada: ['⌛', 'Este link expirou', 'Peça um novo link à equipe MinasLab.'],
+    invalido: ['⚠️', 'Link inválido', 'Confira se o endereço foi copiado inteiro ou peça um novo link à equipe MinasLab.'],
+  };
+
+  const escala = (el, onPick, comNA) => {
+    const valores = comNA ? ['NA', 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5];
+    valores.forEach((v) => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.innerHTML = v === 'NA' ? 'N/A<small>Não se aplica</small>' : `${v}<small>${ROTULOS[v - 1]}</small>`;
+      b.addEventListener('click', () => { [...el.children].forEach((x) => x.classList.remove('on')); b.classList.add('on'); onPick(v === 'NA' ? null : v); el.closest('.item').classList.remove('miss'); });
+      el.appendChild(b);
+    });
+  };
+
+  const montar = (d) => {
+    $('empresa').value = d.empresa || '';
+    if (d.os) { $('osNum').textContent = d.os; $('osBox').classList.remove('hidden'); }
+    SERVICOS.forEach((s) => {
+      const l = document.createElement('label'); l.className = 'chip';
+      l.innerHTML = `<input type="checkbox" value="${s}">${s}`;
+      l.querySelector('input').addEventListener('change', (e) => l.classList.toggle('on', e.target.checked));
+      $('servicos').appendChild(l);
+    });
+    (d.itens || []).forEach(([chave, texto]) => {
+      const div = document.createElement('div'); div.className = 'item'; div.dataset.chave = chave;
+      div.innerHTML = `<p>${texto}</p><div class="scale"></div>`;
+      escala(div.querySelector('.scale'), (v) => { notas[chave] = v; });
+      $('itens').appendChild(div);
+    });
+    escala(document.querySelector('[data-chave=nota_coleta]'), (v) => { coleta = v; }, true);
+    for (let i = 0; i <= 10; i++) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = i;
+      b.addEventListener('click', () => {
+        [...$('nps').children].forEach((x) => x.classList.remove('on')); b.classList.add('on'); nps = i;
+        $('npsCard').classList.remove('miss'); $('explicaBox').classList.toggle('hidden', i > 6);
+      });
+      $('nps').appendChild(b);
+    }
+    $('carregando').classList.add('hidden'); $('form').classList.remove('hidden');
+  };
+
+  $('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); $('erro').textContent = '';
+    const faltando = [...document.querySelectorAll('#itens .item')].filter((d) => !notas[d.dataset.chave]);
+    faltando.forEach((d) => d.classList.add('miss'));
+    if (nps === null) $('npsCard').classList.add('miss');
+    if (faltando.length || nps === null) {
+      $('erro').textContent = 'Responda todas as avaliações de 1 a 5 e a nota de 0 a 10.';
+      (faltando[0] || $('npsCard')).scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const dados = {
+      empresa: $('empresa').value, notas, nota_coleta: coleta, nps,
+      servicos: [...document.querySelectorAll('#servicos input:checked')].map((i) => i.value),
+      gostou: $('gostou').value, mudaria: $('mudaria').value, melhorar: $('melhorar').value,
+      explicacao_nps: nps <= 6 ? $('explicacao_nps').value : '', autoriza_anonimo: $('autoriza').checked,
+    };
+    $('enviar').disabled = true; $('enviar').textContent = 'Enviando…';
+    try {
+      const r = await rpc('satisfacao_pesquisa_responder', { p_token: token, p_dados: dados });
+      if (r.ok) aviso('🙏', 'Obrigado pela sua avaliação!', 'Sua resposta foi registrada e ajuda a MinasLab a melhorar sempre.');
+      else if (r.motivo === 'incompleta') { $('erro').textContent = 'Falta responder: ' + (r.item || 'algum item') + '.'; }
+      else aviso(...(MSG[r.motivo] || MSG.invalido));
+    } catch (e) {
+      $('erro').textContent = 'Não foi possível enviar agora. Verifique a internet e tente de novo.';
+    } finally { $('enviar').disabled = false; $('enviar').textContent = 'Enviar avaliação'; }
+  });
+
+  if (!token) { aviso(...MSG.invalido); return; }
+  rpc('satisfacao_pesquisa_abrir', { p_token: token })
+    .then((d) => (d.ok ? montar(d) : aviso(...(MSG[d.motivo] || MSG.invalido))))
+    .catch(() => aviso('⚠️', 'Não foi possível carregar', 'Verifique a internet e abra o link de novo.'));
+})();
+</script>
+</body>
+</html>
