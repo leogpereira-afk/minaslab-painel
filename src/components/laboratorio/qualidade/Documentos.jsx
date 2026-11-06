@@ -6,7 +6,7 @@ import { baixarPlanilha } from "../../../lib/planilha.js";
 import { StatCard, Modal } from "../../ui.jsx";
 import { Anexos, Cabecalho, Campo, Pill, SelectPessoa, diasAte, fmtData, hojeYmd, nomeDe, somaMeses } from "./comum.jsx";
 
-const TIPOS = [["PG", "Procedimento de gestão"], ["POP", "Procedimento operacional"], ["IT", "Instrução de trabalho"], ["FOR", "Formulário"], ["MQ", "Manual da qualidade"], ["OUTRO", "Outro"]];
+const TIPOS = [["PG", "Procedimento de gestão"], ["PT", "Procedimento técnico"], ["POP", "Procedimento operacional"], ["IT", "Instrução operacional (IO)"], ["FOR", "Formulário"], ["MQ", "Manual da qualidade"], ["OUTRO", "Outro"]];
 const STATUS = { ELABORACAO: ["Em elaboração", "gray"], EM_APROVACAO: ["Em aprovação", "sky"], VIGENTE: ["Vigente", "ok"], OBSOLETO: ["Obsoleto", "gray"] };
 const proxRev = (r) => { const n = parseInt(r, 10); return Number.isFinite(n) ? String(n + 1).padStart(String(r).length || 2, "0") : r; };
 
