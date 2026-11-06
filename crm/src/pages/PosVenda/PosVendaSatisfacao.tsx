@@ -17,21 +17,27 @@ type Contrato = { id: string; numero_contrato: string | null; cliente_id: string
 type Contato = { id: string; cliente_id: string; nome: string | null; email: string | null; whatsapp_e164: string | null; telefone_e164: string | null }
 type Person = { id: string; nome: string | null }
 type Envio = { id: string; token: string; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; contato_id: string | null; empresa_nome: string | null; canal: string; destino: string | null; enviado_por: string | null; enviado_por_painel?: string | null; enviado_em: string; expira_em: string; respondido_em: string | null; cancelado_em: string | null }
-type Resposta = { id: string; envio_id: string | null; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; empresa_nome: string | null; servicos: string[]; notas: Record<string, number>; nota_coleta: number | null; nps: number; gostou: string | null; mudaria: string | null; melhorar: string | null; explicacao_nps: string | null; autoriza_anonimo: boolean; insatisfeito: boolean; melhoria_status: string; origem: string; respondido_em: string }
+type Resposta = { id: string; envio_id: string | null; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; empresa_nome: string | null; servicos: string[]; notas: Record<string, number>; nota_coleta: number | null; nps: number; gostou: string | null; mudaria: string | null; melhorar: string | null; explicacao_nps: string | null; textos?: Record<string, string> | null; autoriza_anonimo: boolean; insatisfeito: boolean; melhoria_status: string; origem: string; respondido_em: string }
 type Tratativa = { id: string; resposta_id: string; cliente_id: string | null; motivo: string; prazo: string; status: string; responsavel_id: string | null; responsavel_painel?: string | null; tarefa_id: string | null; tarefa_painel_id?: string | null; causa: string | null; acao: string | null; retorno_cliente: string | null; concluida_em: string | null }
 type QueryResult<T> = { data: T[] | null; error: { message: string } | null }
 
-const ITENS: [string, string][] = [
-  ['atendimento_inicial', 'Facilidade no atendimento inicial'],
-  ['clareza_orcamentos', 'Clareza das informações e orçamentos'],
-  ['agilidade_prazos', 'Agilidade e cumprimento de prazos'],
-  ['equipe', 'Competência e cordialidade da equipe'],
-  ['confiabilidade', 'Confiabilidade dos resultados'],
-  ['relatorios', 'Qualidade dos relatórios emitidos'],
-  ['requisitos', 'Requisitos técnicos e normativos'],
-  ['custo_beneficio', 'Custo-benefício dos serviços'],
-  ['satisfacao_geral', 'Satisfação geral com o laboratório'],
-]
+// Perguntas vêm de satisfacao_perguntas (editadas só no painel › Laboratório › Qualidade). Reserva: o formulário original.
+type Pergunta = { chave: string; texto: string; tipo: string; ativa: boolean }
+const PADRAO: Pergunta[] = [
+  ['atendimento_inicial', 'Facilidade no atendimento inicial'], ['clareza_orcamentos', 'Clareza das informações e orçamentos'],
+  ['agilidade_prazos', 'Agilidade e cumprimento de prazos'], ['equipe', 'Competência e cordialidade da equipe'],
+  ['confiabilidade', 'Confiabilidade dos resultados'], ['relatorios', 'Qualidade dos relatórios emitidos'],
+  ['requisitos', 'Requisitos técnicos e normativos'], ['custo_beneficio', 'Custo-benefício dos serviços'],
+  ['satisfacao_geral', 'Satisfação geral com o laboratório'], ['coleta', 'Processo de coleta/amostragem'],
+].map(([chave, texto]) => ({ chave, texto, tipo: 'ESCALA', ativa: true }))
+let PERGUNTAS: Pergunta[] = PADRAO
+const escalaQs = () => PERGUNTAS.filter(q => q.tipo === 'ESCALA')
+const textoQs = () => PERGUNTAS.filter(q => q.tipo === 'TEXTO')
+const nota = (r: Resposta, k: string): number | null => { const v = r.notas?.[k] ?? (k === 'coleta' ? r.nota_coleta : null); return typeof v === 'number' ? v : null }
+const textosDe = (r: Resposta): Record<string, string> => ({ ...Object.fromEntries(([['gostou', r.gostou], ['mudaria', r.mudaria], ['melhorar', r.melhorar]] as [string, string | null][]).filter((x): x is [string, string] => !!x[1])), ...(r.textos || {}) })
+const comentario = (r: Resposta) => Object.values(textosDe(r)).find(Boolean) || r.explicacao_nps || ''
+const sugestao = (r: Resposta) => Object.entries(textosDe(r)).filter(([k, v]) => k !== 'gostou' && v).map(([, v]) => v).join(' · ')
+const rotTexto = (k: string) => textoQs().find(q => q.chave === k)?.texto || ({ gostou: 'O que mais gostou', mudaria: 'O que mudaria', melhorar: 'O que podemos melhorar' } as Record<string, string>)[k] || k
 const MELHORIA = ['AVALIAR', 'EM ANDAMENTO', 'IMPLEMENTADA', 'DESCARTADA', 'SEM SUGESTAO']
 const PAGE = 1000
 async function fetchAll<T>(q: (from: number, to: number) => PromiseLike<QueryResult<T>>) { const rows: T[] = []; for (let from = 0; ; from += PAGE) { const r = await q(from, from + PAGE - 1); if (r.error) return { data: rows, error: r.error }; const b = (r.data ?? []) as T[]; rows.push(...b); if (b.length < PAGE) return { data: rows, error: null } } }
@@ -56,6 +62,8 @@ export function PosVendaSatisfacao() {
 
   async function load() {
     setLoading(true)
+    const pq = await supabase.from('satisfacao_perguntas').select('chave,texto,tipo,ativa').order('ordem')
+    if (!pq.error && pq.data?.length) PERGUNTAS = pq.data as Pergunta[]
     const [e, r, t, c, o, p, k] = await Promise.all([
       fetchAll<Envio>((f, to) => supabase.from('satisfacao_envios').select('*').order('enviado_em', { ascending: false }).range(f, to)),
       fetchAll<Resposta>((f, to) => supabase.from('satisfacao_respostas').select('*').is('deleted_at', null).order('respondido_em', { ascending: false }).range(f, to)),
@@ -87,7 +95,7 @@ export function PosVendaSatisfacao() {
     const prom = rPer.filter(r => r.nps >= 9).length, det = rPer.filter(r => r.nps <= 6).length
     return {
       nps: rPer.length ? Math.round((prom - det) / rPer.length * 100) : null,
-      geral: media(rPer.map(r => r.notas?.satisfacao_geral).filter((x): x is number => typeof x === 'number')),
+      geral: media(rPer.map(r => nota(r, 'satisfacao_geral')).filter((x): x is number => x != null)),
       taxa: ePer.length ? Math.round(ePer.filter(e => e.respondido_em).length / ePer.length * 100) : null,
       respondidas: ePer.filter(e => e.respondido_em).length,
       abertas: tratativas.filter(t => t.status !== 'CONCLUIDA').length,
@@ -114,8 +122,8 @@ export function PosVendaSatisfacao() {
       ['NPS', kpi.nps ?? ''], ['Respostas', rPer.length], ['Satisfação geral (1–5)', dec(kpi.geral)], ['Taxa de resposta', kpi.taxa == null ? '' : `${kpi.taxa}%`],
       ['Tratativas abertas', kpi.abertas], ['Tratativas atrasadas', kpi.atrasadas], [],
       ['Média por pergunta'], ...porItem.map(i => [i.l, dec(i.m)]), [],
-      ['Respostas'], ['Data', 'Cliente', 'Contrato/OS', 'NPS', ...ITENS.map(i => i[1]), 'Coleta', 'O que mais gostou', 'O que mudaria', 'O que melhorar', 'Explicação 0–6', 'Status da melhoria', 'Uso anônimo autorizado'],
-      ...rPer.map(r => [fmtData(r.respondido_em), nome(r), vinculo(r), r.nps, ...ITENS.map(([k]) => r.notas?.[k] ?? ''), r.nota_coleta ?? 'N/A', r.gostou, r.mudaria, r.melhorar, r.explicacao_nps, r.melhoria_status, r.autoriza_anonimo ? 'Sim' : 'Não']), [],
+      ['Respostas'], ['Data', 'Cliente', 'Contrato/OS', 'NPS', ...escalaQs().map(q => q.texto), ...textoQs().map(q => q.texto), 'Explicação 0–6', 'Status da melhoria', 'Uso anônimo autorizado'],
+      ...rPer.map(r => [fmtData(r.respondido_em), nome(r), vinculo(r), r.nps, ...escalaQs().map(q => nota(r, q.chave) ?? ''), ...textoQs().map(q => textosDe(r)[q.chave] || ''), r.explicacao_nps, r.melhoria_status, r.autoriza_anonimo ? 'Sim' : 'Não']), [],
       ['Tratativas'], ['Prazo', 'Cliente', 'Motivo', 'Status', 'Causa', 'Ação', 'Retorno ao cliente', 'Concluída em'],
       ...tratativas.filter(t => rPer.some(r => r.id === t.resposta_id)).map(t => [fmtData(t.prazo), clientName(clientMap[t.cliente_id || '']), t.motivo, t.status, t.causa, t.acao, t.retorno_cliente, fmtData(t.concluida_em)]),
     ]
@@ -123,7 +131,7 @@ export function PosVendaSatisfacao() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     a.download = `pesquisa-satisfacao-${periodo.replace(/[^\w]+/g, '-').toLowerCase()}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
-  const porItem = useMemo(() => [...ITENS, ['__coleta', 'Processo de coleta/amostragem'] as [string, string]].map(([k, l]) => ({ k, l, m: media(rPer.map(r => k === '__coleta' ? r.nota_coleta : r.notas?.[k]).filter((x): x is number => typeof x === 'number')) })), [rPer])
+  const porItem = useMemo(() => escalaQs().map(q => ({ k: q.chave, l: q.ativa ? q.texto : `${q.texto} (retirada)`, ativa: q.ativa, m: media(rPer.map(r => nota(r, q.chave)).filter((x): x is number => x != null)) })).filter(i => i.ativa || i.m != null), [rPer, respostas])
 
   async function salvarMelhoria(r: Resposta, status: string) {
     const { error } = await supabase.from('satisfacao_respostas').update({ melhoria_status: status }).eq('id', r.id)
@@ -163,7 +171,7 @@ export function PosVendaSatisfacao() {
                 <td className="whitespace-nowrap py-2.5 pr-2">{fmtData(r.respondido_em).slice(0, 5)}</td>
                 <td className="py-2.5 pr-2"><b className="block text-slate-900">{nome(r)}</b><span className="text-xs text-slate-500">{vinculo(r)}</span></td>
                 <td className="py-2.5 pr-2"><Nps n={r.nps} /></td>
-                <td className="py-2.5 text-slate-600"><span className="line-clamp-2">{r.gostou || r.melhorar || r.mudaria || r.explicacao_nps || '—'}</span>{tr && <b className="text-xs text-red-700">→ tratativa aberta</b>}</td>
+                <td className="py-2.5 text-slate-600"><span className="line-clamp-2">{comentario(r) || '—'}</span>{tr && <b className="text-xs text-red-700">→ tratativa aberta</b>}</td>
               </tr> })}</tbody></table>}
             <h3 className="mb-1 mt-4 font-semibold text-slate-900">NPS por mês</h3>
             <div className="flex h-32 items-end gap-2 pb-5">{npsMes.map(m => <div key={m.k} className="relative flex h-full flex-1 flex-col justify-end">
@@ -185,8 +193,8 @@ export function PosVendaSatisfacao() {
           <td className="whitespace-nowrap px-4 py-3">{fmtData(r.respondido_em)}{r.origem !== 'LINK' && <span className="block text-xs text-slate-400">{r.origem === 'GOOGLE_FORMS' ? 'Google Forms' : 'Manual'}</span>}</td>
           <td className="px-4 py-3"><button onClick={() => setVer(r)} className="text-left font-semibold text-teal-800 hover:underline">{nome(r)}</button><span className="block text-xs text-slate-500">{vinculo(r)}</span></td>
           <td className="px-4 py-3"><Nps n={r.nps} />{r.insatisfeito && <span className="mt-1 block text-xs font-semibold text-red-700">insatisfação</span>}</td>
-          <td className="px-4 py-3">{r.notas?.satisfacao_geral ?? '—'}</td>
-          <td className="max-w-md px-4 py-3 text-slate-600">{[r.mudaria, r.melhorar].filter(Boolean).join(' · ') || '—'}</td>
+          <td className="px-4 py-3">{nota(r, 'satisfacao_geral') ?? '—'}</td>
+          <td className="max-w-md px-4 py-3 text-slate-600">{sugestao(r) || '—'}</td>
           <td className="px-4 py-3"><select disabled={!canWrite} value={r.melhoria_status} onChange={e => void salvarMelhoria(r, e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs">{MELHORIA.map(m => <option key={m} value={m}>{m === 'SEM SUGESTAO' ? 'Sem sugestão' : m.charAt(0) + m.slice(1).toLowerCase()}</option>)}</select></td>
         </tr>)}</tbody></table>{rPer.length === 0 && <div className="p-10 text-center text-slate-500">Nenhuma resposta no período.</div>}</div></section>}
 
@@ -265,9 +273,9 @@ function EnviarModal({ clients, oss, contratos, profileId, onClose, onSaved }: {
 function RespostaDetalhe({ r, os }: { r: Resposta; os?: string | null }) {
   return <div className="grid gap-4 text-sm">
     <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600"><span>Respondida em <b>{fmtData(r.respondido_em)}</b></span>{os && <span>Vínculo: <b>{os}</b></span>}<span>Serviços: <b>{r.servicos?.join(', ') || '—'}</b></span></div>
-    <div className="grid gap-1.5 rounded-2xl border p-3">{ITENS.map(([k, l]) => <div key={k} className="flex justify-between gap-4"><span>{l}</span><b className={(r.notas?.[k] ?? 5) <= 2 ? 'text-red-700' : ''}>{r.notas?.[k] ?? '—'}</b></div>)}<div className="flex justify-between gap-4"><span>Processo de coleta/amostragem</span><b>{r.nota_coleta ?? 'N/A'}</b></div></div>
+    <div className="grid gap-1.5 rounded-2xl border p-3">{escalaQs().filter(q => q.ativa || nota(r, q.chave) != null).map(q => { const n = nota(r, q.chave); return <div key={q.chave} className="flex justify-between gap-4"><span>{q.texto}</span><b className={n != null && n <= 2 ? 'text-red-700' : ''}>{n ?? 'N/A'}</b></div> })}</div>
     <div className="flex items-center gap-2">Recomendação: <Nps n={r.nps} /></div>
-    {[['O que mais gostou', r.gostou], ['O que mudaria', r.mudaria], ['O que podemos melhorar', r.melhorar], ['Explicação da nota 0–6', r.explicacao_nps]].map(([t, v]) => v ? <div key={t as string}><span className="text-xs font-semibold uppercase text-slate-500">{t}</span><p className="mt-0.5 whitespace-pre-line">{v}</p></div> : null)}
+    {[...Object.entries(textosDe(r)).map(([k, v]) => [rotTexto(k), v]), ['Explicação da nota 0–6', r.explicacao_nps]].map(([t, v]) => v ? <div key={t as string}><span className="text-xs font-semibold uppercase text-slate-500">{t}</span><p className="mt-0.5 whitespace-pre-line">{v}</p></div> : null)}
     <p className="text-xs text-slate-500">{r.autoriza_anonimo ? 'Autorizou o uso anônimo dos comentários para divulgação.' : 'Não autorizou o uso dos comentários para divulgação.'}</p>
   </div>
 }

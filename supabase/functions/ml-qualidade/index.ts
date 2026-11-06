@@ -5,7 +5,7 @@
 // lê quem é da direção, quem tem a página "laboratorio" inteira ou a seção "laboratorio/qualidade".
 //
 // Ações: satisfacao (tudo da tela) · vinculos (contratos, OS e contatos de um cliente) · enviar · canal ·
-//        cancelar · melhoria · tratativa
+//        cancelar · melhoria · tratativa · perguntaSalvar · perguntasOrdem · revisao (editor de perguntas, só aqui)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -21,6 +21,8 @@ const uuid = (v: unknown) => /^[0-9a-f-]{36}$/i.test(txt(v)) ? txt(v) : null;
 const MELHORIA = ["AVALIAR", "EM ANDAMENTO", "IMPLEMENTADA", "DESCARTADA", "SEM SUGESTAO"];
 const STATUS_TRAT = ["ABERTA", "EM ANDAMENTO", "CONCLUIDA"];
 const CANAIS = ["LINK", "WHATSAPP", "EMAIL"];
+const TIPOS = ["ESCALA", "TEXTO", "SERVICO"];
+const slug = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
 
 function b64u(s: string) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; }
 async function crachaDoPainel(req: Request) {
@@ -71,11 +73,13 @@ Deno.serve(async (req) => {
     const exigeEscrita = () => podeEscrever ? null : json({ erro: "Seu acesso à Qualidade é só de consulta.", semPermissao: true }, 403);
 
     if (acao === "satisfacao") {
-      const [envios, respostas, tratativas, clientes] = await Promise.all([
+      const [envios, respostas, tratativas, clientes, perguntas, cfg] = await Promise.all([
         todos((a, b) => sb.from("satisfacao_envios").select("id,token,cliente_id,contrato_id,ordem_servico_id,contato_id,empresa_nome,canal,destino,enviado_por,enviado_por_painel,enviado_em,expira_em,respondido_em,cancelado_em").order("enviado_em", { ascending: false }).range(a, b)),
         todos((a, b) => sb.from("satisfacao_respostas").select("*").is("deleted_at", null).order("respondido_em", { ascending: false }).range(a, b)),
         todos((a, b) => sb.from("satisfacao_tratativas").select("*").order("prazo").range(a, b)),
         todos((a, b) => sb.from("clientes").select("id,razao_social,nome_fantasia").is("deleted_at", null).order("razao_social").range(a, b)),
+        sb.from("satisfacao_perguntas").select("id,chave,texto,tipo,permite_na,obrigatoria,ordem,ativa,atualizado_em,atualizado_por").order("tipo").order("ordem").order("criado_em").then((r) => r.data ?? []),
+        sb.from("satisfacao_config").select("revisao,atualizado_em,atualizado_por").eq("id", 1).maybeSingle().then((r) => r.data),
       ]);
       const ativas = new Set((respostas as { id: string }[]).map((r) => r.id));
       const trats = (tratativas as { resposta_id: string }[]).filter((t) => ativas.has(t.resposta_id));
@@ -90,7 +94,7 @@ Deno.serve(async (req) => {
         sb.from("ml_contas").select("usuario,nome"),
       ]);
       return json({
-        podeEscrever, envios, respostas, tratativas: trats,
+        podeEscrever, envios, respostas, tratativas: trats, perguntas, revisao: cfg?.revisao ?? "01",
         clientes: (clientes as { id: string; razao_social: string | null; nome_fantasia: string | null }[]).map((c) => ({ id: c.id, nome: c.nome_fantasia || c.razao_social || "", razao: c.razao_social || "" })),
         contratos: Object.fromEntries(((ct.data ?? []) as { id: string; numero_contrato: string }[]).map((x) => [x.id, x.numero_contrato])),
         os: Object.fromEntries(((os.data ?? []) as { id: string; numero_os: string }[]).map((x) => [x.id, x.numero_os])),
@@ -176,6 +180,44 @@ Deno.serve(async (req) => {
       if (concl && atual.tarefa_id) await sb.from("tarefas").update({ status: "CONCLUIDA", updated_at: agora }).eq("id", atual.tarefa_id);
       if (concl && atual.tarefa_id) await sb.from("tarefa_responsaveis").update({ status: "CONCLUIDA", concluida_em: agora, updated_at: agora }).eq("tarefa_id", atual.tarefa_id);
       if (concl && atual.tarefa_painel_id) await sb.from("ml_tarefas").update({ status: "concluida", concluida_em: agora, concluida_por: usuario, atualizado_em: agora }).eq("id", atual.tarefa_painel_id);
+      return json({ ok: true });
+    }
+
+    if (acao === "perguntaSalvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const texto = txt(body.texto).slice(0, 300);
+      const tipo = txt(body.tipo);
+      if (!texto) return json({ erro: "Escreva o texto da pergunta." }, 400);
+      if (!TIPOS.includes(tipo)) return json({ erro: "Tipo de pergunta inválido." }, 400);
+      const dados = { texto, permite_na: body.permite_na === true, obrigatoria: body.obrigatoria === true, ativa: body.ativa !== false, atualizado_em: new Date().toISOString(), atualizado_por: usuario };
+      const id = uuid(body.id);
+      if (id) {
+        const { error } = await sb.from("satisfacao_perguntas").update(dados).eq("id", id);
+        if (error) throw error;
+        return json({ ok: true, id });
+      }
+      const { data: ult } = await sb.from("satisfacao_perguntas").select("ordem").eq("tipo", tipo).order("ordem", { ascending: false }).limit(1).maybeSingle();
+      let chave = `${tipo === "SERVICO" ? "srv_" : ""}${slug(texto) || "pergunta"}`;
+      const { data: existe } = await sb.from("satisfacao_perguntas").select("id").eq("chave", chave).maybeSingle();
+      if (existe) chave = `${chave}_${Date.now().toString(36)}`;
+      const { data, error } = await sb.from("satisfacao_perguntas").insert({ ...dados, chave, tipo, ordem: (ult?.ordem ?? 0) + 10 }).select("id").single();
+      if (error) throw error;
+      return json({ ok: true, id: data.id });
+    }
+
+    if (acao === "perguntasOrdem") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const ids = (Array.isArray(body.ids) ? body.ids : []).map(uuid).filter(Boolean) as string[];
+      for (let i = 0; i < ids.length; i++) await sb.from("satisfacao_perguntas").update({ ordem: (i + 1) * 10, atualizado_em: new Date().toISOString(), atualizado_por: usuario }).eq("id", ids[i]);
+      return json({ ok: true });
+    }
+
+    if (acao === "revisao") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const revisao = txt(body.revisao).slice(0, 20);
+      if (!revisao) return json({ erro: "Informe a revisão." }, 400);
+      const { error } = await sb.from("satisfacao_config").update({ revisao, atualizado_em: new Date().toISOString(), atualizado_por: usuario }).eq("id", 1);
+      if (error) throw error;
       return json({ ok: true });
     }
 
