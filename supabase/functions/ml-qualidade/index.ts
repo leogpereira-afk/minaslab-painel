@@ -55,7 +55,7 @@ async function todos<T>(q: (de: number, ate: number) => PromiseLike<{ data: T[] 
 // ---------------------------------------------------------------- páginas da Qualidade
 const MODULOS: Record<string, { t: string; campos: string[] }> = {
   documento: { t: "qualidade_documentos", campos: ["codigo", "titulo", "tipo", "setor", "revisao", "vigencia_inicio", "proxima_revisao", "elaborado_por", "aprovado_por", "status", "leitores", "observacao"] },
-  equipamento: { t: "qualidade_equipamentos", campos: ["codigo", "nome", "setor", "local", "fabricante", "modelo", "serie", "controle", "periodicidade_meses", "proxima", "criterio", "ensaios_afetados", "situacao", "observacao"] },
+  equipamento: { t: "qualidade_equipamentos", campos: ["codigo", "nome", "setor", "local", "fabricante", "modelo", "serie", "controle", "periodicidade_meses", "proxima", "criterio", "faixa_uso", "ensaios_afetados", "situacao", "bloqueado", "bloqueio_motivo", "observacao"] },
   nc: { t: "qualidade_nc", campos: ["titulo", "descricao", "origem", "etapa", "responsavel", "prazo", "trabalho_afetado", "impacto", "porques", "causa_raiz", "acao", "eficacia_em", "eficacia_resultado", "eficaz"] },
   auditoria: { t: "qualidade_auditorias", campos: ["ano", "requisito", "mes", "data", "status", "auditor", "constatacoes", "n_constatacoes"] },
   proficiencia: { t: "qualidade_proficiencia", campos: ["provedor", "rodada", "matriz", "parametro", "data", "z", "resultado", "observacao"] },
@@ -95,6 +95,43 @@ async function abrirNc(dados: Record<string, unknown>, usuario: string) {
   return data;
 }
 const resultadoDoZ = (z: number) => Math.abs(z) <= 2 ? "SATISFATORIO" : Math.abs(z) < 3 ? "QUESTIONAVEL" : "INSATISFATORIO";
+
+// Patrimônio é o cadastro único do equipamento. Todo bem que "requer calibração" ou "qualificação" ganha aqui
+// uma ficha metrológica (critério, faixa, ensaios, calibrações). Código, nome, área e periodicidade vêm do bem.
+type Bem = { id: string; dados: Record<string, unknown> };
+async function sincronizarPatrimonio() {
+  const bensLinhas = await todos<Bem>((a, b) => sb.from("ml_patrimonio").select("id,dados").eq("tipo", "bem").eq("apagado", false).order("id").range(a, b));
+  const { data: fichas, error } = await sb.from("qualidade_equipamentos").select("id,bem_id,codigo,nome,setor,periodicidade_meses,situacao");
+  if (error) throw error;
+  const porBem = new Map((fichas ?? []).filter((f) => f.bem_id).map((f) => [String(f.bem_id), f]));
+  const bens = new Map<string, Record<string, unknown>>();
+  const novos: Record<string, unknown>[] = [];
+  const mudancas: Record<string, unknown>[] = [];
+  for (const { id, dados: d } of bensLinhas) {
+    const metro = d.reqCalibracao === "sim" || d.reqQualificacao === "sim";
+    const f = porBem.get(id);
+    bens.set(id, { situacao: d.situacao ?? null, responsavel: d.responsavel ?? null, area: d.areaLab ?? null, descricao: d.descricaoTecnica ?? null, reqCalibracao: d.reqCalibracao ?? null, reqQualificacao: d.reqQualificacao ?? null, reqManutencao: d.reqManutencao ?? null });
+    if (!f && !metro) continue;
+    const per = Number(d.periodicidadeCalibracaoMeses);
+    const base: Record<string, unknown> = { codigo: String(d.codigo || id), nome: [d.nomeGenerico, d.volume].filter(Boolean).join(" · ") || id, setor: (d.areaLab as string) || null };
+    if (per > 0) base.periodicidade_meses = Math.round(per);
+    const baixado = d.situacao === "baixado";
+    if (!f) novos.push({ ...base, bem_id: id, controle: d.reqCalibracao === "sim" ? "CALIBRACAO" : "VALIDACAO", situacao: baixado ? "INATIVO" : "ATIVO", criado_por: "patrimonio" });
+    else {
+      const alvo = { ...base, ...(baixado && f.situacao !== "INATIVO" ? { situacao: "INATIVO" } : {}) };
+      if (Object.entries(alvo).some(([k, v]) => (f as Record<string, unknown>)[k] !== v)) mudancas.push({ id: f.id, ...alvo });
+    }
+  }
+  // Bem apagado do Patrimônio: a ficha fica (histórico auditável), mas inativa.
+  for (const f of fichas ?? []) if (f.bem_id && !bens.has(String(f.bem_id)) && f.situacao !== "INATIVO") mudancas.push({ id: f.id, situacao: "INATIVO" });
+  if (novos.length) { const { error: e } = await sb.from("qualidade_equipamentos").upsert(novos, { onConflict: "bem_id", ignoreDuplicates: true }); if (e) throw e; }
+  for (const { id, ...m } of mudancas) { const { error: e } = await sb.from("qualidade_equipamentos").update({ ...m, atualizado_em: new Date().toISOString() }).eq("id", id); if (e) throw e; }
+  // Manutenções dos bens (somente leitura aqui): a Qualidade vê o serviço feito e cobra a análise/verificação.
+  const regs = await todos<{ id: string; registro: Record<string, unknown> }>((a, b) => sb.from("ml_registros").select("id,registro").eq("colecao", "manutencoes").eq("apagado", false).range(a, b));
+  const manutencoes = regs.map(({ id, registro: r }) => ({ id, alvoTipo: r.alvoTipo, alvoId: r.alvoId, tipo: r.tipo, status: r.status, data: r.data || null, proxima: r.proxima || null, descricao: r.descricao || "", fornecedor: r.fornecedor || "" }))
+    .filter((m) => m.alvoTipo === "bem" && bens.has(String(m.alvoId)));
+  return { bens, manutencoes };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -270,6 +307,7 @@ Deno.serve(async (req) => {
 
     if (acao === "qualidade") {
       const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
+      const { bens, manutencoes } = await sincronizarPatrimonio();
       const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas] = await Promise.all([
         sb.from("qualidade_documentos").select("*").order("codigo"),
         sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
@@ -287,7 +325,8 @@ Deno.serve(async (req) => {
       for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas]) if (r.error) throw r.error;
       return json({
         podeEscrever, eu: usuario,
-        documentos: docs.data, revisoes: revs.data, leituras: leits.data, equipamentos: eqs.data, calibracoes: cals.data,
+        documentos: docs.data, revisoes: revs.data, leituras: leits.data, calibracoes: cals.data, manutencoes,
+        equipamentos: (eqs.data ?? []).map((e: Record<string, unknown>) => ({ ...e, bem: e.bem_id ? bens.get(String(e.bem_id)) ?? null : null })),
         ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
         contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
         entradas: (entradas as { registro: Record<string, unknown> }[]).map((x) => x.registro).filter((r) => r && r.cancelada !== true)
@@ -378,10 +417,13 @@ Deno.serve(async (req) => {
       const tipo = ["CALIBRACAO", "VERIFICACAO", "VALIDACAO", "DIARIA"].includes(txt(body.tipo)) ? txt(body.tipo) : "CALIBRACAO";
       const data = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.data)) ? txt(body.data) : new Date().toISOString().slice(0, 10);
       const resultado = txt(body.resultado) === "REPROVADO" ? "REPROVADO" : "APROVADO";
-      const reg = { equipamento_id: eqId, tipo, data, resultado, leitura: txt(body.leitura).slice(0, 300) || null, certificado: txt(body.certificado).slice(0, 200) || null, laboratorio: txt(body.laboratorio).slice(0, 200) || null, observacao: txt(body.observacao).slice(0, 2000) || null, registrado_por: usuario };
+      const reg = { equipamento_id: eqId, manutencao_id: txt(body.manutencao_id).slice(0, 100) || null, tipo, data, resultado, leitura: txt(body.leitura).slice(0, 300) || null, certificado: txt(body.certificado).slice(0, 200) || null, laboratorio: txt(body.laboratorio).slice(0, 200) || null, observacao: txt(body.observacao).slice(0, 2000) || null, registrado_por: usuario };
       const { data: cal, error } = await sb.from("qualidade_calibracoes").insert(reg).select("*").single();
       if (error) throw error;
       const mudar: Record<string, unknown> = { atualizado_em: new Date().toISOString(), atualizado_por: usuario };
+      // Reprovado deixa o equipamento "não apto" (aparece também no Patrimônio e em Manutenções); aprovado libera.
+      if (resultado === "REPROVADO") Object.assign(mudar, { bloqueado: true, bloqueio_motivo: `${tipo === "DIARIA" ? "Verificação diária" : tipo === "CALIBRACAO" ? "Calibração" : "Verificação"} reprovada em ${data.split("-").reverse().join("/")}${reg.leitura ? ` (${reg.leitura})` : ""}` });
+      else Object.assign(mudar, { bloqueado: false, bloqueio_motivo: null });
       if (resultado === "APROVADO" && tipo !== "DIARIA" && eq.periodicidade_meses) mudar.proxima = somaMeses(data, eq.periodicidade_meses);
       await sb.from("qualidade_equipamentos").update(mudar).eq("id", eqId);
       let nc = null;
