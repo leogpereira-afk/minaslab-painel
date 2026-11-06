@@ -16,6 +16,7 @@ export default function NaoConformidades({ q, voltar, recarregar, avisar }) {
   const { ncs, contas, arquivos, podeEscrever } = q;
   const [selId, setSelId] = useState(null); const [nova, setNova] = useState(null); const [ed, setEd] = useState(null); const [salvando, setSalvando] = useState(false);
   const [verTodasEncerradas, setVerTodasEncerradas] = useState(false);
+  const [filtro, setFiltro] = useState(null);
   const hoje = hojeYmd();
   const abertas = ncs.filter((n) => n.etapa !== "ENCERRADA");
   const vencidas = abertas.filter((n) => n.prazo && n.prazo < hoje);
@@ -24,7 +25,16 @@ export default function NaoConformidades({ q, voltar, recarregar, avisar }) {
   const tempoMedio = encerradasAno.length ? Math.round(encerradasAno.reduce((s, n) => s + (new Date(n.encerrada_em) - new Date(n.criado_em)) / 86400000, 0) / encerradasAno.length) : null;
   const contOrigem = Object.entries(ncs.filter((n) => new Date(n.criado_em).getFullYear() === ano).reduce((m, n) => ({ ...m, [n.origem]: (m[n.origem] || 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
   const sel = ncs.find((n) => n.id === selId) || null;
-  const cols = useMemo(() => ETAPAS.map(([k, l]) => ({ k, l, itens: ncs.filter((n) => n.etapa === k) })), [ncs]);
+  // Filtros dos cards: clicar mostra só aquelas NCs no quadro; clicar de novo limpa.
+  const FILTROS = {
+    ABERTAS: ["Abertas", (n) => n.etapa !== "ENCERRADA"],
+    VENCIDAS: ["Prazo vencido", (n) => n.etapa !== "ENCERRADA" && n.prazo && n.prazo < hoje],
+    EFICACIA: ["Aguardando eficácia", (n) => n.etapa === "EFICACIA"],
+    ENCERRADAS: [`Encerradas em ${ano}`, (n) => encerradasAno.includes(n)],
+    ORIGEM: ["Origem mais comum", (n) => contOrigem[0] && n.origem === contOrigem[0][0]],
+  };
+  const alternar = (f) => setFiltro((atual) => (atual === f ? null : f));
+  const cols = useMemo(() => ETAPAS.map(([k, l]) => ({ k, l, itens: ncs.filter((n) => n.etapa === k && (!filtro || FILTROS[filtro][1](n))) })), [ncs, filtro]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function abrir(n) { setSelId(n.id); setEd({ ...n, porques: n.porques?.length ? n.porques : [""] }); }
   async function gravar(dados, msg) {
@@ -58,12 +68,13 @@ export default function NaoConformidades({ q, voltar, recarregar, avisar }) {
         {podeEscrever && <button type="button" onClick={() => setNova({ origem: "ROTINA", etapa: "ABERTA", prazo: new Date(Date.now() + 7 * 86400000).toLocaleDateString("en-CA"), trabalho_afetado: false })} className="btn-primary inline-flex items-center gap-1.5"><Plus className="h-4 w-4" aria-hidden /> Registrar não conformidade</button>}
       </>} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard rotulo="Abertas" valor={abertas.length} sub={`${ncs.filter((n) => diasAte(n.criado_em?.slice(0, 10)) >= -7).length} nesta semana`} />
-        <StatCard rotulo="Prazo vencido" valor={vencidas.length} tom={vencidas.length ? "bad" : "neutral"} sub={vencidas.map((n) => n.codigo).slice(0, 2).join(", ") || "nenhuma"} />
-        <StatCard rotulo="Aguardando eficácia" valor={ncs.filter((n) => n.etapa === "EFICACIA").length} tom={ncs.some((n) => n.etapa === "EFICACIA") ? "warn" : "neutral"} sub="verificar se a ação resolveu" />
-        <StatCard rotulo="Encerradas no ano" valor={encerradasAno.length} tom="ok" sub={tempoMedio == null ? "—" : `tempo médio ${tempoMedio} dia(s)`} />
-        <StatCard rotulo="Origem mais comum" valor={contOrigem[0] ? ORIGENS[contOrigem[0][0]][0] : "—"} sub={contOrigem[1] ? `seguida de ${ORIGENS[contOrigem[1][0]][0].toLowerCase()}` : "no ano"} />
+        <StatCard rotulo="Abertas" valor={abertas.length} sub={`${ncs.filter((n) => diasAte(n.criado_em?.slice(0, 10)) >= -7).length} nesta semana`} onClick={() => alternar("ABERTAS")} ativo={filtro === "ABERTAS"} />
+        <StatCard rotulo="Prazo vencido" valor={vencidas.length} tom={vencidas.length ? "bad" : "neutral"} sub={vencidas.map((n) => n.codigo).slice(0, 2).join(", ") || "nenhuma"} onClick={() => alternar("VENCIDAS")} ativo={filtro === "VENCIDAS"} />
+        <StatCard rotulo="Aguardando eficácia" valor={ncs.filter((n) => n.etapa === "EFICACIA").length} tom={ncs.some((n) => n.etapa === "EFICACIA") ? "warn" : "neutral"} sub="verificar se a ação resolveu" onClick={() => alternar("EFICACIA")} ativo={filtro === "EFICACIA"} />
+        <StatCard rotulo="Encerradas no ano" valor={encerradasAno.length} tom="ok" sub={tempoMedio == null ? "—" : `tempo médio ${tempoMedio} dia(s)`} onClick={() => alternar("ENCERRADAS")} ativo={filtro === "ENCERRADAS"} />
+        <StatCard rotulo="Origem mais comum" valor={contOrigem[0] ? ORIGENS[contOrigem[0][0]][0] : "—"} sub={contOrigem[1] ? `seguida de ${ORIGENS[contOrigem[1][0]][0].toLowerCase()}` : "no ano"} onClick={() => alternar("ORIGEM")} ativo={filtro === "ORIGEM"} />
       </div>
+      {filtro && <div className="flex items-center gap-2 text-sm text-slate-600">Mostrando: <b>{FILTROS[filtro][0]}</b><button type="button" onClick={() => setFiltro(null)} className="text-brand-700 underline">limpar</button></div>}
       <div className="grid gap-4 2xl:grid-cols-[2.2fr_1fr]">
         <div className="grid gap-3 overflow-x-auto md:grid-cols-5">
           {cols.map((c) => (

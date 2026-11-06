@@ -26,6 +26,29 @@ export function Cabecalho({ titulo, iso, voltar, acoes }) {
   );
 }
 
+// Paginação simples das listas longas (lista mestra, equipamentos). Some quando tudo cabe numa página.
+export function Paginacao({ total, pagina, setPagina, porPagina = 25 }) {
+  const paginas = Math.max(1, Math.ceil(total / porPagina));
+  if (total <= porPagina) return null;
+  const atual = Math.min(pagina, paginas);
+  const ini = (atual - 1) * porPagina + 1, fim = Math.min(total, atual * porPagina);
+  const nums = [...new Set([1, atual - 1, atual, atual + 1, paginas])].filter((n) => n >= 1 && n <= paginas).sort((a, b) => a - b);
+  const botao = (n, rotulo = n) => (
+    <button key={`${rotulo}-${n}`} type="button" onClick={() => setPagina(n)} aria-current={n === atual ? "page" : undefined}
+      className={`min-w-8 rounded-lg px-2 py-1 text-xs ${n === atual ? "bg-brand-600 font-semibold text-white" : "text-slate-600 hover:bg-slate-100"}`}>{rotulo}</button>
+  );
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-xs text-slate-500">
+      <span>{ini}–{fim} de {total}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" disabled={atual === 1} onClick={() => setPagina(atual - 1)} className="rounded-lg px-2 py-1 hover:bg-slate-100 disabled:opacity-40">‹ Anterior</button>
+        {nums.map((n, i) => <span key={n} className="flex items-center gap-1">{i > 0 && n - nums[i - 1] > 1 && <span className="px-1">…</span>}{botao(n)}</span>)}
+        <button type="button" disabled={atual === paginas} onClick={() => setPagina(atual + 1)} className="rounded-lg px-2 py-1 hover:bg-slate-100 disabled:opacity-40">Próxima ›</button>
+      </div>
+    </div>
+  );
+}
+
 export function Campo({ rotulo, children, className = "" }) {
   return <label className={className}><span className="label">{rotulo}</span>{children}</label>;
 }
