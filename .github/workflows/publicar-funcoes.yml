@@ -84,7 +84,7 @@ jobs:
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Falta o segredo SUPABASE_ACCESS_TOKEN"; exit 1; fi
           for f in $FUNCOES; do
             echo "::group::Publicando $f"
-            supabase functions deploy "$f" --project-ref "$PROJETO" --no-verify-jwt --use-api
+            supabase functions deploy "$f" --project-ref "$PROJETO" --no-verify-jwt --use-api --yes
             echo "::endgroup::"
           done
           echo "Publicadas: $FUNCOES"
