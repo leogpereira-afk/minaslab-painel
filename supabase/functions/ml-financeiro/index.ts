@@ -80,7 +80,7 @@ const REGRAS_ACAO:Record<string,[string[],boolean]>={
   opcoes:[PAGINAS_FINANCEIRO,false],
   recebimentosListar:[[...F("receber","bancos","conciliacao"),...PAGINAS_VISAO],false],
   despesasListar:[[...F("pagar","bancos","conciliacao"),...PAGINAS_VISAO],false],
-  notasListar:[[...F("notas"),...PAGINAS_VISAO],false],
+  notasListar:[[...F("notas","conciliacao"),...PAGINAS_VISAO],false], // conciliacao: o Fechamento M Lab (rota da Conciliação) lista as notas
   movimentosListar:[[...F("bancos","conciliacao"),...PAGINAS_VISAO],false],
   recebimentoSalvar:[F("receber"),true],recebimentoBaixar:[F("receber"),true],recebimentoExcluir:[F("receber"),true],
   despesaSalvar:[F("pagar"),true],despesaBaixar:[F("pagar"),true],despesaExcluir:[F("pagar"),true],

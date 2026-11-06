@@ -150,6 +150,12 @@ Deno.serve(async (req) => {
     if (action === "urlAssinada") {
       const path = texto(body.path);
       if (!path.startsWith("financeiro/")) return resp({ erro: "Caminho de arquivo inválido." }, 400);
+      // Comprovantes de pagamento (financeiro/<empresa>/comprovante/...) só com a página Pagar;
+      // XML e PDF de notas seguem a regra geral da ação (Pagar, Notas ou Emitir NFS-e).
+      if (texto(cracha.papel) !== "direcao" && path.split("/")[2] === "comprovante") {
+        const deComprovante = await acessoFinanceiro(sb, cracha, ["financas/pagar"], false);
+        if (!deComprovante.ok) return resp({ erro: deComprovante.erro, semPermissao: true }, 403);
+      }
       const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 600, { download: texto(body.nome) || undefined });
       if (error || !data?.signedUrl) throw new Error(error?.message || "Não foi possível abrir o arquivo.");
       return resp({ ok: true, url: data.signedUrl, expiraEmSegundos: 600 });
