@@ -1,4 +1,5 @@
 // ml-rh-coletas — as coletas do CRM que geram comissão ao coletor, para a
+// Publicada automaticamente pelo GitHub (workflow "Publicar funções (Supabase)").
 // Folha de Pagamento do painel (aba RH: a direção ou quem tem a Folha liberada).
 //
 // Regra (Ana, 05/11/2026): na coleta do CRM marca-se o tipo — COMPOSTA ou VIAGEM
