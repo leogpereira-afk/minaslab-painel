@@ -65,7 +65,7 @@ export function PosVendaSatisfacao() {
     ])
     const err = [e, r, t, c, o, p].find(x => x.error)?.error
     if (err) setError(err.message); else setError('')
-    setEnvios(e.data); setRespostas(r.data); setTratativas(t.data); setClients(c.data); setOss(o.data); setPeople(p.data)
+    setEnvios(e.data); setRespostas(r.data); setTratativas(t.data.filter(x => r.data.some(y => y.id === x.resposta_id))); setClients(c.data); setOss(o.data); setPeople(p.data)
     setLoading(false)
   }
   useEffect(() => { void load() }, [])
