@@ -221,9 +221,10 @@ const contaLimpa = (c: Record<string, unknown>) => ({
 });
 
 const PAPEIS = ["direcao", "equipe", "leitura"];
-const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados", "lims", "rh", "ponto", "folha-pagamento"]);
+const PAGINAS_VALIDAS = new Set(["__matriz_v1", "inicio", "calendario", "compromissos", "licitacoes", "marketing", "google-drive", "crm", "gestao-estoque", "gestao-estoque/dashboard", "gestao-estoque/cadastro-insumo", "gestao-estoque/entrada-lote", "gestao-estoque/retirada-baixa", "gestao-estoque/fornecedores", "gestao-estoque/etiquetas", "gestao-estoque/relatorios", "gestao-estoque/configuracoes", "gestao-estoque/pedido-compra", "compras", "compras/estoque", "compras/pedidos", "compras/ordens", "compras/retiradas", "patrimonio", "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias", "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores", "manutencoes", "laboratorio", "financas/servicos-gerados", "financas/visao-geral", "financas/receber", "financas/pagar", "financas/bancos", "financas/conciliacao", "financas/notas", "financas/notas/emitir", "financas/notas/cancelar", "financas/notas/importar-historico", "financas/recibos", "financas/aplicacoes", "financas/socios", "financas/conferencia", "financas/fluxo-caixa", "financas/relatorios", "financas/clientes", "financas/configuracoes", "financas/configuracoes/categorias", "financas/configuracoes/contas", "financas/configuracoes/centros", "financas/configuracoes/formas", "financas/configuracoes/plano-contas", "financas/configuracoes/omie", "lims", "rh", "ponto", "folha-pagamento"]);
 // Só valem com a matriz (__matriz_v1): contas antigas nunca herdam estes módulos.
-const PAGINAS_SO_COM_MATRIZ = new Set(["lims", "rh", "ponto", "folha-pagamento"]);
+// Finanças por página (Ana, 06/11/2026): todas menos Serviços Gerados, que já era liberável antes.
+const PAGINAS_SO_COM_MATRIZ = new Set(["lims", "rh", "ponto", "folha-pagamento", "financas/visao-geral", "financas/receber", "financas/pagar", "financas/bancos", "financas/conciliacao", "financas/notas", "financas/notas/emitir", "financas/notas/cancelar", "financas/notas/importar-historico", "financas/recibos", "financas/aplicacoes", "financas/socios", "financas/conferencia", "financas/fluxo-caixa", "financas/relatorios", "financas/clientes", "financas/configuracoes", "financas/configuracoes/categorias", "financas/configuracoes/contas", "financas/configuracoes/centros", "financas/configuracoes/formas", "financas/configuracoes/plano-contas", "financas/configuracoes/omie"]);
 const COLECOES_ESTOQUE: Record<string, string[]> = {
   estoque_produtos_base: ["dashboard", "cadastro-insumo", "entrada-lote", "retirada-baixa", "pedido-compra"],
   estoque_lotes: ["dashboard", "entrada-lote", "retirada-baixa", "etiquetas", "relatorios"],
@@ -416,30 +417,38 @@ Deno.serve(async (req) => {
     const ehDirecao = papel === "direcao" || ehMaquina;
     // Permissões retiradas passam a valer imediatamente, inclusive com token antigo.
     let permissoes: string[] = [];
+    // Papel lido agora na conta: gravar no financeiro (fin_*) exige "equipe" na conta, não só no crachá.
+    let papelConta = "";
     if (!ehDirecao) {
       const { data: contaPermissoes, error: erroPermissoes } = await sb.from(T_CONTAS)
-        .select("paginas_consulta").eq("usuario", usuario).maybeSingle();
+        .select("paginas_consulta,papel").eq("usuario", usuario).maybeSingle();
       if (erroPermissoes || !contaPermissoes) return resp({ erro: "Não foi possível confirmar suas permissões.", semPermissao: true }, 403);
       permissoes = Array.isArray(contaPermissoes.paginas_consulta) ? contaPermissoes.paginas_consulta : [];
+      papelConta = String(contaPermissoes.papel ?? "");
     }
     const matrizAtiva = permissoes.includes("__matriz_v1");
     // RH e Ponto liberáveis por pessoa na tela Acessos (Ana, 05/11/2026). Sem a
     // liberação, rh_* continua só da direção. "folha-pagamento" = a aba Folha de
     // Pagamento do RH (salário líquido, comissões, extras).
     const COLECOES_RH_PAGINAS: Record<string, string[]> = {
-      rh_pessoas: ["rh", "ponto", "folha-pagamento"],
+      rh_pessoas: ["rh", "ponto", "folha-pagamento", "financas/recibos"],
       rh_historico: ["rh"], rh_ferias: ["rh"], rh_feedbacks: ["rh"], rh_exames: ["rh"], rh_vencimentos: ["rh"],
       rh_comercial_feedbacks: ["rh"], rh_comercial_equipe: ["rh"], rh_lab_feedbacks: ["rh"], rh_lab_equipe: ["rh"],
       rh_ponto: ["rh", "ponto"], rh_ponto_dia: ["rh", "ponto", "folha-pagamento"],
-      rh_folha_pagamento: ["folha-pagamento"], rh_comercial_comissoes: ["folha-pagamento"],
+      rh_folha_pagamento: ["folha-pagamento"], rh_comercial_comissoes: ["folha-pagamento", "financas/recibos"],
+      // Finanças liberáveis por pessoa (Ana, 06/11/2026). A tela Recibos de comissão
+      // lista comissões e pessoas: "financas/recibos" só LÊ essas duas (ver ESCRITA abaixo).
+      fin_recibos: ["financas/recibos"], fin_aplicacao_saldos: ["financas/aplicacoes"],
     };
     // A Folha de Pagamento é aba do RH: sem "rh" ela não vale (a tela marca as duas juntas).
     const temPagina = (p: string) => permissoes.includes(p) && (p !== "folha-pagamento" || permissoes.includes("rh"));
     // Gravar a ficha (rh_pessoas) é do RH e da Folha; o Ponto só LÊ a ficha (usa o salário no desconto de faltas).
-    const ESCRITA_RH_PAGINAS: Record<string, string[]> = { ...COLECOES_RH_PAGINAS, rh_pessoas: ["rh", "folha-pagamento"] };
+    // Recibos de comissão não grava comissões nem fichas: só a Folha/RH.
+    const ESCRITA_RH_PAGINAS: Record<string, string[]> = { ...COLECOES_RH_PAGINAS, rh_pessoas: ["rh", "folha-pagamento"], rh_comercial_comissoes: ["folha-pagamento"] };
     const liberadoEm = (...paginas: string[]) => ehDirecao || (matrizAtiva && paginas.some(temPagina));
     const podeRH = (colecao: string) => matrizAtiva && (COLECOES_RH_PAGINAS[colecao] || []).some(temPagina);
-    const podeGravarColecaoRH = (colecao: string) => matrizAtiva && (ESCRITA_RH_PAGINAS[colecao] || []).some(temPagina);
+    const podeGravarColecaoRH = (colecao: string) => matrizAtiva && (ESCRITA_RH_PAGINAS[colecao] || []).some(temPagina) &&
+      (!colecao.startsWith("fin_") || papelConta === "equipe");
     // Ações próprias do RH/Ponto: ler com a liberação; gravar só "equipe" com a liberação.
     const podeLerRH = (...paginas: string[]) => liberadoEm(...paginas);
     const podeGravarRH = (...paginas: string[]) => ehDirecao || (papel === "equipe" && liberadoEm(...paginas));
@@ -1720,7 +1729,7 @@ Deno.serve(async (req) => {
         const senha = String(body.senha ?? "");
         const paginas = Array.isArray(body.paginas_consulta) ? body.paginas_consulta : [];
         if (paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Página não reconhecida." }, 400);
-        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha e Ponto só se liberam pela matriz de páginas." }, 400);
+        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha, Ponto e Finanças só se liberam pela matriz de páginas." }, 400);
         if (!u || !nome) return resp({ erro: "Informe usuário e nome." }, 400);
         if (!PAPEIS.includes(papelNovo)) return resp({ erro: `Papel desconhecido: ${papelNovo}` }, 400);
         if (senha.length < 6) return resp({ erro: "A senha precisa de ao menos 6 caracteres." }, 400);
@@ -1741,7 +1750,7 @@ Deno.serve(async (req) => {
         const u = normalizarUsuario(body.usuario);
         const paginas = body.paginas_consulta;
         if (!Array.isArray(paginas) || paginas.some((p: unknown) => !PAGINAS_VALIDAS.has(String(p)))) return resp({ erro: "Selecione páginas válidas." }, 400);
-        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha e Ponto só se liberam pela matriz de páginas." }, 400);
+        if (paginas.some((x: unknown) => PAGINAS_SO_COM_MATRIZ.has(String(x))) && !paginas.includes("__matriz_v1")) return resp({ erro: "LIMS, RH, Folha, Ponto e Finanças só se liberam pela matriz de páginas." }, 400);
         const { data, error } = await sb.from(T_CONTAS).update({ paginas_consulta: [...new Set(paginas)] }).eq("usuario", u).select("*").maybeSingle();
         if (error) throw error;
         if (!data) return resp({ erro: "Conta não encontrada." }, 404);
