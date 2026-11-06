@@ -7,7 +7,7 @@
 // Ações: satisfacao (tudo da tela) · vinculos (contratos, OS e contatos de um cliente) · enviar · canal ·
 //        cancelar · melhoria · tratativa · perguntaSalvar · perguntasOrdem · revisao (editor de perguntas, só aqui)
 // Demais páginas da Qualidade: qualidade (tudo) · salvar {modulo} · excluir · ler (documento) · calibrar ·
-//        metaSalvar · arquivoEnviar · arquivoBaixar · arquivoApagar
+//        metaSalvar · arquivoEnviar · arquivoBaixar · arquivoApagar · verificarExternos (documentos externos/CDOE)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -59,9 +59,12 @@ const MODULOS: Record<string, { t: string; campos: string[] }> = {
   nc: { t: "qualidade_nc", campos: ["titulo", "descricao", "origem", "etapa", "responsavel", "prazo", "trabalho_afetado", "impacto", "porques", "causa_raiz", "acao", "eficacia_em", "eficacia_resultado", "eficaz"] },
   auditoria: { t: "qualidade_auditorias", campos: ["ano", "requisito", "mes", "data", "status", "auditor", "constatacoes", "n_constatacoes"] },
   proficiencia: { t: "qualidade_proficiencia", campos: ["provedor", "rodada", "matriz", "parametro", "data", "z", "resultado", "observacao"] },
+  // Documentos externos (CDOE, PG 005): a planilha de normas e legislação, com verificação trimestral.
+  externo: { t: "qualidade_documentos_externos", campos: ["item", "documento", "controlado_por", "data_registro", "data_verificacao", "proxima_verificacao", "local_uso", "resultado", "versao_vigente", "observacao", "fonte", "ativo"] },
 };
-const DATAS = ["vigencia_inicio", "proxima_revisao", "proxima", "prazo", "eficacia_em", "data"];
-const NUMEROS = ["periodicidade_meses", "ano", "mes", "n_constatacoes", "z"];
+const RESULTADOS_EXT = ["VIGENTE", "ATUALIZAR", "CANCELADA", "CONFERIR", "VALIDADE"];
+const DATAS = ["vigencia_inicio", "proxima_revisao", "proxima", "prazo", "eficacia_em", "data", "data_registro", "data_verificacao", "proxima_verificacao"];
+const NUMEROS = ["periodicidade_meses", "ano", "mes", "n_constatacoes", "z", "item"];
 const BUCKET = "ml-arquivos";
 const TIPOS_ARQ: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", txt: "text/plain" };
 function limpar(campos: string[], r: Record<string, unknown>) {
@@ -71,6 +74,7 @@ function limpar(campos: string[], r: Record<string, unknown>) {
     const v = r[c];
     if (c === "leitores" || c === "porques") out[c] = (Array.isArray(v) ? v : []).map((x) => txt(x).slice(0, 500)).filter(Boolean).slice(0, 40);
     else if (c === "trabalho_afetado") out[c] = v === true;
+    else if (c === "ativo") out[c] = v !== false;
     else if (c === "eficaz") out[c] = v === true ? true : v === false ? false : null;
     else if (DATAS.includes(c)) out[c] = /^\d{4}-\d{2}-\d{2}$/.test(txt(v)) ? txt(v) : null;
     else if (NUMEROS.includes(c)) { const n = Number(String(v ?? "").replace(",", ".")); out[c] = txt(v) === "" || !Number.isFinite(n) ? null : n; }
@@ -308,7 +312,7 @@ Deno.serve(async (req) => {
     if (acao === "qualidade") {
       const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
       const { bens, manutencoes } = await sincronizarPatrimonio();
-      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas] = await Promise.all([
+      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos] = await Promise.all([
         sb.from("qualidade_documentos").select("*").order("codigo"),
         sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
         sb.from("qualidade_documento_leituras").select("documento_id,revisao,usuario,confirmado_em"),
@@ -321,12 +325,14 @@ Deno.serve(async (req) => {
         sb.from("qualidade_arquivos").select("id,ref_tipo,ref_id,nome,tamanho,autor,criado_em").eq("apagado", false).order("criado_em", { ascending: false }),
         sb.from("ml_contas").select("usuario,nome,ativo").order("nome"),
         todos((a, b) => sb.from("ml_registros").select("registro").eq("colecao", "lab_entradas").eq("apagado", false).gte("atualizado_em", umAno).range(a, b)),
+        sb.from("qualidade_documentos_externos").select("*").order("item", { nullsFirst: false }).order("documento"),
       ]);
-      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas]) if (r.error) throw r.error;
+      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos]) if (r.error) throw r.error;
       return json({
         podeEscrever, eu: usuario,
         documentos: docs.data, revisoes: revs.data, leituras: leits.data, calibracoes: cals.data, manutencoes,
         equipamentos: (eqs.data ?? []).map((e: Record<string, unknown>) => ({ ...e, bem: e.bem_id ? bens.get(String(e.bem_id)) ?? null : null })),
+        externos: externos.data,
         ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
         contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
         entradas: (entradas as { registro: Record<string, unknown> }[]).map((x) => x.registro).filter((r) => r && r.cancelada !== true)
@@ -345,6 +351,14 @@ Deno.serve(async (req) => {
       const modulo = txt(body.modulo);
       if (modulo === "documento" && (!dados.codigo || !dados.titulo) && !id) return json({ erro: "Informe código e título." }, 400);
       if (modulo === "equipamento" && (!dados.codigo || !dados.nome) && !id) return json({ erro: "Informe código e nome do equipamento." }, 400);
+      if (modulo === "externo") {
+        if (!id && !dados.documento) return json({ erro: "Informe o documento (norma, legislação ou guia)." }, 400);
+        if ("resultado" in dados && !RESULTADOS_EXT.includes(String(dados.resultado))) dados.resultado = "VIGENTE";
+        if (!id && dados.item == null) {
+          const { data: ult } = await sb.from("qualidade_documentos_externos").select("item").order("item", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+          dados.item = (Number(ult?.item) || 0) + 1;
+        }
+      }
       if (modulo === "nc" && !id && !dados.titulo) return json({ erro: "Descreva a não conformidade." }, 400);
       if (modulo === "nc" && dados.etapa === "ENCERRADA" && !txt(reg.acao) && !id) return json({ erro: "Para encerrar, registre a ação." }, 400);
       if (modulo === "proficiencia") {
@@ -388,6 +402,19 @@ Deno.serve(async (req) => {
         salvo.nc_id = nc.id;
       }
       return json({ ok: true, registro: salvo });
+    }
+
+    // Documentos externos: registra a verificação de atualização (data de hoje, próxima em +3 meses) de várias linhas de uma vez.
+    if (acao === "verificarExternos") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const ids = (Array.isArray(body.ids) ? body.ids : []).map(uuid).filter(Boolean).slice(0, 1000) as string[];
+      const data = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.data)) ? txt(body.data) : new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      if (!ids.length) return json({ erro: "Selecione os documentos verificados." }, 400);
+      const { data: feitos, error } = await sb.from("qualidade_documentos_externos")
+        .update({ data_verificacao: data, proxima_verificacao: somaMeses(data, 3), atualizado_em: new Date().toISOString(), atualizado_por: usuario })
+        .in("id", ids).select("id");
+      if (error) throw error;
+      return json({ ok: true, feitos: (feitos ?? []).length });
     }
 
     if (acao === "excluir") {
