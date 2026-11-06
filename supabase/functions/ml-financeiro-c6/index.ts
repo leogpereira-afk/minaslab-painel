@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -110,7 +111,8 @@ Deno.serve(async(req)=>{
   let body:any;try{body=await req.json();}catch{return resp({erro:"JSON inválido."},400);}
   const m=texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);const cracha=m?await verificarJwt(m[1]):null;const maquina=!!TOKEN&&req.headers.get("x-token")===TOKEN;
   if(!cracha&&!maquina)return resp({erro:"Entre no sistema.",semSessao:true},401);
-  if(!maquina&&texto(cracha?.papel)!=="direcao")return resp({erro:"O financeiro é somente da direção.",semPermissao:true},403);
+  // Contas a Receber (tela Acessos): a prévia só consulta; importar grava.
+  if(!maquina){const acesso=await acessoFinanceiro(sb,cracha,["financas/receber"],texto(body?.action)!=="preview");if(!acesso.ok)return resp({erro:acesso.erro,...(acesso.status===401?{semSessao:true}:{semPermissao:true})},acesso.status);}
   const usuario=maquina?"maquina":texto(cracha?.sub)||"direcao";
   try{
     const action=texto(body.action); const empresaId=texto(body.empresaId); const csvText=String(body.csvText??"");

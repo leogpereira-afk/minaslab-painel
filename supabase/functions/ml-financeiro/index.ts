@@ -1,6 +1,7 @@
 import { respostaDelta } from "../_shared/financeiro-delta.mjs";
 import { lerTodasPaginas } from "../_shared/financeiro-paginacao.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { acessoFinanceiro, PAGINAS_FINANCEIRO, PAGINAS_VISAO } from "../_shared/acesso-financeiro.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -71,9 +72,29 @@ async function recalcularDespesa(id:string,usuario:string){
   const{data,error:eu}=await sb.from("despesas").update({valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?ultima?.data_pagamento??null:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
 }
 
+// Páginas do financeiro que liberam cada ação (tela Acessos) e se a ação grava.
+// Ação fora desta lista continua só da direção.
+const F=(...p:string[])=>p.map(x=>`financas/${x}`);
+const CONFIG_TODAS=F("configuracoes","configuracoes/categorias","configuracoes/contas","configuracoes/centros","configuracoes/formas","configuracoes/plano-contas","configuracoes/omie");
+const REGRAS_ACAO:Record<string,[string[],boolean]>={
+  opcoes:[PAGINAS_FINANCEIRO,false],
+  recebimentosListar:[[...F("receber","bancos","conciliacao"),...PAGINAS_VISAO],false],
+  despesasListar:[[...F("pagar","bancos","conciliacao"),...PAGINAS_VISAO],false],
+  notasListar:[[...F("notas"),...PAGINAS_VISAO],false],
+  movimentosListar:[[...F("bancos","conciliacao"),...PAGINAS_VISAO],false],
+  recebimentoSalvar:[F("receber"),true],recebimentoBaixar:[F("receber"),true],recebimentoExcluir:[F("receber"),true],
+  despesaSalvar:[F("pagar"),true],despesaBaixar:[F("pagar"),true],despesaExcluir:[F("pagar"),true],
+  notaSalvar:[F("notas"),true],notaExcluir:[F("notas"),true],
+  movimentosImportar:[F("bancos"),true],movimentosDesfazerUltimoOfx:[F("bancos"),true],
+  conciliar:[F("bancos","conciliacao"),true],
+  configListar:[CONFIG_TODAS,false],
+  categoriaSalvar:[F("configuracoes/categorias"),true],contaSalvar:[F("configuracoes/contas"),true],
+  centroSalvar:[F("configuracoes/centros"),true],formaSalvar:[F("configuracoes/formas"),true],
+  omieEstado:[F("configuracoes/omie"),false],
+};
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:CORS}); if(req.method!=="POST")return resp({erro:"Use POST."},405);
-  let body:Record<string,any>;try{body=await req.json();}catch{return resp({erro:"JSON inválido."},400);}const action=texto(body.action);const m=texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);const cracha=m?await verificarJwt(m[1]):null;const maquina=!!TOKEN&&req.headers.get("x-token")===TOKEN;if(!cracha&&!maquina)return resp({erro:"Entre no sistema.",semSessao:true},401);if(!maquina&&texto(cracha?.papel)!=="direcao")return resp({erro:"O financeiro é somente da direção.",semPermissao:true},403);const usuario=maquina?"maquina":texto(cracha?.sub)||"direcao";
+  let body:Record<string,any>;try{body=await req.json();}catch{return resp({erro:"JSON inválido."},400);}const action=texto(body.action);const m=texto(req.headers.get("authorization")).match(/^Bearer\s+(.+)$/i);const cracha=m?await verificarJwt(m[1]):null;const maquina=!!TOKEN&&req.headers.get("x-token")===TOKEN;if(!cracha&&!maquina)return resp({erro:"Entre no sistema.",semSessao:true},401);if(!maquina){const regra=Object.prototype.hasOwnProperty.call(REGRAS_ACAO,action)?REGRAS_ACAO[action]:null;const acesso=regra?await acessoFinanceiro(sb,cracha,regra[0],regra[1]):(texto(cracha?.papel)==="direcao"?{ok:true as const}:{ok:false as const,status:403,erro:"O financeiro é somente da direção."});if(!acesso.ok)return resp({erro:acesso.erro,...(acesso.status===401?{semSessao:true}:{semPermissao:true})},acesso.status);}const usuario=maquina?"maquina":texto(cracha?.sub)||"direcao";
   try{switch(action){
     case"opcoes":return resp(await opcoes());
     case"dashboard":{

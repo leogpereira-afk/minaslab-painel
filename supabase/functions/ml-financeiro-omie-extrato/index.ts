@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
 
 const URL = Deno.env.get("SUPABASE_URL")!;
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -74,7 +75,7 @@ async function auth(req:Request){
     const key=await crypto.subtle.importKey("raw",enc.encode(JWT),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
     if(!await crypto.subtle.verify("HMAC",key,b64u(p[2]),enc.encode(`${p[0]}.${p[1]}`))) return null;
     const x=JSON.parse(dec.decode(b64u(p[1])));
-    if(x.sis!=="minaslab" || text(x.papel)!=="direcao" || (x.exp && x.exp<Math.floor(Date.now()/1000))) return null;
+    if(x.sis!=="minaslab" || (x.exp && x.exp<Math.floor(Date.now()/1000))) return null;
     return x;
   }catch{return null;}
 }
@@ -194,7 +195,10 @@ async function syncExtrato(de:string,ate:string){
 
 Deno.serve(async (req:Request)=>{
   if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
-  if(!await auth(req)) return resp({erro:"Sessão inválida ou sem permissão."},401);
+  const cracha=await auth(req);
+  if(!cracha) return resp({erro:"Sessão inválida ou sem permissão."},401);
+  // Configurações › Omie (tela Acessos): importa o extrato e grava.
+  {const acesso=await acessoFinanceiro(sb,cracha,["financas/configuracoes/omie"],true);if(!acesso.ok)return resp({erro:acesso.erro,...(acesso.status===401?{semSessao:true}:{semPermissao:true})},acesso.status);}
   try{
     const b=await req.json();
     if(text(b.action)!=="extrato") return resp({erro:"Ação inválida."},400);

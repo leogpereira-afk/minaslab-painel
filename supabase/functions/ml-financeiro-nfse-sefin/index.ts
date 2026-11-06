@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
 
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json","Cache-Control":"no-store"}});
@@ -13,7 +14,7 @@ const erroTexto=(e:any)=>e instanceof Error?e.message:(typeof e==="string"?e:(e?
    validade e papel de direção (o financeiro inteiro é só da direção). */
 const __ML_JWT_SECRET=Deno.env.get("ML_JWT_SECRET")||"",__enc=new TextEncoder(),__dec=new TextDecoder();
 function __b64urlBytes(s:string){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const b=atob(s),o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
-async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!__ML_JWT_SECRET)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",__enc.encode(__ML_JWT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,__b64urlBytes(p[2]),__enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(__dec.decode(__b64urlBytes(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000))||String(x.papel||"")!=="direcao")return null;return x}catch{return null}}
+async function auth(req:Request){const t=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");if(!t||!__ML_JWT_SECRET)return null;const p=t.split(".");if(p.length!==3)return null;try{const k=await crypto.subtle.importKey("raw",__enc.encode(__ML_JWT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["verify"]);if(!await crypto.subtle.verify("HMAC",k,__b64urlBytes(p[2]),__enc.encode(`${p[0]}.${p[1]}`)))return null;const x=JSON.parse(__dec.decode(__b64urlBytes(p[1])));if(x.sis!=="minaslab"||(x.exp&&x.exp<Math.floor(Date.now()/1000)))return null;return x}catch{return null}}
 
 async function testarGateway(idDps:string){
   const base=String(Deno.env.get("NFSE_GATEWAY_URL")||"").replace(/\/+$/,'');
@@ -31,7 +32,7 @@ async function testarGateway(idDps:string){
 
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
-  if(!await auth(req))return json({erro:"Sessão inválida ou sem permissão.",semSessao:true},401);
+  const cracha=await auth(req);if(!cracha)return json({erro:"Sessão inválida ou sem permissão.",semSessao:true},401);{/* Emitir NFS-e (tela Acessos); grava na nota. */const acesso=await acessoFinanceiro(createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false,autoRefreshToken:false}}),cracha,["financas/notas/emitir"],true);if(!acesso.ok)return json({erro:acesso.erro,...(acesso.status===401?{semSessao:true}:{semPermissao:true})},acesso.status);}
   let b:any={};try{b=await req.json()}catch{return json({erro:"JSON inválido."},400)}
   if(b.action!=="testarConexao")return json({erro:"Ação inválida."},400);
   const ambiente=String(Deno.env.get("MLAB_NFSE_AMBIENTE")||"HOMOLOGACAO").toUpperCase();
