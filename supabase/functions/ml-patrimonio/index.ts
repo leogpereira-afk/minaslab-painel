@@ -31,11 +31,16 @@ Deno.serve(async req=>{
   if(!direcao&&!['listar','foto:resumo','foto:listar'].includes(action))return out({erro:'Esta conta pode consultar patrimônio, mas não alterar.',semPermissao:true},403);
   if(action==='listar'){
    if(!['bem','setor'].includes(b.tipo))return out({erro:'Tipo inválido.'},400);
-   return out({ok:true,valor:Object.fromEntries((await linhas(b.tipo)).map(r=>[r.id,r.dados]))});
+   const ls=await linhas(b.tipo);
+   // A situação metrológica vem da Qualidade (ficha do equipamento): só leitura aqui, para Patrimônio e Manutenções avisarem.
+   const q=new Map<string,any>();
+   if(b.tipo==='bem'){const{data:fs,error:qe}=await sb.from('qualidade_equipamentos').select('bem_id,controle,proxima,bloqueado,bloqueio_motivo,situacao').not('bem_id','is',null);if(qe)throw qe;for(const f of fs||[])q.set(f.bem_id,{apto:!f.bloqueado,motivo:f.bloqueio_motivo,proxima:f.proxima,controle:f.controle,situacao:f.situacao});}
+   return out({ok:true,valor:Object.fromEntries(ls.map(r=>[r.id,q.has(r.id)?{...r.dados,_qualidade:q.get(r.id)}:r.dados]))});
   }
   if(['salvar','remover'].includes(action)){
    if(!['bem','setor'].includes(b.tipo)||!idOk(b.id))return out({erro:'Cadastro inválido.'},400);
-   return out({ok:true,valor:await gravar(action,b.tipo,b.id,b.dados||{},p.sub)});
+   const dados={...(b.dados||{})};delete dados._qualidade;
+   return out({ok:true,valor:await gravar(action,b.tipo,b.id,dados,p.sub)});
   }
   if(action==='setoresIniciais'){
    if(!Array.isArray(b.lista)||b.lista.length>30)return out({erro:'Lista inválida.'},400);

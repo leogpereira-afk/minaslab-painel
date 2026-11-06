@@ -40,7 +40,14 @@ function CapaBem({bem, quantidade, revisao}) {
     {quantidade > 0 && <span className="pat-photo-count"><Camera size={13}/>{quantidade}</span>}
   </div>;
 }
-function Situacao({bem}) {return <span className={`pat-status pat-status-${bem.situacao || 'uso'}`}>{rotuloSituacao(bem)}</span>;}
+// A Qualidade é quem diz se o equipamento está apto para ensaio (calibração analisada); aqui só aparece o aviso.
+function SituacaoQualidade({bem}) {
+  const q=bem._qualidade; if(!q||q.situacao==='INATIVO')return null;
+  const vencida=q.proxima&&q.proxima<ymdLocal(new Date());
+  if(q.apto&&!vencida)return null;
+  return <span className="pat-status pat-status-manutencao" title={q.motivo||(vencida?`Calibração vencida em ${q.proxima.split('-').reverse().join('/')}`:'')}>{q.apto?'Calibração vencida':'Não apto (Qualidade)'}</span>;
+}
+function Situacao({bem}) {return <><span className={`pat-status pat-status-${bem.situacao || 'uso'}`}>{rotuloSituacao(bem)}</span> <SituacaoQualidade bem={bem}/></>;}
 function Indicador({titulo,valor,descricao,icone:Icone,aoClicar,ativo}) {
   return <button className={`pat-metric ${ativo?'is-active':''}`} onClick={aoClicar} disabled={!aoClicar}><span className="pat-metric-top">{titulo}<Icone size={19}/></span><strong>{valor}</strong><span>{descricao}</span></button>;
 }

@@ -129,6 +129,9 @@ function LinhaAlvo({ a, editavel, salvando, aoAgendar }) {
         </span>
         <span className="block break-words text-xs text-slate-500">{a.sub}</span>
       </span>
+      {a.qualidade && a.qualidade.apto === false && (
+        <span className="chip-bad shrink-0 whitespace-nowrap" title={a.qualidade.motivo || ""}>Não apto (Qualidade)</span>
+      )}
       <span className={`${a.chip} shrink-0 whitespace-nowrap`}>{a.texto}</span>
       {editavel && (
         <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={aoAgendar} aria-label={`Agendar manutenção: ${a.nome}`}>
@@ -1232,14 +1235,21 @@ export default function Manutencoes() {
           // Km só existe para carro; equipamento não roda estrada.
           km: a.alvoTipo === "carro" && temKm(a) ? Number(a.kmAtual) : null,
           kmEm: a.kmAtualEm || null,
+          // Situação metrológica dada pela Qualidade (análise do certificado): só aviso aqui.
+          qualidade: a.alvoTipo === "bem" ? a._qualidade || null : null,
         };
-        const ult = proximas.get(chaveAlvo(a.alvoTipo, a.id));
+        let ult = proximas.get(chaveAlvo(a.alvoTipo, a.id));
+        // Uma data só: se a Qualidade já analisou um certificado mais novo, vale a próxima dela.
+        const qp = base.qualidade?.proxima;
+        if (qp && (!ult || String(qp) > String(ult.proxima || ""))) ult = { tipo: "calibracao", data: ult?.data || "", proxima: qp, daQualidade: true };
         if (ult) {
           const dias = diasEntre(hojeISO, ult.proxima);
           const pz = prazoProxima(dias);
           return {
             ...base, situacao: "prazo", dias, ...pz,
-            sub: `${TIPOS[ult.tipo] || ult.tipo} em ${dataLonga(ult.data)} · próxima ${dataLonga(ult.proxima)}`,
+            sub: ult.daQualidade
+              ? `Calibração analisada pela Qualidade · próxima ${dataLonga(ult.proxima)}`
+              : `${TIPOS[ult.tipo] || ult.tipo} em ${dataLonga(ult.data)} · próxima ${dataLonga(ult.proxima)}`,
           };
         }
         if (doAlvo.length > 0) {
