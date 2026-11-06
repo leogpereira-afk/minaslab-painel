@@ -1,0 +1,90 @@
+# Publica no Supabase as Edge Functions que mudaram no main (pedido da Ana, 06/11/2026).
+#
+# Por que: publicar à mão, copiando o arquivo, já trocou caracteres de um arquivo
+# grande. Aqui o arquivo vai direto do repositório para o Supabase, sem cópia.
+#
+# - Ao entrar código no main que mexe em supabase/functions/<nome>/, publica <nome>.
+# - Mudou um arquivo de supabase/functions/_shared/, publica as funções que o importam.
+# - "Run workflow" (manual) publica as funções digitadas, separadas por espaço.
+# - Todas as funções deste repositório rodam com verify_jwt = false (cada uma confere
+#   o crachá do painel por dentro), por isso o --no-verify-jwt.
+# - A chave SUPABASE_ACCESS_TOKEN (segredo do repositório) só alcança o projeto
+#   "Projetos Léo" e só publica funções.
+name: Publicar funções (Supabase)
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/functions/**"]
+  workflow_dispatch:
+    inputs:
+      funcoes:
+        description: "Funções a publicar, separadas por espaço (ex.: ml-sync ml-ponto)"
+        required: true
+
+concurrency:
+  group: publicar-funcoes-supabase
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJETO: reoghclxripktzpdwhiy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Descobrir as funções a publicar
+        id: lista
+        env:
+          EVENTO: ${{ github.event_name }}
+          ENTRADA: ${{ github.event.inputs.funcoes }}
+          ANTES: ${{ github.event.before }}
+          DEPOIS: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENTO" = "workflow_dispatch" ]; then
+            CANDIDATAS="$ENTRADA"
+          else
+            if [ -z "$ANTES" ] || [ "$ANTES" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$ANTES" 2>/dev/null; then
+              ANTES="$(git rev-parse "$DEPOIS~1")"
+            fi
+            MUDOU="$(git diff --name-only "$ANTES" "$DEPOIS" -- supabase/functions)"
+            echo "Arquivos alterados:"; echo "$MUDOU"
+            CANDIDATAS="$(echo "$MUDOU" | grep -v '^supabase/functions/_shared/' | cut -d/ -f3 | sort -u || true)"
+            for comp in $(echo "$MUDOU" | grep '^supabase/functions/_shared/' | xargs -r -n1 basename); do
+              CANDIDATAS="$CANDIDATAS $(grep -l "_shared/$comp" supabase/functions/*/index.ts | cut -d/ -f3 || true)"
+            done
+          fi
+          FINAIS=""
+          for f in $CANDIDATAS; do
+            if ! [[ "$f" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then echo "::error::Nome inválido: $f"; exit 1; fi
+            if [ -f "supabase/functions/$f/index.ts" ]; then FINAIS="$FINAIS $f"; else echo "Sem index.ts (apagada?): $f — não publico."; fi
+          done
+          FINAIS="$(echo $FINAIS | tr ' ' '\n' | sort -u | tr '\n' ' ')"
+          echo "Vou publicar: ${FINAIS:-nenhuma}"
+          echo "funcoes=$FINAIS" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        if: steps.lista.outputs.funcoes != ''
+        env:
+          FUNCOES: ${{ steps.lista.outputs.funcoes }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Falta o segredo SUPABASE_ACCESS_TOKEN"; exit 1; fi
+          for f in $FUNCOES; do
+            echo "::group::Publicando $f"
+            supabase functions deploy "$f" --project-ref "$PROJETO" --no-verify-jwt --use-api
+            echo "::endgroup::"
+          done
+          echo "Publicadas: $FUNCOES"
