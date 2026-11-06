@@ -1,6 +1,8 @@
 // ml-agenda — agenda da equipe: treinamentos, reuniões, eventos e férias/ausências com responsável.
 //
 // Quem vê um evento: o criador, quem está ligado a ele (participante, ausente, responsável) ou todos, se for "para todos".
+// Vale também para férias/ausências: "Todos da equipe" mostra para todos; pessoas escolhidas veem; sem ninguém, só quem
+// marcou, a pessoa ausente e o responsável.
 // Quem muda ou cancela: o criador, a direção e, nas férias/ausências, a própria pessoa ausente.
 // Quem cria: qualquer usuário ativo, menos o papel "leitura". Quem não é direção só marca ausência para si mesmo.
 // Os avisos vão para o sino (ml_notificacoes); o lembrete do dia às 8h é uma rotina do banco (ml_agenda_avisar_hoje).
@@ -140,6 +142,9 @@ function ler(c: Ctx, b: any, atual?: any) {
     responsaveis = unicos(b.responsaveis);
     if (!responsaveis.length) erro(400, "Escolha quem fica responsável durante a ausência.");
     if (responsaveis.some((u) => ausentes.includes(u))) erro(400, "O responsável não pode ser a própria pessoa que está ausente.");
+    // Quem mais vê a ausência no calendário (só para saber; não recebe lembrete do dia).
+    paraTodos = b.paraTodos === true;
+    participantes = paraTodos ? [] : unicos(b.participantes).filter((u) => u !== c.eu && !ausentes.includes(u) && !responsaveis.includes(u));
   } else {
     paraTodos = b.paraTodos === true;
     participantes = paraTodos ? [] : unicos(b.participantes).filter((u) => u !== c.eu);
@@ -175,6 +180,9 @@ async function avisarEvento(c: Ctx, id: string, v: ReturnType<typeof ler>, acao:
     const oQue = ROTULO[v.tipo].toLowerCase();
     await avisar(c, v.responsaveis, { titulo: acao === "cancelado" ? `Cancelado: ${oQue} de ${quem}` : `${acao === "mudou" ? "Mudou: " : ""}Você é o responsável durante ${oQue === "férias" ? "as férias" : "a ausência"} de ${quem}`, corpo: periodo(v), dia, id });
     await avisar(c, v.ausentes, { titulo: `${prefixo}${ROTULO[v.tipo]} marcada para você`, corpo: periodo(v), dia, id });
+    const ligados = new Set([...v.ausentes, ...v.responsaveis]);
+    const quemVe = (v.paraTodos ? [...c.nomes.keys()] : v.participantes).filter((u) => !ligados.has(u));
+    await avisar(c, quemVe, { titulo: `${prefixo}${ROTULO[v.tipo]} de ${quem}`, corpo: periodo(v), dia, id });
     return;
   }
   const destino = v.paraTodos ? [...c.nomes.keys()] : v.participantes;

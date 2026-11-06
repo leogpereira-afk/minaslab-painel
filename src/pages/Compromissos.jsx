@@ -1,4 +1,3 @@
-import { nomesAtuais } from "../lib/rh/referenciasPessoa.js";
 // Compromissos — a agenda de trabalho da MinasLab: reunião, visita, retorno,
 // entrega de laudo, cobrança. O desenho é o do Painel da Impresilk, que a
 // equipe de lá usa todo dia: a tela abre pelo que está ATRASADO e depois por
@@ -15,12 +14,13 @@ import {
   Plus, Check, Trash2, Pencil, Users, MapPin, Phone, FileText,
   HandCoins, CircleDot, MessageCircle, CalendarCheck,
 } from "lucide-react";
-import { listar, salvar, apagar, elenco } from "../services/dados.js";
+import { listar, salvar, apagar, usuariosAtivos } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
-import { compromissosVisiveis, meuIdNoElenco } from "../lib/compromissosVisiveis.js";
+import { compromissosVisiveis, criadorDe, participantesDe, quemVeTexto } from "../lib/compromissosVisiveis.js";
+import SeletorPessoas from "../components/tarefas/SeletorPessoas.jsx";
 import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import {
-  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card,
+  PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card, Segmented,
 } from "../components/ui.jsx";
 
 const COLECAO = "compromissos";
@@ -38,7 +38,9 @@ const TIPOS = {
 
 const VAZIO = {
   id: "", titulo: "", tipo: "reuniao", cliente: "", data: "", hora: "",
-  telefone: "", responsavelId: "", obs: "", feito: false,
+  telefone: "", obs: "", feito: false,
+  // Quem vê: toda a equipe, pessoas escolhidas ou, sem ninguém, só quem criou (lib/compromissosVisiveis.js).
+  paraTodos: false, participantes: [],
 };
 
 // A frase que a pessoa lê antes do número. Prazo em palavras vale mais que data.
@@ -99,7 +101,7 @@ function Linha({ salvando, c, editavel, remarcando, setRemarcando, acoes }) {
           {c.titulo}
         </span>
         <span className="block break-words text-xs text-slate-500">
-          {[c.t.rotulo, c.cliente, c.responsavelNome, c.obs].filter(Boolean).join(" · ")}
+          {[c.t.rotulo, c.cliente, c.quemVe, c.obs].filter(Boolean).join(" · ")}
         </span>
       </span>
 
@@ -203,7 +205,7 @@ function Linha({ salvando, c, editavel, remarcando, setRemarcando, acoes }) {
   );
 }
 
-function FormCompromisso({ form, setForm, equipe, salvando, aoSalvar, aoFechar }) {
+function FormCompromisso({ form, setForm, usuarios, eu, salvando, aoSalvar, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
   return (
@@ -246,15 +248,33 @@ function FormCompromisso({ form, setForm, equipe, salvando, aoSalvar, aoFechar }
             <label className="label" htmlFor="c-tel">Telefone</label>
             <input id="c-tel" type="tel" className="input" placeholder="(31) 99999-0000" value={form.telefone} onChange={setCampo("telefone")} />
           </div>
-          <div>
-            <label className="label" htmlFor="c-resp">Responsável</label>
-            <select id="c-resp" className="select" value={form.responsavelId} onChange={setCampo("responsavelId")}>
-              <option value="">— sem responsável —</option>
-              {equipe.map((p) => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
-              ))}
-            </select>
-          </div>
+        </div>
+        {/* Quem vê (e participa): toda a equipe, pessoas escolhidas ou, sem ninguém, só quem criou. Vale ao criar e ao editar. */}
+        <div>
+          <span className="label">Quem participa</span>
+          <Segmented
+            opcoes={[{ valor: "todos", rotulo: "Toda a equipe" }, { valor: "pessoas", rotulo: "Escolher pessoas" }]}
+            valor={form.paraTodos ? "todos" : "pessoas"}
+            onChange={(v) => setForm({ ...form, paraTodos: v === "todos" })}
+          />
+          {!form.paraTodos && (
+            <div className="mt-2">
+              <SeletorPessoas
+                usuarios={usuarios}
+                valor={form.participantes}
+                onChange={(v) => setForm({ ...form, participantes: v })}
+                ocultar={[form.criador || eu].filter(Boolean)}
+                vazio="Só quem criou"
+              />
+            </div>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            {form.paraTodos
+              ? "Aparece para todos, aqui e no Calendário."
+              : form.participantes.length
+                ? "Só as pessoas escolhidas e quem criou veem."
+                : "Sem ninguém escolhido, só quem criou vê."}
+          </p>
         </div>
         <div>
           <label className="label" htmlFor="c-obs">Observações</label>
@@ -281,7 +301,7 @@ export default function Compromissos() {
   const [aviso, setAviso] = useState(null);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const [equipe, setEquipe] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
   const [remarcando, setRemarcando] = useState(null);
   const [verFeitos, setVerFeitos] = useState(false);
   // Os cartões viram recorte: clicar filtra a lista; clicar de novo volta.
@@ -291,11 +311,11 @@ export default function Compromissos() {
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
 
   const recarregar = useCallback(() => {
-    /* Falha da equipe NÃO some calada (pendência da auditoria de 19/09, fechada em 28/09):
-       a lista anterior fica, e a tela diz que pode estar velha. Sem isso, "ninguém para
-       escolher" e "o servidor não respondeu" tinham a mesma cara. */
-    elenco().then(setEquipe).catch(() => setAviso((atual) => {
-      const texto = "Não consegui atualizar a lista da equipe agora. Os responsáveis mostrados podem estar desatualizados; tente de novo em instantes.";
+    /* Falha da lista de usuários NÃO some calada: a lista anterior fica, e a tela diz que
+       pode estar velha. Sem isso, "ninguém para escolher" e "o servidor não respondeu"
+       tinham a mesma cara. */
+    usuariosAtivos().then(setUsuarios).catch(() => setAviso((atual) => {
+      const texto = "Não consegui atualizar a lista de pessoas agora. Os nomes mostrados podem estar desatualizados; tente de novo em instantes.";
       if (!atual) return { tipo: "warn", texto };
       if (atual.tipo === "erro" || String(atual.texto || "").includes(texto)) return atual;
       return { tipo: "warn", texto: `${atual.texto} ${texto}` };
@@ -318,7 +338,7 @@ export default function Compromissos() {
 
   useEffect(() => {
     recarregar();
-    // O elenco é só para o "responsável". Se falhar, a tela continua.
+    // A lista de usuários é só para "quem participa". Se falhar, a tela continua.
 
   }, [recarregar]);
 
@@ -337,10 +357,11 @@ export default function Compromissos() {
 
   const vm = useMemo(() => {
     if (!itens) return null;
-    // Quem não é da direção vê só o que foi delegado a si (a direção vê todos).
-    const todos = nomesAtuais(compromissosVisiveis(itens, sessao, equipe), equipe, "responsavelId", "responsavelNome").map((c) => {
+    // Cada um vê o que é para toda a equipe, o que foi escolhido para si e o que criou.
+    const nomes = Object.fromEntries(usuarios.map((u) => [u.usuario, u.nome]));
+    const todos = compromissosVisiveis(itens, sessao).map((c) => {
       const dias = c.data ? diasEntre(hojeISO, c.data) : null;
-      return { ...c, dias, pz: prazo(dias), t: TIPOS[c.tipo] || TIPOS.outro };
+      return { ...c, dias, pz: prazo(dias), t: TIPOS[c.tipo] || TIPOS.outro, quemVe: quemVeTexto(c, sessao, nomes) };
     });
 
     /* O dia sai na ordem do relógio: dentro de "Hoje" quem tem hora vem
@@ -376,7 +397,7 @@ export default function Compromissos() {
       hoje: abertos.filter((c) => c.pz.grupo === "Hoje").length,
       semData: abertos.filter((c) => c.pz.grupo === "Sem data marcada").length,
     };
-  }, [itens, hojeISO, equipe, sessao]);
+  }, [itens, hojeISO, usuarios, sessao]);
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);
@@ -384,15 +405,10 @@ export default function Compromissos() {
       // Os campos derivados do render (prazo, tipo resolvido, dias) NÃO vão
       // para o banco — são conta da tela, e gravá-los criaria uma segunda
       // verdade que envelhece.
-      const { dias: _dias, pz: _pz, t: _t, ...limpo } = dados;
-      // O nome do responsável é CARIMBO: se o id não resolve no elenco vivo
-      // (pessoa desligada, ou o elenco falhou ao carregar), o nome já gravado
-      // fica. Zerar aqui apagava "Maria" num simples clique de "feito".
-      const resp = equipe.find((p) => p.id === limpo.responsavelId);
-      const responsavelNome = limpo.responsavelId
-        ? resp?.nome || limpo.responsavelNome || ""
-        : "";
-      await salvar(COLECAO, { ...limpo, responsavelNome });
+      const { dias: _dias, pz: _pz, t: _t, quemVe: _quemVe, ...limpo } = dados;
+      // O criador fica gravado: sem ele, quem marcasse "feito" por último viraria o dono
+      // e o compromisso "só para quem criou" mudaria de mãos.
+      await salvar(COLECAO, { ...limpo, criador: criadorDe(limpo) || sessao?.usuario || "" });
       setForm(null);
       setAviso({ tipo: "ok", texto: fraseOk });
       recarregar();
@@ -404,7 +420,9 @@ export default function Compromissos() {
   };
 
   const acoes = {
-    abrirForm: (c) => setForm(c ? { ...VAZIO, ...c } : { ...VAZIO, responsavelId: sessao?.papel === "direcao" ? "" : meuIdNoElenco(sessao, equipe) }),
+    abrirForm: (c) => setForm(c
+      ? { ...VAZIO, ...c, criador: criadorDe(c), paraTodos: c.paraTodos === true, participantes: participantesDe(c) }
+      : { ...VAZIO, criador: sessao?.usuario || "" }),
     alternarFeito: (c) =>
       gravar(
         { ...c, feito: !c.feito, feitoEm: !c.feito ? new Date().toISOString() : "" },
@@ -559,9 +577,14 @@ export default function Compromissos() {
       <FormCompromisso
         form={form}
         setForm={setForm}
-        equipe={equipe}
+        usuarios={usuarios}
+        eu={sessao?.usuario || ""}
         salvando={salvando}
-        aoSalvar={() => gravar(form, form.id ? "Compromisso atualizado." : "Compromisso criado.")}
+        aoSalvar={() => gravar(
+          // Salvo pelo formulário, vale o "quem participa" novo; o responsável antigo (ficha do RH) sai.
+          { ...form, participantes: form.paraTodos ? [] : form.participantes, responsavelId: "", responsavelNome: "" },
+          form.id ? "Compromisso atualizado." : "Compromisso criado."
+        )}
         aoFechar={() => setForm(null)}
       />
     </div>
