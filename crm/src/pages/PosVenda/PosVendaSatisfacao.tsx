@@ -34,7 +34,7 @@ let PERGUNTAS: Pergunta[] = PADRAO
 const escalaQs = () => PERGUNTAS.filter(q => q.tipo === 'ESCALA')
 const textoQs = () => PERGUNTAS.filter(q => q.tipo === 'TEXTO')
 const nota = (r: Resposta, k: string): number | null => { const v = r.notas?.[k] ?? (k === 'coleta' ? r.nota_coleta : null); return typeof v === 'number' ? v : null }
-const textosDe = (r: Resposta): Record<string, string> => ({ ...Object.fromEntries(([['gostou', r.gostou], ['mudaria', r.mudaria], ['melhorar', r.melhorar]] as [string, string | null][]).filter(([, v]) => v)), ...(r.textos || {}) })
+const textosDe = (r: Resposta): Record<string, string> => ({ ...Object.fromEntries(([['gostou', r.gostou], ['mudaria', r.mudaria], ['melhorar', r.melhorar]] as [string, string | null][]).filter((x): x is [string, string] => !!x[1])), ...(r.textos || {}) })
 const comentario = (r: Resposta) => Object.values(textosDe(r)).find(Boolean) || r.explicacao_nps || ''
 const sugestao = (r: Resposta) => Object.entries(textosDe(r)).filter(([k, v]) => k !== 'gostou' && v).map(([, v]) => v).join(' · ')
 const rotTexto = (k: string) => textoQs().find(q => q.chave === k)?.texto || ({ gostou: 'O que mais gostou', mudaria: 'O que mudaria', melhorar: 'O que podemos melhorar' } as Record<string, string>)[k] || k
