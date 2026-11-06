@@ -2,26 +2,27 @@
 // Mesma tela e mesmos dados do CRM (Pós-venda › Pesquisa de satisfação), mas pelo crachá do painel:
 // a Qualidade envia o link, acompanha NPS e médias, trata insatisfações (prazo 5 dias) e registra melhorias.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, Copy, Download, Mail, MessageCircle, RefreshCw, Send, Smile, Star, ThumbsUp } from "lucide-react";
-import { lerSatisfacao, vinculosCliente, enviarPesquisa, trocarCanal, cancelarEnvio, salvarMelhoria, salvarTratativa, linkPesquisa, mensagemPesquisa } from "../../services/qualidade.js";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ClipboardCheck, Copy, Download, EyeOff, ListChecks, Mail, MessageCircle, Pencil, Plus, RefreshCw, RotateCcw, Send, Smile, Star, ThumbsUp } from "lucide-react";
+import { lerSatisfacao, vinculosCliente, enviarPesquisa, trocarCanal, cancelarEnvio, salvarMelhoria, salvarTratativa, salvarPergunta, ordenarPerguntas, salvarRevisao, linkPesquisa, mensagemPesquisa } from "../../services/qualidade.js";
 import { baixarPlanilha } from "../../lib/planilha.js";
 import { StatCard, Modal, CarregandoModulo, ErroModulo, Aviso, Segmented } from "../ui.jsx";
 
-export const ITENS = [
-  ["atendimento_inicial", "Facilidade no atendimento inicial"],
-  ["clareza_orcamentos", "Clareza das informações e orçamentos"],
-  ["agilidade_prazos", "Agilidade e cumprimento de prazos"],
-  ["equipe", "Competência e cordialidade da equipe"],
-  ["confiabilidade", "Confiabilidade dos resultados"],
-  ["relatorios", "Qualidade dos relatórios emitidos"],
-  ["requisitos", "Requisitos técnicos e normativos"],
-  ["custo_beneficio", "Custo-benefício dos serviços"],
-  ["satisfacao_geral", "Satisfação geral com o laboratório"],
+// Perguntas de nota 1–5 de antes do editor (reserva para respostas antigas, se a lista do servidor não vier).
+const ITENS_PADRAO = [
+  ["atendimento_inicial", "Facilidade no atendimento inicial"], ["clareza_orcamentos", "Clareza das informações e orçamentos"],
+  ["agilidade_prazos", "Agilidade e cumprimento de prazos"], ["equipe", "Competência e cordialidade da equipe"],
+  ["confiabilidade", "Confiabilidade dos resultados"], ["relatorios", "Qualidade dos relatórios emitidos"],
+  ["requisitos", "Requisitos técnicos e normativos"], ["custo_beneficio", "Custo-benefício dos serviços"],
+  ["satisfacao_geral", "Satisfação geral com o laboratório"], ["coleta", "Processo de coleta/amostragem"],
 ];
+const nota = (r, k) => { const v = r.notas?.[k] ?? (k === "coleta" ? r.nota_coleta : null); return typeof v === "number" ? v : null; };
+const textosDe = (r) => ({ ...Object.fromEntries([["gostou", r.gostou], ["mudaria", r.mudaria], ["melhorar", r.melhorar]].filter(([, v]) => v)), ...(r.textos || {}) });
+const comentario = (r) => Object.values(textosDe(r)).find(Boolean) || r.explicacao_nps || "";
+const sugestao = (r) => Object.entries(textosDe(r)).filter(([k, v]) => k !== "gostou" && v).map(([, v]) => v).join(" · ");
 const MELHORIA = [["AVALIAR", "Avaliar"], ["EM ANDAMENTO", "Em andamento"], ["IMPLEMENTADA", "Implementada"], ["DESCARTADA", "Descartada"], ["SEM SUGESTAO", "Sem sugestão"]];
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const PERIODOS = [{ valor: "12m", rotulo: "Últimos 12 meses" }, { valor: "ano", rotulo: "Este ano" }, { valor: "mes", rotulo: "Este mês" }, { valor: "tudo", rotulo: "Tudo" }];
-const ABAS = [{ valor: "geral", rotulo: "Visão geral" }, { valor: "respostas", rotulo: "Respostas" }, { valor: "tratativas", rotulo: "Tratativas" }, { valor: "envios", rotulo: "Envios" }];
+const ABAS = [{ valor: "geral", rotulo: "Visão geral" }, { valor: "respostas", rotulo: "Respostas" }, { valor: "tratativas", rotulo: "Tratativas" }, { valor: "envios", rotulo: "Envios" }, { valor: "perguntas", rotulo: "Perguntas" }];
 
 const fmtData = (v) => (v ? new Date(v.length === 10 ? `${v}T12:00:00` : v).toLocaleDateString("pt-BR") : "—");
 const media = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -59,7 +60,10 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   }, []);
   useEffect(() => { carregar(); }, [carregar]);
 
-  const d = dados || { envios: [], respostas: [], tratativas: [], clientes: [], contratos: {}, os: {}, perfis: {}, contas: {} };
+  const d = dados || { envios: [], respostas: [], tratativas: [], clientes: [], contratos: {}, os: {}, perfis: {}, contas: {}, perguntas: [] };
+  const pergs = d.perguntas?.length ? d.perguntas : ITENS_PADRAO.map(([chave, texto], i) => ({ id: chave, chave, texto, tipo: "ESCALA", ativa: true, ordem: i }));
+  const escalaQs = pergs.filter((p) => p.tipo === "ESCALA");
+  const textoQs = pergs.filter((p) => p.tipo === "TEXTO");
   const cliMap = useMemo(() => Object.fromEntries(d.clientes.map((c) => [c.id, c])), [d.clientes]);
   const nome = (x) => cliMap[x.cliente_id]?.nome || x.empresa_nome || "Cliente";
   const vinculo = (x) => [x.contrato_id && d.contratos[x.contrato_id] ? `Contrato ${d.contratos[x.contrato_id]}` : "", x.ordem_servico_id && d.os[x.ordem_servico_id] ? d.os[x.ordem_servico_id] : ""].filter(Boolean).join(" · ") || "Sem vínculo";
@@ -70,11 +74,11 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   const hoje = hojeYmd();
   const abertas = d.tratativas.filter((t) => t.status !== "CONCLUIDA");
   const atrasadas = abertas.filter((t) => t.prazo < hoje);
-  const geral = media(rPer.map((r) => r.notas?.satisfacao_geral).filter((x) => typeof x === "number"));
+  const geral = media(rPer.map((r) => nota(r, "satisfacao_geral")).filter((x) => x != null));
   const taxa = ePer.length ? Math.round((ePer.filter((e) => e.respondido_em).length / ePer.length) * 100) : null;
   const agora = new Date();
   const doMes = d.respostas.filter((r) => { const x = new Date(r.respondido_em); return x.getFullYear() === agora.getFullYear() && x.getMonth() === agora.getMonth(); }).length;
-  const porItem = [...ITENS, ["__coleta", "Processo de coleta/amostragem"]].map(([k, l]) => ({ k, l, m: media(rPer.map((r) => (k === "__coleta" ? r.nota_coleta : r.notas?.[k])).filter((x) => typeof x === "number")) }));
+  const porItem = escalaQs.map((q) => ({ k: q.chave, l: q.ativa ? q.texto : `${q.texto} (retirada)`, ativa: q.ativa, m: media(rPer.map((r) => nota(r, q.chave)).filter((x) => x != null)) })).filter((i) => i.ativa || i.m != null);
   const npsMes = Array.from({ length: 6 }, (_, i) => {
     const m = new Date(agora.getFullYear(), agora.getMonth() - (5 - i), 1);
     const rs = d.respostas.filter((r) => { const x = new Date(r.respondido_em); return x.getFullYear() === m.getFullYear() && x.getMonth() === m.getMonth(); });
@@ -95,14 +99,15 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   function exportar() {
     const colunas = [
       { chave: "data", rotulo: "Data" }, { chave: "cliente", rotulo: "Cliente" }, { chave: "vinculo", rotulo: "Contrato/OS" }, { chave: "nps", rotulo: "NPS (0–10)", tipo: "numero" },
-      ...ITENS.map(([k, l]) => ({ chave: k, rotulo: l, tipo: "numero" })), { chave: "coleta", rotulo: "Coleta (1–5)" },
-      { chave: "gostou", rotulo: "O que mais gostou" }, { chave: "mudaria", rotulo: "O que mudaria" }, { chave: "melhorar", rotulo: "O que melhorar" }, { chave: "explicacao", rotulo: "Explicação 0–6" },
+      ...escalaQs.map((q) => ({ chave: `n_${q.chave}`, rotulo: q.texto, tipo: "numero" })),
+      ...textoQs.map((q) => ({ chave: `t_${q.chave}`, rotulo: q.texto })), { chave: "explicacao", rotulo: "Explicação 0–6" },
       { chave: "melhoria", rotulo: "Status da melhoria" }, { chave: "tratativa", rotulo: "Tratativa" }, { chave: "causa", rotulo: "Causa" }, { chave: "acao", rotulo: "Ação" }, { chave: "retorno", rotulo: "Retorno ao cliente" },
     ];
     const linhas = rPer.map((r) => {
       const t = d.tratativas.find((x) => x.resposta_id === r.id);
-      return { data: fmtData(r.respondido_em), cliente: nome(r), vinculo: vinculo(r), nps: r.nps, ...Object.fromEntries(ITENS.map(([k]) => [k, r.notas?.[k] ?? ""])), coleta: r.nota_coleta ?? "N/A",
-        gostou: r.gostou || "", mudaria: r.mudaria || "", melhorar: r.melhorar || "", explicacao: r.explicacao_nps || "", melhoria: MELHORIA.find((m) => m[0] === r.melhoria_status)?.[1] || "",
+      const tx = textosDe(r);
+      return { data: fmtData(r.respondido_em), cliente: nome(r), vinculo: vinculo(r), nps: r.nps, ...Object.fromEntries(escalaQs.map((q) => [`n_${q.chave}`, nota(r, q.chave) ?? ""])),
+        ...Object.fromEntries(textoQs.map((q) => [`t_${q.chave}`, tx[q.chave] || ""])), explicacao: r.explicacao_nps || "", melhoria: MELHORIA.find((m) => m[0] === r.melhoria_status)?.[1] || "",
         tratativa: t ? `${t.status} · prazo ${fmtData(t.prazo)}` : "", causa: t?.causa || "", acao: t?.acao || "", retorno: t?.retorno_cliente || "" };
     });
     baixarPlanilha({ nome: "pesquisa-satisfacao", colunas, linhas,
@@ -163,7 +168,7 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
                       <td className="whitespace-nowrap py-2.5 pr-2">{fmtData(r.respondido_em).slice(0, 5)}</td>
                       <td className="py-2.5 pr-2"><b className="block text-slate-900">{nome(r)}</b><span className="text-xs text-slate-500">{vinculo(r)}</span></td>
                       <td className="py-2.5 pr-2"><Nps n={r.nps} /></td>
-                      <td className="py-2.5 text-slate-600"><span className="line-clamp-2">{r.gostou || r.melhorar || r.mudaria || r.explicacao_nps || "—"}</span>{aberta && <b className="text-xs text-bad-700">→ tratativa aberta</b>}</td>
+                      <td className="py-2.5 text-slate-600"><span className="line-clamp-2">{comentario(r) || "—"}</span>{aberta && <b className="text-xs text-bad-700">→ tratativa aberta</b>}</td>
                     </tr>
                   );
                 })}</tbody>
@@ -210,8 +215,8 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
                 <td className="whitespace-nowrap px-4 py-3">{fmtData(r.respondido_em)}{r.origem !== "LINK" && <span className="block text-xs text-slate-400">{r.origem === "GOOGLE_FORMS" ? "Google Forms" : "Manual"}</span>}</td>
                 <td className="px-4 py-3"><button type="button" onClick={() => setVer(r)} className="text-left font-semibold text-brand-700 hover:underline">{nome(r)}</button><span className="block text-xs text-slate-500">{vinculo(r)}</span></td>
                 <td className="px-4 py-3"><Nps n={r.nps} />{r.insatisfeito && <span className="mt-1 block text-xs font-semibold text-bad-700">insatisfação</span>}</td>
-                <td className="px-4 py-3">{r.notas?.satisfacao_geral ?? "—"}</td>
-                <td className="max-w-md px-4 py-3 text-slate-600">{[r.mudaria, r.melhorar].filter(Boolean).join(" · ") || "—"}</td>
+                <td className="px-4 py-3">{nota(r, "satisfacao_geral") ?? "—"}</td>
+                <td className="max-w-md px-4 py-3 text-slate-600">{sugestao(r) || "—"}</td>
                 <td className="px-4 py-3"><select disabled={!dados.podeEscrever} value={r.melhoria_status} onChange={(e) => mudarMelhoria(r, e.target.value)} className="input py-1.5 text-xs">{MELHORIA.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
               </tr>
             ))}</tbody>
@@ -261,9 +266,11 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
         </table>{ePer.length === 0 && <p className="p-10 text-center text-slate-500">Nenhum envio no período.</p>}</div>
       )}
 
+      {aba === "perguntas" && <EditorPerguntas perguntas={d.perguntas || []} revisao={d.revisao || "01"} podeEscrever={dados.podeEscrever} aoMudar={carregar} avisar={setAviso} />}
+
       <EnviarPesquisa aberto={enviar} clientes={d.clientes} aoFechar={() => setEnviar(false)} aoEnviar={carregar} />
-      <Modal titulo={ver ? `Resposta — ${nome(ver)}` : ""} aberto={!!ver} aoFechar={() => setVer(null)} largura="max-w-2xl">{ver && <Detalhe r={ver} vinculo={vinculo(ver)} />}</Modal>
-      <Tratativa t={trat} resposta={trat && d.respostas.find((x) => x.id === trat.resposta_id)} vinculo={vinculo} podeEscrever={dados.podeEscrever} aoFechar={() => setTrat(null)} aoSalvar={async () => { setTrat(null); await carregar(); setAviso({ tipo: "ok", texto: "Tratativa salva." }); }} />
+      <Modal titulo={ver ? `Resposta — ${nome(ver)}` : ""} aberto={!!ver} aoFechar={() => setVer(null)} largura="max-w-2xl">{ver && <Detalhe r={ver} vinculo={vinculo(ver)} escalaQs={escalaQs} textoQs={textoQs} />}</Modal>
+      <Tratativa t={trat} resposta={trat && d.respostas.find((x) => x.id === trat.resposta_id)} vinculo={vinculo} escalaQs={escalaQs} textoQs={textoQs} podeEscrever={dados.podeEscrever} aoFechar={() => setTrat(null)} aoSalvar={async () => { setTrat(null); await carregar(); setAviso({ tipo: "ok", texto: "Tratativa salva." }); }} />
     </div>
   );
 }
@@ -273,22 +280,24 @@ function StatusTrat({ s }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cor}`}>{rot}</span>;
 }
 
-function Detalhe({ r, vinculo }) {
+function Detalhe({ r, vinculo, escalaQs, textoQs }) {
+  const tx = textosDe(r);
+  const rotTexto = (k) => textoQs.find((q) => q.chave === k)?.texto || ({ gostou: "O que mais gostou", mudaria: "O que mudaria", melhorar: "O que podemos melhorar" }[k] || k);
   return (
     <div className="grid gap-4 text-sm">
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600"><span>Respondida em <b>{fmtData(r.respondido_em)}</b></span><span>Vínculo: <b>{vinculo}</b></span><span>Serviços: <b>{r.servicos?.join(", ") || "—"}</b></span></div>
       <div className="grid gap-1.5 rounded-2xl border p-3">
-        {ITENS.map(([k, l]) => <div key={k} className="flex justify-between gap-4"><span>{l}</span><b className={(r.notas?.[k] ?? 5) <= 2 ? "text-bad-700" : ""}>{r.notas?.[k] ?? "—"}</b></div>)}
-        <div className="flex justify-between gap-4"><span>Processo de coleta/amostragem</span><b>{r.nota_coleta ?? "N/A"}</b></div>
+        {escalaQs.filter((q) => q.ativa || nota(r, q.chave) != null).map((q) => { const n = nota(r, q.chave); return <div key={q.chave} className="flex justify-between gap-4"><span>{q.texto}</span><b className={n != null && n <= 2 ? "text-bad-700" : ""}>{n ?? "N/A"}</b></div>; })}
       </div>
       <div className="flex items-center gap-2">Recomendação: <Nps n={r.nps} /></div>
-      {[["O que mais gostou", r.gostou], ["O que mudaria", r.mudaria], ["O que podemos melhorar", r.melhorar], ["Explicação da nota 0–6", r.explicacao_nps]].map(([t, v]) => (v ? <div key={t}><span className="label">{t}</span><p className="mt-0.5 whitespace-pre-line">{v}</p></div> : null))}
+      {Object.entries(tx).map(([k, v]) => <div key={k}><span className="label">{rotTexto(k)}</span><p className="mt-0.5 whitespace-pre-line">{v}</p></div>)}
+      {r.explicacao_nps && <div><span className="label">Explicação da nota 0–6</span><p className="mt-0.5 whitespace-pre-line">{r.explicacao_nps}</p></div>}
       <p className="text-xs text-slate-500">{r.autoriza_anonimo ? "Autorizou o uso anônimo dos comentários para divulgação." : "Não autorizou o uso dos comentários para divulgação."}</p>
     </div>
   );
 }
 
-function Tratativa({ t, resposta, vinculo, podeEscrever, aoFechar, aoSalvar }) {
+function Tratativa({ t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFechar, aoSalvar }) {
   const [f, setF] = useState({ status: "ABERTA", causa: "", acao_tomada: "", retorno_cliente: "" });
   const [erro, setErro] = useState(""); const [salvando, setSalvando] = useState(false);
   useEffect(() => { if (t) { setF({ status: t.status, causa: t.causa || "", acao_tomada: t.acao || "", retorno_cliente: t.retorno_cliente || "" }); setErro(""); } }, [t]);
@@ -303,7 +312,7 @@ function Tratativa({ t, resposta, vinculo, podeEscrever, aoFechar, aoSalvar }) {
     <Modal titulo="Tratativa de insatisfação" aberto={!!t} aoFechar={aoFechar} largura="max-w-2xl">
       {t && <form onSubmit={salvar} className="grid gap-4 text-sm">
         <div className="rounded-2xl bg-bad-50 p-3 text-bad-700"><b className="block">Motivo</b>{t.motivo}<span className="mt-1 block text-xs">Prazo: {fmtData(t.prazo)}</span></div>
-        {resposta && <details className="rounded-2xl border p-3"><summary className="cursor-pointer font-semibold">Ver resposta completa</summary><div className="mt-3"><Detalhe r={resposta} vinculo={vinculo(resposta)} /></div></details>}
+        {resposta && <details className="rounded-2xl border p-3"><summary className="cursor-pointer font-semibold">Ver resposta completa</summary><div className="mt-3"><Detalhe r={resposta} vinculo={vinculo(resposta)} escalaQs={escalaQs} textoQs={textoQs} /></div></details>}
         <label><span className="label">Status</span><select disabled={ro} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className="input"><option value="ABERTA">Aberta</option><option value="EM ANDAMENTO">Em andamento</option><option value="CONCLUIDA">Concluída</option></select></label>
         <label><span className="label">Análise da causa</span><textarea disabled={ro} value={f.causa} onChange={(e) => setF({ ...f, causa: e.target.value })} rows={3} className="input" /></label>
         <label><span className="label">Ação tomada</span><textarea disabled={ro} value={f.acao_tomada} onChange={(e) => setF({ ...f, acao_tomada: e.target.value })} rows={3} className="input" /></label>
@@ -362,5 +371,94 @@ function EnviarPesquisa({ aberto, clientes, aoFechar, aoEnviar }) {
         <p className="text-xs text-slate-500">Cada link vale para uma resposta. A resposta aparece aqui e no CRM (Pós-venda).</p>
       </div>
     </Modal>
+  );
+}
+
+const TIPOS_PERGUNTA = [
+  { valor: "ESCALA", titulo: "Notas de 1 a 5", ajuda: "Cada item vira uma linha de notas. Nota 1 ou 2 abre tratativa de insatisfação." },
+  { valor: "TEXTO", titulo: "Perguntas abertas", ajuda: "O cliente escreve a resposta. Respostas diferentes de “o que mais gostou” viram sugestões de melhoria." },
+  { valor: "SERVICO", titulo: "Opções de “Serviço utilizado”", ajuda: "Opções que o cliente marca no início do formulário." },
+];
+
+function EditorPerguntas({ perguntas, revisao, podeEscrever, aoMudar, avisar }) {
+  const [editando, setEditando] = useState(null); // { id?, tipo, texto, permite_na, obrigatoria, ativa }
+  const [rev, setRev] = useState(revisao);
+  const [salvando, setSalvando] = useState(false);
+  const [verInativas, setVerInativas] = useState(false);
+  useEffect(() => { setRev(revisao); }, [revisao]);
+
+  async function gravar(dados) {
+    setSalvando(true);
+    try { await salvarPergunta(dados); setEditando(null); await aoMudar(); avisar({ tipo: "ok", texto: "Pergunta salva. Vale para as próximas respostas." }); }
+    catch (e) { avisar({ tipo: "erro", texto: e.message }); } finally { setSalvando(false); }
+  }
+  async function mover(lista, i, delta) {
+    const j = i + delta; if (j < 0 || j >= lista.length) return;
+    const ids = lista.map((q) => q.id); [ids[i], ids[j]] = [ids[j], ids[i]];
+    try { await ordenarPerguntas(ids); await aoMudar(); } catch (e) { avisar({ tipo: "erro", texto: e.message }); }
+  }
+  async function gravarRevisao() {
+    try { await salvarRevisao(rev); await aoMudar(); avisar({ tipo: "ok", texto: `Revisão ${rev} registrada no formulário.` }); } catch (e) { avisar({ tipo: "erro", texto: e.message }); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card flex flex-wrap items-center gap-3 p-4">
+        <ListChecks className="h-5 w-5 text-brand" aria-hidden />
+        <div className="min-w-0 flex-1 text-sm">
+          <b className="block text-slate-900">Formulário PG 012 · revisão {revisao}</b>
+          <span className="text-slate-500">As mudanças valem para as próximas respostas (links já enviados também passam a mostrar as perguntas novas). Respostas antigas não mudam. A recomendação de 0 a 10 é fixa.</span>
+        </div>
+        {podeEscrever && <div className="flex items-center gap-2"><label className="text-sm text-slate-600" htmlFor="rev-pg012">Revisão</label><input id="rev-pg012" value={rev} onChange={(e) => setRev(e.target.value)} className="input w-20" /><button type="button" onClick={gravarRevisao} disabled={rev === revisao || !rev.trim()} className="btn-outline">Salvar revisão</button></div>}
+      </div>
+      <label className="inline-flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={verInativas} onChange={(e) => setVerInativas(e.target.checked)} /> Mostrar perguntas retiradas</label>
+
+      {TIPOS_PERGUNTA.map((t) => {
+        const ativas = perguntas.filter((q) => q.tipo === t.valor && q.ativa);
+        const inativas = perguntas.filter((q) => q.tipo === t.valor && !q.ativa);
+        return (
+          <div key={t.valor} className="card p-5">
+            <div className="mb-3 flex flex-wrap items-start gap-2">
+              <div className="flex-1"><h3 className="font-display font-semibold text-slate-900">{t.titulo} <span className="text-sm font-normal text-slate-400">({ativas.length})</span></h3><p className="text-xs text-slate-500">{t.ajuda}</p></div>
+              {podeEscrever && <button type="button" onClick={() => setEditando({ tipo: t.valor, texto: "", permite_na: false, obrigatoria: t.valor === "ESCALA", ativa: true })} className="btn-outline inline-flex items-center gap-1.5"><Plus className="h-4 w-4" aria-hidden /> Acrescentar</button>}
+            </div>
+            <ul className="divide-y rounded-xl border">
+              {ativas.map((q, i) => (
+                <li key={q.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                  <span className="w-6 text-right text-xs text-slate-400">{i + 1}.</span>
+                  <span className="min-w-0 flex-1">{q.texto}
+                    {t.valor !== "SERVICO" && <span className="ml-2 text-xs text-slate-500">{q.obrigatoria && !q.permite_na ? "obrigatória" : "opcional"}{q.permite_na ? " · aceita “não se aplica”" : ""}</span>}
+                  </span>
+                  {podeEscrever && <span className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => mover(ativas, i, -1)} disabled={i === 0} className="btn-ghost p-1.5" title="Subir"><ArrowUp className="h-4 w-4" aria-hidden /></button>
+                    <button type="button" onClick={() => mover(ativas, i, 1)} disabled={i === ativas.length - 1} className="btn-ghost p-1.5" title="Descer"><ArrowDown className="h-4 w-4" aria-hidden /></button>
+                    <button type="button" onClick={() => setEditando({ ...q })} className="btn-ghost p-1.5" title="Editar"><Pencil className="h-4 w-4" aria-hidden /></button>
+                    <button type="button" onClick={() => window.confirm(`Tirar “${q.texto}” do formulário? As respostas antigas continuam guardadas.`) && gravar({ ...q, ativa: false })} className="btn-ghost p-1.5 text-bad-700" title="Tirar do formulário"><EyeOff className="h-4 w-4" aria-hidden /></button>
+                  </span>}
+                </li>
+              ))}
+              {ativas.length === 0 && <li className="px-3 py-4 text-center text-sm text-slate-500">Nenhuma pergunta ativa.</li>}
+              {verInativas && inativas.map((q) => (
+                <li key={q.id} className="flex items-center gap-3 bg-slate-50 px-3 py-2.5 text-sm text-slate-400">
+                  <span className="w-6" /><span className="flex-1 line-through">{q.texto}</span><span className="text-xs">retirada</span>
+                  {podeEscrever && <button type="button" onClick={() => gravar({ ...q, ativa: true })} className="btn-ghost inline-flex items-center gap-1 p-1.5 text-xs text-brand-700"><RotateCcw className="h-4 w-4" aria-hidden /> Voltar</button>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+
+      <Modal titulo={editando?.id ? "Editar pergunta" : "Acrescentar pergunta"} aberto={!!editando} aoFechar={() => setEditando(null)}>
+        {editando && <form onSubmit={(e) => { e.preventDefault(); gravar(editando); }} className="grid gap-4 text-sm">
+          <p className="text-slate-500">{TIPOS_PERGUNTA.find((t) => t.valor === editando.tipo)?.titulo}</p>
+          <label><span className="label">{editando.tipo === "SERVICO" ? "Nome do serviço" : "Texto da pergunta"}</span><textarea autoFocus rows={2} maxLength={300} value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} className="input" /></label>
+          {editando.tipo !== "SERVICO" && <label className="inline-flex items-center gap-2"><input type="checkbox" checked={editando.obrigatoria} onChange={(e) => setEditando({ ...editando, obrigatoria: e.target.checked })} /> Resposta obrigatória</label>}
+          {editando.tipo === "ESCALA" && <label className="inline-flex items-center gap-2"><input type="checkbox" checked={editando.permite_na} onChange={(e) => setEditando({ ...editando, permite_na: e.target.checked })} /> Aceita “não se aplica” (fica opcional)</label>}
+          {editando.id && <p className="rounded-xl bg-warn-50 p-3 text-xs text-warn-700">Mudar o texto altera como a pergunta aparece daqui em diante e nos relatórios. Se o sentido mudar, prefira tirar esta e acrescentar uma nova.</p>}
+          <button disabled={salvando || !editando.texto.trim()} className="btn-primary">{salvando ? "Salvando..." : "Salvar"}</button>
+        </form>}
+      </Modal>
+    </div>
   );
 }

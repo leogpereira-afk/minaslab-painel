@@ -40,6 +40,7 @@
   .nps { display:grid; grid-template-columns:repeat(11,1fr); gap:4px; }
   .nps button { padding:10px 0; font-size:13px; }
   .npsleg { display:flex; justify-content:space-between; font-size:11px; color:var(--mut); margin-top:4px; }
+  .txtq { margin-bottom:6px; }
   .miss { outline:2px solid #fca5a5; border-radius:12px; outline-offset:4px; }
   .check { display:flex; gap:10px; align-items:flex-start; font-size:14px; }
   .check input { width:20px; height:20px; margin-top:1px; accent-color:var(--teal); }
@@ -57,7 +58,7 @@
 <div class="wrap">
   <header>
     <img src="../crm/minaslab-logo.svg" alt="MinasLab">
-    <div class="doc">PG 012 · Pesquisa de Satisfação de Clientes · Rev. 01</div>
+    <div class="doc">PG 012 · Pesquisa de Satisfação de Clientes · Rev. <span id="rev">01</span></div>
     <h1>Como foi sua experiência com a MinasLab?</h1>
   </header>
   <main>
@@ -72,7 +73,7 @@
         <div id="osBox" class="hidden" style="margin-top:8px"><small id="osRot">Referência</small><b id="osNum"></b></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="servCard">
         <h2>Serviço utilizado</h2>
         <p class="hint">Marque todos que se aplicam.</p>
         <div class="chips" id="servicos"></div>
@@ -82,10 +83,6 @@
         <h2>Você ficou satisfeito com…</h2>
         <p class="hint">1 = muito insatisfeito · 5 = muito satisfeito</p>
         <div id="itens"></div>
-        <div class="item" id="itColeta">
-          <p>Processo de coleta/amostragem (se aplicável)</p>
-          <div class="scale na" data-chave="nota_coleta"></div>
-        </div>
       </div>
 
       <div class="card" id="npsCard">
@@ -98,14 +95,7 @@
         </div>
       </div>
 
-      <div class="card">
-        <label class="inp" for="gostou">O que você mais gostou em nossos serviços?</label>
-        <textarea id="gostou" maxlength="2000"></textarea>
-        <label class="inp" for="mudaria">Se pudesse mudar uma coisa em nossos serviços, o que seria?</label>
-        <textarea id="mudaria" maxlength="2000"></textarea>
-        <label class="inp" for="melhorar">O que podemos melhorar para atendê-lo ainda melhor?</label>
-        <textarea id="melhorar" maxlength="2000"></textarea>
-      </div>
+      <div class="card" id="textosCard"><div id="textos"></div></div>
 
       <div class="card">
         <label class="check"><input type="checkbox" id="autoriza"> Podemos utilizar seus comentários de forma anônima para divulgação da qualidade dos nossos serviços?</label>
@@ -121,11 +111,11 @@
 (() => {
   const API = 'https://reoghclxripktzpdwhiy.supabase.co/rest/v1/rpc/';
   const KEY = 'sb_publishable_YG38KEPCwoKfiQ7PZM2EBg_8cY1vIH7';
-  const SERVICOS = ['Coleta e amostragem', 'Análises físico-químicas', 'Análises microbiológicas', 'Consultoria técnica', 'Outro'];
   const ROTULOS = ['Muito insatisfeito', 'Insatisfeito', 'Regular', 'Satisfeito', 'Muito satisfeito'];
   const token = new URLSearchParams(location.search).get('t') || '';
   const $ = (id) => document.getElementById(id);
-  const notas = {}; let nps = null; let coleta = null;
+  const notas = {}; let nps = null; let form = { escala: [], textos: [] };
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const rpc = async (fn, body) => {
     const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -157,19 +147,30 @@
     $('empresa').value = d.empresa || '';
     const ref = [d.contrato ? 'Contrato ' + d.contrato : '', d.os ? 'OS ' + d.os : ''].filter(Boolean).join(' · ');
     if (ref) { $('osNum').textContent = ref; $('osBox').classList.remove('hidden'); }
-    SERVICOS.forEach((s) => {
+    form = d;
+    if (d.revisao) $('rev').textContent = d.revisao;
+    const servicos = Array.isArray(d.servicos) ? d.servicos : [];
+    if (!servicos.length) $('servCard').classList.add('hidden');
+    servicos.forEach((sv) => {
       const l = document.createElement('label'); l.className = 'chip';
-      l.innerHTML = `<input type="checkbox" value="${s}">${s}`;
+      l.innerHTML = `<input type="checkbox" value="${esc(sv)}">${esc(sv)}`;
       l.querySelector('input').addEventListener('change', (e) => l.classList.toggle('on', e.target.checked));
       $('servicos').appendChild(l);
     });
-    (d.itens || []).forEach(([chave, texto]) => {
-      const div = document.createElement('div'); div.className = 'item'; div.dataset.chave = chave;
-      div.innerHTML = `<p>${texto}</p><div class="scale"></div>`;
-      escala(div.querySelector('.scale'), (v) => { notas[chave] = v; });
+    const escalaLista = Array.isArray(d.escala) ? d.escala : (d.itens || []).map(([chave, texto]) => ({ chave, texto, na: false, obrigatoria: true }));
+    escalaLista.forEach((q) => {
+      const div = document.createElement('div'); div.className = 'item'; div.dataset.chave = q.chave; div.dataset.obrig = q.obrigatoria && !q.na ? '1' : '';
+      div.innerHTML = `<p>${esc(q.texto)}${q.obrigatoria && !q.na ? '' : ' <span class="hint">(opcional)</span>'}</p><div class="scale${q.na ? ' na' : ''}"></div>`;
+      escala(div.querySelector('.scale'), (v) => { notas[q.chave] = v; }, q.na);
       $('itens').appendChild(div);
     });
-    escala(document.querySelector('[data-chave=nota_coleta]'), (v) => { coleta = v; }, true);
+    const textos = Array.isArray(d.textos) ? d.textos : [];
+    if (!textos.length) $('textosCard').classList.add('hidden');
+    textos.forEach((q) => {
+      const w = document.createElement('div'); w.className = 'txtq'; w.dataset.chave = q.chave; w.dataset.obrig = q.obrigatoria ? '1' : '';
+      w.innerHTML = `<label class="inp" for="t_${esc(q.chave)}">${esc(q.texto)}${q.obrigatoria ? ' *' : ''}</label><textarea id="t_${esc(q.chave)}" maxlength="2000"></textarea>`;
+      $('textos').appendChild(w);
+    });
     for (let i = 0; i <= 10; i++) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = i;
       b.addEventListener('click', () => {
@@ -183,18 +184,20 @@
 
   $('form').addEventListener('submit', async (ev) => {
     ev.preventDefault(); $('erro').textContent = '';
-    const faltando = [...document.querySelectorAll('#itens .item')].filter((d) => !notas[d.dataset.chave]);
+    const faltando = [...document.querySelectorAll('#itens .item')].filter((d) => d.dataset.obrig && !notas[d.dataset.chave]);
+    const faltTexto = [...document.querySelectorAll('#textos .txtq')].filter((w) => w.dataset.obrig && !w.querySelector('textarea').value.trim());
+    faltTexto.forEach((w) => w.classList.add('miss'));
     faltando.forEach((d) => d.classList.add('miss'));
     if (nps === null) $('npsCard').classList.add('miss');
-    if (faltando.length || nps === null) {
-      $('erro').textContent = 'Responda todas as avaliações de 1 a 5 e a nota de 0 a 10.';
-      (faltando[0] || $('npsCard')).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (faltando.length || nps === null || faltTexto.length) {
+      $('erro').textContent = 'Responda as perguntas obrigatórias (notas de 1 a 5, a nota de 0 a 10 e as marcadas com *).';
+      (faltando[0] || (nps === null ? $('npsCard') : faltTexto[0])).scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     const dados = {
-      empresa: $('empresa').value, notas, nota_coleta: coleta, nps,
+      empresa: $('empresa').value, notas, nps,
+      textos: Object.fromEntries([...document.querySelectorAll('#textos .txtq')].map((w) => [w.dataset.chave, w.querySelector('textarea').value])),
       servicos: [...document.querySelectorAll('#servicos input:checked')].map((i) => i.value),
-      gostou: $('gostou').value, mudaria: $('mudaria').value, melhorar: $('melhorar').value,
       explicacao_nps: nps <= 6 ? $('explicacao_nps').value : '', autoriza_anonimo: $('autoriza').checked,
     };
     $('enviar').disabled = true; $('enviar').textContent = 'Enviando…';

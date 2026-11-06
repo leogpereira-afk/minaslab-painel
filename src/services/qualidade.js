@@ -22,6 +22,9 @@ export const trocarCanal = (id, canal, destino) => chamar("canal", { id, canal, 
 export const cancelarEnvio = (id) => chamar("cancelar", { id });
 export const salvarMelhoria = (id, status) => chamar("melhoria", { id, status });
 export const salvarTratativa = (id, dados) => chamar("tratativa", { id, ...dados });
+export const salvarPergunta = (dados) => chamar("perguntaSalvar", dados);
+export const ordenarPerguntas = (ids) => chamar("perguntasOrdem", { ids });
+export const salvarRevisao = (revisao) => chamar("revisao", { revisao });
 
 // Link público que o cliente abre (página /pesquisa/ do próprio painel).
 export const linkPesquisa = (token) => `${window.location.origin}${import.meta.env.BASE_URL}pesquisa/?t=${token}`;
