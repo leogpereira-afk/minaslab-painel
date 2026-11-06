@@ -69,7 +69,7 @@
       <div class="card cli">
         <small>Empresa / cliente</small>
         <input type="text" id="empresa" maxlength="200" aria-label="Nome da empresa ou cliente">
-        <div id="osBox" class="hidden" style="margin-top:8px"><small>Ordem de serviço</small><b id="osNum"></b></div>
+        <div id="osBox" class="hidden" style="margin-top:8px"><small id="osRot">Referência</small><b id="osNum"></b></div>
       </div>
 
       <div class="card">
@@ -155,7 +155,8 @@
 
   const montar = (d) => {
     $('empresa').value = d.empresa || '';
-    if (d.os) { $('osNum').textContent = d.os; $('osBox').classList.remove('hidden'); }
+    const ref = [d.contrato ? 'Contrato ' + d.contrato : '', d.os ? 'OS ' + d.os : ''].filter(Boolean).join(' · ');
+    if (ref) { $('osNum').textContent = ref; $('osBox').classList.remove('hidden'); }
     SERVICOS.forEach((s) => {
       const l = document.createElement('label'); l.className = 'chip';
       l.innerHTML = `<input type="checkbox" value="${s}">${s}`;
