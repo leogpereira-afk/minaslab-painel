@@ -7,7 +7,7 @@
 // - Atualização: sai do resultado da última verificação; "Pendente de atualizar" quando existe versão
 //   mais nova ou o documento foi cancelado/revogado.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarCheck2, CheckCircle2, Download, ExternalLink, FileWarning, Filter, HelpCircle, Library, Pencil, Plus, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CheckCircle2, Download, ExternalLink, FileWarning, Filter, FolderOpen, HelpCircle, Library, Pencil, Plus, RefreshCw, Search, X } from "lucide-react";
 import { salvarRegistro, verificarExternos } from "../../../services/qualidade.js";
 import { baixarPlanilha } from "../../../lib/planilha.js";
 import { StatCard, Modal } from "../../ui.jsx";
@@ -15,6 +15,8 @@ import PaginacaoFinanceiro from "../../financeiro/PaginacaoFinanceiro.jsx";
 import { Cabecalho, Campo, diasAte, fmtData, hojeYmd, somaMeses } from "./comum.jsx";
 
 export const MESES_VERIFICACAO = 3;
+// Pasta do Drive compartilhado: QUALIDADE › GESTÃO DA QUALIDADE 2026 › PROCEDIMETOS GERENCIAIS › PG 005 - Controle de Documentos Origem Externa.
+const PASTA_PG005 = "https://drive.google.com/drive/folders/1vVlh7AV7WeEWWgEFGYQJcAYMsab2HX6U";
 const PARA_VENCER_DIAS = 30;
 
 // Resultado da verificação de atualização (gravado) → como aparece na coluna "Atualização".
@@ -151,6 +153,7 @@ export default function DocumentosExternos({ q, voltar, recarregar, avisar }) {
           <button type="button" className="btn-outline px-3 py-2 text-xs" onClick={() => { setFiltros(FILTROS_VAZIOS); setBusca(""); }} disabled={!filtrosAtivos}><X size={14} aria-hidden="true" />Limpar filtros</button>
           <button type="button" className="btn-outline px-3 py-2 text-xs" onClick={atualizar} disabled={atualizando}><RefreshCw size={14} className={atualizando ? "animate-spin" : ""} aria-hidden="true" />Atualizar</button>
           <button type="button" className="btn-outline px-3 py-2 text-xs" onClick={exportar} disabled={!itens.length}><Download size={14} aria-hidden="true" />Exportar</button>
+          <a className="btn-outline px-3 py-2 text-xs" href={PASTA_PG005} target="_blank" rel="noreferrer" title="Abre no Google Drive a pasta PG 005 - Controle de Documentos Origem Externa"><FolderOpen size={14} aria-hidden="true" />Pasta PG 005 (Drive)</a>
           {podeEscrever && <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={novo}><Plus size={14} aria-hidden="true" />Novo documento</button>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-slate-50/60 px-3 py-1.5 text-[11px] text-slate-600">
