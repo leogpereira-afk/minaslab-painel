@@ -1,3 +1,4 @@
+// (Publicada automaticamente pelo GitHub: workflow "Publicar funções (Supabase)".)
 // ml-rh-coletas — as coletas do CRM que geram comissão ao coletor, para a
 // Folha de Pagamento do painel (aba RH: a direção ou quem tem a Folha liberada).
 //
