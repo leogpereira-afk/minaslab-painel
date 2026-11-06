@@ -3,11 +3,11 @@
 // Insatisfação (recomendação 0–6 ou item com nota 1–2) abre tratativa com prazo de 5 dias.
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Copy, Mail, MessageCircle, Send, Smile, Star, ThumbsUp } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Copy, Download, Mail, MessageCircle, Send, Smile, Star, ThumbsUp } from 'lucide-react'
 import { PageShell } from '../../components/ui/PageShell'
 import { Modal } from '../../components/ui/Modal'
 import { PeriodSelect } from '../../components/ui/PeriodFilter'
-import { ALL_PERIOD, inPeriod, yearsFrom, type PeriodFilter } from '../../lib/period'
+import { ALL_PERIOD, MONTHS, inPeriod, periodLabel, yearMonthOf, yearsFrom, type PeriodFilter } from '../../lib/period'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../services/supabase'
 
@@ -16,9 +16,9 @@ type Os = { id: string; numero_os: string | null; cliente_id: string | null; dat
 type Contrato = { id: string; numero_contrato: string | null; cliente_id: string | null; status: string | null }
 type Contato = { id: string; cliente_id: string; nome: string | null; email: string | null; whatsapp_e164: string | null; telefone_e164: string | null }
 type Person = { id: string; nome: string | null }
-type Envio = { id: string; token: string; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; contato_id: string | null; empresa_nome: string | null; canal: string; destino: string | null; enviado_por: string | null; enviado_em: string; expira_em: string; respondido_em: string | null; cancelado_em: string | null }
+type Envio = { id: string; token: string; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; contato_id: string | null; empresa_nome: string | null; canal: string; destino: string | null; enviado_por: string | null; enviado_por_painel?: string | null; enviado_em: string; expira_em: string; respondido_em: string | null; cancelado_em: string | null }
 type Resposta = { id: string; envio_id: string | null; cliente_id: string | null; contrato_id: string | null; ordem_servico_id: string | null; empresa_nome: string | null; servicos: string[]; notas: Record<string, number>; nota_coleta: number | null; nps: number; gostou: string | null; mudaria: string | null; melhorar: string | null; explicacao_nps: string | null; autoriza_anonimo: boolean; insatisfeito: boolean; melhoria_status: string; origem: string; respondido_em: string }
-type Tratativa = { id: string; resposta_id: string; cliente_id: string | null; motivo: string; prazo: string; status: string; responsavel_id: string | null; tarefa_id: string | null; causa: string | null; acao: string | null; retorno_cliente: string | null; concluida_em: string | null }
+type Tratativa = { id: string; resposta_id: string; cliente_id: string | null; motivo: string; prazo: string; status: string; responsavel_id: string | null; responsavel_painel?: string | null; tarefa_id: string | null; tarefa_painel_id?: string | null; causa: string | null; acao: string | null; retorno_cliente: string | null; concluida_em: string | null }
 type QueryResult<T> = { data: T[] | null; error: { message: string } | null }
 
 const ITENS: [string, string][] = [
@@ -52,7 +52,7 @@ export function PosVendaSatisfacao() {
   const [clients, setClients] = useState<Client[]>([]), [oss, setOss] = useState<Os[]>([]), [contratos, setContratos] = useState<Contrato[]>([]), [people, setPeople] = useState<Person[]>([])
   const [period, setPeriod] = useState<PeriodFilter>(ALL_PERIOD)
   const [ver, setVer] = useState<Resposta | null>(null), [trat, setTrat] = useState<Tratativa | null>(null)
-  const [enviarOpen, setEnviarOpen] = useState(false)
+  const [enviarOpen, setEnviarOpen] = useState(false), [soSugestoes, setSoSugestoes] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -94,6 +94,35 @@ export function PosVendaSatisfacao() {
       atrasadas: tratativas.filter(t => t.status !== 'CONCLUIDA' && t.prazo < new Date().toISOString().slice(0, 10)).length,
     }
   }, [rPer, ePer, tratativas])
+  const periodo = periodLabel(period)
+  const hoje = yearMonthOf(new Date())
+  const mesAtual = hoje ? `${MONTHS[hoje.month - 1].toLowerCase()}/${hoje.year}` : ''
+  const respostasMes = respostas.filter(r => { const m = yearMonthOf(r.respondido_em); return m && hoje && m.year === hoje.year && m.month === hoje.month }).length
+  const npsMes = useMemo(() => Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - i))
+    const ym = yearMonthOf(d)!; const rs = respostas.filter(r => { const m = yearMonthOf(r.respondido_em); return m?.year === ym.year && m?.month === ym.month })
+    const nps = rs.length ? Math.round((rs.filter(r => r.nps >= 9).length - rs.filter(r => r.nps <= 6).length) / rs.length * 100) : null
+    return { k: `${ym.year}-${ym.month}`, rot: MONTHS[ym.month - 1].slice(0, 3).toLowerCase(), nps, n: rs.length, atual: i === 5 }
+  }), [respostas])
+  const sugestoesAbertas = rPer.filter(r => r.melhoria_status === 'AVALIAR' || r.melhoria_status === 'EM ANDAMENTO').length
+  const rLista = soSugestoes ? rPer.filter(r => r.melhoria_status !== 'SEM SUGESTAO') : rPer
+
+  function exportar() {
+    const esc = (v: unknown) => { const t = v == null ? '' : String(v); return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
+    const linhas: unknown[][] = [
+      ['Pesquisa de Satisfação de Clientes — PG 012 · PSC'], ['Período', periodo], ['Gerado em', new Date().toLocaleString('pt-BR')], [],
+      ['NPS', kpi.nps ?? ''], ['Respostas', rPer.length], ['Satisfação geral (1–5)', dec(kpi.geral)], ['Taxa de resposta', kpi.taxa == null ? '' : `${kpi.taxa}%`],
+      ['Tratativas abertas', kpi.abertas], ['Tratativas atrasadas', kpi.atrasadas], [],
+      ['Média por pergunta'], ...porItem.map(i => [i.l, dec(i.m)]), [],
+      ['Respostas'], ['Data', 'Cliente', 'Contrato/OS', 'NPS', ...ITENS.map(i => i[1]), 'Coleta', 'O que mais gostou', 'O que mudaria', 'O que melhorar', 'Explicação 0–6', 'Status da melhoria', 'Uso anônimo autorizado'],
+      ...rPer.map(r => [fmtData(r.respondido_em), nome(r), vinculo(r), r.nps, ...ITENS.map(([k]) => r.notas?.[k] ?? ''), r.nota_coleta ?? 'N/A', r.gostou, r.mudaria, r.melhorar, r.explicacao_nps, r.melhoria_status, r.autoriza_anonimo ? 'Sim' : 'Não']), [],
+      ['Tratativas'], ['Prazo', 'Cliente', 'Motivo', 'Status', 'Causa', 'Ação', 'Retorno ao cliente', 'Concluída em'],
+      ...tratativas.filter(t => rPer.some(r => r.id === t.resposta_id)).map(t => [fmtData(t.prazo), clientName(clientMap[t.cliente_id || '']), t.motivo, t.status, t.causa, t.acao, t.retorno_cliente, fmtData(t.concluida_em)]),
+    ]
+    const csv = '﻿' + linhas.map(l => l.map(esc).join(';')).join('\r\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `pesquisa-satisfacao-${periodo.replace(/[^\w]+/g, '-').toLowerCase()}.csv`; a.click(); URL.revokeObjectURL(a.href)
+  }
   const porItem = useMemo(() => [...ITENS, ['__coleta', 'Processo de coleta/amostragem'] as [string, string]].map(([k, l]) => ({ k, l, m: media(rPer.map(r => k === '__coleta' ? r.nota_coleta : r.notas?.[k]).filter((x): x is number => typeof x === 'number')) })), [rPer])
 
   async function salvarMelhoria(r: Resposta, status: string) {
@@ -117,26 +146,42 @@ export function PosVendaSatisfacao() {
     {loading ? <div className="rounded-3xl border bg-white p-8 text-center text-slate-500">Carregando...</div> : <>
       {tab === 'geral' && <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <K icon={Smile} label="NPS" value={kpi.nps == null ? '—' : (kpi.nps > 0 ? '+' : '') + kpi.nps} hint={`${rPer.length} resposta(s)`} />
+          <K icon={Smile} label={`NPS (${periodo})`} value={kpi.nps == null ? '—' : (kpi.nps > 0 ? '+' : '') + kpi.nps} hint={`${rPer.length} resposta(s) · ${rPer.filter(r => r.nps >= 9).length} promotor(es), ${rPer.filter(r => r.nps <= 6).length} detrator(es)`} />
           <K icon={Star} label="Satisfação geral (1–5)" value={dec(kpi.geral)} hint="meta ≥ 4,5" />
           <K icon={Send} label="Taxa de resposta" value={kpi.taxa == null ? '—' : `${kpi.taxa}%`} hint={`${kpi.respondidas} de ${ePer.length} enviadas`} />
-          <K icon={ThumbsUp} label="Promotores (9–10)" value={String(rPer.filter(r => r.nps >= 9).length)} hint={`${rPer.filter(r => r.nps <= 6).length} detrator(es)`} />
-          <K icon={AlertTriangle} label="Insatisfações abertas" value={String(kpi.abertas)} hint={kpi.atrasadas ? `${kpi.atrasadas} atrasada(s)` : 'prazo 5 dias'} alert={kpi.abertas > 0} onClick={() => setTab('tratativas')} />
+          <K icon={ThumbsUp} label="Respostas no mês" value={String(respostasMes)} hint={mesAtual} />
+          <K icon={AlertTriangle} label="Insatisfações abertas" value={String(kpi.abertas)} hint={kpi.atrasadas ? `${kpi.atrasadas} atrasada(s)` : 'aguardando tratativa'} alert={kpi.abertas > 0} onClick={() => setTab('tratativas')} />
         </section>
-        <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
+        <section className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
           <div className="rounded-3xl border bg-white p-5 shadow-sm"><h3 className="mb-3 font-semibold text-slate-900">Média por pergunta (1–5)</h3>
             {porItem.map(i => <div key={i.k} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_40px] items-center gap-3 py-1.5 text-sm"><span className="truncate text-slate-700">{i.l}</span><div className="h-2.5 rounded-full bg-slate-100"><div className={`h-2.5 rounded-full ${i.m != null && i.m < 4.5 ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${(i.m ?? 0) / 5 * 100}%` }} /></div><b className="text-right">{dec(i.m)}</b></div>)}
+            <p className="mt-2 text-xs text-slate-400">Em laranja: abaixo da meta de 4,5.</p>
           </div>
-          <div className="rounded-3xl border bg-white p-5 shadow-sm"><h3 className="mb-3 font-semibold text-slate-900">Últimas respostas</h3>
-            {rPer.length === 0 ? <p className="text-sm text-slate-500">Nenhuma resposta no período.</p> : rPer.slice(0, 6).map(r => <button key={r.id} onClick={() => setVer(r)} className="flex w-full items-start gap-3 border-b py-2.5 text-left text-sm last:border-0 hover:bg-slate-50">
-              <Nps n={r.nps} /><span className="min-w-0 flex-1"><b className="block truncate text-slate-900">{nome(r)}</b><span className="line-clamp-2 text-slate-500">{r.gostou || r.melhorar || r.mudaria || 'Sem comentário'}</span></span><span className="whitespace-nowrap text-xs text-slate-400">{fmtData(r.respondido_em)}</span></button>)}
+          <div className="rounded-3xl border bg-white p-5 shadow-sm"><h3 className="mb-2 font-semibold text-slate-900">Últimas respostas</h3>
+            {rPer.length === 0 ? <p className="py-4 text-sm text-slate-500">Nenhuma resposta no período.</p> : <table className="w-full text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2 pr-2 font-semibold">Data</th><th className="py-2 pr-2 font-semibold">Cliente</th><th className="py-2 pr-2 font-semibold">NPS</th><th className="py-2 font-semibold">Comentário</th></tr></thead>
+              <tbody>{rPer.slice(0, 4).map(r => { const tr = tratativas.find(t => t.resposta_id === r.id && t.status !== 'CONCLUIDA'); return <tr key={r.id} onClick={() => setVer(r)} className="cursor-pointer border-t align-top hover:bg-slate-50">
+                <td className="whitespace-nowrap py-2.5 pr-2">{fmtData(r.respondido_em).slice(0, 5)}</td>
+                <td className="py-2.5 pr-2"><b className="block text-slate-900">{nome(r)}</b><span className="text-xs text-slate-500">{vinculo(r)}</span></td>
+                <td className="py-2.5 pr-2"><Nps n={r.nps} /></td>
+                <td className="py-2.5 text-slate-600"><span className="line-clamp-2">{r.gostou || r.melhorar || r.mudaria || r.explicacao_nps || '—'}</span>{tr && <b className="text-xs text-red-700">→ tratativa aberta</b>}</td>
+              </tr> })}</tbody></table>}
+            <h3 className="mb-1 mt-4 font-semibold text-slate-900">NPS por mês</h3>
+            <div className="flex h-32 items-end gap-2 pb-5">{npsMes.map(m => <div key={m.k} className="relative flex h-full flex-1 flex-col justify-end">
+              <span className="mb-1 text-center text-[11px] font-semibold text-slate-600">{m.nps == null ? '' : (m.nps > 0 ? '+' : '') + m.nps}</span>
+              <div title={`${m.n} resposta(s)`} className={`rounded-t-md ${m.atual ? 'bg-teal-500' : 'bg-teal-100'}`} style={{ height: `${m.nps == null ? 3 : Math.max(6, (m.nps + 100) / 2)}%` }} />
+              <span className="absolute -bottom-5 left-0 right-0 text-center text-[11px] text-slate-500">{m.rot}</span></div>)}</div>
           </div>
+        </section>
+        <section className="grid gap-3 md:grid-cols-3">
+          <button type="button" onClick={() => setTab('tratativas')} className="rounded-3xl border border-red-200 bg-red-50 p-4 text-left text-sm leading-relaxed text-red-900 hover:border-red-300"><b className="block">Insatisfeito (NPS 0–6 ou item ≤ 2)</b>Abre tratativa para a Qualidade com prazo de 5 dias: análise da causa, ação e retorno ao cliente. <span className="mt-2 block font-semibold">{kpi.abertas} aberta(s){kpi.atrasadas ? ` · ${kpi.atrasadas} atrasada(s)` : ''} →</span></button>
+          <button type="button" onClick={() => { setSoSugestoes(true); setTab('respostas') }} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-relaxed text-amber-900 hover:border-amber-300"><b className="block">Sugestões de melhoria</b>Comentários de "o que mudaria / o que melhorar" viram oportunidades com status (avaliar · em andamento · implementada). <span className="mt-2 block font-semibold">{sugestoesAbertas} para avaliar/em andamento →</span></button>
+          <button type="button" onClick={exportar} className="rounded-3xl border border-teal-200 bg-teal-50 p-4 text-left text-sm leading-relaxed text-teal-900 hover:border-teal-300"><b className="block">Validação e análise crítica</b>Relatório do período ({periodo}) com NPS, médias por pergunta, respostas e tratativas, para a análise crítica pela direção. <span className="mt-2 inline-flex items-center gap-1 font-semibold"><Download className="h-4 w-4" />Exportar planilha (Excel)</span></button>
         </section>
       </>}
 
-      {tab === 'respostas' && <section className="overflow-hidden rounded-3xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
+      {tab === 'respostas' && <section className="overflow-hidden rounded-3xl border bg-white shadow-sm"><div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm"><label className="inline-flex items-center gap-2"><input type="checkbox" checked={soSugestoes} onChange={e => setSoSugestoes(e.target.checked)} className="accent-teal-700" />Só respostas com sugestão de melhoria</label><span className="ml-auto text-xs text-slate-500">{rLista.length} resposta(s)</span></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Cliente / OS</th><th className="px-4 py-3">NPS</th><th className="px-4 py-3">Geral</th><th className="px-4 py-3">Sugestão de melhoria</th><th className="px-4 py-3">Status da melhoria</th></tr></thead>
-        <tbody>{rPer.map(r => <tr key={r.id} className="border-t align-top hover:bg-slate-50">
+        <tbody>{rLista.map(r => <tr key={r.id} className="border-t align-top hover:bg-slate-50">
           <td className="whitespace-nowrap px-4 py-3">{fmtData(r.respondido_em)}{r.origem !== 'LINK' && <span className="block text-xs text-slate-400">{r.origem === 'GOOGLE_FORMS' ? 'Google Forms' : 'Manual'}</span>}</td>
           <td className="px-4 py-3"><button onClick={() => setVer(r)} className="text-left font-semibold text-teal-800 hover:underline">{nome(r)}</button><span className="block text-xs text-slate-500">{vinculo(r)}</span></td>
           <td className="px-4 py-3"><Nps n={r.nps} />{r.insatisfeito && <span className="mt-1 block text-xs font-semibold text-red-700">insatisfação</span>}</td>
@@ -151,7 +196,7 @@ export function PosVendaSatisfacao() {
           <td className={`whitespace-nowrap px-4 py-3 ${atrasada ? 'font-semibold text-red-700' : ''}`}>{fmtData(t.prazo)}{atrasada && <span className="block text-xs">atrasada</span>}</td>
           <td className="px-4 py-3 font-medium">{clientName(clientMap[t.cliente_id || '']) || respostas.find(r => r.id === t.resposta_id)?.empresa_nome || '—'}</td>
           <td className="max-w-md px-4 py-3 text-slate-600">{t.motivo}</td>
-          <td className="px-4 py-3">{personMap[t.responsavel_id || '']?.nome || '—'}</td>
+          <td className="px-4 py-3">{personMap[t.responsavel_id || '']?.nome || t.responsavel_painel || '—'}</td>
           <td className="px-4 py-3"><Status s={t.status} /></td>
           <td className="px-4 py-3 text-right">{canWrite && <button onClick={() => setTrat(t)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-teal-800">{t.status === 'CONCLUIDA' ? 'Ver' : 'Tratar'}</button>}</td>
         </tr> })}</tbody></table>{tratativas.length === 0 && <div className="p-10 text-center text-slate-500">Nenhuma insatisfação registrada.</div>}</div></section>}
@@ -162,7 +207,7 @@ export function PosVendaSatisfacao() {
           <td className="whitespace-nowrap px-4 py-3">{fmtData(e.enviado_em)}</td>
           <td className="px-4 py-3"><b>{nome(e)}</b><span className="block text-xs text-slate-500">{vinculo(e)}</span></td>
           <td className="px-4 py-3">{e.canal === 'WHATSAPP' ? 'WhatsApp' : e.canal === 'EMAIL' ? 'E-mail' : 'Link'}{e.destino && <span className="block text-xs text-slate-500">{e.destino}</span>}</td>
-          <td className="px-4 py-3">{personMap[e.enviado_por || '']?.nome || '—'}</td>
+          <td className="px-4 py-3">{personMap[e.enviado_por || '']?.nome || (e.enviado_por_painel ? `${e.enviado_por_painel} (painel)` : '—')}</td>
           <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sit === 'Respondida' ? 'bg-emerald-50 text-emerald-700' : sit === 'Expirada' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>{sit}</span>{e.respondido_em && <span className="block text-xs text-slate-500">{fmtData(e.respondido_em)}</span>}</td>
           <td className="whitespace-nowrap px-4 py-3 text-right">{sit === 'Aguardando' && <><button onClick={() => void navigator.clipboard.writeText(linkDe(e.token))} title="Copiar link" className="rounded-lg border p-2 text-slate-600"><Copy className="h-4 w-4" /></button>{canWrite && <button onClick={() => void cancelarEnvio(e)} className="ml-2 rounded-lg border px-2 py-1.5 text-xs text-red-700">Cancelar</button>}</>}</td>
         </tr> })}</tbody></table>{ePer.length === 0 && <div className="p-10 text-center text-slate-500">Nenhum envio no período.</div>}</div></section>}
@@ -235,7 +280,7 @@ function TratativaModal({ t, resposta, canWrite, profileId, onClose, onSaved }: 
     setSalvando(true)
     const concl = f.status === 'CONCLUIDA'
     const { error } = await supabase.from('satisfacao_tratativas').update({ ...f, causa: f.causa.trim() || null, acao: f.acao.trim() || null, retorno_cliente: f.retorno_cliente.trim() || null, concluida_em: concl ? t.concluida_em || new Date().toISOString() : null, concluida_por: concl ? profileId : null, updated_at: new Date().toISOString() }).eq('id', t.id)
-    if (!error && concl && t.tarefa_id) await supabase.from('tarefas').update({ status: 'CONCLUIDA', updated_at: new Date().toISOString() }).eq('id', t.tarefa_id)
+    if (!error && concl && t.tarefa_id) { await supabase.from('tarefas').update({ status: 'CONCLUIDA', updated_at: new Date().toISOString() }).eq('id', t.tarefa_id); await supabase.from('tarefa_responsaveis').update({ status: 'CONCLUIDA', concluida_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('tarefa_id', t.tarefa_id) }
     setSalvando(false)
     if (error) setErro(error.message); else await onSaved()
   }

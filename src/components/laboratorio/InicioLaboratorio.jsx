@@ -13,7 +13,7 @@ export const AREAS = [
   { valor: "entradas", rotulo: "Entradas de amostras", icone: ClipboardList, cor: "bg-sky-50 text-sky-700",
     texto: "Recebimento, retirada, finalização, liberação e descarte das amostras.", pronta: true },
   { valor: "qualidade", rotulo: "Qualidade", icone: ShieldCheck, cor: "bg-emerald-50 text-emerald-700",
-    texto: "Documentos, equipamentos, não conformidades e auditorias." },
+    texto: "Pesquisa de satisfação de clientes; em breve documentos, equipamentos, não conformidades e auditorias.", pronta: true },
   { valor: "microbiologia", rotulo: "Microbiologia", icone: Microscope, cor: "bg-violet-50 text-violet-700",
     texto: "Fila de análises MB, resultados, meios de cultura e estufas." },
   { valor: "fisicoquimico", rotulo: "Físico-Químico", icone: FlaskConical, cor: "bg-amber-50 text-amber-700",
