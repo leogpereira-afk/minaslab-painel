@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Check, Trash2, Pencil, Users, MapPin, Phone, FileText,
-  HandCoins, CircleDot, MessageCircle, CalendarCheck,
+  HandCoins, CircleDot, MessageCircle, CalendarCheck, Palmtree,
 } from "lucide-react";
 import { listar, salvar, apagar, usuariosAtivos } from "../services/dados.js";
 import { getSessao, podeEditar } from "../lib/sessao.js";
@@ -22,6 +22,10 @@ import { dataCurta, diasEntre, ymdLocal } from "../lib/format.js";
 import {
   PageTitle, StatCard, Empty, CarregandoModulo, ErroModulo, Aviso, Modal, Card, Segmented,
 } from "../components/ui.jsx";
+import FormEventoEquipe from "../components/agenda/FormEventoEquipe.jsx";
+import DetalheEventoEquipe from "../components/agenda/DetalheEventoEquipe.jsx";
+import { agendaListar, agendaUsuarios } from "../services/agenda.js";
+import { ehAusencia, periodoTexto, textoDoEvento } from "../lib/agendaEquipe.js";
 
 const COLECAO = "compromissos";
 
@@ -291,6 +295,47 @@ function FormCompromisso({ form, setForm, usuarios, eu, salvando, aoSalvar, aoFe
   );
 }
 
+/* A AGENDA DA EQUIPE (botão "Equipe" do Calendário) também aparece aqui, para esta tela ser a lista
+   completa do que a pessoa tem pela frente. Quem vê cada evento é decidido no servidor (ml-agenda);
+   esta seção só mostra o que veio, em andamento ou por vir, e abre o mesmo detalhe do Calendário. */
+function AgendaEquipe({ eventos, nomes, hojeISO, aoAbrir }) {
+  if (!eventos.length) return null;
+  return (
+    <Card>
+      <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
+        Agenda da equipe <span className="text-slate-400">({eventos.length})</span>
+      </h2>
+      <div className="space-y-2">
+        {eventos.map((e) => {
+          const Icone = ehAusencia(e.tipo) ? Palmtree : Users;
+          const agora = e.diaInicio <= hojeISO && e.diaFim >= hojeISO;
+          const dias = diasEntre(hojeISO, e.diaInicio);
+          const chip = agora
+            ? { texto: e.diaInicio === e.diaFim ? "HOJE" : "em andamento", cls: "chip-warn" }
+            : dias === 1 ? { texto: "amanhã", cls: "chip-warn" } : { texto: `em ${dias} dias`, cls: dias <= 7 ? "chip-warn" : "chip" };
+          return (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => aoAbrir(e.id)}
+              className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border p-3 text-left transition-colors hover:bg-slate-50"
+              style={{ borderColor: "var(--hairline)" }}
+            >
+              <Icone size={18} strokeWidth={2.2} className={ehAusencia(e.tipo) ? "shrink-0 text-slate-500" : "shrink-0 text-brand-600"} />
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-sm font-medium text-slate-800">{textoDoEvento(e, nomes)}</span>
+                <span className="block text-xs text-slate-500">{periodoTexto(e)}{e.local ? ` · ${e.local}` : ""}</span>
+              </span>
+              <span className={chip.cls}>{chip.texto}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">Lançados pelo botão “Equipe” (aqui ou no Calendário). Clique para ver, editar ou cancelar.</p>
+    </Card>
+  );
+}
+
 export default function Compromissos() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
@@ -309,6 +354,11 @@ export default function Compromissos() {
   // "Hoje" precisa ser ESTADO, não um cálculo do render: esta tela fica aberta
   // de um dia para o outro e o dia congelado mentia o prazo.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
+  // Agenda da equipe (ml-agenda). Se falhar, a lista de compromissos segue inteira.
+  const [agenda, setAgenda] = useState(null);
+  const [agendaUsers, setAgendaUsers] = useState({ usuarios: [], eu: "", direcao: false });
+  const [formEquipe, setFormEquipe] = useState(null); // { evento? }
+  const [verEquipe, setVerEquipe] = useState(null);
 
   const recarregar = useCallback(() => {
     /* Falha da lista de usuários NÃO some calada: a lista anterior fica, e a tela diz que
@@ -321,7 +371,11 @@ export default function Compromissos() {
       return { tipo: "warn", texto: `${atual.texto} ${texto}` };
     }));
     setAtualizando(true);
-    setHojeISO(ymdLocal(new Date()));
+    const hoje = ymdLocal(new Date());
+    setHojeISO(hoje);
+    // Um ano para frente; o que começou antes e ainda não acabou também vem (o servidor filtra por sobreposição).
+    const ate = maisDias(365); // somar dias, não trocar o ano: 29/02 + 1 ano não existe
+    agendaListar(hoje, ate).then(setAgenda).catch(() => { /* sem a agenda da equipe a tela mostra só os compromissos */ });
     listar(COLECAO)
       .then((lista) => {
         setItens(lista);
@@ -334,6 +388,10 @@ export default function Compromissos() {
         setAviso({ tipo: "erro", texto: "Não consegui atualizar agora. O que está na tela pode ser da última carga." });
       })
       .finally(() => setAtualizando(false));
+  }, []);
+
+  useEffect(() => {
+    agendaUsuarios().then(setAgendaUsers).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -398,6 +456,14 @@ export default function Compromissos() {
       semData: abertos.filter((c) => c.pz.grupo === "Sem data marcada").length,
     };
   }, [itens, hojeISO, usuarios, sessao]);
+
+  const eventosEquipe = useMemo(() => {
+    const lista = (agenda?.eventos || []).filter((e) => e.diaFim >= hojeISO);
+    const recortada = recorte === "hoje" ? lista.filter((e) => e.diaInicio <= hojeISO) : recorte ? [] : lista;
+    return recortada.sort((a, b) => a.diaInicio.localeCompare(b.diaInicio) || String(a.horaInicio || "99").localeCompare(String(b.horaInicio || "99")));
+  }, [agenda, hojeISO, recorte]);
+  const eventoAberto = verEquipe && agenda ? agenda.eventos.find((e) => e.id === verEquipe) : null;
+  const aposAgenda = (texto) => { setFormEquipe(null); setVerEquipe(null); setAviso({ tipo: "ok", texto }); recarregar(); };
 
   const gravar = async (dados, fraseOk) => {
     setSalvando(true);
@@ -472,10 +538,19 @@ export default function Compromissos() {
         titulo="Compromissos"
         descricao="O que está marcado e o que está esperando — a tela abre pelo que atrasou."
         acao={
-          editavel && (
-            <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
-              <Plus size={16} strokeWidth={2.5} /> Novo compromisso
-            </button>
+          (editavel || agenda?.podeCriar) && (
+            <span className="flex flex-wrap justify-end gap-2">
+              {agenda?.podeCriar && (
+                <button type="button" className={editavel ? "btn-outline" : "btn-primary"} onClick={() => setFormEquipe({})}>
+                  <Users size={16} strokeWidth={2.2} /> Equipe
+                </button>
+              )}
+              {editavel && (
+                <button type="button" className="btn-primary" onClick={() => acoes.abrirForm(null)}>
+                  <Plus size={16} strokeWidth={2.5} /> Novo compromisso
+                </button>
+              )}
+            </span>
           )
         }
       />
@@ -522,7 +597,7 @@ export default function Compromissos() {
         </div>
       )}
 
-      {gruposVisiveis.length === 0 && (
+      {gruposVisiveis.length === 0 && eventosEquipe.length === 0 && (
         <Empty>
           {recorte
             ? "Nada neste recorte. Use “Limpar filtros” para ver tudo."
@@ -531,6 +606,7 @@ export default function Compromissos() {
       )}
 
       <div className="space-y-6">
+        <AgendaEquipe eventos={eventosEquipe} nomes={agenda?.nomes || {}} hojeISO={hojeISO} aoAbrir={setVerEquipe} />
         {gruposVisiveis.map((g) => (
           <Card key={g.nome}>
             <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -573,6 +649,27 @@ export default function Compromissos() {
           </Card>
         )}
       </div>
+
+      {formEquipe && (
+        <FormEventoEquipe
+          dia={hojeISO}
+          usuarios={agendaUsers.usuarios}
+          eu={agendaUsers.eu}
+          direcao={agendaUsers.direcao}
+          evento={formEquipe.evento}
+          aoFechar={() => setFormEquipe(null)}
+          aoSalvo={aposAgenda}
+        />
+      )}
+      {eventoAberto && !formEquipe && (
+        <DetalheEventoEquipe
+          evento={eventoAberto}
+          nomes={agenda.nomes}
+          aoFechar={() => setVerEquipe(null)}
+          aoEditar={(ev) => { setVerEquipe(null); setFormEquipe({ evento: ev }); }}
+          aoMudou={aposAgenda}
+        />
+      )}
 
       <FormCompromisso
         form={form}
