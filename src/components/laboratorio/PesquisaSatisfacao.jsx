@@ -187,7 +187,7 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
             <span className="mt-2 block font-semibold">{abertas.length} aberta(s){atrasadas.length ? ` · ${atrasadas.length} atrasada(s)` : ""} →</span>
           </button>
           <button type="button" onClick={() => { setSoSugestoes(true); setAba("respostas"); }} className="rounded-2xl border border-warn-100 bg-warn-50 p-4 text-left text-sm leading-relaxed text-warn-700 hover:border-warn-300">
-            <b className="block text-slate-900">Sugestões de melhoria</b>Comentários de "o que mudaria / o que melhorar" viram oportunidades com status (avaliar · em andamento · implementada).
+            <b className="block text-slate-900">Sugestões de melhoria</b>Comentários de “o que mudaria / o que melhorar” viram oportunidades com status (avaliar · em andamento · implementada).
             <span className="mt-2 block font-semibold">{sugestoesAbertas} para avaliar/em andamento →</span>
           </button>
           <button type="button" onClick={exportar} className="rounded-2xl border border-brand-100 bg-brand-50 p-4 text-left text-sm leading-relaxed text-brand-700 hover:border-brand-300">
