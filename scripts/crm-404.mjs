@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 const dist = process.argv[2] || "dist";
 let base = process.argv[3] || process.env.BASE_PATH || "/";
+// Site na raiz de www.minaslab.online desde 06/11/2026: o workflow ainda passa o caminho antigo.
+base = base.replace(/^\/?minaslab-painel(?=\/|$)/, "") || "/";
 if (!base.startsWith("/")) base = "/" + base;
 if (!base.endsWith("/")) base += "/";
 

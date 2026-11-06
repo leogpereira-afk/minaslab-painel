@@ -3,7 +3,7 @@ rem Instala o escaneador do MinasLab neste PC (sem precisar de administrador).
 rem Cria %LOCALAPPDATA%\MinasLab\Escaneador e registra o endereco minaslab-scan:// para o usuario atual.
 setlocal
 set "DEST=%LOCALAPPDATA%\MinasLab\Escaneador"
-set "BASE=https://leogpereira-afk.github.io/minaslab-painel/scanner"
+set "BASE=https://www.minaslab.online/scanner"
 if not exist "%DEST%" mkdir "%DEST%"
 echo Baixando o escaneador...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest -UseBasicParsing '%BASE%/MinasLab-Escanear.ps1' -OutFile '%DEST%\MinasLab-Escanear.ps1'"

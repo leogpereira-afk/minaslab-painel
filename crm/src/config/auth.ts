@@ -1,5 +1,6 @@
-const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim()
-const productionAppUrl = 'https://leogpereira-afk.github.io/minaslab-painel/crm'
+// O workflow ainda manda o endereço antigo do GitHub Pages; desde 06/11/2026 o CRM mora em www.minaslab.online/crm.
+const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim().replace(/^https:\/\/leogpereira-afk\.github\.io\/minaslab-painel(?=\/|$)/, 'https://www.minaslab.online')
+const productionAppUrl = 'https://www.minaslab.online/crm'
 
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, '')
