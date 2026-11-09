@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validarVoto, aplicarVoto, resultado, gerarCodigos, codigoValido, normalizarCodigo } from "./pesquisa.mjs";
+import { votanteDaConta, validarVoto, aplicarVoto, resultado, gerarCodigos, codigoValido, normalizarCodigo } from "./pesquisa.mjs";
 
 const reg = { avaliados: [{ id: "a", nome: "A" }, { id: "b", nome: "B" }], lideres: [{ id: "g", nome: "G" }], minimo: 3 };
 
@@ -56,4 +56,12 @@ test("liderança também não se avalia; comentário sem nota é ignorado", () =
   assert.ok(validarVoto(r2, { gestao: { a: [9, 9, 9, 9, 9] } }, "a").erro);
   const { limpo } = validarVoto(reg, { equipe: { b: [9, 9, 9, 9, 9] }, comentarios: { a: "sem nota" } });
   assert.deepEqual(limpo.comentarios, {});
+});
+
+test("votação com login liga a conta pelo nome, mesmo em outra ordem", () => {
+  const vs = [{ id: "a", nome: "MARIA DA SILVA" }, { id: "b", nome: "JOAO ALVES DOS SANTOS" }, { id: "c", nome: "ANA SOUZA" }, { id: "d", nome: "ANA SOUZA" }];
+  assert.equal(votanteDaConta("Maria da Silva", vs)?.id, "a");
+  assert.equal(votanteDaConta("JOAO DOS SANTOS ALVES", vs)?.id, "b");
+  assert.equal(votanteDaConta("ANA SOUZA", vs), null);
+  assert.equal(votanteDaConta("PEDRO", vs), null);
 });

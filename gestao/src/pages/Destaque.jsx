@@ -104,14 +104,14 @@ function Votacoes() {
             <Chip tom={v.status === "aberta" ? "ok" : "neutro"}>{v.id.startsWith("pimp") ? "Importada da planilha" : v.status === "aberta" ? "Aberta" : "Encerrada"}</Chip>
           </div>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-            <div><div className="kpi-rot">Votos</div><div className="kpi-val tnum" style={{ fontSize: 26 }}>{v.totalVotos} <span className="suave peq">{v.id.startsWith("pimp") ? "votos (máx. por pessoa)" : `de ${v.modo === "aberto" ? v.avaliados.length : v.codigos.length} ${v.modo === "aberto" ? "pessoas" : "códigos"}`}</span></div></div>
-            <div style={{ flex: "1 1 220px", alignSelf: "center" }}><div className="barra"><div style={{ width: `${Math.min(100, (v.totalVotos / Math.max(1, v.modo === "aberto" ? v.avaliados.length : v.codigos.length)) * 100)}%`, background: "var(--marca)" }} /></div></div>
+            <div><div className="kpi-rot">Votos</div><div className="kpi-val tnum" style={{ fontSize: 26 }}>{v.totalVotos} <span className="suave peq">{v.id.startsWith("pimp") ? "votos (máx. por pessoa)" : `de ${v.modo !== "codigo" ? v.avaliados.length : v.codigos.length} ${v.modo !== "codigo" ? "pessoas" : "códigos"}`}</span></div></div>
+            <div style={{ flex: "1 1 220px", alignSelf: "center" }}><div className="barra"><div style={{ width: `${Math.min(100, (v.totalVotos / Math.max(1, v.modo !== "codigo" ? v.avaliados.length : v.codigos.length)) * 100)}%`, background: "var(--marca)" }} /></div></div>
           </div>
           {v.liberacoes > 0 && <div className="aviso alerta peq">{v.liberacoes === 1 ? "1 voto foi liberado de novo" : `${v.liberacoes} votos foram liberados de novo`} porque alguém votou no nome de outra pessoa. O voto feito no nome errado continua somado.</div>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {v.status === "aberta" && <button type="button" className="btn claro mini" onClick={() => setCodigos(v)}>{v.modo === "aberto" ? "Link da votação" : "Link e códigos"}</button>}
+            {v.status === "aberta" && <button type="button" className="btn claro mini" onClick={() => setCodigos(v)}>{v.modo !== "codigo" ? "Link da votação" : "Link e códigos"}</button>}
             {v.status === "encerrada" && <button type="button" className="btn mini" onClick={() => setVendo(v)}>Ver resultado</button>}
-            {v.status === "aberta" && v.modo === "aberto" && <button type="button" className="btn claro mini" onClick={() => setLiberar(v)}>Liberar voto de uma pessoa</button>}
+            {v.status === "aberta" && v.modo !== "codigo" && <button type="button" className="btn claro mini" onClick={() => setLiberar(v)}>Liberar voto de uma pessoa</button>}
             {v.status === "aberta"
               ? <button type="button" className="btn claro mini" onClick={() => window.confirm("Encerrar a votação? É definitivo: ninguém mais vota e o resultado aparece. Para proteger o anonimato, uma votação encerrada não pode ser reaberta.") && acao(async () => p.trocar(await mudarStatus(v.id, "encerrada")))}>Encerrar e ver resultado</button>
               : null}
@@ -171,7 +171,7 @@ function NovaVotacao({ aoFechar, aoCriar }) {
   const [lideres, setLideres] = useState(() => new Set(pessoas.filter(ehEu).map((p) => p.id)));
   const [extraLider, setExtraLider] = useState(pessoas.some(ehEu) ? "" : eu);
   const [nCod, setNCod] = useState(String(pessoas.length + 2));
-  const [modo, setModo] = useState("aberto");
+  const [modo, setModo] = useState("login");
   const [minimo, setMinimo] = useState("3");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -206,7 +206,7 @@ function NovaVotacao({ aoFechar, aoCriar }) {
           <div className="campo" style={{ marginTop: 8 }}><label htmlFor="nv-lid">Outros nomes da liderança (separe por vírgula)</label><input id="nv-lid" className="entrada" value={extraLider} onChange={(e) => setExtraLider(e.target.value)} placeholder="Ex.: nome da gestora, nome da coordenadora" /></div>
         </div>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <div className="campo"><label htmlFor="nv-modo">Como votam</label><select id="nv-modo" className="entrada" value={modo} onChange={(e) => setModo(e.target.value)}><option value="aberto">Link aberto (escolhem o próprio nome)</option><option value="codigo">Com código sorteado (mais sigiloso)</option></select></div>
+          <div className="campo"><label htmlFor="nv-modo">Como votam</label><select id="nv-modo" className="entrada" value={modo} onChange={(e) => setModo(e.target.value)}><option value="login">Link com login (cada um entra com usuário e senha do painel)</option><option value="aberto">Link aberto (escolhem o próprio nome)</option><option value="codigo">Com código sorteado (mais sigiloso)</option></select></div>
           {modo === "codigo" && <div className="campo"><label htmlFor="nv-cod">Quantos códigos</label><input id="nv-cod" type="number" min="1" max="200" className="entrada num" value={nCod} onChange={(e) => setNCod(e.target.value)} /><span className="suave peq">1 por pessoa que vota, e uma folga</span></div>}
           <div className="campo"><label htmlFor="nv-min">Mínimo de votos para mostrar média</label><input id="nv-min" type="number" min="2" max="10" className="entrada num" value={minimo} onChange={(e) => setMinimo(e.target.value)} /></div>
         </div>
@@ -226,13 +226,13 @@ function LinkCodigos({ v, aoFechar, aoMudar }) {
   const [erro, setErro] = useState("");
   const copiar = async (t, qual) => { try { await navigator.clipboard.writeText(t); setCopiado(qual); } catch { setCopiado(""); } };
   return (
-    <Modal titulo={v.modo === "aberto" ? "Link da votação" : "Link e códigos"} aoFechar={aoFechar}>
-      {v.modo === "aberto" ? (
+    <Modal titulo={v.modo !== "codigo" ? "Link da votação" : "Link e códigos"} aoFechar={aoFechar}>
+      {v.modo !== "codigo" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="campo">
             <label htmlFor="lk">Link para todos (mande no grupo da equipe)</label>
             <div style={{ display: "flex", gap: 8 }}><input id="lk" className="entrada" readOnly value={link} onFocus={(e) => e.target.select()} /><button type="button" className="btn claro" onClick={() => copiar(link, "link")}>{copiado === "link" ? "Copiado" : "Copiar"}</button></div>
-            <span className="suave peq">Cada pessoa abre o link, escolhe o próprio nome (que sai da lista) e vota uma vez só.</span>
+            <span className="suave peq">{v.modo === "login" ? "Cada pessoa abre o link, entra com o próprio usuário e senha do painel e vota uma vez só. Ninguém vota no lugar de outra pessoa." : "Cada pessoa abre o link, escolhe o próprio nome (que sai da lista) e vota uma vez só."}</span>
           </div>
           <div className="suave peq">{v.totalVotos} de {v.avaliados.length} pessoas já votaram.</div>
         </div>

@@ -30,7 +30,7 @@ import { CRITERIOS_LIDERANCA, MOTIVOS_ELIMINATORIOS, DIAS_CONVITE, conviteValido
 import { somarSetores } from "./setores.mjs";
 import { SETORES, CHAVES, PAGINAS, colecaoDe, permissoes, podeLer, podeGravar, podeAcao, limparSetores } from "./acessos.mjs";
 import { situacaoNoRH } from "./comissoes.mjs";
-import { PERGUNTAS_EQUIPE, PERGUNTAS_GESTAO, validarVoto, aplicarVoto, resultado, gerarCodigos, normalizarCodigo, codigoValido } from "./pesquisa.mjs";
+import { PERGUNTAS_EQUIPE, PERGUNTAS_GESTAO, votanteDaConta, validarVoto, aplicarVoto, resultado, gerarCodigos, normalizarCodigo, codigoValido } from "./pesquisa.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -227,7 +227,7 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 //    repetido e tirar o próprio nome). O servidor guarda apenas um HMAC de
 //    "esta pessoa já votou", separado das somas: dá para saber QUE votou,
 //    nunca O QUE votou.
-async function votar(action: string, body: Record<string, unknown>) {
+async function votar(action: string, body: Record<string, unknown>, autorizacao = "") {
   const id = String(body.pesquisa ?? "").slice(0, 40);
   if (!/^p[a-z0-9]{6,30}$/.test(id)) { await espera(400); return resp({ erro: "Link de votação inválido." }, 400); }
 
@@ -235,10 +235,25 @@ async function votar(action: string, body: Record<string, unknown>) {
     const lida = await lerPesquisa(id);
     if (!lida || lida.reg.status !== "aberta") return resp({ erro: "Esta votação não está aberta." }, 404);
     const { reg, versao } = lida;
-    const aberto = reg.modo === "aberto";
+    const comLogin = reg.modo === "login";
+    const aberto = reg.modo === "aberto" || comLogin;
     const votantes = [...(reg.avaliados || []), ...(reg.lideres || [])];
     let h = "";
     let eu = "";
+    // Com login: a pessoa vota com a conta do painel; o servidor sabe quem é
+    // pelo crachá e ninguém consegue votar no lugar de outra.
+    let euLogin: { id: string; nome: string } | null = null;
+    if (comLogin) {
+      const m = autorizacao.match(/^Bearer\s+(.+)$/i);
+      const cracha = m ? await verificarJwt(m[1]) : null;
+      if (!cracha || cracha.sis !== SIS) return resp({ erro: "Entre com o seu usuário e senha do painel para votar.", precisaLogin: true }, 401);
+      const usuario = String(cracha.sub ?? "");
+      if (!(await contaSegueAtiva(usuario))) return resp({ erro: "Esta conta foi desativada.", precisaLogin: true }, 401);
+      const { data: conta } = await sb.from("ml_contas").select("nome").eq("usuario", usuario).maybeSingle();
+      const p = votanteDaConta(conta?.nome || "", votantes);
+      if (!p) return resp({ erro: "Sua conta não está na lista desta votação. Fale com a gestão.", precisaLogin: true }, 403);
+      euLogin = { id: p.id, nome: p.nome };
+    }
     if (!aberto) {
       const codigo = normalizarCodigo(body.codigo);
       if (!codigoValido(codigo)) { await espera(400); return resp({ erro: "Esta votação pede o código de 8 letras e números.", precisaCodigo: true }, 400); }
@@ -251,7 +266,7 @@ async function votar(action: string, body: Record<string, unknown>) {
     if (action === "votoAbrir") {
       const unicos = new Map(votantes.map((p: any) => [p.id, { id: p.id, nome: p.nome }]));
       return resp({
-        titulo: reg.titulo, mes: reg.mes, modo: aberto ? "aberto" : "codigo", minimo: reg.minimo || 3,
+        titulo: reg.titulo, mes: reg.mes, modo: comLogin ? "login" : aberto ? "aberto" : "codigo", minimo: reg.minimo || 3, eu: euLogin,
         avaliados: (reg.avaliados || []).map((p: any) => ({ id: p.id, nome: p.nome })),
         lideres: (reg.lideres || []).map((p: any) => ({ id: p.id, nome: p.nome })),
         votantes: [...unicos.values()],
@@ -260,7 +275,7 @@ async function votar(action: string, body: Record<string, unknown>) {
     }
 
     if (aberto) {
-      eu = String(body.eu ?? "");
+      eu = euLogin ? euLogin.id : String(body.eu ?? "");
       if (!votantes.some((p: any) => p.id === eu)) return resp({ erro: "Escolha o seu nome na lista." }, 400);
       h = await hmacCodigo(id, `pessoa:${eu}`);
     }
@@ -284,7 +299,7 @@ async function votar(action: string, body: Record<string, unknown>) {
 
 function semSegredos(reg: any) {
   return {
-    id: reg.id, titulo: reg.titulo, mes: reg.mes, status: reg.status, minimo: reg.minimo, modo: reg.modo === "aberto" ? "aberto" : "codigo",
+    id: reg.id, titulo: reg.titulo, mes: reg.mes, status: reg.status, minimo: reg.minimo, modo: reg.modo === "aberto" || reg.modo === "login" ? reg.modo : "codigo",
     criadaEm: reg.criadaEm, encerradaEm: reg.encerradaEm || "", criadaPor: reg.criadaPor || "",
     avaliados: reg.avaliados || [], lideres: reg.lideres || [],
     codigos: reg.codigos || [], totalVotos: reg.totalVotos || 0, liberacoes: reg.liberacoes || 0,
@@ -318,8 +333,8 @@ async function pesquisaDirecao(action: string, body: Record<string, unknown>, us
       const mes = String(body.mes ?? "");
       const avaliados = listaPessoas(body.avaliados, 80);
       const lideres = listaPessoas(body.lideres, 6);
-      const modo = body.modo === "aberto" ? "aberto" : "codigo";
-      const n = modo === "aberto" ? 0 : Math.min(Math.max(Number(body.codigos ?? 0) | 0, 1), 200);
+      const modo = body.modo === "aberto" ? "aberto" : body.modo === "login" ? "login" : "codigo";
+      const n = modo !== "codigo" ? 0 : Math.min(Math.max(Number(body.codigos ?? 0) | 0, 1), 200);
       const minimo = Math.min(Math.max(Number(body.minimo ?? 3) | 0, 2), 10);
       if (!titulo || !/^\d{4}-\d{2}$/.test(mes)) return resp({ erro: "Informe o título e o mês." }, 400);
       if (!avaliados.length && !lideres.length) return resp({ erro: "Escolha quem será avaliado." }, 400);
@@ -365,7 +380,7 @@ async function pesquisaDirecao(action: string, body: Record<string, unknown>, us
         const lida = await lerPesquisa(id);
         if (!lida) return resp({ erro: "Votação não encontrada." }, 404);
         const reg = lida.reg;
-        if (reg.status !== "aberta" || reg.modo !== "aberto") return resp({ erro: "Só dá para liberar o voto numa votação aberta por link (sem código)." }, 400);
+        if (reg.status !== "aberta" || (reg.modo !== "aberto" && reg.modo !== "login")) return resp({ erro: "Só dá para liberar o voto numa votação aberta por link ou com login." }, 400);
         if (![...(reg.avaliados || []), ...(reg.lideres || [])].some((p: any) => p.id === pessoa)) return resp({ erro: "Essa pessoa não está nesta votação." }, 400);
         const h = await hmacCodigo(id, `pessoa:${pessoa}`);
         if (!reg.usados?.[h]) return resp({ erro: "Essa pessoa ainda não votou; ela já pode votar pelo link." }, 400);
@@ -665,7 +680,7 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? "");
   if (action === "ping") return resp({ ok: true, agora: new Date().toISOString() });
   if (action === "votoAbrir" || action === "votoEnviar") {
-    try { return await votar(action, body); } catch (e) { console.error("ml-comercial voto", e); return resp({ erro: "O servidor falhou agora. Tente de novo em instantes." }, 500); }
+    try { return await votar(action, body, String(req.headers.get("authorization") ?? "")); } catch (e) { console.error("ml-comercial voto", e); return resp({ erro: "O servidor falhou agora. Tente de novo em instantes." }, 500); }
   }
   if (action === "liderAbrir" || action === "liderSalvar") {
     try { return await liderancaPublica(action, body); } catch (e) { console.error("ml-comercial lider", e); return resp({ erro: "O servidor falhou agora. Tente de novo em instantes." }, 500); }

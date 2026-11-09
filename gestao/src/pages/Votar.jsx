@@ -3,9 +3,11 @@
 // Votação com código: "Sou eu" fica só neste aparelho. Votação sem código
 // (link aberto): a pessoa escolhe o próprio nome, que sai da lista; o
 // servidor só guarda que ela já votou (para travar o segundo voto), nunca
-// junto com as notas.
+// junto com as notas. Votação com login: a pessoa entra com usuário e senha
+// do painel (crachá só na memória desta página) e o servidor sabe quem é;
+// ninguém vota no lugar de outra pessoa.
 import { useEffect, useMemo, useState } from "react";
-import { abrirVoto, enviarVoto } from "../services/pesquisa.js";
+import { abrirVoto, enviarVoto, entrarParaVotar } from "../services/pesquisa.js";
 import { mesLongo } from "../lib/format.js";
 
 const LIMITE = 500;
@@ -18,17 +20,34 @@ export default function Votar({ param }) {
   const [carregando, setCarregando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [pedeCodigo, setPedeCodigo] = useState(!!codUrl);
+  const [pedeLogin, setPedeLogin] = useState(false);
+  const [token, setToken] = useState("");
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
 
   useEffect(() => { document.title = "Votação · Destaque do Mês · MinasLab"; }, []);
 
-  const abrir = async (e, silencioso = false) => {
+  const abrir = async (e, silencioso = false, cracha = token) => {
     e?.preventDefault();
     setErro("");
     setCarregando(true);
-    try { setDados(await abrirVoto(pid, codigo)); } catch (ex) {
+    try { setDados(await abrirVoto(pid, codigo, cracha)); } catch (ex) {
       if (ex.precisaCodigo) setPedeCodigo(true);
-      if (!(silencioso && ex.precisaCodigo)) setErro(ex.message);
+      if (ex.precisaLogin) setPedeLogin(true);
+      if (!(silencioso && (ex.precisaCodigo || (ex.precisaLogin && !cracha)))) setErro(ex.message);
     } finally { setCarregando(false); }
+  };
+
+  const entrar = async (e) => {
+    e.preventDefault();
+    setErro("");
+    setCarregando(true);
+    try {
+      const t = await entrarParaVotar(usuario.trim(), senha);
+      setToken(t);
+      setSenha("");
+      await abrir(null, false, t);
+    } catch (ex) { setErro(ex.message); setCarregando(false); }
   };
 
   // Abre direto: votação sem código entra sem pedir nada; com código, mostra o campo.
@@ -41,7 +60,22 @@ export default function Votar({ param }) {
         <div className="votar-sub">Destaque do Mês · {dados?.modo === "codigo" || (!dados && pedeCodigo) ? "votação anônima" : "votação"}</div>
       </header>
       <main className="votar-miolo">
-        {enviado ? <Obrigado aberto={dados?.modo === "aberto"} /> : dados ? <Formulario pid={pid} codigo={codigo} dados={dados} aoEnviar={() => setEnviado(true)} /> : !pedeCodigo ? (
+        {enviado ? <Obrigado aberto={dados?.modo !== "codigo"} /> : dados ? <Formulario pid={pid} codigo={codigo} token={token} dados={dados} aoEnviar={() => setEnviado(true)} /> : pedeLogin ? (
+          <form className="card votar-cartao" onSubmit={entrar}>
+            <h1 style={{ fontSize: 24 }}>Entre para votar</h1>
+            <p className="peq" style={{ lineHeight: 1.6 }}>Use o <b>mesmo usuário e senha do painel</b>. Assim cada pessoa vota uma vez, só pela própria conta. Suas notas são somadas às dos colegas e só as médias aparecem.</p>
+            <div className="campo">
+              <label htmlFor="v-usuario">Usuário</label>
+              <input id="v-usuario" className="entrada" autoComplete="username" autoCapitalize="none" value={usuario} onChange={(e) => setUsuario(e.target.value)} autoFocus />
+            </div>
+            <div className="campo">
+              <label htmlFor="v-senha">Senha</label>
+              <input id="v-senha" type="password" className="entrada" autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} />
+            </div>
+            {erro && <div className="aviso ruim">{erro}</div>}
+            <button type="submit" className="btn" disabled={carregando || !usuario.trim() || !senha}>{carregando ? "Entrando…" : "Entrar e votar"}</button>
+          </form>
+        ) : !pedeCodigo ? (
           <div className="card votar-cartao">{erro ? <div className="aviso ruim">{erro}</div> : !pid ? <div className="aviso ruim">Link incompleto. Peça o link da votação à gestão.</div> : <div className="vazio">Abrindo a votação…</div>}</div>
         ) : (
           <form className="card votar-cartao" onSubmit={abrir}>
@@ -75,10 +109,11 @@ function Obrigado({ aberto }) {
   );
 }
 
-function Formulario({ pid, codigo, dados, aoEnviar }) {
+function Formulario({ pid, codigo, token, dados, aoEnviar }) {
   const { perguntasEquipe, perguntasGestao } = dados;
   const aberto = dados.modo === "aberto";
-  const [eu, setEu] = useState("");
+  const comLogin = dados.modo === "login";
+  const [eu, setEu] = useState(comLogin ? dados.eu?.id || "" : "");
   const avaliados = useMemo(() => dados.avaliados.filter((p) => p.id !== eu), [dados.avaliados, eu]);
   const lideresVisiveis = useMemo(() => dados.lideres.filter((p) => p.id !== eu), [dados.lideres, eu]);
   const votantes = dados.votantes || dados.avaliados;
@@ -121,7 +156,7 @@ function Formulario({ pid, codigo, dados, aoEnviar }) {
       gestao: Object.fromEntries(lideresOk.map((k) => [k, notas[k]])),
       sugestao: sugestao.trim(),
     };
-    try { await enviarVoto(pid, codigo, voto, aberto ? eu : ""); aoEnviar(); } catch (e) { setErro(e.message); } finally { setEnviando(false); }
+    try { await enviarVoto(pid, codigo, voto, aberto ? eu : "", token); aoEnviar(); } catch (e) { setErro(e.message); } finally { setEnviando(false); }
   };
 
   return (
@@ -146,10 +181,11 @@ function Formulario({ pid, codigo, dados, aoEnviar }) {
       {passo.tipo === "intro" && (
         <>
           <h1 style={{ fontSize: 22 }}>Como funciona</h1>
+          {comLogin && dados.eu && <div className="aviso marca peq">Você está votando como <b>{dados.eu.nome}</b>. Se não for você, feche esta página.</div>}
           <ul className="peq" style={{ lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
             <li>Você verá <b>{avaliados.length} colega(s)</b>{lideresVisiveis.length ? <> e <b>{lideresVisiveis.length} pessoa(s) da liderança</b></> : null}, uma de cada vez.</li>
             <li>Notas de <b>0 a 10</b>: 0 = muito abaixo do esperado, 10 = excelente.</li>
-            <li>{aberto ? null : <>Quando chegar no <b>seu nome</b>, toque em “Sou eu”. </>}Se <b>não conviveu</b> o suficiente com alguém, toque em “Não sei avaliar”. Isso é melhor que dar nota baixa.</li>
+            <li>{aberto || comLogin ? null : <>Quando chegar no <b>seu nome</b>, toque em “Sou eu”. </>}Se <b>não conviveu</b> o suficiente com alguém, toque em “Não sei avaliar”. Isso é melhor que dar nota baixa.</li>
             <li>O comentário é opcional. Escreva sobre o trabalho, sem detalhes que mostrem quem escreveu.</li>
           </ul>
         </>
@@ -162,7 +198,7 @@ function Formulario({ pid, codigo, dados, aoEnviar }) {
             <h1 style={{ fontSize: 24, marginTop: 4 }}>{passo.p.nome}</h1>
           </div>
           <div className="votar-pular">
-            {passo.tipo === "colega" && !aberto && <button type="button" className={`pilula${pular[id] === "eu" ? " ativa" : ""}`} aria-pressed={pular[id] === "eu"} onClick={() => marcarPular("eu")}>Sou eu</button>}
+            {passo.tipo === "colega" && !aberto && !comLogin && <button type="button" className={`pilula${pular[id] === "eu" ? " ativa" : ""}`} aria-pressed={pular[id] === "eu"} onClick={() => marcarPular("eu")}>Sou eu</button>}
             <button type="button" className={`pilula${pular[id] === "nao" ? " ativa" : ""}`} aria-pressed={pular[id] === "nao"} onClick={() => marcarPular("nao")}>Não sei avaliar</button>
           </div>
           {!pular[id] && perguntas.map((q, k) => (

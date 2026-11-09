@@ -135,3 +135,17 @@ export function gerarCodigos(n, bytes) {
 
 export const normalizarCodigo = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 export const codigoValido = (c) => /^[A-HJKMNP-Z2-9]{8}$/.test(c);
+
+// Votação com login: liga a conta do painel (pelo nome) a quem está na lista.
+// Mesmo nome, ou as mesmas palavras em outra ordem; na dúvida, não liga.
+const LIGA = new Set(["da", "de", "do", "das", "dos", "e"]);
+const normal = (v) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+const chave = (v) => normal(v).split(" ").filter((w) => w && !LIGA.has(w)).sort().join(" ");
+export function votanteDaConta(nomeConta, votantes) {
+  const alvo = normal(nomeConta);
+  if (!alvo) return null;
+  const unicos = [...new Map((votantes || []).map((p) => [p.id, p])).values()];
+  let achados = unicos.filter((p) => normal(p.nome) === alvo);
+  if (!achados.length) achados = unicos.filter((p) => chave(p.nome) === chave(nomeConta));
+  return achados.length === 1 ? achados[0] : null;
+}
