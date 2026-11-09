@@ -6,7 +6,7 @@ import { useBase, useCRM } from "../hooks/base.jsx";
 import { Card, Chip, Cabecalho, Modal, Abas, Paginacao, usePaginacao, iniciais } from "../components/ui.jsx";
 import { CartaoCertificado } from "../components/Certificado.jsx";
 import { SeletorMes } from "../components/Layout.jsx";
-import { listarPesquisas, criarPesquisa, maisCodigos, mudarStatus, apagarPesquisa, linkVotacao, contasDirecao, listarConvites, criarConvite, revogarConvite, linkLideranca } from "../services/pesquisa.js";
+import { listarPesquisas, criarPesquisa, maisCodigos, mudarStatus, apagarPesquisa, liberarVoto, linkVotacao, contasDirecao, listarConvites, criarConvite, revogarConvite, linkLideranca } from "../services/pesquisa.js";
 import { CRITERIOS_LIDERANCA, MOTIVOS_ELIMINATORIOS, PESOS_PADRAO, rankingDestaque, podio, mediaLideranca } from "../lib/destaque.js";
 import { PERGUNTAS_EQUIPE, PERGUNTAS_GESTAO } from "../../supabase/functions/ml-comercial/pesquisa.mjs";
 import { mesLongo, mesNome, dataCurta, numero } from "../lib/format.js";
@@ -70,6 +70,7 @@ function Votacoes() {
   const p = usePesquisas();
   const [nova, setNova] = useState(false);
   const [vendo, setVendo] = useState(null);
+  const [liberar, setLiberar] = useState(null);
   const [codigos, setCodigos] = useState(null);
   const [importar, setImportar] = useState(false);
   const [erro, setErro] = useState("");
@@ -106,9 +107,11 @@ function Votacoes() {
             <div><div className="kpi-rot">Votos</div><div className="kpi-val tnum" style={{ fontSize: 26 }}>{v.totalVotos} <span className="suave peq">{v.id.startsWith("pimp") ? "votos (máx. por pessoa)" : `de ${v.modo === "aberto" ? v.avaliados.length : v.codigos.length} ${v.modo === "aberto" ? "pessoas" : "códigos"}`}</span></div></div>
             <div style={{ flex: "1 1 220px", alignSelf: "center" }}><div className="barra"><div style={{ width: `${Math.min(100, (v.totalVotos / Math.max(1, v.modo === "aberto" ? v.avaliados.length : v.codigos.length)) * 100)}%`, background: "var(--marca)" }} /></div></div>
           </div>
+          {v.liberacoes > 0 && <div className="aviso alerta peq">{v.liberacoes === 1 ? "1 voto foi liberado de novo" : `${v.liberacoes} votos foram liberados de novo`} porque alguém votou no nome de outra pessoa. O voto feito no nome errado continua somado.</div>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {v.status === "aberta" && <button type="button" className="btn claro mini" onClick={() => setCodigos(v)}>{v.modo === "aberto" ? "Link da votação" : "Link e códigos"}</button>}
             {v.status === "encerrada" && <button type="button" className="btn mini" onClick={() => setVendo(v)}>Ver resultado</button>}
+            {v.status === "aberta" && v.modo === "aberto" && <button type="button" className="btn claro mini" onClick={() => setLiberar(v)}>Liberar voto de uma pessoa</button>}
             {v.status === "aberta"
               ? <button type="button" className="btn claro mini" onClick={() => window.confirm("Encerrar a votação? É definitivo: ninguém mais vota e o resultado aparece. Para proteger o anonimato, uma votação encerrada não pode ser reaberta.") && acao(async () => p.trocar(await mudarStatus(v.id, "encerrada")))}>Encerrar e ver resultado</button>
               : null}
@@ -120,8 +123,41 @@ function Votacoes() {
       {nova && <NovaVotacao aoFechar={() => setNova(false)} aoCriar={(v) => { p.trocar(v); setNova(false); setCodigos(v); }} />}
       {codigos && <LinkCodigos v={p.lista.find((x) => x.id === codigos.id) || codigos} aoFechar={() => setCodigos(null)} aoMudar={p.trocar} />}
       {vendo && <Resultado v={vendo} aoFechar={() => setVendo(null)} />}
+      {liberar && <LiberarVoto v={liberar} aoFechar={() => setLiberar(null)} aoMudar={(x) => { p.trocar(x); setLiberar(null); }} />}
       {importar && <ImportarHistorico aoFechar={() => setImportar(false)} aoConcluir={() => p.recarregar()} />}
     </>
+  );
+}
+
+// Link aberto: alguém votou escolhendo o nome de outra pessoa. Tira só a marca
+// de "já votou" dela; o voto feito continua somado (não há voto guardado à parte).
+function LiberarVoto({ v, aoFechar, aoMudar }) {
+  const pessoas = [...new Map([...v.avaliados, ...v.lideres].map((x) => [x.id, x])).values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const [pessoa, setPessoa] = useState("");
+  const [erro, setErro] = useState("");
+  const [indo, setIndo] = useState(false);
+  const nome = pessoas.find((x) => x.id === pessoa)?.nome || "";
+  const liberar = async () => {
+    setErro(""); setIndo(true);
+    try { aoMudar(await liberarVoto(v.id, pessoa)); } catch (e) { setErro(e.message); setIndo(false); }
+  };
+  return (
+    <Modal titulo="Liberar voto de uma pessoa" aoFechar={aoFechar}>
+      <p className="peq" style={{ marginTop: 0 }}>Use quando alguém votou escolhendo o nome de outra pessoa. A pessoa escolhida aqui volta a poder votar pelo mesmo link.</p>
+      <div className="aviso alerta peq">O voto já feito no nome dela <b>continua somado</b>: para proteger o anonimato, o sistema não guarda os votos separados. Quem usou o nome errado também ainda pode votar no próprio nome.</div>
+      <div className="campo" style={{ marginTop: 12 }}>
+        <label htmlFor="lib-pessoa">Pessoa</label>
+        <select id="lib-pessoa" className="entrada" value={pessoa} onChange={(e) => setPessoa(e.target.value)}>
+          <option value="">— escolha —</option>
+          {pessoas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+        </select>
+      </div>
+      {erro && <div className="aviso ruim" style={{ marginTop: 10 }}>{erro}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+        <button type="button" className="btn claro" onClick={aoFechar}>Cancelar</button>
+        <button type="button" className="btn" disabled={!pessoa || indo} onClick={liberar}>{indo ? "Liberando…" : nome ? `Liberar o voto de ${nome.split(" ")[0]}` : "Liberar"}</button>
+      </div>
+    </Modal>
   );
 }
 

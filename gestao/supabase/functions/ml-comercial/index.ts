@@ -287,7 +287,7 @@ function semSegredos(reg: any) {
     id: reg.id, titulo: reg.titulo, mes: reg.mes, status: reg.status, minimo: reg.minimo, modo: reg.modo === "aberto" ? "aberto" : "codigo",
     criadaEm: reg.criadaEm, encerradaEm: reg.encerradaEm || "", criadaPor: reg.criadaPor || "",
     avaliados: reg.avaliados || [], lideres: reg.lideres || [],
-    codigos: reg.codigos || [], totalVotos: reg.totalVotos || 0,
+    codigos: reg.codigos || [], totalVotos: reg.totalVotos || 0, liberacoes: reg.liberacoes || 0,
     resultado: reg.status === "encerrada" ? resultado(reg) : null,
   };
 }
@@ -351,6 +351,28 @@ async function pesquisaDirecao(action: string, body: Record<string, unknown>, us
           reg = { ...reg, status: "encerrada", encerradaEm: new Date().toISOString() };
         }
         if (await gravarPesquisa(id, reg, lida.versao)) return resp({ pesquisa: semSegredos(reg) });
+        await espera(100);
+      }
+      return resp({ erro: "Não consegui gravar agora. Tente de novo." }, 503);
+    }
+    case "pesquisaLiberar": {
+      // Votação por link aberto: alguém votou usando o nome de outra pessoa.
+      // Tira só a marca de "já votou" dessa pessoa para ela poder votar. O voto
+      // já feito continua somado (o servidor não guarda votos separados).
+      const id = String(body.id ?? "");
+      const pessoa = String(body.pessoa ?? "");
+      for (let t = 0; t < 5; t++) {
+        const lida = await lerPesquisa(id);
+        if (!lida) return resp({ erro: "Votação não encontrada." }, 404);
+        const reg = lida.reg;
+        if (reg.status !== "aberta" || reg.modo !== "aberto") return resp({ erro: "Só dá para liberar o voto numa votação aberta por link (sem código)." }, 400);
+        if (![...(reg.avaliados || []), ...(reg.lideres || [])].some((p: any) => p.id === pessoa)) return resp({ erro: "Essa pessoa não está nesta votação." }, 400);
+        const h = await hmacCodigo(id, `pessoa:${pessoa}`);
+        if (!reg.usados?.[h]) return resp({ erro: "Essa pessoa ainda não votou; ela já pode votar pelo link." }, 400);
+        const usados = { ...reg.usados };
+        delete usados[h];
+        const novo = { ...reg, usados, liberacoes: (reg.liberacoes || 0) + 1 };
+        if (await gravarPesquisa(id, novo, lida.versao)) return resp({ pesquisa: semSegredos(novo) });
         await espera(100);
       }
       return resp({ erro: "Não consegui gravar agora. Tente de novo." }, 503);
