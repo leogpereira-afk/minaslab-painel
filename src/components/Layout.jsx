@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowUpRight, BarChart3, Microscope, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Microscope, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LockKeyhole, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
@@ -52,6 +52,7 @@ const MODULOS = [
      GerenciaLab. Piloto só para a direção (SO_DIRECAO em lib/sessao.js). */
   { id: "lims", rotulo: "MinasLab LIMS", caminho: `${import.meta.env.BASE_URL}lims/`, icone: Microscope, grupo: "Operação", externo: true },
   { id: "curva-abc", rotulo: "Curva ABC", caminho: "/curva-abc", icone: BarChart3, grupo: "Negócios" },
+  { id: "senhas", rotulo: "Senhas e acessos", caminho: "/senhas", icone: LockKeyhole, grupo: "Administração" },
   { id: "acessos", rotulo: "Acessos", caminho: "/acessos", icone: KeyRound, grupo: "Administração" },
 ];
 
@@ -64,7 +65,7 @@ const CORES_MODULO = {
   laboratorio: ["#0891b2", "#dcf5fc"], rh: ["#7c3aed", "#eee7ff"],
   ponto: ["#2563eb", "#e5edff"], financas: ["#15803d", "#dcf5e4"], crm: ["#2563eb", "#e5edff"], gestao: ["#0e7c66", "#d1fae5"],
   lims: ["#24444f", "#d5f3ee"],
-  "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"],
+  "curva-abc": ["#4f46e5", "#e9e7ff"], acessos: ["#a16207", "#fef3cd"], senhas: ["#334155", "#e2e8f0"],
 };
 
 const PAPEL_ROTULO = { direcao: "Direção", equipe: "Equipe", leitura: "Leitura" };

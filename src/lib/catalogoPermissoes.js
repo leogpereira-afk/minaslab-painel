@@ -8,7 +8,7 @@ export const GRUPOS_PERMISSOES = [
   { titulo: "Agenda", paginas: [["inicio", "Início"], ["canais", "Canais MinasLab"], ["tarefas", "Tarefas"], ["mensagens", "Mensagens"], ["calendario", "Calendário"], ["compromissos", "Compromissos"]] },
   { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["lims", "MinasLab LIMS"]] },
   { titulo: "Negócios", paginas: [["licitacoes", "Licitações"], ["marketing", "Marketing"], ["crm", "CRM"], ["gestao", "Gestão"], ["curva-abc", "Curva ABC"]] },
-  { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["folha-pagamento", "Folha de Pagamento"], ["ponto", "Ponto"], ["acessos", "Acessos"]] },
+  { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["folha-pagamento", "Folha de Pagamento"], ["ponto", "Ponto"], ["senhas", "Senhas e acessos"], ["acessos", "Acessos"]] },
   { titulo: "Finanças", paginas: [["financas/visao-geral", "Visão Geral"], ["financas/servicos-gerados", "Serviços Gerados"], ["financas/receber", "Receber"], ["financas/pagar", "Pagar"], ["financas/bancos", "Bancos"], ["financas/conciliacao", "Conciliação"], ["financas/notas", "Notas"], ["financas/aplicacoes", "Aplicações"], ["financas/socios", "Sócios"], ["financas/conferencia", "Conferência"], ["financas/fluxo-caixa", "Fluxo de Caixa"], ["financas/relatorios", "Relatórios"], ["financas/recibos", "Recibos de comissão"], ["financas/clientes", "Clientes"], ["financas/configuracoes", "Configurações"]] },
 ];
 
@@ -48,6 +48,7 @@ export const PERMISSOES_DISPONIVEIS = new Set([
   "compras/ordens", "compras/retiradas", "patrimonio",
   "patrimonio/inventario", "patrimonio/setores", "patrimonio/pendencias",
   "curva-abc", "curva-abc/clientes", "curva-abc/produtos", "curva-abc/vendedores",
+  "senhas",
   "manutencoes", "laboratorio", "laboratorio/inicio", "laboratorio/entradas", "laboratorio/qualidade", "laboratorio/microbiologia", "laboratorio/fisicoquimico",
   "financas/servicos-gerados",
   // Finanças por página (Ana, 06/11/2026). As funções do financeiro conferem ao vivo
