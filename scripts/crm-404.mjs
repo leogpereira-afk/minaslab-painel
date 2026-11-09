@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Gera dist/404.html para o GitHub Pages servindo DOIS SPAs no mesmo site:
-//   /minaslab-painel/       → painel (React Router com basename)
-//   /minaslab-painel/crm/   → CRM MinasLab (build separado em dist/crm)
+//   /       → painel (React Router com basename)
+//   /crm/   → CRM MinasLab (build separado em dist/crm)
 //
 // O Pages não tem rewrite de servidor: qualquer subpágina aberta direto
 // (refresh, favorito, link) cai no 404.html da RAIZ. Antes ele era só uma cópia
 // do index do painel — um refresh em /crm/clientes/123 abria o painel, não o
 // CRM. Agora o 404.html continua sendo o painel, mas com um script no topo do
 // <head> que, se o caminho for do CRM, redireciona para
-// /minaslab-painel/crm/?__rota=/clientes/123 — o index do CRM restaura a rota
+// /crm/?__rota=/clientes/123 — o index do CRM restaura a rota
 // com history.replaceState antes do React Router montar.
 //
 // Uso: node scripts/crm-404.mjs [pasta-dist] [base]

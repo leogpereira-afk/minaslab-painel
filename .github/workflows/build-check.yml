@@ -16,7 +16,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          BASE_PATH: /minaslab-painel/
+          BASE_PATH: /
 
       # CRM MinasLab (crm/) — mesmo build do deploy, para o PR reprovar antes
       # de a main quebrar o Pages.
@@ -35,10 +35,10 @@ jobs:
         working-directory: crm
         run: npm run build
         env:
-          CRM_BASE_PATH: /minaslab-painel/crm/
+          CRM_BASE_PATH: /crm/
           VITE_SUPABASE_URL: https://reoghclxripktzpdwhiy.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_YG38KEPCwoKfiQ7PZM2EBg_8cY1vIH7
-          VITE_APP_URL: https://leogpereira-afk.github.io/minaslab-painel/crm
+          VITE_APP_URL: https://www.minaslab.online/crm
       - run: cp -r crm/dist dist/crm
 
       # Gestão (gestao/) — mesmos testes e build do deploy.
@@ -52,7 +52,7 @@ jobs:
         working-directory: gestao
         run: npm run build
         env:
-          BASE_PATH: /minaslab-painel/gestao/
+          BASE_PATH: /gestao/
       - run: cp -r gestao/dist dist/gestao
 
       # MinasLab LIMS (lims/) — mesmos testes e build do deploy.
@@ -66,6 +66,6 @@ jobs:
         working-directory: lims
         run: npm run build
         env:
-          BASE_PATH: /minaslab-painel/lims/
+          BASE_PATH: /lims/
       - run: cp -r lims/dist dist/lims
-      - run: node scripts/crm-404.mjs dist /minaslab-painel/
+      - run: node scripts/crm-404.mjs dist /

@@ -1,5 +1,5 @@
 const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim()
-const productionAppUrl = 'https://leogpereira-afk.github.io/minaslab-painel/crm'
+const productionAppUrl = 'https://www.minaslab.online/crm'
 
 function normalizeUrl(value: string) {
   return value.replace(/\/+$/, '')

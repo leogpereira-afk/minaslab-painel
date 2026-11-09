@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// No GitHub Pages o site vive em /minaslab-painel/; em dev, na raiz.
+// O dominio www.minaslab.online e o ambiente de desenvolvimento usam a raiz.
 // O workflow do Pages define BASE_PATH; sem ele, nada muda.
 export default defineConfig({
   base: process.env.BASE_PATH || "/",
