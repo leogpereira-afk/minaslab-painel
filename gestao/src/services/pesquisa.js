@@ -11,6 +11,8 @@ export const criarPesquisa = (dados) => direcao("pesquisaCriar", dados).then((r)
 export const maisCodigos = (id, n) => direcao("pesquisaCodigos", { id, n }).then((r) => r.pesquisa);
 export const mudarStatus = (id, status) => direcao("pesquisaStatus", { id, status }).then((r) => r.pesquisa);
 export const apagarPesquisa = (id) => direcao("pesquisaApagar", { id });
+/** Link aberto: tira a marca de "já votou" de uma pessoa (alguém votou no nome dela). */
+export const liberarVoto = (id, pessoa) => direcao("pesquisaLiberar", { id, pessoa }).then((r) => r.pesquisa);
 
 async function publico(action, corpo) {
   let resp;
