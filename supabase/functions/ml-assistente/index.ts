@@ -16,7 +16,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const U = Deno.env.get("SUPABASE_URL")!;
 const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
 const J = Deno.env.get("ML_JWT_SECRET") ?? "";
-const CHAVE_IA = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+// Tira espaços, quebras de linha e aspas que às vezes vêm junto ao colar a chave.
+const CHAVE_IA = (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim().replace(/^["'`]+|["'`]+$/g, "").trim();
 const sb = createClient(U, K, { auth: { persistSession: false, autoRefreshToken: false } });
 const enc = new TextEncoder(), dec = new TextDecoder();
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
@@ -144,6 +145,8 @@ async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar:
     if (!r.ok) {
       const tipo = txt(corpo?.error?.type), msg = txt(corpo?.error?.message);
       console.error("anthropic", r.status, tipo, msg);
+      // Diagnóstico sem expor nada da chave: só se tem o formato esperado e o tamanho.
+      if (r.status === 401) console.error("chave recusada: formato sk-ant-api =", CHAVE_IA.startsWith("sk-ant-api"), "tamanho", CHAVE_IA.length);
       if (r.status === 401) erro(503, "A chave da IA não foi aceita. Avise a direção para conferir o segredo ANTHROPIC_API_KEY.");
       if (r.status === 429 || r.status === 529) erro(503, "A IA está muito ocupada agora. Tente de novo em alguns segundos.");
       if (/credit|billing|balance/i.test(msg)) erro(503, "Os créditos da IA deste mês acabaram. Eles renovam no próximo ciclo do plano.");
