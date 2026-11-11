@@ -122,6 +122,7 @@ export default function ClientesFinanceiro() {
     [loading, setLoading] = useState(true),
     [exportando, setExportando] = useState(false),
     [modalCliente, setModalCliente] = useState(false),
+    [salvando, setSalvando] = useState(false),
     [indicadores, setIndicadores] = useState({
       total: 0,
       ativos: 0,
@@ -190,14 +191,18 @@ export default function ClientesFinanceiro() {
   function abrirNovo() {
     setForm(novo());
     setOk("");
+    setErro("");
     setModalCliente(true);
   }
   function abrirEdicao(x) {
     setForm({ ...x });
     setOk("");
+    setErro("");
     setModalCliente(true);
   }
   async function salvar() {
+    if (salvando) return; // evita dois cliques gravarem duas vezes
+    setSalvando(true);
     try {
       setErro("");
       setOk("");
@@ -225,6 +230,8 @@ export default function ClientesFinanceiro() {
       }
     } catch (e) {
       setErro(e.message);
+    } finally {
+      setSalvando(false);
     }
   }
   async function buscarCep() {
@@ -745,6 +752,12 @@ export default function ClientesFinanceiro() {
               Ativo
             </label>
           </div>
+          {/* O erro aparecia só atrás da janela: parecia que o Salvar não fazia nada. */}
+          {erro && (
+            <div role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+              {erro}
+            </div>
+          )}
           <div className="mt-5 flex justify-end gap-2">
             <button
               className="btn-outline"
@@ -752,9 +765,9 @@ export default function ClientesFinanceiro() {
             >
               Cancelar
             </button>
-            <button className="btn-primary" onClick={salvar}>
+            <button className="btn-primary" onClick={salvar} disabled={salvando}>
               <Save size={15} />
-              Salvar cliente
+              {salvando ? "Salvando…" : "Salvar cliente"}
             </button>
           </div>
         </Modal>

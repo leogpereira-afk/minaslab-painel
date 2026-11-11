@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { acessoFinanceiro } from "../_shared/acesso-financeiro.ts";
+import { todosClientes } from "../_shared/clientes-todos.ts";
 import { DOMParser } from "npm:@xmldom/xmldom@0.9.8";
 
 const URL=Deno.env.get("SUPABASE_URL")!;
@@ -37,6 +38,6 @@ Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{heade
  if(action==="preview")return json({ok:true,empresa:emp,totalArquivos:arquivos.length,validos:parsed.length,novas,repetidas,cancelamentos,erros,amostra});
  let inseridas=0,atualizadas=0,ignoradas=erros.length,canceladas=0;for(const p of parsed){if(!p.chave){ignoradas++;continue}if(p.tipo==="CANCELAMENTO"){const ex=map.get(p.chave);if(ex){const path=await salvarXml(sb,emp.id,`${p.chave}-cancelamento`,p.xml);const up=await sb.from("notas_fiscais").update({status_fiscal:"CANCELADA",nfse_cancelada_em:new Date().toISOString(),nfse_cancelamento_motivo_codigo:p.codigo,nfse_cancelamento_motivo:p.motivo,nfse_cancelamento_evento_path:path,updated_at:new Date().toISOString()}).eq("id",ex.id);if(up.error)throw up.error;canceladas++}else ignoradas++;continue}
  const path=await salvarXml(sb,emp.id,p.chave,p.xml);const ex=map.get(p.chave);if(ex){const up=await sb.from("notas_fiscais").update({xml_url:path,importacao_origem:"PORTAL_NFSE_NACIONAL",nfse_ambiente:"PRODUCAO",updated_at:new Date().toISOString()}).eq("id",ex.id);if(up.error)throw up.error;atualizadas++;continue}
- let clienteId=null;if(p.destDoc){const qc=await sb.from("clientes_financeiro").select("id,cnpj_cpf").not("cnpj_cpf","is",null).limit(5000);if(qc.error)throw qc.error;clienteId=(qc.data||[]).find((x:any)=>digits(x.cnpj_cpf)===p.destDoc)?.id||null}
+ let clienteId=null;if(p.destDoc){const qc=await todosClientes(sb,"id,cnpj_cpf",(q:any)=>q.not("cnpj_cpf","is",null));clienteId=qc.find((x:any)=>digits(x.cnpj_cpf)===p.destDoc)?.id||null}
  const ins=await sb.from("notas_fiscais").insert({empresa_id:emp.id,tipo:"SAIDA",numero_nf:p.numero||null,chave_acesso:p.chave,cnpj_emitente:p.emitDoc||cnpjM,cnpj_destinatario:p.destDoc||null,nome_emitente:p.nomeEmit||emp.nome,nome_destinatario:p.nomeDest||null,data_emissao:p.emissao||null,valor_total:p.valor||0,xml_url:path,cliente_id:clienteId,email_destino:p.email||null,origem:"NFSE_NACIONAL",status_fiscal:"AUTORIZADA",nfse_ambiente:"PRODUCAO",nfse_autorizada_em:p.emissao?`${p.emissao}T00:00:00-03:00`:null,importacao_origem:"PORTAL_NFSE_NACIONAL",nfse_dados:{historico:{fonte:"PORTAL_NFSE_NACIONAL",arquivo:p.nomeArquivo,importadoEm:new Date().toISOString()}},updated_at:new Date().toISOString()}).select("id,chave_acesso").single();if(ins.error)throw ins.error;map.set(p.chave,ins.data);inseridas++}
  await sb.from("nfse_importacoes_historico").insert({empresa_id:emp.id,total_arquivos:arquivos.length,novas:inseridas,existentes:atualizadas,cancelamentos:canceladas,ignoradas,detalhes:{erros},criado_por:String(u.sub||"direcao")});return json({ok:true,inseridas,atualizadas,canceladas,ignoradas,erros});}catch(e){return json({erro:e instanceof Error?e.message:String(e)},500)}});
