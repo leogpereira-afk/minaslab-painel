@@ -1,7 +1,9 @@
 // ml-assistente — o assistente de IA do painel (Claude, da Anthropic), para todos os usuários ativos.
 //
 // Etapa 1 (10/11/2026): conversa livre — escrever, tirar dúvidas, se organizar — com pesquisa na internet
-// (ferramenta web_search da API, com as fontes). Ainda NÃO lê nem grava dados do painel.
+// (ferramenta web_search da API, com as fontes).
+// Etapa 2 (11/11/2026): LÊ dados do painel por ferramentas (ferramentas.ts) — compromissos, agenda da equipe,
+// tarefas, licitações e manutenções — sempre com a mesma régua de visão das telas. Ainda NÃO grava nada.
 //
 // Segurança e custo:
 // - A chave fica só no servidor (segredo ANTHROPIC_API_KEY). Sem ela, a função responde que a IA não está ligada.
@@ -12,6 +14,7 @@
 // Ações: estado, conversas, abrir, enviar, renomear, apagar.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { FERRAMENTAS, executarFerramenta, type CtxDados } from "./ferramentas.ts";
 
 const U = Deno.env.get("SUPABASE_URL")!;
 const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
@@ -55,12 +58,22 @@ async function crachaDoPainel(req: Request) {
   } catch { return null; }
 }
 
-type Ctx = { eu: string; nome: string };
+type Ctx = CtxDados;
 async function carregarCtx(cracha: any): Promise<Ctx> {
-  const { data: mim, error } = await sb.from("ml_contas").select("usuario,nome,ativo").eq("usuario", txt(cracha.sub)).maybeSingle();
+  // Papel e páginas lidos AGORA na conta (não no crachá): acesso retirado vale na hora, como no ml-sync.
+  const { data: contas, error } = await sb.from("ml_contas").select("usuario,nome,papel,ativo,paginas_consulta");
   if (error) throw error;
+  const nomes = new Map<string, string>();
+  let mim: any = null;
+  for (const x of contas ?? []) {
+    if (x.ativo) nomes.set(x.usuario, txt(x.nome) || x.usuario);
+    if (x.usuario === txt(cracha.sub)) mim = x;
+  }
   if (!mim?.ativo) erro(401, "Sua conta do painel está inativa. Entre de novo.");
-  return { eu: mim.usuario, nome: txt(mim.nome) || mim.usuario };
+  return {
+    eu: mim.usuario, nome: txt(mim.nome) || mim.usuario, direcao: mim.papel === "direcao",
+    paginas: Array.isArray(mim.paginas_consulta) ? mim.paginas_consulta : [], nomes,
+  };
 }
 
 const hojeSP = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
@@ -100,7 +113,9 @@ function sistema(c: Ctx) {
     `Responda sempre em português do Brasil, de forma clara, cordial e objetiva. Use Markdown simples (títulos curtos, listas, **negrito**, tabelas pequenas) quando ajudar a leitura.`,
     `Você ajuda a escrever (e-mails, propostas, comunicados, mensagens a clientes), tira dúvidas sobre qualquer assunto, explica normas e cálculos e ajuda a pessoa a se organizar (planos, listas, prioridades, resumos).`,
     `Quando a pergunta depender de informação atual, de preços, de leis e normas vigentes ou de fatos que você não tenha certeza, use a pesquisa na internet e cite as fontes. Não invente números, leis ou referências.`,
-    `Você ainda NÃO tem acesso aos dados do painel (compromissos, agenda, tarefas, clientes, financeiro). Se perguntarem sobre eles, explique que essa função chega numa próxima etapa e sugira onde a pessoa encontra a informação no painel.`,
+    `Você TEM ferramentas para LER dados do painel desta pessoa: compromissos, agenda da equipe (treinamentos, reuniões, férias e ausências), tarefas, licitações e manutenções. Use-as sempre que a pergunta for sobre a agenda, os prazos ou o trabalho dela — não chute. As ferramentas já trazem só o que esta pessoa pode ver; nunca diga que existe algo além disso.`,
+    `Ao responder com dados do painel: datas no formato DD/MM, destaque o que está atrasado ou é para hoje, e diga em qual tela a pessoa encontra (Compromissos, Calendário, Tarefas, Licitações, Manutenções). Se a ferramenta avisar que a pessoa não tem acesso, diga isso com educação.`,
+    `Você ainda NÃO grava nada no painel (não cria nem altera compromissos ou tarefas) e não tem acesso a clientes, financeiro, RH ou estoque. Se pedirem isso, explique que ainda não está disponível e indique a tela certa.`,
     `Você também ainda não gera imagens. Pode descrever ou sugerir ideias de imagem em texto.`,
     `Não peça nem aceite senhas, chaves ou dados bancários. Em temas jurídicos, contábeis ou de saúde, dê a informação e lembre que um profissional deve confirmar.`,
   ].join("\n");
@@ -127,18 +142,21 @@ function extrair(conteudo: any[]): { texto: string; fontes: Fonte[]; buscas: num
 }
 
 async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar: boolean, buscasRestantes: number) {
-  const tools = pesquisar && buscasRestantes > 0
-    ? [{ type: "web_search_20250305", name: "web_search", max_uses: Math.min(3, buscasRestantes), user_location: { type: "approximate", country: "BR", region: "Minas Gerais", timezone: "America/Sao_Paulo" } }]
-    : undefined;
-  let conversa = [...mensagens];
-  const blocos: any[] = [];
+  const tools: any[] = [...FERRAMENTAS];
+  if (pesquisar && buscasRestantes > 0) {
+    tools.push({ type: "web_search_20250305", name: "web_search", max_uses: Math.min(3, buscasRestantes), user_location: { type: "approximate", country: "BR", region: "Minas Gerais", timezone: "America/Sao_Paulo" } });
+  }
+  const hoje = hojeSP();
+  const conversa = [...mensagens];
+  const todos: any[] = [];   // todos os blocos (para fontes e contagem de buscas)
+  let finais: any[] = [];    // blocos da resposta final (depois da última consulta ao painel)
   let tokEntrada = 0, tokSaida = 0, buscasCobradas = 0;
-  // pause_turn: a API pode pausar um turno longo (pesquisas); reenviamos para continuar, no máximo 3 vezes.
-  for (let volta = 0; volta < 3; volta++) {
+  // Ciclo: o Claude pode pedir dados do painel (tool_use) ou pausar um turno longo de pesquisa (pause_turn).
+  for (let volta = 0; volta < 8; volta++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": CHAVE_IA, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: modelo, max_tokens: MAX_SAIDA, system: sistema(c), messages: conversa, ...(tools ? { tools } : {}) }),
+      body: JSON.stringify({ model: modelo, max_tokens: MAX_SAIDA, system: sistema(c), messages: conversa, tools }),
       signal: AbortSignal.timeout(120_000),
     });
     const corpo = await r.json().catch(() => null);
@@ -152,15 +170,31 @@ async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar:
       if (/credit|billing|balance/i.test(msg)) erro(503, "Os créditos da IA deste mês acabaram. Eles renovam no próximo ciclo do plano.");
       erro(502, "A IA não conseguiu responder agora. Tente de novo.");
     }
-    blocos.push(...(corpo.content ?? []));
+    const conteudo = corpo.content ?? [];
+    todos.push(...conteudo);
     tokEntrada += Number(corpo.usage?.input_tokens ?? 0) + Number(corpo.usage?.cache_creation_input_tokens ?? 0) + Number(corpo.usage?.cache_read_input_tokens ?? 0);
     tokSaida += Number(corpo.usage?.output_tokens ?? 0);
     buscasCobradas += Number(corpo.usage?.server_tool_use?.web_search_requests ?? 0);
-    if (corpo.stop_reason !== "pause_turn") break;
-    conversa = [...mensagens, { role: "assistant", content: blocos }];
+
+    if (corpo.stop_reason === "tool_use") {
+      // O texto de antes da consulta ("vou verificar…") não entra na resposta final.
+      finais = [];
+      conversa.push({ role: "assistant", content: conteudo });
+      const resultados = [];
+      for (const b of conteudo.filter((x: any) => x?.type === "tool_use")) {
+        const res = await executarFerramenta(sb, c, b.name, b.input, hoje);
+        resultados.push({ type: "tool_result", tool_use_id: b.id, content: res.texto, ...(res.erro ? { is_error: true } : {}) });
+      }
+      conversa.push({ role: "user", content: resultados });
+      continue;
+    }
+    finais.push(...conteudo);
+    if (corpo.stop_reason === "pause_turn") { conversa.push({ role: "assistant", content: conteudo }); continue; }
+    break;
   }
-  const ex = extrair(blocos);
-  return { ...ex, buscas: Math.max(ex.buscas, buscasCobradas), tokEntrada, tokSaida };
+  const fontes = extrair(todos).fontes;
+  const ex = extrair(finais);
+  return { texto: ex.texto, fontes, buscas: Math.max(extrair(todos).buscas, buscasCobradas), tokEntrada, tokSaida };
 }
 
 async function enviar(c: Ctx, b: any) {
