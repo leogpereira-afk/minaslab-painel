@@ -129,7 +129,20 @@ export default function ClientesFinanceiro() {
       minaslab: 0,
       mlab: 0,
     });
-  const filtrosColuna = useFiltrosColunaTabela(itens, {
+  // Filtro das colunas: procura em TODOS os clientes (não só nos 25 da página), respeitando a busca e o status.
+  const [todos, setTodos] = useState(null),
+    [paginaLocal, setPaginaLocal] = useState(1);
+  const baseTodos = useMemo(() => {
+    if (!todos) return null;
+    const s = String(busca || "").trim().toLowerCase();
+    return todos.filter((x) => {
+      if (status === "ATIVO" && !x.ativo) return false;
+      if (status === "INATIVO" && x.ativo) return false;
+      return !s || [x.nome, x.nome_fantasia, x.cnpj_cpf].some((v) => String(v || "").toLowerCase().includes(s));
+    });
+  }, [todos, busca, status]);
+  const [usarTodos, setUsarTodos] = useState(false);
+  const filtrosColuna = useFiltrosColunaTabela(usarTodos && baseTodos ? baseTodos : itens, {
     cliente: (x) => [x.nome, x.nome_fantasia, x.id_omie].join(" "),
     documento: (x) => x.cnpj_cpf,
     origem: (x) => x.origem,
@@ -140,9 +153,23 @@ export default function ClientesFinanceiro() {
     status: (x) =>
       x.mesclado_para ? "MESCLADO" : x.ativo ? "ATIVO" : "INATIVO",
   });
+  useEffect(() => {
+    const ligar = filtrosColuna.quantidade > 0;
+    setUsarTodos(ligar);
+    setPaginaLocal(1);
+    if (ligar && !todos)
+      finClientesListar("").then(setTodos).catch((e) => setErro(e.message));
+  }, [filtrosColuna.quantidade, filtrosColuna.filtros]);
+  const modoTodos = usarTodos && !!baseTodos;
+  const totalLocal = filtrosColuna.filtrados.length;
+  const paginasLocal = Math.max(1, Math.ceil(totalLocal / limite));
+  const linhas = modoTodos
+    ? filtrosColuna.filtrados.slice((paginaLocal - 1) * limite, paginaLocal * limite)
+    : filtrosColuna.filtrados;
   async function carregarIndicadores() {
     try {
       const lista = await finClientesListar("");
+      setTodos(lista); // a mesma lista serve ao filtro das colunas; é recarregada a cada cadastro/edição
       const validos = lista.filter((x) => !x.mesclado_para);
       setIndicadores({
         total: validos.length,
@@ -496,20 +523,20 @@ export default function ClientesFinanceiro() {
               />
             </thead>
             <tbody>
-              {loading ? (
+              {loading || (usarTodos && !baseTodos) ? (
                 <tr>
                   <td colSpan="6" className="p-8 text-center text-slate-500">
                     Carregando...
                   </td>
                 </tr>
-              ) : filtrosColuna.filtrados.length === 0 ? (
+              ) : linhas.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="p-8 text-center text-slate-500">
                     Nenhum cliente encontrado.
                   </td>
                 </tr>
               ) : (
-                filtrosColuna.filtrados.map((x) => (
+                linhas.map((x) => (
                   <tr
                     key={x.id}
                     className={`border-t ${!x.ativo ? "opacity-60" : ""}`}
@@ -594,16 +621,29 @@ export default function ClientesFinanceiro() {
             </tbody>
           </table>
         </div>
-        <PaginacaoFinanceiro
-          total={meta.total}
-          pagina={pagina}
-          paginas={meta.paginas}
-          porPagina={limite}
-          itensNaPagina={filtrosColuna.filtrados.length}
-          onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
-          onPagina={carregar}
-          extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
-        />
+        {modoTodos ? (
+          <PaginacaoFinanceiro
+            total={totalLocal}
+            pagina={paginaLocal}
+            paginas={paginasLocal}
+            porPagina={limite}
+            itensNaPagina={linhas.length}
+            onPorPagina={(valor) => { setLimite(valor); setPaginaLocal(1); }}
+            onPagina={(p) => setPaginaLocal(Math.min(Math.max(1, p), paginasLocal))}
+            extra={<span className="ml-2 text-xs font-medium text-blue-700">filtro aplicado em todos os clientes</span>}
+          />
+        ) : (
+          <PaginacaoFinanceiro
+            total={meta.total}
+            pagina={pagina}
+            paginas={meta.paginas}
+            porPagina={limite}
+            itensNaPagina={filtrosColuna.filtrados.length}
+            onPorPagina={(valor) => { setLimite(valor); setPagina(1); }}
+            onPagina={carregar}
+            extra={<span className="ml-2"><ResumoFiltrosColuna quantidade={filtrosColuna.quantidade} exibidos={filtrosColuna.filtrados.length} /></span>}
+          />
+        )}
       </section>
       {modalCliente && (
         <Modal
