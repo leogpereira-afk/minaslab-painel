@@ -2,10 +2,8 @@
 // preenche o CNPJ/CPF. Fornecedor que não está no cadastro continua valendo: o que foi digitado é gravado como está.
 import { useEffect, useId, useMemo, useState } from "react";
 import { buscarClientes } from "../../lib/buscaClientes.js";
-import { finClientesListar } from "../../services/financeiro.js";
-
-let copia = null; // a lista de clientes é carregada uma vez por sessão da tela, não a cada "Nova despesa"
-const carregarClientes = () => (copia ||= finClientesListar("").catch((e) => { copia = null; throw e; }));
+// A lista é carregada uma vez e reaproveitada; cadastrar/editar cliente limpa a cópia (services/financeiro.js).
+import { finClientesTodosEmCache as carregarClientes } from "../../services/financeiro.js";
 
 export default function CampoFornecedor({ valor, aoDigitar, aoEscolher }) {
   const id = useId();

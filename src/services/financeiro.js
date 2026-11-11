@@ -61,11 +61,17 @@ export const finC6Importar=(empresaId,csvText)=>chamarC6("importar",{empresaId,c
 export const finBoletoAnalisar=arquivo=>chamarBoleto("analisar",arquivo);
 export const finBoletoVincular=(despesaId,path,dados)=>chamarBoleto("vincular",{despesaId,path,dados});
 export const finClientesListar=(busca="")=>chamarClientes("listar",{busca}).then(r=>r.itens||[]);
-export const finClienteSalvar=registro=>chamarClientes("salvar",{registro:padronizarCliente(registro)});
+// Lista completa guardada para os campos de escolha (Fornecedor, Emitir NFS-e). Qualquer cadastro/edição limpa a cópia,
+// senão o cliente recém-cadastrado só aparecia nessas telas depois de recarregar a página.
+let copiaClientes=null;
+export const finClientesTodosEmCache=()=>(copiaClientes||=finClientesListar("").catch(e=>{copiaClientes=null;throw e}));
+export const finClientesEsquecerCache=()=>{copiaClientes=null};
+const limpaCopia=r=>{copiaClientes=null;return r};
+export const finClienteSalvar=registro=>chamarClientes("salvar",{registro:padronizarCliente(registro)}).then(limpaCopia);
 export const finClienteCep=cep=>chamarClientes("cep",{cep});
-export const finClienteSetAtivo=(id,ativo)=>chamarClientes("setAtivo",{id,ativo});
-export const finClienteMesclar=(origemId,destinoId)=>chamarClientes("mesclar",{origemId,destinoId});
-export const finClienteDesmesclar=origemId=>chamarClientes("desmesclar",{origemId});
+export const finClienteSetAtivo=(id,ativo)=>chamarClientes("setAtivo",{id,ativo}).then(limpaCopia);
+export const finClienteMesclar=(origemId,destinoId)=>chamarClientes("mesclar",{origemId,destinoId}).then(limpaCopia);
+export const finClienteDesmesclar=origemId=>chamarClientes("desmesclar",{origemId}).then(limpaCopia);
 export const finNfseEstado=()=>chamarNfse("estado");
 export const finNfseVerificarCertificado=()=>chamarNfse("verificarCertificado");
 export const finNfseListar=()=>chamarNfse("listar").then(r=>r.itens||[]);
