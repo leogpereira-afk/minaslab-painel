@@ -12,10 +12,10 @@ import { blocosMarkdown, trechosInline } from "../lib/markdownSimples.js";
 import { PageTitle, Card, Aviso, Segmented, CarregandoModulo } from "../components/ui.jsx";
 
 const SUGESTOES = [
+  "O que eu tenho para esta semana? Inclua compromissos, tarefas e agenda da equipe.",
+  "Quem está de férias ou fora da empresa este mês?",
   "Escreva um e-mail cordial cobrando um cliente com boleto vencido há 10 dias.",
   "Quais são os parâmetros de potabilidade da água segundo a portaria vigente do Ministério da Saúde?",
-  "Me ajude a organizar minha semana: tenho 3 coletas, 2 propostas e uma reunião.",
-  "Resuma em tópicos o que é a ISO/IEC 17025 e o que um laboratório precisa para ser acreditado.",
 ];
 
 function Inline({ texto }) {
@@ -194,7 +194,7 @@ export default function Assistente() {
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <PageTitle
         titulo="Assistente IA"
-        descricao="O Claude dentro do painel: escreve, tira dúvidas, pesquisa na internet e ajuda a organizar. Só você vê as suas conversas."
+        descricao="O Claude dentro do painel: consulta sua agenda e tarefas, escreve, tira dúvidas, pesquisa na internet e ajuda a organizar. Só você vê as suas conversas."
         acao={<button type="button" className="btn-outline lg:hidden" onClick={() => setVerLista(true)}><History size={16} /> Conversas</button>}
       />
 
