@@ -38,7 +38,7 @@ const textosDe = (r: Resposta): Record<string, string> => ({ ...Object.fromEntri
 const comentario = (r: Resposta) => Object.values(textosDe(r)).find(Boolean) || r.explicacao_nps || ''
 const sugestao = (r: Resposta) => Object.entries(textosDe(r)).filter(([k, v]) => k !== 'gostou' && v).map(([, v]) => v).join(' · ')
 const rotTexto = (k: string) => textoQs().find(q => q.chave === k)?.texto || ({ gostou: 'O que mais gostou', mudaria: 'O que mudaria', melhorar: 'O que podemos melhorar' } as Record<string, string>)[k] || k
-const MELHORIA = ['AVALIAR', 'EM ANDAMENTO', 'IMPLEMENTADA', 'DESCARTADA', 'SEM SUGESTAO']
+const MELHORIA = ['AVALIAR', 'EM ANDAMENTO', 'VERIFICAR EFICACIA', 'IMPLEMENTADA', 'DESCARTADA', 'SEM SUGESTAO']
 const PAGE = 1000
 async function fetchAll<T>(q: (from: number, to: number) => PromiseLike<QueryResult<T>>) { const rows: T[] = []; for (let from = 0; ; from += PAGE) { const r = await q(from, from + PAGE - 1); if (r.error) return { data: rows, error: r.error }; const b = (r.data ?? []) as T[]; rows.push(...b); if (b.length < PAGE) return { data: rows, error: null } } }
 const fmtData = (v: string | null) => v ? new Date(v.length === 10 ? `${v}T12:00:00` : v).toLocaleDateString('pt-BR') : '—'
@@ -196,7 +196,7 @@ export function PosVendaSatisfacao() {
           <td className="px-4 py-3"><Nps n={r.nps} />{r.insatisfeito && <span className="mt-1 block text-xs font-semibold text-red-700">insatisfação</span>}</td>
           <td className="px-4 py-3">{nota(r, 'satisfacao_geral') ?? '—'}</td>
           <td className="max-w-md px-4 py-3 text-slate-600">{sugestao(r) || '—'}</td>
-          <td className="px-4 py-3"><select disabled={!canWrite} value={r.melhoria_status} onChange={e => void salvarMelhoria(r, e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs">{MELHORIA.map(m => <option key={m} value={m}>{m === 'SEM SUGESTAO' ? 'Sem sugestão' : m.charAt(0) + m.slice(1).toLowerCase()}</option>)}</select></td>
+          <td className="px-4 py-3"><select disabled={!canWrite} value={r.melhoria_status} onChange={e => void salvarMelhoria(r, e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs">{MELHORIA.map(m => <option key={m} value={m}>{m === 'SEM SUGESTAO' ? 'Sem sugestão' : m === 'VERIFICAR EFICACIA' ? 'Verificar eficácia' : m.charAt(0) + m.slice(1).toLowerCase()}</option>)}</select></td>
         </tr>)}</tbody></table>{rPer.length === 0 && <div className="p-10 text-center text-slate-500">Nenhuma resposta no período.</div>}</div></section>}
 
       {tab === 'tratativas' && <section className="overflow-hidden rounded-3xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-sm">

@@ -19,7 +19,7 @@ const nota = (r, k) => { const v = r.notas?.[k] ?? (k === "coleta" ? r.nota_cole
 const textosDe = (r) => ({ ...Object.fromEntries([["gostou", r.gostou], ["mudaria", r.mudaria], ["melhorar", r.melhorar]].filter(([, v]) => v)), ...(r.textos || {}) });
 const comentario = (r) => Object.values(textosDe(r)).find(Boolean) || r.explicacao_nps || "";
 const sugestao = (r) => Object.entries(textosDe(r)).filter(([k, v]) => k !== "gostou" && v).map(([, v]) => v).join(" · ");
-const MELHORIA = [["AVALIAR", "Avaliar"], ["EM ANDAMENTO", "Em andamento"], ["IMPLEMENTADA", "Implementada"], ["DESCARTADA", "Descartada"], ["SEM SUGESTAO", "Sem sugestão"]];
+const MELHORIA = [["AVALIAR", "Avaliar"], ["EM ANDAMENTO", "Em andamento"], ["VERIFICAR EFICACIA", "Verificar eficácia"], ["IMPLEMENTADA", "Implementada"], ["DESCARTADA", "Descartada"], ["SEM SUGESTAO", "Sem sugestão"]];
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const PERIODOS = [{ valor: "12m", rotulo: "Últimos 12 meses" }, { valor: "ano", rotulo: "Este ano" }, { valor: "mes", rotulo: "Este mês" }, { valor: "tudo", rotulo: "Tudo" }];
 const ABAS = [{ valor: "geral", rotulo: "Visão geral" }, { valor: "respostas", rotulo: "Respostas" }, { valor: "tratativas", rotulo: "Tratativas" }, { valor: "envios", rotulo: "Envios" }, { valor: "perguntas", rotulo: "Perguntas" }];
@@ -88,20 +88,20 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
     const rs = d.respostas.filter((r) => { const x = new Date(r.respondido_em); return x.getFullYear() === m.getFullYear() && x.getMonth() === m.getMonth(); });
     return { k: `${m.getFullYear()}-${m.getMonth()}`, rot: MESES[m.getMonth()], nps: npsDe(rs), n: rs.length, atual: i === 5 };
   });
-  const sugestoesAbertas = rPer.filter((r) => r.melhoria_status === "AVALIAR" || r.melhoria_status === "EM ANDAMENTO").length;
+  const sugestoesAbertas = rPer.filter((r) => ["AVALIAR", "EM ANDAMENTO", "VERIFICAR EFICACIA"].includes(r.melhoria_status)).length;
   const rLista = soSugestoes ? rPer.filter((r) => r.melhoria_status !== "SEM SUGESTAO") : rPer;
   const rotPeriodo = PERIODOS.find((p) => p.valor === periodo)?.rotulo.toLowerCase();
 
   // Trocar o status abre a confirmação (com as informações da melhoria); confirmado, vai para Tratativas.
-  function mudarMelhoria(r, status) { if (status !== r.melhoria_status) setMudanca({ r, para: status }); }
-  async function confirmarMelhoria(extras) {
-    const { r, para } = mudanca;
+  function mudarMelhoria(r, status) { if (status !== r.melhoria_status) setMudanca({ r, para: status, trat: d.tratativas.find((t) => t.resposta_id === r.id && t.tipo === "MELHORIA") }); }
+  async function confirmarMelhoria(para, extras) {
+    const { r } = mudanca;
     const res = await salvarMelhoria(r.id, para, extras);
     setMudanca(null);
     await carregar();
     const rot = MELHORIA.find((m) => m[0] === para)?.[1] || para;
     if (res?.tratativaId && para !== "SEM SUGESTAO") {
-      setDestaque(res.tratativaId); setAba("tratativas");
+      setDestaque(res.tratativaId); if (aba !== "tratativas") setAba("tratativas");
       setAviso({ tipo: "ok", texto: `Melhoria de ${nome(r)} marcada como “${rot}” e registrada em Tratativas.` });
     } else setAviso({ tipo: "ok", texto: `Melhoria de ${nome(r)} marcada como “${rot}”.` });
   }
@@ -250,8 +250,8 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
                 <td className="px-4 py-3 font-medium">{r ? nome(r) : "—"}</td>
                 <td className="max-w-md px-4 py-3 text-slate-600">{t.motivo}</td>
                 <td className="px-4 py-3">{pessoa(t.responsavel_id, t.responsavel_painel)}</td>
-                <td className="px-4 py-3"><StatusTrat s={t.status} /></td>
-                <td className="px-4 py-3 text-right"><button type="button" onClick={() => setTrat(t)} className="btn-outline px-3 py-1.5 text-xs">{t.status === "CONCLUIDA" || !dados.podeEscrever ? "Ver" : "Tratar"}</button></td>
+                <td className="px-4 py-3">{ehMelhoria(t) && r ? <EtiquetaMelhoria s={r.melhoria_status} /> : <StatusTrat s={t.status} />}</td>
+                <td className="px-4 py-3 text-right"><button type="button" onClick={() => (ehMelhoria(t) && r ? setMudanca({ r, para: r.melhoria_status, trat: t }) : setTrat(t))} className="btn-outline px-3 py-1.5 text-xs">{t.status === "CONCLUIDA" || !dados.podeEscrever ? "Ver" : "Tratar"}</button></td>
               </tr>
             );
           })}</tbody>
@@ -284,8 +284,8 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
 
       <EnviarPesquisa aberto={enviar} clientes={d.clientes} aoFechar={() => setEnviar(false)} aoEnviar={carregar} />
       <Modal titulo={ver ? `Resposta — ${nome(ver)}` : ""} aberto={!!ver} aoFechar={() => setVer(null)} largura="max-w-2xl">{ver && <Detalhe r={ver} vinculo={vinculo(ver)} escalaQs={escalaQs} textoQs={textoQs} />}</Modal>
-      <ConfirmarMelhoria m={mudanca} nome={mudanca && nome(mudanca.r)} vinculo={mudanca && vinculo(mudanca.r)} responsaveis={d.responsaveis || []} eu={d.eu} aoFechar={() => setMudanca(null)} aoConfirmar={confirmarMelhoria} />
-      <Tratativa t={trat} resposta={trat && d.respostas.find((x) => x.id === trat.resposta_id)} vinculo={vinculo} escalaQs={escalaQs} textoQs={textoQs} podeEscrever={dados.podeEscrever} aoFechar={() => setTrat(null)} aoSalvar={async () => { setTrat(null); await carregar(); setAviso({ tipo: "ok", texto: "Tratativa salva." }); }} />
+      <ConfirmarMelhoria m={mudanca} nome={mudanca && nome(mudanca.r)} vinculo={mudanca && vinculo(mudanca.r)} responsaveis={d.responsaveis || []} eu={d.eu} contas={d.contas || {}} podeEscrever={dados.podeEscrever} aoFechar={() => setMudanca(null)} aoConfirmar={confirmarMelhoria} />
+      <Tratativa contas={d.contas || {}} t={trat} resposta={trat && d.respostas.find((x) => x.id === trat.resposta_id)} vinculo={vinculo} escalaQs={escalaQs} textoQs={textoQs} podeEscrever={dados.podeEscrever} aoFechar={() => setTrat(null)} aoSalvar={async () => { setTrat(null); await carregar(); setAviso({ tipo: "ok", texto: "Tratativa salva." }); }} />
     </div>
   );
 }
@@ -312,7 +312,7 @@ function Detalhe({ r, vinculo, escalaQs, textoQs }) {
   );
 }
 
-function Tratativa({ t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFechar, aoSalvar }) {
+function Tratativa({ contas, t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFechar, aoSalvar }) {
   const [f, setF] = useState({ status: "ABERTA", causa: "", acao_tomada: "", retorno_cliente: "" });
   const [erro, setErro] = useState(""); const [salvando, setSalvando] = useState(false);
   useEffect(() => { if (t) { setF({ status: t.status, causa: t.causa || "", acao_tomada: t.acao || "", retorno_cliente: t.retorno_cliente || "" }); setErro(""); } }, [t]);
@@ -334,6 +334,7 @@ function Tratativa({ t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFe
         {!melhoria && <label><span className="label">Análise da causa</span><textarea disabled={ro} value={f.causa} onChange={(e) => setF({ ...f, causa: e.target.value })} rows={3} className="input" /></label>}
         <label><span className="label">{melhoria ? "Ação da melhoria" : "Ação tomada"}</span><textarea disabled={ro} value={f.acao_tomada} onChange={(e) => setF({ ...f, acao_tomada: e.target.value })} rows={3} className="input" /></label>
         <label><span className="label">Retorno ao cliente</span><textarea disabled={ro} value={f.retorno_cliente} onChange={(e) => setF({ ...f, retorno_cliente: e.target.value })} rows={2} placeholder="Quando e como o cliente foi informado" className="input" /></label>
+        <Historico itens={t.historico} contas={contas} />
         {erro && <p className="rounded-xl bg-bad-50 p-3 text-bad-700">{erro}</p>}
         {!ro && <button disabled={salvando} className="btn-primary inline-flex items-center justify-center gap-2"><ClipboardCheck className="h-4 w-4" aria-hidden />{salvando ? "Salvando..." : "Salvar tratativa"}</button>}
       </form>}
@@ -341,54 +342,117 @@ function Tratativa({ t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFe
   );
 }
 
-// Confirmação ao trocar o status da melhoria: mostra a sugestão do cliente, pede as informações
-// do que muda e, ao confirmar, a melhoria vai para Tratativas (Ana, 12/11/2026).
+// Melhoria (Ana, 12/11/2026): trocar a etapa pede confirmação com as informações; a melhoria é
+// acompanhada em Tratativas. Antes de "Implementada" vem "Verificar eficácia", e encerrar como
+// implementada exige a evidência de que a melhoria funcionou. Cada mudança entra no histórico.
 const CAMPO_ACAO = {
   "EM ANDAMENTO": ["O que será feito", "Ex.: incluir o prazo previsto no orçamento enviado ao cliente", true],
+  "VERIFICAR EFICACIA": ["O que foi feito", "Descreva a melhoria colocada em prática", true],
   IMPLEMENTADA: ["O que foi feito", "Descreva a melhoria implementada", true],
   DESCARTADA: ["Por que foi descartada", "Motivo para não implementar a sugestão", true],
   AVALIAR: ["Observação", "Opcional", false],
 };
-function ConfirmarMelhoria({ m, nome, vinculo, responsaveis, eu, aoFechar, aoConfirmar }) {
-  const daquiA30 = () => { const x = new Date(); x.setDate(x.getDate() + 30); return x.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); };
-  const [f, setF] = useState({ acao: "", responsavel: "", prazo: "", retorno_cliente: "" });
+const corMelhoria = (s) => s === "IMPLEMENTADA" ? "bg-ok-50 text-ok-700" : s === "DESCARTADA" || s === "SEM SUGESTAO" ? "bg-slate-100 text-slate-600" : s === "EM ANDAMENTO" ? "bg-brand-50 text-brand-700" : s === "VERIFICAR EFICACIA" ? "bg-blue-50 text-blue-700" : "bg-warn-50 text-warn-700";
+const rotuloEtapa = (s) => MELHORIA.find((x) => x[0] === s)?.[1] || { ABERTA: "Aberta", CONCLUIDA: "Concluída" }[s] || s;
+const hojeSP = (dias = 0) => { const x = new Date(); x.setDate(x.getDate() + dias); return x.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); };
+
+function EtiquetaMelhoria({ s }) {
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${corMelhoria(s)}`}>{rotuloEtapa(s)}</span>;
+}
+
+function Historico({ itens, contas }) {
+  const lista = Array.isArray(itens) ? [...itens].reverse() : [];
+  return (
+    <div className="rounded-2xl border p-3">
+      <span className="label">Histórico</span>
+      {lista.length === 0 ? <p className="text-slate-500">Nenhuma mudança registrada ainda.</p> : (
+        <ol className="mt-1 grid gap-3 border-l-2 border-slate-200 pl-4">
+          {lista.map((h, i) => (
+            <li key={i} className="relative">
+              <span className="absolute -left-[1.3rem] top-1.5 h-2.5 w-2.5 rounded-full bg-brand-600" aria-hidden />
+              <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                <span>{new Date(h.em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}</span>
+                <span>· {contas[h.por] || h.por}</span>
+              </div>
+              <div className="mt-0.5 font-medium text-slate-800">{h.de && h.de !== h.para ? <>{rotuloEtapa(h.de)} → {rotuloEtapa(h.para)}</> : rotuloEtapa(h.para)}</div>
+              {h.texto && <p className="whitespace-pre-line text-slate-600">{h.texto}</p>}
+              {h.evidencia && <p className="mt-1 text-slate-600"><b className="text-ok-700">Eficácia verificada{h.data_verificacao ? ` em ${fmtData(h.data_verificacao)}` : ""}:</b> {h.evidencia}</p>}
+              {(h.responsavel || h.prazo) && <p className="text-xs text-slate-500">{h.responsavel ? `Responsável: ${contas[h.responsavel] || h.responsavel}` : ""}{h.responsavel && h.prazo ? " · " : ""}{h.prazo ? `Prazo: ${fmtData(h.prazo)}` : ""}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function ConfirmarMelhoria({ m, nome, vinculo, responsaveis, eu, contas, podeEscrever, aoFechar, aoConfirmar }) {
+  const [etapaEscolhida, setEtapa] = useState("");
+  const [f, setF] = useState({ acao: "", responsavel: "", prazo: "", retorno_cliente: "", evidencia: "", data: "" });
   const [erro, setErro] = useState(""); const [salvando, setSalvando] = useState(false);
-  useEffect(() => { if (m) { setF({ acao: "", responsavel: eu || "", prazo: daquiA30(), retorno_cliente: "" }); setErro(""); } }, [m, eu]);
+  useEffect(() => {
+    if (!m) return;
+    setEtapa(m.para);
+    setF({ acao: "", responsavel: m.trat?.responsavel_painel || eu || "", prazo: hojeSP(30), retorno_cliente: "", evidencia: "", data: hojeSP() });
+    setErro("");
+  }, [m, eu]);
   if (!m) return null;
-  const { r, para } = m;
-  const rot = (s) => MELHORIA.find((x) => x[0] === s)?.[1] || s;
-  const campo = CAMPO_ACAO[para];
-  const encerra = para === "IMPLEMENTADA" || para === "DESCARTADA";
-  const semSug = para === "SEM SUGESTAO";
+  const { r, trat } = m;
+  const etapa = etapaEscolhida || m.para; // no 1º desenho o efeito ainda não rodou
+  const atual = r.melhoria_status;
+  const mudou = etapa !== atual;
+  const campo = CAMPO_ACAO[etapa] || CAMPO_ACAO.AVALIAR;
+  const encerra = etapa === "IMPLEMENTADA" || etapa === "DESCARTADA";
+  const semSug = etapa === "SEM SUGESTAO";
+  const ro = !podeEscrever;
   async function confirmar(e) {
     e.preventDefault(); setErro("");
+    if (!mudou && !f.acao.trim()) { setErro("Escolha a nova etapa ou escreva uma atualização."); return; }
     if (campo?.[2] && !f.acao.trim()) { setErro(`Preencha “${campo[0]}”.`); return; }
+    if (etapa === "IMPLEMENTADA" && !f.evidencia.trim()) { setErro("Registre a evidência de que a melhoria foi eficaz."); return; }
     setSalvando(true);
-    try { await aoConfirmar(semSug ? {} : { acao: f.acao.trim(), responsavel: f.responsavel, prazo: encerra ? "" : f.prazo, retorno_cliente: f.retorno_cliente.trim() }); }
-    catch (er) { setErro(er.message); } finally { setSalvando(false); }
+    try {
+      await aoConfirmar(etapa, semSug ? {} : {
+        acao: f.acao.trim(), responsavel: f.responsavel, prazo: encerra ? "" : f.prazo, retorno_cliente: f.retorno_cliente.trim(),
+        ...(etapa === "IMPLEMENTADA" ? { eficacia_evidencia: f.evidencia.trim(), eficacia_data: f.data } : {}),
+      });
+    } catch (er) { setErro(er.message); } finally { setSalvando(false); }
   }
-  const cor = (s) => s === "IMPLEMENTADA" ? "bg-ok-50 text-ok-700" : s === "DESCARTADA" || s === "SEM SUGESTAO" ? "bg-slate-100 text-slate-600" : s === "EM ANDAMENTO" ? "bg-brand-50 text-brand-700" : "bg-warn-50 text-warn-700";
   return (
-    <Modal titulo="Confirmar status da melhoria" aberto={!!m} aoFechar={aoFechar} largura="max-w-xl">
+    <Modal titulo={trat ? "Melhoria" : "Confirmar etapa da melhoria"} aberto={!!m} aoFechar={aoFechar} largura="max-w-xl">
       <form onSubmit={confirmar} className="grid gap-4 text-sm">
         <div className="rounded-2xl border p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2"><b className="text-slate-900">{nome}</b><span className="text-xs text-slate-500">Respondida em {fmtData(r.respondido_em)} · {vinculo}</span></div>
           <p className="mt-2 text-slate-600"><span className="label">Sugestão do cliente</span>{sugestao(r) || "—"}</p>
+          {trat?.eficacia_evidencia && <p className="mt-2 text-slate-600"><span className="label">Eficácia verificada{trat.eficacia_data ? ` em ${fmtData(trat.eficacia_data)}` : ""}</span>{trat.eficacia_evidencia}</p>}
         </div>
-        <div className="flex items-center gap-2 text-sm"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cor(r.melhoria_status)}`}>{rot(r.melhoria_status)}</span><span aria-hidden>→</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cor(para)}`}>{rot(para)}</span></div>
-        {semSug ? <p className="rounded-xl bg-slate-50 p-3 text-slate-600">A resposta deixa de contar como sugestão de melhoria{r.melhoria_status !== "AVALIAR" ? " e a tratativa de melhoria aberta é encerrada" : ""}.</p> : <>
-          <label><span className="label">{campo[0]}{campo[2] ? " *" : ""}</span><textarea value={f.acao} onChange={(e) => setF({ ...f, acao: e.target.value })} rows={3} placeholder={campo[1]} className="input" autoFocus /></label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label><span className="label">Responsável</span><select value={f.responsavel} onChange={(e) => setF({ ...f, responsavel: e.target.value })} className="input">{responsaveis.map((p) => <option key={p.usuario} value={p.usuario}>{p.nome}</option>)}{!responsaveis.some((p) => p.usuario === f.responsavel) && f.responsavel && <option value={f.responsavel}>{f.responsavel}</option>}</select></label>
-            {!encerra && <label><span className="label">Prazo</span><input type="date" value={f.prazo} onChange={(e) => setF({ ...f, prazo: e.target.value })} className="input" /></label>}
+        {!ro && <>
+          <div className="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-center">
+            <span className="label sm:mb-0">Etapa</span>
+            <div className="flex flex-wrap items-center gap-2"><EtiquetaMelhoria s={atual} /><span aria-hidden>→</span>
+              <select value={etapa} onChange={(e) => setEtapa(e.target.value)} className="input w-auto py-1.5 text-xs">{MELHORIA.map(([v, rot]) => <option key={v} value={v}>{rot}{v === atual ? " (atual)" : ""}</option>)}</select>
+            </div>
           </div>
-          {encerra && <label><span className="label">Retorno ao cliente <span className="font-normal text-slate-400">(opcional)</span></span><textarea value={f.retorno_cliente} onChange={(e) => setF({ ...f, retorno_cliente: e.target.value })} rows={2} placeholder="Se o cliente foi avisado, quando e como" className="input" /></label>}
-          <p className="flex items-start gap-2 rounded-xl bg-brand-50 p-3 text-brand-700"><ListChecks className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{encerra ? "A melhoria fica registrada em Tratativas como concluída." : "A melhoria vai para Tratativas, com responsável e prazo, para acompanhar até concluir."}</p>
+          {semSug ? <p className="rounded-xl bg-slate-50 p-3 text-slate-600">A resposta deixa de contar como sugestão de melhoria{trat && trat.status !== "CONCLUIDA" ? " e a tratativa de melhoria aberta é encerrada" : ""}.</p> : <>
+            <label><span className="label">{mudou ? campo[0] : "Atualização"}{mudou && campo[2] ? " *" : ""}</span><textarea value={f.acao} onChange={(e) => setF({ ...f, acao: e.target.value })} rows={3} placeholder={mudou ? campo[1] : "O que andou desde a última anotação"} className="input" autoFocus /></label>
+            {etapa === "IMPLEMENTADA" && <div className="grid gap-3 rounded-2xl border border-ok-200 bg-ok-50/40 p-3">
+              <label><span className="label">Evidência da eficácia *</span><textarea value={f.evidencia} onChange={(e) => setF({ ...f, evidencia: e.target.value })} rows={2} placeholder="Ex.: orçamentos de novembro já saem com o prazo; nenhuma reclamação nova sobre prazo" className="input" /></label>
+              <label className="sm:w-1/2"><span className="label">Data da verificação</span><input type="date" value={f.data} onChange={(e) => setF({ ...f, data: e.target.value })} className="input" /></label>
+              <p className="text-xs text-slate-500">Se a melhoria não resolveu, volte a etapa para “Em andamento” e descreva o novo ajuste.</p>
+            </div>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label><span className="label">Responsável</span><select value={f.responsavel} onChange={(e) => setF({ ...f, responsavel: e.target.value })} className="input">{responsaveis.map((p) => <option key={p.usuario} value={p.usuario}>{p.nome}</option>)}{!responsaveis.some((p) => p.usuario === f.responsavel) && f.responsavel && <option value={f.responsavel}>{f.responsavel}</option>}</select></label>
+              {!encerra && <label><span className="label">{etapa === "VERIFICAR EFICACIA" ? "Verificar a eficácia até" : "Prazo"}</span><input type="date" value={f.prazo} onChange={(e) => setF({ ...f, prazo: e.target.value })} className="input" /></label>}
+            </div>
+            {encerra && <label><span className="label">Retorno ao cliente <span className="font-normal text-slate-400">(opcional)</span></span><textarea value={f.retorno_cliente} onChange={(e) => setF({ ...f, retorno_cliente: e.target.value })} rows={2} placeholder="Se o cliente foi avisado, quando e como" className="input" /></label>}
+            {!trat && <p className="flex items-start gap-2 rounded-xl bg-brand-50 p-3 text-brand-700"><ListChecks className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{encerra ? "A melhoria fica registrada em Tratativas como concluída." : "A melhoria vai para Tratativas, com responsável e prazo, para acompanhar até concluir."}</p>}
+          </>}
         </>}
+        {trat && <Historico itens={trat.historico} contas={contas} />}
         {erro && <p className="rounded-xl bg-bad-50 p-3 text-bad-700">{erro}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={aoFechar} className="btn-outline">Cancelar</button>
-          <button disabled={salvando} className="btn-primary inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4" aria-hidden />{salvando ? "Salvando..." : semSug ? "Confirmar" : "Confirmar e ir para Tratativas"}</button>
+          <button type="button" onClick={aoFechar} className="btn-outline">{ro ? "Fechar" : "Cancelar"}</button>
+          {!ro && <button disabled={salvando} className="btn-primary inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4" aria-hidden />{salvando ? "Salvando..." : semSug || trat ? "Salvar" : "Confirmar e ir para Tratativas"}</button>}
         </div>
       </form>
     </Modal>

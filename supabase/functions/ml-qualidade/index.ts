@@ -20,7 +20,10 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const txt = (v: unknown) => String(v ?? "").trim();
 const uuid = (v: unknown) => /^[0-9a-f-]{36}$/i.test(txt(v)) ? txt(v) : null;
-const MELHORIA = ["AVALIAR", "EM ANDAMENTO", "IMPLEMENTADA", "DESCARTADA", "SEM SUGESTAO"];
+const MELHORIA = ["AVALIAR", "EM ANDAMENTO", "VERIFICAR EFICACIA", "IMPLEMENTADA", "DESCARTADA", "SEM SUGESTAO"];
+// Histórico da tratativa (Ana, 12/11/2026): cada mudança fica registrada — quem, quando, de/para e o texto.
+const passo = (por: string, de: string | null, para: string, texto: string, extra: Record<string, unknown> = {}) => ({ em: new Date().toISOString(), por, de, para, texto: texto || null, ...extra });
+const comPasso = (hist: unknown, p: Record<string, unknown>) => [...(Array.isArray(hist) ? hist : []), p].slice(-200);
 const STATUS_TRAT = ["ABERTA", "EM ANDAMENTO", "CONCLUIDA"];
 const CANAIS = ["LINK", "WHATSAPP", "EMAIL"];
 const TIPOS = ["ESCALA", "TEXTO", "SERVICO"];
@@ -251,38 +254,47 @@ Deno.serve(async (req) => {
       const acaoTxt = txt(body.acao_melhoria).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
       const prazo = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.prazo)) ? txt(body.prazo) : null;
       const responsavel = txt(body.responsavel).slice(0, 80) || usuario;
-      if ((status === "EM ANDAMENTO" || status === "IMPLEMENTADA") && !acaoTxt) return json({ erro: "Descreva a ação da melhoria." }, 400);
+      const evidencia = txt(body.eficacia_evidencia).slice(0, 4000);
+      const dataVerif = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.eficacia_data)) ? txt(body.eficacia_data) : new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      if ((status === "EM ANDAMENTO" || status === "VERIFICAR EFICACIA" || status === "IMPLEMENTADA") && !acaoTxt) return json({ erro: "Descreva a ação da melhoria." }, 400);
+      if (status === "IMPLEMENTADA" && !evidencia) return json({ erro: "Para marcar como implementada, registre a evidência da eficácia." }, 400);
       if (status === "DESCARTADA" && !acaoTxt) return json({ erro: "Explique por que a melhoria foi descartada." }, 400);
-      const { data: resp } = await sb.from("satisfacao_respostas").select("id,cliente_id,gostou,mudaria,melhorar,textos").eq("id", id).is("deleted_at", null).maybeSingle();
+      const { data: resp } = await sb.from("satisfacao_respostas").select("id,cliente_id,gostou,mudaria,melhorar,textos,melhoria_status").eq("id", id).is("deleted_at", null).maybeSingle();
       if (!resp) return json({ erro: "Resposta não encontrada." }, 404);
       const { error } = await sb.from("satisfacao_respostas").update({ melhoria_status: status }).eq("id", id);
       if (error) throw error;
 
-      const { data: atual } = await sb.from("satisfacao_tratativas").select("id,status").eq("resposta_id", id).eq("tipo", "MELHORIA").maybeSingle();
+      const { data: atual } = await sb.from("satisfacao_tratativas").select("id,status,historico").eq("resposta_id", id).eq("tipo", "MELHORIA").maybeSingle();
+      const p = passo(usuario, resp.melhoria_status ?? null, status, acaoTxt, {
+        ...(status === "IMPLEMENTADA" ? { evidencia, data_verificacao: dataVerif } : {}),
+        ...(responsavel ? { responsavel } : {}), ...(prazo ? { prazo } : {}),
+      });
       if (status === "SEM SUGESTAO") {
         // Sem sugestão: não há o que tratar; uma tratativa de melhoria ainda aberta é encerrada.
-        if (atual && atual.status !== "CONCLUIDA") await sb.from("satisfacao_tratativas").update({ status: "CONCLUIDA", acao: "Marcada como sem sugestão de melhoria.", concluida_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", atual.id);
+        if (atual && atual.status !== "CONCLUIDA") await sb.from("satisfacao_tratativas").update({ status: "CONCLUIDA", acao: "Marcada como sem sugestão de melhoria.", concluida_em: new Date().toISOString(), updated_at: new Date().toISOString(), historico: comPasso(atual.historico, p) }).eq("id", atual.id);
         return json({ ok: true, tratativaId: atual?.id ?? null });
       }
       const textos = { ...(resp.textos || {}), mudaria: resp.mudaria, melhorar: resp.melhorar } as Record<string, unknown>;
       const sug = Object.entries(textos).filter(([k, v]) => k !== "gostou" && txt(v)).map(([, v]) => txt(v)).join(" · ");
       const agora = new Date().toISOString();
       const concl = status === "IMPLEMENTADA" || status === "DESCARTADA";
-      const statusTrat = concl ? "CONCLUIDA" : status === "EM ANDAMENTO" ? "EM ANDAMENTO" : "ABERTA";
+      const statusTrat = concl ? "CONCLUIDA" : status === "EM ANDAMENTO" || status === "VERIFICAR EFICACIA" ? "EM ANDAMENTO" : "ABERTA";
       const padraoPrazo = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
       const dadosTrat = {
         status: statusTrat, acao: acaoTxt || null, retorno_cliente: retorno || null,
         causa: status === "DESCARTADA" ? "Melhoria descartada" : status === "IMPLEMENTADA" ? "Melhoria implementada" : null,
         responsavel_painel: responsavel, prazo: prazo ?? padraoPrazo,
         concluida_em: concl ? agora : null, updated_at: agora,
+        ...(status === "IMPLEMENTADA" ? { eficacia_evidencia: evidencia, eficacia_data: dataVerif } : {}),
       };
       if (atual) {
-        const { error: e2 } = await sb.from("satisfacao_tratativas").update(dadosTrat).eq("id", atual.id);
+        if (atual.status === "CONCLUIDA" && !concl) Object.assign(dadosTrat, { concluida_em: null }); // reaberta (ex.: não foi eficaz)
+        const { error: e2 } = await sb.from("satisfacao_tratativas").update({ ...dadosTrat, historico: comPasso(atual.historico, p) }).eq("id", atual.id);
         if (e2) throw e2;
         return json({ ok: true, tratativaId: atual.id });
       }
       const { data: nova, error: e3 } = await sb.from("satisfacao_tratativas").insert({
-        ...dadosTrat, tipo: "MELHORIA", resposta_id: id, cliente_id: resp.cliente_id ?? null,
+        ...dadosTrat, historico: [p], tipo: "MELHORIA", resposta_id: id, cliente_id: resp.cliente_id ?? null,
         motivo: `Sugestão de melhoria: ${sug || "(sem texto)"}`.slice(0, 1000),
       }).select("id").single();
       if (e3) throw e3;
@@ -294,7 +306,7 @@ Deno.serve(async (req) => {
       const id = uuid(body.id), status = txt(body.status);
       if (!id || !STATUS_TRAT.includes(status)) return json({ erro: "Dados inválidos." }, 400);
       const causa = txt(body.causa).slice(0, 4000), acaoTomada = txt(body.acao_tomada).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
-      const { data: atual } = await sb.from("satisfacao_tratativas").select("status,concluida_em,tarefa_id,tarefa_painel_id,tipo,resposta_id").eq("id", id).maybeSingle();
+      const { data: atual } = await sb.from("satisfacao_tratativas").select("status,concluida_em,tarefa_id,tarefa_painel_id,tipo,resposta_id,historico").eq("id", id).maybeSingle();
       if (!atual) return json({ erro: "Tratativa não encontrada." }, 404);
       if (atual.status === "CONCLUIDA") return json({ erro: "Esta tratativa já foi concluída." }, 409);
       const ehMelhoria = atual.tipo === "MELHORIA";
@@ -305,6 +317,7 @@ Deno.serve(async (req) => {
       const { error } = await sb.from("satisfacao_tratativas").update({
         status, causa: causa || null, acao: acaoTomada || null, retorno_cliente: retorno || null,
         concluida_em: concl ? agora : null, concluida_por: concl ? (vinc?.crm_user_id ?? null) : null, updated_at: agora,
+        historico: comPasso(atual.historico, passo(usuario, atual.status, status, [causa && `Causa: ${causa}`, acaoTomada && `Ação: ${acaoTomada}`, retorno && `Retorno: ${retorno}`].filter(Boolean).join("\n"))),
       }).eq("id", id);
       if (error) throw error;
       // Melhoria: o status na aba Respostas acompanha a tratativa.
