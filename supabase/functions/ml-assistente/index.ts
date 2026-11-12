@@ -3,7 +3,9 @@
 // Etapa 1 (10/11/2026): conversa livre — escrever, tirar dúvidas, se organizar — com pesquisa na internet
 // (ferramenta web_search da API, com as fontes).
 // Etapa 2 (11/11/2026): LÊ dados do painel por ferramentas (ferramentas.ts) — compromissos, agenda da equipe,
-// tarefas, licitações e manutenções — sempre com a mesma régua de visão das telas. Ainda NÃO grava nada.
+// tarefas, licitações e manutenções — sempre com a mesma régua de visão das telas.
+// Etapa 3 (12/11/2026): PROPÕE compromissos e tarefas (lancamentos.ts). Só grava quando a pessoa clica em
+// Confirmar, e quem grava é a função da tela (ml-sync / ml-tarefas) com o crachá dela.
 //
 // Segurança e custo:
 // - A chave fica só no servidor (segredo ANTHROPIC_API_KEY). Sem ela, a função responde que a IA não está ligada.
@@ -11,10 +13,11 @@
 // - Limite por pessoa por dia (perguntas e buscas) e teto de gasto estimado do mês para a casa toda.
 //   Os créditos da API são do Plano Max da Ana (US$ 100/mês); o teto fica abaixo disso.
 //
-// Ações: estado, conversas, abrir, enviar, renomear, apagar.
+// Ações: estado, conversas, abrir, enviar, renomear, apagar, confirmar, descartar.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { FERRAMENTAS, executarFerramenta, type CtxDados } from "./ferramentas.ts";
+import { FERRAMENTAS_LANCAMENTO, executarLancamento, decidirProposta, formatarProposta, Recusa } from "./lancamentos.ts";
 
 const U = Deno.env.get("SUPABASE_URL")!;
 const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
@@ -58,7 +61,7 @@ async function crachaDoPainel(req: Request) {
   } catch { return null; }
 }
 
-type Ctx = CtxDados;
+type Ctx = CtxDados & { papel: string };
 async function carregarCtx(cracha: any): Promise<Ctx> {
   // Papel e páginas lidos AGORA na conta (não no crachá): acesso retirado vale na hora, como no ml-sync.
   const { data: contas, error } = await sb.from("ml_contas").select("usuario,nome,papel,ativo,paginas_consulta");
@@ -71,7 +74,7 @@ async function carregarCtx(cracha: any): Promise<Ctx> {
   }
   if (!mim?.ativo) erro(401, "Sua conta do painel está inativa. Entre de novo.");
   return {
-    eu: mim.usuario, nome: txt(mim.nome) || mim.usuario, direcao: mim.papel === "direcao",
+    eu: mim.usuario, nome: txt(mim.nome) || mim.usuario, papel: txt(mim.papel), direcao: mim.papel === "direcao",
     paginas: Array.isArray(mim.paginas_consulta) ? mim.paginas_consulta : [], nomes,
   };
 }
@@ -115,7 +118,8 @@ function sistema(c: Ctx) {
     `Quando a pergunta depender de informação atual, de preços, de leis e normas vigentes ou de fatos que você não tenha certeza, use a pesquisa na internet e cite as fontes. Não invente números, leis ou referências.`,
     `Você TEM ferramentas para LER dados do painel desta pessoa: compromissos, agenda da equipe (treinamentos, reuniões, férias e ausências), tarefas, licitações e manutenções. Use-as sempre que a pergunta for sobre a agenda, os prazos ou o trabalho dela — não chute. As ferramentas já trazem só o que esta pessoa pode ver; nunca diga que existe algo além disso.`,
     `Ao responder com dados do painel: datas no formato DD/MM, destaque o que está atrasado ou é para hoje, e diga em qual tela a pessoa encontra (Compromissos, Calendário, Tarefas, Licitações, Manutenções). Se a ferramenta avisar que a pessoa não tem acesso, diga isso com educação.`,
-    `Você ainda NÃO grava nada no painel (não cria nem altera compromissos ou tarefas) e não tem acesso a clientes, financeiro, RH ou estoque. Se pedirem isso, explique que ainda não está disponível e indique a tela certa.`,
+    `Você pode PROPOR novos compromissos (propor_compromisso) e novas tarefas (propor_tarefa) quando a pessoa pedir. Propor não grava: aparece um cartão com Confirmar e Descartar, e só grava se ela confirmar. Nunca diga que já lançou ou gravou. Datas relativas ("amanhã", "sexta") você converte usando a data de hoje. Se envolver outras pessoas, use ver_pessoas para acertar os nomes; se ficar ambíguo, pergunte.`,
+    `Você ainda NÃO altera, conclui nem apaga nada que já existe, e não tem acesso a clientes, financeiro, RH ou estoque. Se pedirem isso, explique que ainda não está disponível e indique a tela certa.`,
     `Você também ainda não gera imagens. Pode descrever ou sugerir ideias de imagem em texto.`,
     `Não peça nem aceite senhas, chaves ou dados bancários. Em temas jurídicos, contábeis ou de saúde, dê a informação e lembre que um profissional deve confirmar.`,
   ].join("\n");
@@ -141,8 +145,8 @@ function extrair(conteudo: any[]): { texto: string; fontes: Fonte[]; buscas: num
   return { texto: texto.trim(), fontes, buscas };
 }
 
-async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar: boolean, buscasRestantes: number) {
-  const tools: any[] = [...FERRAMENTAS];
+async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar: boolean, buscasRestantes: number, conversaId: string, propostas: string[]) {
+  const tools: any[] = [...FERRAMENTAS, ...FERRAMENTAS_LANCAMENTO];
   if (pesquisar && buscasRestantes > 0) {
     tools.push({ type: "web_search_20250305", name: "web_search", max_uses: Math.min(3, buscasRestantes), user_location: { type: "approximate", country: "BR", region: "Minas Gerais", timezone: "America/Sao_Paulo" } });
   }
@@ -182,7 +186,7 @@ async function chamarClaude(modelo: string, mensagens: any[], c: Ctx, pesquisar:
       conversa.push({ role: "assistant", content: conteudo });
       const resultados = [];
       for (const b of conteudo.filter((x: any) => x?.type === "tool_use")) {
-        const res = await executarFerramenta(sb, c, b.name, b.input, hoje);
+        const res = (await executarLancamento(sb, c, b.name, b.input, conversaId, propostas)) ?? await executarFerramenta(sb, c, b.name, b.input, hoje);
         resultados.push({ type: "tool_result", tool_use_id: b.id, content: res.texto, ...(res.erro ? { is_error: true } : {}) });
       }
       conversa.push({ role: "user", content: resultados });
@@ -233,9 +237,11 @@ async function enviar(c: Ctx, b: any) {
   if (e2) throw e2;
 
   let r;
+  const propostas: string[] = [];
   try {
-    r = await chamarClaude(modelo.id, mensagens, c, pesquisar, LIMITE_DIA.buscas - uso.buscas);
+    r = await chamarClaude(modelo.id, mensagens, c, pesquisar, LIMITE_DIA.buscas - uso.buscas, conversa.id, propostas);
   } catch (e) {
+    if (propostas.length) await sb.from("ml_assistente_propostas").delete().in("id", propostas);
     // Sem resposta, a pergunta não fica órfã no histórico (a alternância de papéis quebraria a próxima chamada);
     // conversa nova que não chegou a ter resposta também sai.
     await sb.from("ml_assistente_mensagens").delete().eq("id", pergunta.id);
@@ -248,10 +254,15 @@ async function enviar(c: Ctx, b: any) {
   const { data: msg, error: e3 } = await sb.from("ml_assistente_mensagens")
     .insert({ conversa_id: conversa.id, papel: "assistant", texto: resposta, fontes: r.fontes, modelo: modelo.id }).select("*").single();
   if (e3) throw e3;
+  let cartoes: any[] = [];
+  if (propostas.length) {
+    const { data: ps } = await sb.from("ml_assistente_propostas").update({ mensagem_id: msg.id }).in("id", propostas).select("*");
+    cartoes = (ps ?? []).sort((a: any, z: any) => String(a.criada_em).localeCompare(String(z.criada_em))).map((p: any) => formatarProposta(c, p));
+  }
   await sb.from("ml_assistente_conversas").update({ atualizada_em: new Date().toISOString() }).eq("id", conversa.id);
   await sb.rpc("ml_assistente_registrar_uso", { p_usuario: c.eu, p_perguntas: 1, p_buscas: r.buscas, p_tokens_entrada: r.tokEntrada, p_tokens_saida: r.tokSaida, p_custo: custo });
 
-  return { conversa: { id: conversa.id, titulo: conversa.titulo }, mensagem: formatarMsg(msg) };
+  return { conversa: { id: conversa.id, titulo: conversa.titulo }, mensagem: { ...formatarMsg(msg), propostas: cartoes } };
 }
 
 const formatarMsg = (m: any) => ({ id: m.id, papel: m.papel, texto: m.texto, fontes: m.fontes ?? [], modelo: m.modelo, criadaEm: m.criada_em });
@@ -276,7 +287,11 @@ async function abrir(c: Ctx, b: any) {
   const conv = await minhaConversa(c, txt(b.id));
   const { data, error } = await sb.from("ml_assistente_mensagens").select("*").eq("conversa_id", conv.id).order("id", { ascending: true }).limit(500);
   if (error) throw error;
-  return { conversa: { id: conv.id, titulo: conv.titulo }, mensagens: (data ?? []).map(formatarMsg) };
+  const { data: ps, error: e2 } = await sb.from("ml_assistente_propostas").select("*").eq("conversa_id", conv.id).eq("usuario", c.eu).order("criada_em", { ascending: true });
+  if (e2) throw e2;
+  const porMsg = new Map<number, any[]>();
+  for (const p of ps ?? []) if (p.mensagem_id) porMsg.set(p.mensagem_id, [...(porMsg.get(p.mensagem_id) ?? []), formatarProposta(c, p)]);
+  return { conversa: { id: conv.id, titulo: conv.titulo }, mensagens: (data ?? []).map((m: any) => ({ ...formatarMsg(m), propostas: porMsg.get(m.id) ?? [] })) };
 }
 
 async function renomear(c: Ctx, b: any) {
@@ -310,10 +325,17 @@ Deno.serve(async (req) => {
       case "enviar": return json(await enviar(c, b));
       case "renomear": return json(await renomear(c, b));
       case "apagar": return json(await apagar(c, b));
+      case "confirmar":
+      case "descartar": {
+        if (!UUID.test(txt(b.id))) return json({ erro: "Proposta inválida." }, 400);
+        const p = await decidirProposta(sb, c, txt(b.id), txt(b.action) === "confirmar", txt(req.headers.get("authorization")));
+        return json({ proposta: formatarProposta(c, p) });
+      }
       default: return json({ erro: "Ação desconhecida." }, 400);
     }
   } catch (e) {
     if (e instanceof Falha) return json({ erro: e.message }, e.status);
+    if (e instanceof Recusa) return json({ erro: e.message }, 400);
     console.error("ml-assistente", e);
     return json({ erro: "Não consegui concluir agora. Tente de novo em instantes." }, 500);
   }

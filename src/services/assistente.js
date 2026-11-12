@@ -15,3 +15,5 @@ export const assistenteAbrir = (id) => chamar("abrir", { id });
 export const assistenteEnviar = ({ conversaId, texto, modo, pesquisar }) => chamar("enviar", { conversaId, texto, modo, pesquisar });
 export const assistenteRenomear = (id, titulo) => chamar("renomear", { id, titulo });
 export const assistenteApagar = (id) => chamar("apagar", { id });
+export const assistenteConfirmar = (id) => chamar("confirmar", { id });
+export const assistenteDescartar = (id) => chamar("descartar", { id });
