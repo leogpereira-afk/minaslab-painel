@@ -98,8 +98,9 @@ export function PosVendaSatisfacao() {
       geral: media(rPer.map(r => nota(r, 'satisfacao_geral')).filter((x): x is number => x != null)),
       taxa: ePer.length ? Math.round(ePer.filter(e => e.respondido_em).length / ePer.length * 100) : null,
       respondidas: ePer.filter(e => e.respondido_em).length,
-      abertas: tratativas.filter(t => t.status !== 'CONCLUIDA').length,
-      atrasadas: tratativas.filter(t => t.status !== 'CONCLUIDA' && t.prazo < new Date().toISOString().slice(0, 10)).length,
+      // Só insatisfações; as tratativas de melhoria (tipo MELHORIA, abertas pela Qualidade) ficam fora do alerta.
+      abertas: tratativas.filter(t => t.status !== 'CONCLUIDA' && (t as { tipo?: string }).tipo !== 'MELHORIA').length,
+      atrasadas: tratativas.filter(t => t.status !== 'CONCLUIDA' && (t as { tipo?: string }).tipo !== 'MELHORIA' && t.prazo < new Date().toISOString().slice(0, 10)).length,
     }
   }, [rPer, ePer, tratativas])
   const periodo = periodLabel(period)
@@ -167,7 +168,7 @@ export function PosVendaSatisfacao() {
           </div>
           <div className="rounded-3xl border bg-white p-5 shadow-sm"><h3 className="mb-2 font-semibold text-slate-900">Últimas respostas</h3>
             {rPer.length === 0 ? <p className="py-4 text-sm text-slate-500">Nenhuma resposta no período.</p> : <table className="w-full text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2 pr-2 font-semibold">Data</th><th className="py-2 pr-2 font-semibold">Cliente</th><th className="py-2 pr-2 font-semibold">NPS</th><th className="py-2 font-semibold">Comentário</th></tr></thead>
-              <tbody>{rPer.slice(0, 4).map(r => { const tr = tratativas.find(t => t.resposta_id === r.id && t.status !== 'CONCLUIDA'); return <tr key={r.id} onClick={() => setVer(r)} className="cursor-pointer border-t align-top hover:bg-slate-50">
+              <tbody>{rPer.slice(0, 4).map(r => { const tr = tratativas.find(t => t.resposta_id === r.id && t.status !== 'CONCLUIDA' && (t as { tipo?: string }).tipo !== 'MELHORIA'); return <tr key={r.id} onClick={() => setVer(r)} className="cursor-pointer border-t align-top hover:bg-slate-50">
                 <td className="whitespace-nowrap py-2.5 pr-2">{fmtData(r.respondido_em).slice(0, 5)}</td>
                 <td className="py-2.5 pr-2"><b className="block text-slate-900">{nome(r)}</b><span className="text-xs text-slate-500">{vinculo(r)}</span></td>
                 <td className="py-2.5 pr-2"><Nps n={r.nps} /></td>
