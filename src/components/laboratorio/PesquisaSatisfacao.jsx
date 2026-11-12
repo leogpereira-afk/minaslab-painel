@@ -53,6 +53,8 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   const [trat, setTrat] = useState(null);
   const [enviar, setEnviar] = useState(abrirEnvio);
   const [soSugestoes, setSoSugestoes] = useState(false);
+  const [mudanca, setMudanca] = useState(null); // { r, para }: confirmação da troca de status da melhoria
+  const [destaque, setDestaque] = useState(null); // tratativa recém-criada/atualizada, realçada na aba Tratativas
 
   const carregar = useCallback(async () => {
     setErro("");
@@ -72,7 +74,9 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   const rPer = useMemo(() => d.respostas.filter((r) => noPeriodo(r.respondido_em, periodo)), [d.respostas, periodo]);
   const ePer = useMemo(() => d.envios.filter((e) => !e.cancelado_em && noPeriodo(e.enviado_em, periodo)), [d.envios, periodo]);
   const hoje = hojeYmd();
-  const abertas = d.tratativas.filter((t) => t.status !== "CONCLUIDA");
+  const ehMelhoria = (t) => t.tipo === "MELHORIA";
+  const abertas = d.tratativas.filter((t) => t.status !== "CONCLUIDA" && !ehMelhoria(t));
+  const abertasTodas = d.tratativas.filter((t) => t.status !== "CONCLUIDA");
   const atrasadas = abertas.filter((t) => t.prazo < hoje);
   const geral = media(rPer.map((r) => nota(r, "satisfacao_geral")).filter((x) => x != null));
   const taxa = ePer.length ? Math.round((ePer.filter((e) => e.respondido_em).length / ePer.length) * 100) : null;
@@ -88,9 +92,18 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
   const rLista = soSugestoes ? rPer.filter((r) => r.melhoria_status !== "SEM SUGESTAO") : rPer;
   const rotPeriodo = PERIODOS.find((p) => p.valor === periodo)?.rotulo.toLowerCase();
 
-  async function mudarMelhoria(r, status) {
-    try { await salvarMelhoria(r.id, status); setDados((x) => ({ ...x, respostas: x.respostas.map((y) => (y.id === r.id ? { ...y, melhoria_status: status } : y)) })); }
-    catch (e) { setAviso({ tipo: "erro", texto: e.message }); }
+  // Trocar o status abre a confirmação (com as informações da melhoria); confirmado, vai para Tratativas.
+  function mudarMelhoria(r, status) { if (status !== r.melhoria_status) setMudanca({ r, para: status }); }
+  async function confirmarMelhoria(extras) {
+    const { r, para } = mudanca;
+    const res = await salvarMelhoria(r.id, para, extras);
+    setMudanca(null);
+    await carregar();
+    const rot = MELHORIA.find((m) => m[0] === para)?.[1] || para;
+    if (res?.tratativaId && para !== "SEM SUGESTAO") {
+      setDestaque(res.tratativaId); setAba("tratativas");
+      setAviso({ tipo: "ok", texto: `Melhoria de ${nome(r)} marcada como “${rot}” e registrada em Tratativas.` });
+    } else setAviso({ tipo: "ok", texto: `Melhoria de ${nome(r)} marcada como “${rot}”.` });
   }
   async function cancelar(e) {
     if (!window.confirm("Cancelar este link? O cliente não conseguirá mais responder por ele.")) return;
@@ -132,7 +145,7 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Segmented opcoes={ABAS.map((a) => ({ ...a, rotulo: a.valor === "tratativas" && abertas.length ? `Tratativas (${abertas.length})` : a.rotulo }))} valor={aba} onChange={setAba} />
+        <Segmented opcoes={ABAS.map((a) => ({ ...a, rotulo: a.valor === "tratativas" && abertasTodas.length ? `Tratativas (${abertasTodas.length})` : a.rotulo }))} valor={aba} onChange={setAba} />
         <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="input ml-auto w-auto" aria-label="Período">{PERIODOS.map((p) => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}</select>
       </div>
 
@@ -226,13 +239,14 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
 
       {aba === "tratativas" && (
         <div className="card overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Responsável</th><th className="px-4 py-3">Status</th><th className="px-4 py-3" /></tr></thead>
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Responsável</th><th className="px-4 py-3">Status</th><th className="px-4 py-3" /></tr></thead>
           <tbody>{d.tratativas.map((t) => {
             const atrasada = t.status !== "CONCLUIDA" && t.prazo < hoje;
             const r = d.respostas.find((x) => x.id === t.resposta_id);
             return (
-              <tr key={t.id} className="border-t align-top">
+              <tr key={t.id} className={`border-t align-top ${destaque === t.id ? "bg-brand-50" : ""}`}>
                 <td className={`whitespace-nowrap px-4 py-3 ${atrasada ? "font-semibold text-bad-700" : ""}`}>{fmtData(t.prazo)}{atrasada && <span className="block text-xs">atrasada</span>}</td>
+                <td className="px-4 py-3">{ehMelhoria(t) ? <span className="whitespace-nowrap rounded-full border border-brand-200 bg-white px-2 py-0.5 text-xs font-semibold text-brand-700">Melhoria</span> : <span className="rounded-full bg-bad-50 px-2 py-0.5 text-xs font-semibold text-bad-700">Insatisfação</span>}</td>
                 <td className="px-4 py-3 font-medium">{r ? nome(r) : "—"}</td>
                 <td className="max-w-md px-4 py-3 text-slate-600">{t.motivo}</td>
                 <td className="px-4 py-3">{pessoa(t.responsavel_id, t.responsavel_painel)}</td>
@@ -241,7 +255,7 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
               </tr>
             );
           })}</tbody>
-        </table>{d.tratativas.length === 0 && <p className="p-10 text-center text-slate-500">Nenhuma insatisfação registrada.</p>}</div>
+        </table>{d.tratativas.length === 0 && <p className="p-10 text-center text-slate-500">Nenhuma tratativa registrada.</p>}</div>
       )}
 
       {aba === "envios" && (
@@ -270,6 +284,7 @@ export default function PesquisaSatisfacao({ voltar, abrirEnvio = false }) {
 
       <EnviarPesquisa aberto={enviar} clientes={d.clientes} aoFechar={() => setEnviar(false)} aoEnviar={carregar} />
       <Modal titulo={ver ? `Resposta — ${nome(ver)}` : ""} aberto={!!ver} aoFechar={() => setVer(null)} largura="max-w-2xl">{ver && <Detalhe r={ver} vinculo={vinculo(ver)} escalaQs={escalaQs} textoQs={textoQs} />}</Modal>
+      <ConfirmarMelhoria m={mudanca} nome={mudanca && nome(mudanca.r)} vinculo={mudanca && vinculo(mudanca.r)} responsaveis={d.responsaveis || []} eu={d.eu} aoFechar={() => setMudanca(null)} aoConfirmar={confirmarMelhoria} />
       <Tratativa t={trat} resposta={trat && d.respostas.find((x) => x.id === trat.resposta_id)} vinculo={vinculo} escalaQs={escalaQs} textoQs={textoQs} podeEscrever={dados.podeEscrever} aoFechar={() => setTrat(null)} aoSalvar={async () => { setTrat(null); await carregar(); setAviso({ tipo: "ok", texto: "Tratativa salva." }); }} />
     </div>
   );
@@ -302,24 +317,80 @@ function Tratativa({ t, resposta, vinculo, escalaQs, textoQs, podeEscrever, aoFe
   const [erro, setErro] = useState(""); const [salvando, setSalvando] = useState(false);
   useEffect(() => { if (t) { setF({ status: t.status, causa: t.causa || "", acao_tomada: t.acao || "", retorno_cliente: t.retorno_cliente || "" }); setErro(""); } }, [t]);
   const ro = !podeEscrever || t?.status === "CONCLUIDA";
+  const melhoria = t?.tipo === "MELHORIA";
   async function salvar(e) {
     e.preventDefault(); setErro("");
-    if (f.status === "CONCLUIDA" && (!f.causa.trim() || !f.acao_tomada.trim() || !f.retorno_cliente.trim())) { setErro("Para concluir, preencha causa, ação e retorno ao cliente."); return; }
+    if (f.status === "CONCLUIDA" && !melhoria && (!f.causa.trim() || !f.acao_tomada.trim() || !f.retorno_cliente.trim())) { setErro("Para concluir, preencha causa, ação e retorno ao cliente."); return; }
+    if (f.status === "CONCLUIDA" && melhoria && !f.acao_tomada.trim()) { setErro("Para concluir, descreva a ação da melhoria."); return; }
     setSalvando(true);
     try { await salvarTratativa(t.id, f); await aoSalvar(); } catch (er) { setErro(er.message); } finally { setSalvando(false); }
   }
   return (
-    <Modal titulo="Tratativa de insatisfação" aberto={!!t} aoFechar={aoFechar} largura="max-w-2xl">
+    <Modal titulo={melhoria ? "Tratativa de melhoria" : "Tratativa de insatisfação"} aberto={!!t} aoFechar={aoFechar} largura="max-w-2xl">
       {t && <form onSubmit={salvar} className="grid gap-4 text-sm">
-        <div className="rounded-2xl bg-bad-50 p-3 text-bad-700"><b className="block">Motivo</b>{t.motivo}<span className="mt-1 block text-xs">Prazo: {fmtData(t.prazo)}</span></div>
+        <div className={`rounded-2xl p-3 ${melhoria ? "bg-brand-50 text-brand-700" : "bg-bad-50 text-bad-700"}`}><b className="block">Motivo</b>{t.motivo}<span className="mt-1 block text-xs">Prazo: {fmtData(t.prazo)}</span></div>
         {resposta && <details className="rounded-2xl border p-3"><summary className="cursor-pointer font-semibold">Ver resposta completa</summary><div className="mt-3"><Detalhe r={resposta} vinculo={vinculo(resposta)} escalaQs={escalaQs} textoQs={textoQs} /></div></details>}
         <label><span className="label">Status</span><select disabled={ro} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className="input"><option value="ABERTA">Aberta</option><option value="EM ANDAMENTO">Em andamento</option><option value="CONCLUIDA">Concluída</option></select></label>
-        <label><span className="label">Análise da causa</span><textarea disabled={ro} value={f.causa} onChange={(e) => setF({ ...f, causa: e.target.value })} rows={3} className="input" /></label>
-        <label><span className="label">Ação tomada</span><textarea disabled={ro} value={f.acao_tomada} onChange={(e) => setF({ ...f, acao_tomada: e.target.value })} rows={3} className="input" /></label>
+        {!melhoria && <label><span className="label">Análise da causa</span><textarea disabled={ro} value={f.causa} onChange={(e) => setF({ ...f, causa: e.target.value })} rows={3} className="input" /></label>}
+        <label><span className="label">{melhoria ? "Ação da melhoria" : "Ação tomada"}</span><textarea disabled={ro} value={f.acao_tomada} onChange={(e) => setF({ ...f, acao_tomada: e.target.value })} rows={3} className="input" /></label>
         <label><span className="label">Retorno ao cliente</span><textarea disabled={ro} value={f.retorno_cliente} onChange={(e) => setF({ ...f, retorno_cliente: e.target.value })} rows={2} placeholder="Quando e como o cliente foi informado" className="input" /></label>
         {erro && <p className="rounded-xl bg-bad-50 p-3 text-bad-700">{erro}</p>}
         {!ro && <button disabled={salvando} className="btn-primary inline-flex items-center justify-center gap-2"><ClipboardCheck className="h-4 w-4" aria-hidden />{salvando ? "Salvando..." : "Salvar tratativa"}</button>}
       </form>}
+    </Modal>
+  );
+}
+
+// Confirmação ao trocar o status da melhoria: mostra a sugestão do cliente, pede as informações
+// do que muda e, ao confirmar, a melhoria vai para Tratativas (Ana, 12/11/2026).
+const CAMPO_ACAO = {
+  "EM ANDAMENTO": ["O que será feito", "Ex.: incluir o prazo previsto no orçamento enviado ao cliente", true],
+  IMPLEMENTADA: ["O que foi feito", "Descreva a melhoria implementada", true],
+  DESCARTADA: ["Por que foi descartada", "Motivo para não implementar a sugestão", true],
+  AVALIAR: ["Observação", "Opcional", false],
+};
+function ConfirmarMelhoria({ m, nome, vinculo, responsaveis, eu, aoFechar, aoConfirmar }) {
+  const daquiA30 = () => { const x = new Date(); x.setDate(x.getDate() + 30); return x.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); };
+  const [f, setF] = useState({ acao: "", responsavel: "", prazo: "", retorno_cliente: "" });
+  const [erro, setErro] = useState(""); const [salvando, setSalvando] = useState(false);
+  useEffect(() => { if (m) { setF({ acao: "", responsavel: eu || "", prazo: daquiA30(), retorno_cliente: "" }); setErro(""); } }, [m, eu]);
+  if (!m) return null;
+  const { r, para } = m;
+  const rot = (s) => MELHORIA.find((x) => x[0] === s)?.[1] || s;
+  const campo = CAMPO_ACAO[para];
+  const encerra = para === "IMPLEMENTADA" || para === "DESCARTADA";
+  const semSug = para === "SEM SUGESTAO";
+  async function confirmar(e) {
+    e.preventDefault(); setErro("");
+    if (campo?.[2] && !f.acao.trim()) { setErro(`Preencha “${campo[0]}”.`); return; }
+    setSalvando(true);
+    try { await aoConfirmar(semSug ? {} : { acao: f.acao.trim(), responsavel: f.responsavel, prazo: encerra ? "" : f.prazo, retorno_cliente: f.retorno_cliente.trim() }); }
+    catch (er) { setErro(er.message); } finally { setSalvando(false); }
+  }
+  const cor = (s) => s === "IMPLEMENTADA" ? "bg-ok-50 text-ok-700" : s === "DESCARTADA" || s === "SEM SUGESTAO" ? "bg-slate-100 text-slate-600" : s === "EM ANDAMENTO" ? "bg-brand-50 text-brand-700" : "bg-warn-50 text-warn-700";
+  return (
+    <Modal titulo="Confirmar status da melhoria" aberto={!!m} aoFechar={aoFechar} largura="max-w-xl">
+      <form onSubmit={confirmar} className="grid gap-4 text-sm">
+        <div className="rounded-2xl border p-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2"><b className="text-slate-900">{nome}</b><span className="text-xs text-slate-500">Respondida em {fmtData(r.respondido_em)} · {vinculo}</span></div>
+          <p className="mt-2 text-slate-600"><span className="label">Sugestão do cliente</span>{sugestao(r) || "—"}</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cor(r.melhoria_status)}`}>{rot(r.melhoria_status)}</span><span aria-hidden>→</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cor(para)}`}>{rot(para)}</span></div>
+        {semSug ? <p className="rounded-xl bg-slate-50 p-3 text-slate-600">A resposta deixa de contar como sugestão de melhoria{r.melhoria_status !== "AVALIAR" ? " e a tratativa de melhoria aberta é encerrada" : ""}.</p> : <>
+          <label><span className="label">{campo[0]}{campo[2] ? " *" : ""}</span><textarea value={f.acao} onChange={(e) => setF({ ...f, acao: e.target.value })} rows={3} placeholder={campo[1]} className="input" autoFocus /></label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label><span className="label">Responsável</span><select value={f.responsavel} onChange={(e) => setF({ ...f, responsavel: e.target.value })} className="input">{responsaveis.map((p) => <option key={p.usuario} value={p.usuario}>{p.nome}</option>)}{!responsaveis.some((p) => p.usuario === f.responsavel) && f.responsavel && <option value={f.responsavel}>{f.responsavel}</option>}</select></label>
+            {!encerra && <label><span className="label">Prazo</span><input type="date" value={f.prazo} onChange={(e) => setF({ ...f, prazo: e.target.value })} className="input" /></label>}
+          </div>
+          {encerra && <label><span className="label">Retorno ao cliente <span className="font-normal text-slate-400">(opcional)</span></span><textarea value={f.retorno_cliente} onChange={(e) => setF({ ...f, retorno_cliente: e.target.value })} rows={2} placeholder="Se o cliente foi avisado, quando e como" className="input" /></label>}
+          <p className="flex items-start gap-2 rounded-xl bg-brand-50 p-3 text-brand-700"><ListChecks className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{encerra ? "A melhoria fica registrada em Tratativas como concluída." : "A melhoria vai para Tratativas, com responsável e prazo, para acompanhar até concluir."}</p>
+        </>}
+        {erro && <p className="rounded-xl bg-bad-50 p-3 text-bad-700">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={aoFechar} className="btn-outline">Cancelar</button>
+          <button disabled={salvando} className="btn-primary inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4" aria-hidden />{salvando ? "Salvando..." : semSug ? "Confirmar" : "Confirmar e ir para Tratativas"}</button>
+        </div>
+      </form>
     </Modal>
   );
 }

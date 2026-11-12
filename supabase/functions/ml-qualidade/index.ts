@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
         ctIds.length ? sb.from("contratos").select("id,numero_contrato").in("id", ctIds) : Promise.resolve({ data: [] }),
         osIds.length ? sb.from("ordens_servico").select("id,numero_os").in("id", osIds) : Promise.resolve({ data: [] }),
         perfis.length ? sb.from("profiles").select("id,nome").in("id", perfis) : Promise.resolve({ data: [] }),
-        sb.from("ml_contas").select("usuario,nome"),
+        sb.from("ml_contas").select("usuario,nome,ativo"),
       ]);
       return json({
         podeEscrever, envios, respostas, tratativas: trats, perguntas, revisao: cfg?.revisao ?? "01",
@@ -188,6 +188,8 @@ Deno.serve(async (req) => {
         os: Object.fromEntries(((os.data ?? []) as { id: string; numero_os: string }[]).map((x) => [x.id, x.numero_os])),
         perfis: Object.fromEntries(((pf.data ?? []) as { id: string; nome: string }[]).map((x) => [x.id, x.nome])),
         contas: Object.fromEntries(((contas.data ?? []) as { usuario: string; nome: string }[]).map((x) => [x.usuario, x.nome || x.usuario])),
+        responsaveis: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((x) => x.ativo).map((x) => ({ usuario: x.usuario, nome: x.nome || x.usuario })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+        eu: usuario,
       });
     }
 
@@ -241,12 +243,50 @@ Deno.serve(async (req) => {
     }
 
     if (acao === "melhoria") {
+      // Ana (12/11/2026): ao trocar o status da melhoria, confirma com as informações e a melhoria
+      // passa a ser acompanhada em Tratativas (tipo MELHORIA), junto com as insatisfações.
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const id = uuid(body.id), status = txt(body.status);
       if (!id || !MELHORIA.includes(status)) return json({ erro: "Dados inválidos." }, 400);
+      const acaoTxt = txt(body.acao).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
+      const prazo = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.prazo)) ? txt(body.prazo) : null;
+      const responsavel = txt(body.responsavel).slice(0, 80) || usuario;
+      if ((status === "EM ANDAMENTO" || status === "IMPLEMENTADA") && !acaoTxt) return json({ erro: "Descreva a ação da melhoria." }, 400);
+      if (status === "DESCARTADA" && !acaoTxt) return json({ erro: "Explique por que a melhoria foi descartada." }, 400);
+      const { data: resp } = await sb.from("satisfacao_respostas").select("id,cliente_id,gostou,mudaria,melhorar,textos").eq("id", id).is("deleted_at", null).maybeSingle();
+      if (!resp) return json({ erro: "Resposta não encontrada." }, 404);
       const { error } = await sb.from("satisfacao_respostas").update({ melhoria_status: status }).eq("id", id);
       if (error) throw error;
-      return json({ ok: true });
+
+      const { data: atual } = await sb.from("satisfacao_tratativas").select("id,status").eq("resposta_id", id).eq("tipo", "MELHORIA").maybeSingle();
+      if (status === "SEM SUGESTAO") {
+        // Sem sugestão: não há o que tratar; uma tratativa de melhoria ainda aberta é encerrada.
+        if (atual && atual.status !== "CONCLUIDA") await sb.from("satisfacao_tratativas").update({ status: "CONCLUIDA", acao: "Marcada como sem sugestão de melhoria.", concluida_em: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", atual.id);
+        return json({ ok: true, tratativaId: atual?.id ?? null });
+      }
+      const textos = { ...(resp.textos || {}), mudaria: resp.mudaria, melhorar: resp.melhorar } as Record<string, unknown>;
+      const sug = Object.entries(textos).filter(([k, v]) => k !== "gostou" && txt(v)).map(([, v]) => txt(v)).join(" · ");
+      const agora = new Date().toISOString();
+      const concl = status === "IMPLEMENTADA" || status === "DESCARTADA";
+      const statusTrat = concl ? "CONCLUIDA" : status === "EM ANDAMENTO" ? "EM ANDAMENTO" : "ABERTA";
+      const padraoPrazo = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+      const dadosTrat = {
+        status: statusTrat, acao: acaoTxt || null, retorno_cliente: retorno || null,
+        causa: status === "DESCARTADA" ? "Melhoria descartada" : status === "IMPLEMENTADA" ? "Melhoria implementada" : null,
+        responsavel_painel: responsavel, prazo: prazo ?? padraoPrazo,
+        concluida_em: concl ? agora : null, updated_at: agora,
+      };
+      if (atual) {
+        const { error: e2 } = await sb.from("satisfacao_tratativas").update(dadosTrat).eq("id", atual.id);
+        if (e2) throw e2;
+        return json({ ok: true, tratativaId: atual.id });
+      }
+      const { data: nova, error: e3 } = await sb.from("satisfacao_tratativas").insert({
+        ...dadosTrat, tipo: "MELHORIA", resposta_id: id, cliente_id: resp.cliente_id ?? null,
+        motivo: `Sugestão de melhoria: ${sug || "(sem texto)"}`.slice(0, 1000),
+      }).select("id").single();
+      if (e3) throw e3;
+      return json({ ok: true, tratativaId: nova.id });
     }
 
     if (acao === "tratativa") {
@@ -254,10 +294,12 @@ Deno.serve(async (req) => {
       const id = uuid(body.id), status = txt(body.status);
       if (!id || !STATUS_TRAT.includes(status)) return json({ erro: "Dados inválidos." }, 400);
       const causa = txt(body.causa).slice(0, 4000), acaoTomada = txt(body.acao_tomada).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
-      if (status === "CONCLUIDA" && (!causa || !acaoTomada || !retorno)) return json({ erro: "Para concluir, preencha causa, ação e retorno ao cliente." }, 400);
-      const { data: atual } = await sb.from("satisfacao_tratativas").select("status,concluida_em,tarefa_id,tarefa_painel_id").eq("id", id).maybeSingle();
+      const { data: atual } = await sb.from("satisfacao_tratativas").select("status,concluida_em,tarefa_id,tarefa_painel_id,tipo,resposta_id").eq("id", id).maybeSingle();
       if (!atual) return json({ erro: "Tratativa não encontrada." }, 404);
       if (atual.status === "CONCLUIDA") return json({ erro: "Esta tratativa já foi concluída." }, 409);
+      const ehMelhoria = atual.tipo === "MELHORIA";
+      if (status === "CONCLUIDA" && !ehMelhoria && (!causa || !acaoTomada || !retorno)) return json({ erro: "Para concluir, preencha causa, ação e retorno ao cliente." }, 400);
+      if (status === "CONCLUIDA" && ehMelhoria && !acaoTomada) return json({ erro: "Para concluir, descreva a ação da melhoria." }, 400);
       const agora = new Date().toISOString(), concl = status === "CONCLUIDA";
       const { data: vinc } = await sb.from("crm_sso_vinculos").select("crm_user_id").eq("usuario_painel", usuario).maybeSingle();
       const { error } = await sb.from("satisfacao_tratativas").update({
@@ -265,6 +307,8 @@ Deno.serve(async (req) => {
         concluida_em: concl ? agora : null, concluida_por: concl ? (vinc?.crm_user_id ?? null) : null, updated_at: agora,
       }).eq("id", id);
       if (error) throw error;
+      // Melhoria: o status na aba Respostas acompanha a tratativa.
+      if (ehMelhoria && atual.resposta_id) await sb.from("satisfacao_respostas").update({ melhoria_status: concl ? "IMPLEMENTADA" : status === "EM ANDAMENTO" ? "EM ANDAMENTO" : "AVALIAR" }).eq("id", atual.resposta_id);
       if (concl && atual.tarefa_id) await sb.from("tarefas").update({ status: "CONCLUIDA", updated_at: agora }).eq("id", atual.tarefa_id);
       if (concl && atual.tarefa_id) await sb.from("tarefa_responsaveis").update({ status: "CONCLUIDA", concluida_em: agora, updated_at: agora }).eq("tarefa_id", atual.tarefa_id);
       if (concl && atual.tarefa_painel_id) await sb.from("ml_tarefas").update({ status: "concluida", concluida_em: agora, concluida_por: usuario, atualizado_em: agora }).eq("id", atual.tarefa_painel_id);

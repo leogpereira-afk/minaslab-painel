@@ -20,7 +20,8 @@ export const vinculosCliente = (cliente_id) => chamar("vinculos", { cliente_id }
 export const enviarPesquisa = (dados) => chamar("enviar", dados);
 export const trocarCanal = (id, canal, destino) => chamar("canal", { id, canal, destino });
 export const cancelarEnvio = (id) => chamar("cancelar", { id });
-export const salvarMelhoria = (id, status) => chamar("melhoria", { id, status });
+// extras: { acao, responsavel, prazo, retorno_cliente } — a melhoria vira tratativa (tipo MELHORIA); devolve { tratativaId }.
+export const salvarMelhoria = (id, status, extras = {}) => chamar("melhoria", { id, status, ...extras });
 export const salvarTratativa = (id, dados) => chamar("tratativa", { id, ...dados });
 export const salvarPergunta = (dados) => chamar("perguntaSalvar", dados);
 export const ordenarPerguntas = (ids) => chamar("perguntasOrdem", { ids });
