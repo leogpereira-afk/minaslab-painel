@@ -29,7 +29,10 @@ export default function Indicadores({ q, voltar, recarregar, avisar }) {
   const prazoMeta = Number(meta("prazo_liberacao")?.meta ?? 5);
   const libs = entradas.filter((e) => e.lib).map((e) => ({ ...e, dias: (dataDe(e.lib) - dataDe(e.rec)) / 86400000 })).filter((e) => e.dias >= 0 && e.dias < 120);
   const resp = sat?.respostas || [];
-  const reclamacoesDe = (mm) => ncs.filter((n) => n.origem === "RECLAMACAO" && noMes(n.criado_em, mm)).length + resp.filter((r) => r.insatisfeito && noMes(r.respondido_em, mm)).length;
+  // Reclamações registradas (FM-LAB-113) + NCs de reclamação antigas, sem registro próprio + insatisfações da pesquisa.
+  const reclamacoesDe = (mm) => (q.reclamacoes || []).filter((r) => r.tipo !== "SUGESTAO" && noMes(r.recebida_em, mm)).length
+    + ncs.filter((n) => n.origem === "RECLAMACAO" && n.ref_tipo !== "reclamacao" && noMes(n.criado_em, mm)).length
+    + resp.filter((r) => r.insatisfeito && noMes(r.respondido_em, mm)).length;
   const ncAbertasEm = (fim) => ncs.filter((n) => new Date(n.criado_em) <= fim && (!n.encerrada_em || new Date(n.encerrada_em) > fim)).length;
   const profAte = (fim) => { const lim = new Date(fim); lim.setFullYear(lim.getFullYear() - 1); const ps = proficiencia.filter((p) => p.resultado !== "AGUARDANDO" && p.data && new Date(`${p.data}T12:00:00`) <= fim && new Date(`${p.data}T12:00:00`) > lim); return ps.length ? (ps.filter((p) => ["SATISFATORIO", "CORRETO"].includes(p.resultado)).length / ps.length) * 100 : null; };
   const ativosEq = equipamentos.filter((e) => e.situacao === "ATIVO");
@@ -39,7 +42,7 @@ export default function Indicadores({ q, voltar, recarregar, avisar }) {
   const indicadores = [
     { k: "prazo_liberacao", fmt: (v) => `${num(v)} dias`, serie: meses.map((mm) => media(libs.filter((e) => noMes(e.lib, mm)).map((e) => e.dias))), valor: periodo((ls) => media(ls.map((e) => e.dias))), fonte: "Entradas de amostras: recebimento → liberação" },
     { k: "no_prazo", fmt: (v) => `${num(v, 0)} %`, serie: meses.map((mm) => { const ls = libs.filter((e) => noMes(e.lib, mm)); return ls.length ? (ls.filter((e) => e.dias <= prazoMeta).length / ls.length) * 100 : null; }), valor: periodo((ls) => (ls.length ? (ls.filter((e) => e.dias <= prazoMeta).length / ls.length) * 100 : null)), fonte: `Liberadas em até ${num(prazoMeta)} dias` },
-    { k: "reclamacoes", fmt: (v) => num(v), serie: meses.map(reclamacoesDe), valor: meses.length ? reclamacoesDe(meses[meses.length - 1]) : 0, fonte: "NC de reclamação + insatisfações da pesquisa (mês atual)" },
+    { k: "reclamacoes", fmt: (v) => num(v), serie: meses.map(reclamacoesDe), valor: meses.length ? reclamacoesDe(meses[meses.length - 1]) : 0, fonte: "Reclamações registradas + insatisfações da pesquisa (mês atual)" },
     { k: "nps", fmt: (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v}`), serie: meses.map((mm) => npsDe(resp.filter((r) => noMes(r.respondido_em, mm)))), valor: npsDe(resp.filter((r) => new Date(r.respondido_em) >= inicio)), fonte: "Pesquisa de satisfação" },
     { k: "satisfacao", fmt: (v) => num(v), serie: meses.map((mm) => media(resp.filter((r) => noMes(r.respondido_em, mm)).map((r) => r.notas?.satisfacao_geral).filter((x) => typeof x === "number"))), valor: media(resp.filter((r) => new Date(r.respondido_em) >= inicio).map((r) => r.notas?.satisfacao_geral).filter((x) => typeof x === "number")), fonte: "Pesquisa de satisfação (1 a 5)" },
     { k: "nc_abertas", fmt: (v) => num(v, 0), serie: meses.map((mm) => ncAbertasEm(mm.fim)), valor: ncs.filter((n) => n.etapa !== "ENCERRADA").length, fonte: "Não conformidades (hoje)" },

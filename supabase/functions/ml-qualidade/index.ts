@@ -9,6 +9,7 @@
 // Demais páginas da Qualidade: qualidade (tudo) · salvar {modulo} · excluir · ler (documento) · calibrar ·
 //        metaSalvar · arquivoEnviar · arquivoBaixar · arquivoApagar · verificarExternos (documentos externos/CDOE)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { proximoCodigo, prazoResposta, prazoConfirmacao, proximaEtapa, faltaParaSeguir, ETAPAS_RECLAMACAO, PRAZO_RESPOSTA_DIAS } from "../_shared/reclamacoes-regras.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const U = Deno.env.get("SUPABASE_URL")!;
@@ -369,7 +370,7 @@ Deno.serve(async (req) => {
     if (acao === "qualidade") {
       const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
       const { bens, manutencoes } = await sincronizarPatrimonio();
-      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos] = await Promise.all([
+      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos, recls] = await Promise.all([
         sb.from("qualidade_documentos").select("*").order("codigo"),
         sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
         sb.from("qualidade_documento_leituras").select("documento_id,revisao,usuario,confirmado_em"),
@@ -383,13 +384,14 @@ Deno.serve(async (req) => {
         sb.from("ml_contas").select("usuario,nome,ativo").order("nome"),
         todos((a, b) => sb.from("ml_registros").select("registro").eq("colecao", "lab_entradas").eq("apagado", false).gte("atualizado_em", umAno).range(a, b)),
         sb.from("qualidade_documentos_externos").select("*").order("item", { nullsFirst: false }).order("documento"),
+        sb.from("qualidade_reclamacoes").select("*").order("recebida_em", { ascending: false }).order("codigo", { ascending: false }),
       ]);
-      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos]) if (r.error) throw r.error;
+      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos, recls]) if (r.error) throw r.error;
       return json({
         podeEscrever, eu: usuario,
         documentos: docs.data, revisoes: revs.data, leituras: leits.data, calibracoes: cals.data, manutencoes,
         equipamentos: (eqs.data ?? []).map((e: Record<string, unknown>) => ({ ...e, bem: e.bem_id ? bens.get(String(e.bem_id)) ?? null : null })),
-        externos: externos.data,
+        externos: externos.data, reclamacoes: recls.data,
         ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
         contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
         entradas: (entradas as { registro: Record<string, unknown> }[]).map((x) => x.registro).filter((r) => r && r.cancelada !== true)
@@ -527,10 +529,97 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Reclamações (7.9 · PG 013 · FM-LAB-113): registro com protocolo RRC NNN/AAAA, etapas com o que cada uma exige,
+    // prazos (confirmação em 2 dias úteis; resposta por classificação) e histórico de quem fez o quê.
+    if (acao === "reclamacaoSalvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const reg = (body.registro ?? {}) as Record<string, unknown>;
+      const id = uuid(reg.id);
+      const TXT = ["canal", "cliente_nome", "cnpj_cpf", "reclamante", "contato", "email", "os_referencia", "descricao", "recebida_por", "acao_imediata", "validacao", "confirmada_meio", "responsavel", "analise", "acao", "eficacia", "resposta", "respondida_meio", "analisado_por", "aprovado_por", "observacao", "encerramento"];
+      const DT = ["recebida_em", "ocorrido_em", "confirmada_em", "prazo_confirmacao", "prazo_resposta", "respondida_em", "analisado_em", "aprovado_em"];
+      const d: Record<string, unknown> = {};
+      for (const c of TXT) if (c in reg) d[c] = txt(reg[c]).slice(0, c === "descricao" || c === "analise" || c === "resposta" ? 8000 : 4000) || null;
+      for (const c of DT) if (c in reg) d[c] = /^\d{4}-\d{2}-\d{2}$/.test(txt(reg[c])) ? txt(reg[c]) : null;
+      if ("tipo" in reg) d.tipo = reg.tipo === "SUGESTAO" ? "SUGESTAO" : "RECLAMACAO";
+      if ("classificacao" in reg) d.classificacao = String(reg.classificacao) in PRAZO_RESPOSTA_DIAS ? reg.classificacao : "MEDIA";
+      if ("procedente" in reg) d.procedente = reg.procedente === true ? true : reg.procedente === false ? false : null;
+      if ("cliente_id" in reg) d.cliente_id = uuid(reg.cliente_id);
+      if ("envolvidos" in reg) d.envolvidos = (Array.isArray(reg.envolvidos) ? reg.envolvidos : []).map((x) => txt(x).slice(0, 80)).filter(Boolean).slice(0, 20);
+      const agora = new Date().toISOString(), hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const rotulo = (e: string) => ETAPAS_RECLAMACAO.find((x) => x[0] === e)?.[1] ?? e;
+      if (!id) {
+        if (!txt(d.descricao)) return json({ erro: "Descreva a reclamação." }, 400);
+        const recebida = (d.recebida_em as string) || hoje;
+        const novo = {
+          ...d, etapa: "RECEBIDA", recebida_em: recebida, recebida_por: d.recebida_por || usuario, classificacao: d.classificacao || "MEDIA",
+          prazo_confirmacao: d.prazo_confirmacao || prazoConfirmacao(recebida),
+          prazo_resposta: d.prazo_resposta || prazoResposta(recebida, String(d.classificacao || "MEDIA")),
+          historico: [{ em: agora, por: usuario, para: "RECEBIDA", texto: "Reclamação registrada." }],
+          criado_por: usuario, atualizado_por: usuario,
+        };
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          const ano = Number(recebida.slice(0, 4));
+          const { data: cods } = await sb.from("qualidade_reclamacoes").select("codigo").like("codigo", `RRC %/${ano}`);
+          const codigo = proximoCodigo(((cods ?? []) as { codigo: string }[]).map((x) => x.codigo), ano);
+          const { data, error } = await sb.from("qualidade_reclamacoes").insert({ ...novo, codigo }).select("*").single();
+          if (!error) {
+            if (data.responsavel && data.responsavel !== usuario) await sb.from("ml_notificacoes").insert({ usuario: data.responsavel, tipo: "qualidade_reclamacao", titulo: `Reclamação ${data.codigo} para você`, corpo: String(data.descricao).slice(0, 200), link: "/laboratorio?secao=qualidade&aba=reclamacoes", ref_tipo: "qualidade_reclamacoes", ref_id: data.id });
+            return json({ ok: true, registro: data });
+          }
+          if (String((error as { code?: string }).code) !== "23505") throw error; // número já usado por outro registro ao mesmo tempo: tenta o próximo
+        }
+        return json({ erro: "Não foi possível gerar o protocolo. Tente de novo." }, 409);
+      }
+      const { data: antes } = await sb.from("qualidade_reclamacoes").select("*").eq("id", id).maybeSingle();
+      if (!antes) return json({ erro: "Reclamação não encontrada." }, 404);
+      if (antes.etapa === "ENCERRADA" && reg.reabrir !== true) return json({ erro: "Esta reclamação já foi encerrada." }, 409);
+      const junto = { ...antes, ...d } as Record<string, unknown>;
+      const hist = Array.isArray(antes.historico) ? [...antes.historico] : [];
+      if (reg.reabrir === true) {
+        Object.assign(d, { etapa: "RESPOSTA", encerrada_em: null, encerrada_por: null });
+        hist.push({ em: agora, por: usuario, de: "ENCERRADA", para: "RESPOSTA", texto: txt(reg.motivo).slice(0, 2000) || "Reaberta." });
+      } else if (reg.seguir === true) {
+        const para = proximaEtapa(junto as { etapa: string; procedente?: boolean });
+        if (!para) return json({ erro: "Não há etapa seguinte." }, 400);
+        const falta = faltaParaSeguir(junto, para);
+        if (falta) return json({ erro: falta }, 400);
+        d.etapa = para;
+        if (para === "ENCERRADA") Object.assign(d, { encerrada_em: agora, encerrada_por: usuario });
+        hist.push({ em: agora, por: usuario, de: antes.etapa, para, texto: null });
+      } else {
+        const mudou = Object.keys(d).filter((k) => JSON.stringify(d[k] ?? null) !== JSON.stringify(antes[k] ?? null));
+        if (mudou.length) hist.push({ em: agora, por: usuario, para: antes.etapa, texto: `Atualizou: ${mudou.join(", ")}.` });
+      }
+      if ("classificacao" in d && d.classificacao !== antes.classificacao && !("prazo_resposta" in reg)) d.prazo_resposta = prazoResposta(antes.recebida_em, String(d.classificacao));
+      const { data, error } = await sb.from("qualidade_reclamacoes").update({ ...d, historico: hist.slice(-300), atualizado_em: agora, atualizado_por: usuario }).eq("id", id).select("*").single();
+      if (error) throw error;
+      if (d.responsavel && d.responsavel !== antes.responsavel && d.responsavel !== usuario) await sb.from("ml_notificacoes").insert({ usuario: d.responsavel, tipo: "qualidade_reclamacao", titulo: `Reclamação ${antes.codigo} para você`, corpo: String(antes.descricao).slice(0, 200), link: "/laboratorio?secao=qualidade&aba=reclamacoes", ref_tipo: "qualidade_reclamacoes", ref_id: id });
+      return json({ ok: true, registro: data, rotulo: rotulo(String(data.etapa)) });
+    }
+
+    // Reclamação procedente que pede ação corretiva: abre a NC (origem Reclamação) já ligada a ela (PG 013 → PG 014).
+    if (acao === "reclamacaoNc") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const id = uuid(body.id);
+      const { data: rec } = await sb.from("qualidade_reclamacoes").select("*").eq("id", id).maybeSingle();
+      if (!rec) return json({ erro: "Reclamação não encontrada." }, 404);
+      if (rec.nc_id) return json({ erro: "Esta reclamação já tem não conformidade." }, 409);
+      const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const nc = await abrirNc({
+        titulo: `${rec.codigo} · ${String(rec.descricao).split("\n")[0].slice(0, 160)}`, origem: "RECLAMACAO", etapa: "ABERTA",
+        descricao: [`Reclamação ${rec.codigo}${rec.cliente_nome ? ` de ${rec.cliente_nome}` : ""}${rec.os_referencia ? ` (${rec.os_referencia})` : ""}.`, rec.descricao, rec.analise ? `Análise: ${rec.analise}` : ""].filter(Boolean).join("\n\n").slice(0, 4000),
+        responsavel: rec.responsavel || usuario, prazo: rec.prazo_resposta || somaMeses(hoje, 1), trabalho_afetado: false,
+        ref_tipo: "reclamacao", ref_id: rec.id,
+      }, usuario);
+      const hist = [...(Array.isArray(rec.historico) ? rec.historico : []), { em: new Date().toISOString(), por: usuario, para: rec.etapa, texto: `Abriu a não conformidade ${nc.codigo}.` }];
+      await sb.from("qualidade_reclamacoes").update({ nc_id: nc.id, historico: hist, atualizado_em: new Date().toISOString(), atualizado_por: usuario }).eq("id", id);
+      return json({ ok: true, nc });
+    }
+
     if (acao === "arquivoEnviar") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const refTipo = txt(body.ref_tipo), refId = uuid(body.ref_id);
-      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
+      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia", "reclamacao"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
       const nome = txt(body.nome).replace(/[\\/]/g, "_").slice(-150);
       const ext = nome.includes(".") ? nome.split(".").pop()!.toLowerCase() : "";
       const tipo = TIPOS_ARQ[ext];
