@@ -1,12 +1,15 @@
 // Assistente IA — o Claude dentro do painel, para toda a equipe (função ml-assistente).
 // Etapa 1: conversa livre (escrever, tirar dúvidas, se organizar) com pesquisa na internet e fontes.
+// Etapa 2: consulta dados do painel. Etapa 3: propõe compromissos e tarefas — só grava ao clicar em Confirmar.
 // Cada pessoa vê só as próprias conversas; limites e chave ficam no servidor.
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { Check, Copy, Globe, MessageSquarePlus, Pencil, Send, Sparkles, Trash2, History, X } from "lucide-react";
+import { CalendarCheck, Check, Copy, Globe, ListChecks, MessageSquarePlus, Pencil, Send, Sparkles, Trash2, History, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   assistenteEstado, assistenteConversas, assistenteAbrir, assistenteEnviar, assistenteRenomear, assistenteApagar,
+  assistenteConfirmar, assistenteDescartar,
 } from "../services/assistente.js";
 import { blocosMarkdown, trechosInline } from "../lib/markdownSimples.js";
 import { PageTitle, Card, Aviso, Segmented, CarregandoModulo } from "../components/ui.jsx";
@@ -14,7 +17,7 @@ import { PageTitle, Card, Aviso, Segmented, CarregandoModulo } from "../componen
 const SUGESTOES = [
   "O que eu tenho para esta semana? Inclua compromissos, tarefas e agenda da equipe.",
   "Quem está de férias ou fora da empresa este mês?",
-  "Escreva um e-mail cordial cobrando um cliente com boleto vencido há 10 dias.",
+  "Marque uma reunião amanhã às 14h com a equipe comercial para revisar propostas.",
   "Quais são os parâmetros de potabilidade da água segundo a portaria vigente do Ministério da Saúde?",
 ];
 
@@ -65,7 +68,34 @@ function BotaoCopiar({ texto }) {
   );
 }
 
-function Mensagem({ m }) {
+/* Cartão de um lançamento PROPOSTO pela IA. Nada foi gravado até aqui: Confirmar chama a função da
+   própria tela (Compromissos ou Tarefas) com o crachá de quem está logado. */
+function CartaoProposta({ p, aoDecidir }) {
+  const [ocupado, setOcupado] = useState(false);
+  const Icone = p.tipo === "tarefa" ? ListChecks : CalendarCheck;
+  const tela = p.tipo === "tarefa" ? { nome: "Tarefas", caminho: "/tarefas" } : { nome: "Compromissos", caminho: "/compromissos" };
+  const decidir = async (confirmar) => {
+    setOcupado(true);
+    try { await aoDecidir(p.id, confirmar); } finally { setOcupado(false); }
+  };
+  return (
+    <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+      <p className="flex items-start gap-2 text-sm text-slate-800"><Icone size={16} className="mt-0.5 shrink-0 text-brand-600" />{p.resumo}</p>
+      {p.status === "pendente" && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-primary" disabled={ocupado} onClick={() => decidir(true)}><Check size={15} /> {ocupado ? "Gravando…" : "Confirmar"}</button>
+          <button type="button" className="btn-outline" disabled={ocupado} onClick={() => decidir(false)}>Descartar</button>
+          <span className="text-xs text-slate-500">Ainda não foi gravado.</span>
+        </div>
+      )}
+      {p.status === "confirmada" && <p className="mt-2 text-xs font-medium text-ok-700">✓ Gravado. <Link to={tela.caminho} className="underline">Abrir {tela.nome}</Link></p>}
+      {p.status === "descartada" && <p className="mt-2 text-xs text-slate-500">Descartado — nada foi gravado.</p>}
+      {p.status === "falhou" && <p className="mt-2 text-xs font-medium text-bad-700">Não foi gravado: {p.resultado?.erro || "erro ao gravar"}.</p>}
+    </div>
+  );
+}
+
+function Mensagem({ m, aoDecidir }) {
   if (m.papel === "user") {
     return (
       <div className="flex justify-end">
@@ -78,6 +108,7 @@ function Mensagem({ m }) {
       <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-orange-100 text-orange-700"><Sparkles size={16} /></span>
       <div className="min-w-0 flex-1">
         <Markdown texto={m.texto} />
+        {m.propostas?.map((p) => <CartaoProposta key={p.id} p={p} aoDecidir={aoDecidir} />)}
         {m.fontes?.length > 0 && (
           <div className="mt-3 rounded-xl border bg-slate-50 p-2.5" style={{ borderColor: "var(--hairline)" }}>
             <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-slate-600"><Globe size={13} /> Fontes</p>
@@ -170,6 +201,15 @@ export default function Assistente() {
     }
   };
 
+  const decidirProposta = async (id, confirmar) => {
+    try {
+      const r = await (confirmar ? assistenteConfirmar(id) : assistenteDescartar(id));
+      setMensagens((ms) => ms.map((m) => (m.propostas?.some((p) => p.id === id) ? { ...m, propostas: m.propostas.map((p) => (p.id === id ? r.proposta : p)) } : m)));
+      if (r.proposta?.status === "confirmada") setAviso({ tipo: "ok", texto: "Lançamento gravado no painel." });
+      if (r.proposta?.status === "falhou") setAviso({ tipo: "erro", texto: r.proposta.resultado?.erro || "Não foi gravado." });
+    } catch (e) { setAviso({ tipo: "erro", texto: e.message }); }
+  };
+
   const renomear = async (c) => {
     const titulo = window.prompt("Novo nome da conversa:", c.titulo);
     if (!titulo?.trim()) return;
@@ -194,7 +234,7 @@ export default function Assistente() {
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <PageTitle
         titulo="Assistente IA"
-        descricao="O Claude dentro do painel: consulta sua agenda e tarefas, escreve, tira dúvidas, pesquisa na internet e ajuda a organizar. Só você vê as suas conversas."
+        descricao="O Claude dentro do painel: consulta sua agenda e tarefas, prepara lançamentos (você confirma), escreve, tira dúvidas e pesquisa na internet. Só você vê as suas conversas."
         acao={<button type="button" className="btn-outline lg:hidden" onClick={() => setVerLista(true)}><History size={16} /> Conversas</button>}
       />
 
@@ -221,7 +261,7 @@ export default function Assistente() {
                 </div>
               </div>
             )}
-            {mensagens.map((m) => <Mensagem key={m.id} m={m} />)}
+            {mensagens.map((m) => <Mensagem key={m.id} m={m} aoDecidir={decidirProposta} />)}
             {enviando && (
               <div className="flex items-center gap-3 text-sm text-slate-500">
                 <span className="grid h-8 w-8 place-items-center rounded-full bg-orange-100 text-orange-700"><Sparkles size={16} className="animate-pulse" /></span>
