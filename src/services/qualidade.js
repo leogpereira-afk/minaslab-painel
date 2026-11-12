@@ -21,7 +21,8 @@ export const enviarPesquisa = (dados) => chamar("enviar", dados);
 export const trocarCanal = (id, canal, destino) => chamar("canal", { id, canal, destino });
 export const cancelarEnvio = (id) => chamar("cancelar", { id });
 // extras: { acao, responsavel, prazo, retorno_cliente } — a melhoria vira tratativa (tipo MELHORIA); devolve { tratativaId }.
-export const salvarMelhoria = (id, status, extras = {}) => chamar("melhoria", { id, status, ...extras });
+// "acao" é o nome da ação da chamada: o texto da ação da melhoria vai como "acao_melhoria".
+export const salvarMelhoria = (id, status, { acao, ...extras } = {}) => chamar("melhoria", { ...extras, id, status, acao_melhoria: acao });
 export const salvarTratativa = (id, dados) => chamar("tratativa", { id, ...dados });
 export const salvarPergunta = (dados) => chamar("perguntaSalvar", dados);
 export const ordenarPerguntas = (ids) => chamar("perguntasOrdem", { ids });

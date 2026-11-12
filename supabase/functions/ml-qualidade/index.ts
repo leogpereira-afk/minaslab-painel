@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const id = uuid(body.id), status = txt(body.status);
       if (!id || !MELHORIA.includes(status)) return json({ erro: "Dados inválidos." }, 400);
-      const acaoTxt = txt(body.acao).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
+      const acaoTxt = txt(body.acao_melhoria).slice(0, 4000), retorno = txt(body.retorno_cliente).slice(0, 4000);
       const prazo = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.prazo)) ? txt(body.prazo) : null;
       const responsavel = txt(body.responsavel).slice(0, 80) || usuario;
       if ((status === "EM ANDAMENTO" || status === "IMPLEMENTADA") && !acaoTxt) return json({ erro: "Descreva a ação da melhoria." }, 400);
