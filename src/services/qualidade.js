@@ -31,6 +31,9 @@ export const salvarRevisao = (revisao) => chamar("revisao", { revisao });
 // Demais páginas da Qualidade (documentos, equipamentos, NC, auditorias, proficiência, indicadores).
 export const lerQualidade = () => chamar("qualidade");
 export const salvarRegistro = (modulo, registro) => chamar("salvar", { modulo, registro }).then((r) => r.registro);
+// Reclamações (7.9 · PG 013 · FM-LAB-113). opcoes: { seguir: true } avança a etapa; { reabrir: true, motivo } reabre.
+export const salvarReclamacao = (registro, opcoes = {}) => chamar("reclamacaoSalvar", { registro: { ...registro, ...opcoes } }).then((r) => r.registro);
+export const abrirNcDaReclamacao = (id) => chamar("reclamacaoNc", { id }).then((r) => r.nc);
 export const excluirRegistro = (modulo, id) => chamar("excluir", { modulo, id });
 export const confirmarLeitura = (id) => chamar("ler", { id });
 export const verificarExternos = (ids, data) => chamar("verificarExternos", { ids, data });

@@ -2,7 +2,7 @@
 // Pesquisa de satisfação (mesmos dados do CRM), Documentos e POPs, Equipamentos, Não conformidades,
 // Auditorias e proficiência e Indicadores. Tudo pelo crachá do painel (Edge Function ml-qualidade).
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, ClipboardCheck, FileText, Gauge, Library, SearchCheck, Smile, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardCheck, MessageSquareWarning, FileText, Gauge, Library, SearchCheck, Smile, Wrench } from "lucide-react";
 import { lerQualidade, lerSatisfacao } from "../../services/qualidade.js";
 import { StatCard, CarregandoModulo, ErroModulo, Aviso } from "../ui.jsx";
 import PesquisaSatisfacao from "./PesquisaSatisfacao.jsx";
@@ -10,6 +10,8 @@ import Documentos from "./qualidade/Documentos.jsx";
 import DocumentosExternos, { pendente as externoPendente } from "./qualidade/DocumentosExternos.jsx";
 import Equipamentos, { situacaoEquip } from "./qualidade/Equipamentos.jsx";
 import NaoConformidades from "./qualidade/NaoConformidades.jsx";
+import Reclamacoes from "./qualidade/Reclamacoes.jsx";
+import { alertasPrazo } from "../../../supabase/functions/_shared/reclamacoes-regras.mjs";
 import Auditorias from "./qualidade/Auditorias.jsx";
 import Indicadores from "./qualidade/Indicadores.jsx";
 import { hojeYmd } from "./qualidade/comum.jsx";
@@ -19,11 +21,12 @@ const FUNCOES = [
   { valor: "documentos", rotulo: "Documentos e POPs", icone: FileText, cor: "bg-sky-50 text-sky-700", texto: "Lista mestra com revisão, vigência, quem elaborou e aprovou e leitura confirmada." },
   { valor: "externos", rotulo: "Documentos externos", icone: Library, cor: "bg-teal-50 text-teal-700", texto: "Normas, legislação e guias (CDOE): verificação trimestral e aviso do que está pendente de atualizar." },
   { valor: "equipamentos", rotulo: "Equipamentos", icone: Wrench, cor: "bg-amber-50 text-amber-700", texto: "Calibração, verificação intermediária e diária com alerta de vencimento e certificados." },
+  { valor: "reclamacoes", rotulo: "Reclamações de clientes", icone: MessageSquareWarning, cor: "bg-orange-50 text-orange-700", texto: "Protocolo RRC, validação, confirmação ao cliente, investigação, resposta e encerramento; imprime o FM-LAB-113." },
   { valor: "nc", rotulo: "Não conformidades", icone: ClipboardCheck, cor: "bg-rose-50 text-rose-700", texto: "Registro, análise de causa, ação corretiva com responsável, prazo e eficácia." },
   { valor: "auditorias", rotulo: "Auditorias e proficiência", icone: SearchCheck, cor: "bg-violet-50 text-violet-700", texto: "Programa anual de auditoria interna e ensaios de proficiência com z-score." },
   { valor: "indicadores", rotulo: "Indicadores", icone: Gauge, cor: "bg-slate-100 text-slate-700", texto: "Prazo de liberação, reclamações, NPS, NC e proficiência com metas; pauta da análise crítica." },
 ];
-const PAGINAS = { documentos: Documentos, externos: DocumentosExternos, equipamentos: Equipamentos, nc: NaoConformidades, auditorias: Auditorias, indicadores: Indicadores };
+const PAGINAS = { documentos: Documentos, externos: DocumentosExternos, equipamentos: Equipamentos, nc: NaoConformidades, reclamacoes: Reclamacoes, auditorias: Auditorias, indicadores: Indicadores };
 
 export default function QualidadeLaboratorio({ aba, ir }) {
   const [q, setQ] = useState(null);
@@ -54,6 +57,8 @@ function InicioQualidade({ q, erro, abrir }) {
   const nps = rs.length ? Math.round(((rs.filter((x) => x.nps >= 9).length - rs.filter((x) => x.nps <= 6).length) / rs.length) * 100) : null;
   const insat = sat ? sat.tratativas.filter((t) => t.status !== "CONCLUIDA") : [];
   const ncAbertas = q ? q.ncs.filter((n) => n.etapa !== "ENCERRADA") : [];
+  const recAbertas = q ? (q.reclamacoes || []).filter((r) => r.etapa !== "ENCERRADA") : [];
+  const recAtrasadas = recAbertas.filter((r) => alertasPrazo(r, hoje).length);
   const ncVencidas = ncAbertas.filter((n) => n.prazo && n.prazo < hoje);
   const eqVencidos = q ? q.equipamentos.filter((e) => e.situacao !== "INATIVO" && situacaoEquip(e)[1] === "bad") : [];
   const docVencidos = q ? q.documentos.filter((d) => d.status === "VIGENTE" && d.proxima_revisao && d.proxima_revisao < hoje) : [];
@@ -68,8 +73,9 @@ function InicioQualidade({ q, erro, abrir }) {
           <h2 id="qual-atencao" className="font-display text-sm font-semibold uppercase tracking-wide text-slate-500">Pede atenção</h2>
           {erro ? <span className="text-xs text-bad-700">{erro}</span> : <span className="text-xs text-slate-400">Clique num número para abrir</span>}
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           <StatCard rotulo="Insatisfações de clientes" valor={n(sat, insat.length)} sub="tratativas abertas · prazo 5 dias" tom={insat.length ? "bad" : "neutral"} icone={AlertTriangle} onClick={() => abrir("satisfacao")} />
+          <StatCard rotulo="Reclamações abertas" valor={n(q, recAbertas.length)} sub={recAtrasadas.length ? `${recAtrasadas.length} com prazo vencido` : "FM-LAB-113 · prazos em dia"} tom={recAtrasadas.length ? "bad" : recAbertas.length ? "warn" : "neutral"} icone={MessageSquareWarning} onClick={() => abrir("reclamacoes")} />
           <StatCard rotulo="Não conformidades abertas" valor={n(q, ncAbertas.length)} sub={ncVencidas.length ? `${ncVencidas.length} com prazo vencido` : "dentro do prazo"} tom={ncVencidas.length ? "bad" : ncAbertas.length ? "warn" : "neutral"} icone={ClipboardCheck} onClick={() => abrir("nc")} />
           <StatCard rotulo="Equipamentos vencidos" valor={n(q, eqVencidos.length)} sub={eqVencidos.map((e) => e.codigo).slice(0, 2).join(", ") || "calibrações em dia"} tom={eqVencidos.length ? "bad" : "ok"} icone={Wrench} onClick={() => abrir("equipamentos")} />
           <StatCard rotulo="Documentos a revisar" valor={n(q, docVencidos.length)} sub="revisão vencida" tom={docVencidos.length ? "warn" : "ok"} icone={FileText} onClick={() => abrir("documentos")} />
