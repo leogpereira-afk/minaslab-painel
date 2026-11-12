@@ -1,10 +1,12 @@
 // Gera uma OS com as amostras no servidor: reserva os números (OS, amostra,
 // código de barras) num passo atômico, grava a OS e as amostras em lote e,
-// se veio de um agendamento do Plano de Coleta, marca o agendamento.
+// se veio de um agendamento do Plano de Coleta, marca o agendamento. A fatura
+// da OS nasce aqui (uma por OS), salvo contrato parcelado.
 // Usado pelo Plano de Coleta (Contratos) e por "Criar Ordem de serviço".
 
 import { configSistema } from "./dados.jsx";
 import { montarOS, statusInicial } from "./ordens.js";
+import { faturaPorOS, faturaDaOS } from "./faturas.js";
 
 const inicio = (v) => Math.max(0, (Number(v) || 1) - 1);
 
@@ -24,7 +26,10 @@ export async function gerarOS(ctx, { contrato, servicos, agendamento = null, des
     origem: avulsa ? "Avulsa" : "Plano de Coleta", agendamentoId: agendamento?.id || null, por,
   });
   const osSalva = await salvar("ordens", os, { numerar: true, motivo: avulsa ? "OS avulsa" : `Agendamento de ${agendamento.data}` });
-  await salvarLote("amostras", amostras.map((a) => ({ ...a, osId: osSalva.id, os: `OS${String(os.num).padStart(5, "0")}/${ano}` })), { numerar: true });
+  const numero = `OS${String(os.num).padStart(5, "0")}/${ano}`;
+  const salvas = await salvarLote("amostras", amostras.map((a) => ({ ...a, osId: osSalva.id, os: numero })), { numerar: true });
+  // A fatura nasce com a OS (como no GerenciaLab).
+  if (faturaPorOS(cfg, contrato)) await salvar("contas_receber", faturaDaOS({ os: { ...osSalva, numero }, amostras: Array.isArray(salvas) && salvas.length ? salvas : amostras, contrato }), { numerar: true, motivo: `Fatura da ${numero}` });
   if (agendamento) {
     await salvar("contratos", { ...contrato, agendamentos: contrato.agendamentos.map((a) => (a.id === agendamento.id ? { ...a, status: "Executado", osId: osSalva.id } : a)) });
   } else {

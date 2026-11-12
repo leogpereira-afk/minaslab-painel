@@ -22,6 +22,7 @@ import { acreditadoNoEscopo } from "../lib/escopo.js";
 import { Documento, Bloco, dataExtenso, codigoValidacao } from "../components/Documento.jsx";
 import { camposAtivos, valoresDinamicos } from "../components/Dinamicos.jsx";
 import { emailDoTipo } from "../lib/clientes.js";
+import { faturaDaAmostra, faturaPorOS } from "../lib/faturas.js";
 
 const statusRevisao = (x) => (x.etapa === "Revisado" ? "Revisado" : x.etapa === "Revisão" ? "Aguardando" : x.motivoRetorno ? "Revisão LAB" : "");
 
@@ -113,8 +114,6 @@ export function RevisaoResultado() {
 /* ---------- Certificado ---------- */
 
 // Prazo da fatura pela condição de pagamento do contrato ("Boleto bancário, 10 dias" → 10).
-export const diasPagamento = (cond) => { const m = String(cond || "").match(/(\d+)\s*dias?\b/i); return m ? Number(m[1]) : 30; };
-
 const emAberto = (r) => r.status !== "Pago" && r.status !== "Cancelado" && r.status !== "Agrupada";
 
 export function RevisaoCertificado() {
@@ -281,11 +280,9 @@ export function CertificadoOS({ param }) {
       }, { numerar: true, motivo: anterior ? `Reemissão: ${motivoRevisao}` : "Emissão do certificado" });
       if (anterior) await salvar("certificados", { ...anterior, substituidoPor: cert.id }, { motivo: `Substituído pela revisão ${cert.revisao}` });
       if (!anterior) {
-        const faturar = cfg.sistemaFaturamento !== "Não" && contrato?.ciclo !== "Parcelado";
-        if (faturar) {
-          const valor = valorAmostra(contrato, a);
-          await salvar("contas_receber", { origem: "Amostra", amostraId: a.id, referencia: referenciaAmostra(a), osId: os.id, os: a.os, clienteId: a.clienteId, contratoId: a.contratoId, contrato: os.contrato, descricao: `${a.servico} · ${referenciaAmostra(a)}`, valor, venc: isoDia(diasPagamento(contrato?.condicoes)), forma: contrato?.condicoes || "", status: "Em aberto" }, { numerar: true });
-        }
+        // A fatura já nasceu com a OS: paga → Concluída; em aberto → Faturamento.
+        const fat = faturaDaAmostra(dados, a);
+        const faturar = faturaPorOS(cfg, contrato) && fat?.status !== "Pago";
         await salvar("amostras", { ...a, status: faturar ? "Faturamento" : "Concluída", dataAssinatura: agora, certificadoId: cert.id }, { motivo: "Certificado emitido" });
       } else await salvar("amostras", { ...a, certificadoId: cert.id }, { motivo: `Certificado reemitido (rev. ${cert.revisao})` });
       avisar(`Certificado ${cert.numero}${cert.revisao ? ` rev. ${cert.revisao}` : ""} emitido.`, "ok");

@@ -10,7 +10,8 @@ import { brl, dataBR, isoDia } from "../lib/formato.js";
 import { numero } from "../lib/laboratorio.js";
 import { Grade } from "../components/Grade.jsx";
 import { Caixa, Modal, opcoes, useAviso } from "../components/ui.jsx";
-import { statusDaOS } from "../lib/ordens.js";
+import { statusDaOS, referenciaAmostra } from "../lib/ordens.js";
+import { amostrasDaFatura } from "../lib/faturas.js";
 import { paraCSV } from "../lib/grade.js";
 
 const quando = (s) => (s ? (String(s).length > 10 ? new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : dataBR(s)) : "");
@@ -42,7 +43,7 @@ export function ContasReceber() {
   const cli = (r) => dados.clientes.find((c) => c.id === r.clienteId) || {};
   const ct = (r) => dados.contratos.find((c) => c.id === r.contratoId);
   const os = (r) => dados.ordens.find((o) => o.id === r.osId);
-  const am = (r) => dados.amostras.find((a) => a.id === r.amostraId);
+  const am = (r) => amostrasDaFatura(dados, r)[0];
   const linhas = dados.contas_receber.filter((r) => expandir || r.status !== "Agrupada");
   const forma = (r) => r.forma || ct(r)?.condicoes || "";
   const colunas = [
@@ -76,7 +77,7 @@ export function ContasReceber() {
       const pagas = [];
       for (const r of alvo) pagas.push(r, ...(r.agrupa || []).map((id) => dados.contas_receber.find((x) => x.id === id)).filter(Boolean));
       await salvarLote("contas_receber", pagas.map((r) => ({ ...r, status: r.status === "Agrupada" ? "Agrupada" : "Pago", pagoEm: janela.data, forma: janela.forma || forma(r), valorPago: r.valor, pagoNoGrupo: r.status === "Agrupada" || undefined })), { motivo: "Pagamento confirmado" });
-      const ams = pagas.map((r) => r.amostraId && dados.amostras.find((x) => x.id === r.amostraId)).filter((a) => a && a.status === "Faturamento");
+      const ams = pagas.flatMap((r) => amostrasDaFatura(dados, r)).filter((a) => a.status === "Faturamento");
       if (ams.length) await salvarLote("amostras", ams.map((a) => ({ ...a, status: "Concluída" })), { motivo: "Fatura paga" });
       setSel(new Set());
       avisar(`${alvo.length} pagamento(s) confirmado(s).`, "ok");
@@ -184,9 +185,9 @@ export function BoletimMedicao({ param }) {
     .flatMap((r) => (r.agrupa?.length ? r.agrupa.map((id) => dados.contas_receber.find((x) => x.id === id)).filter(Boolean) : [r]));
   const cli = dados.clientes.find((c) => c.id === contas[0]?.clienteId) || {};
   const linhasParam = porParametro ? contas.flatMap((r) => {
-    const a = dados.amostras.find((x) => x.id === r.amostraId);
-    const sv = dados.contratos.find((c) => c.id === r.contratoId)?.servicos?.find((s) => s.sid === a?.sid);
-    return a && sv ? a.analises.map((x) => ({ r, a, nome: x.nome, preco: Number(sv.params.find((p) => p.id === x.pid)?.preco) || 0 })) : [{ r, a: null, nome: r.descricao, preco: Number(r.valor) || 0 }];
+    const ams = amostrasDaFatura(dados, r);
+    const linhas = ams.flatMap((a) => { const sv = dados.contratos.find((c) => c.id === r.contratoId)?.servicos?.find((s) => s.sid === a.sid); return sv ? a.analises.map((x) => ({ r, a, nome: x.nome, preco: Number(sv.params.find((p) => p.id === x.pid)?.preco) || 0 })) : []; });
+    return linhas.length ? linhas : [{ r, a: null, nome: r.descricao, preco: Number(r.valor) || 0 }];
   }) : [];
   return (
     <>
@@ -195,7 +196,7 @@ export function BoletimMedicao({ param }) {
         <div className="doc-topo"><b>Boletim de Medição{porParametro ? " por parâmetro" : ""}</b><span>{cli.razao}{cli.doc ? ` · ${cli.doc}` : ""}</span><span>{dataBR(isoDia(0))}</span></div>
         {porParametro ? (
           <table className="doc-tab"><thead><tr><th>Fatura</th><th>OS</th><th>Amostra</th><th>Identificação</th><th>Parâmetro</th><th>Valor</th></tr></thead>
-            <tbody>{linhasParam.map((l, k) => <tr key={k}><td>{numeroFatura(l.r)}</td><td>{l.r.os}</td><td>{l.r.referencia}</td><td>{l.a?.identificacao || ""}</td><td>{l.nome}</td><td>{valorBR(l.preco)}</td></tr>)}
+            <tbody>{linhasParam.map((l, k) => <tr key={k}><td>{numeroFatura(l.r)}</td><td>{l.r.os}</td><td>{l.a ? referenciaAmostra(l.a) : l.r.referencia}</td><td>{l.a?.identificacao || ""}</td><td>{l.nome}</td><td>{valorBR(l.preco)}</td></tr>)}
               <tr><th colSpan={5} style={{ textAlign: "right" }}>Total</th><th>{valorBR(somar(contas, (r) => r.valor))}</th></tr></tbody></table>
         ) : (
           <table className="doc-tab"><thead><tr><th>Fatura</th><th>Descrição</th><th>OS</th><th>Amostra</th><th>Vencimento</th><th>Status</th><th>Valor</th></tr></thead>

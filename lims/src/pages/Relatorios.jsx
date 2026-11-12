@@ -12,6 +12,7 @@ import { Caixa, opcoes, useAviso } from "../components/ui.jsx";
 import { paraCSV } from "../lib/grade.js";
 import { quandoBR } from "./Coletas.jsx";
 import { numeroFatura } from "./Financeiro.jsx";
+import { amostrasDaFatura } from "../lib/faturas.js";
 
 
 const STATUS_OS_REL = ["Faturamento", "Concluída", "Laboratório", "Em coleta", "Aguardando agendamento", "Inspeção Técnica", "Em Revisão", "Assinatura", "Cancelado"];
@@ -150,11 +151,10 @@ export function DashboardFinanceiro() {
   const [aberto, setAberto] = useState(null);
   const todas = dados.contas_receber.filter((r) => r.status !== "Agrupada");
   const ct = (r) => dados.contratos.find((c) => c.id === r.contratoId);
-  const am = (r) => dados.amostras.find((a) => a.id === r.amostraId);
   const respProp = (c) => { const p = dados.propostas.find((x) => x.id === c?.propostaId); return p?.resp || c?.resp || ""; };
   const cliNome = (id) => { const c = dados.clientes.find((x) => x.id === id) || {}; return [c.razao, c.resp].filter(Boolean).join(" - "); };
   const doMes = (r) => String(r.venc || "").startsWith(mes) || (r.status === "Em aberto" && r.venc && r.venc < hoje);
-  const emFat = (r) => r.status === "Em aberto" && am(r)?.status === "Faturamento";
+  const emFat = (r) => r.status === "Em aberto" && amostrasDaFatura(dados, r).some((a) => a.status === "Faturamento");
   const parcelado = (r) => ct(r)?.ciclo === "Parcelado" || r.origem === "Contrato";
   const situacao = (r) => (r.status === "Pago" ? "Paga" : r.status === "Cancelado" ? "Cancelada" : r.venc && r.venc < hoje ? "Vencida" : "A vencer");
   const statusF = (r) => (r.status === "Cancelado" ? "Cancelada" : emFat(r) ? "Faturamento" : r.status);
