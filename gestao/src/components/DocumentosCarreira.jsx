@@ -4,7 +4,7 @@
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import { dataCurta, nomeProprio } from "../lib/format.js";
 import {
-  DOC_PCC, DOC_RMC, GRUPOS_RISCO, NIVEIS, TRILHAS_CARREIRA, LATERAIS, REGRAS, TEXTO_PLANO, FORA_DO_PLANO, nivelPorId, exigenciaPCMSO, nomeTipoMov, faixaSalarial, formatarFaixa,
+  DOC_PCC, DOC_RMC, GRUPOS_RISCO, NIVEIS, TRILHAS_CARREIRA, LATERAIS, REGRAS, TEXTO_PLANO, FORA_DO_PLANO, nivelPorId, exigenciaPCMSO, nomeTipoMov, faixaSalarial, formatarFaixa, CULTURA,
 } from "../lib/planoCarreira.js";
 
 function Cab({ doc, folha, total }) {
@@ -40,6 +40,12 @@ export function DocPCC({ ajustes = {} }) {
         <table className="fm-tab"><tbody>
           <Sec>1. Objetivo</Sec><tr><td>{TEXTO_PLANO.objetivo}</td></tr>
           <Sec>2. Princípios</Sec><tr><td>{TEXTO_PLANO.principios.map((p) => <div key={p}>• {p}</div>)}</td></tr>
+          <Sec>2.1 Cultura MinasLab (requisito de todos os cargos)</Sec>
+          <tr><td>
+            <div><b>Missão:</b> {CULTURA.missao}</div>
+            <div><b>Visão:</b> {CULTURA.visao}</div>
+            <div><b>Valores:</b> {CULTURA.valores.map((v) => `${v.nome} (${v.desc.replace(/\.$/, "").toLowerCase()})`).join("; ")}.</div>
+          </td></tr>
           <Sec>3. Tipos de movimentação</Sec><tr><td>{TEXTO_PLANO.movimentos.map((p) => <div key={p}>• {p}</div>)}</td></tr>
           <Sec>4. Critérios para o próximo passo (conferidos no sistema de gestão)</Sec>
           <tr><td>
@@ -49,8 +55,9 @@ export function DocPCC({ ajustes = {} }) {
             <div>d) PDI: ao menos um item concluído nos últimos dois trimestres e nenhum vencido em aberto.</div>
             <div>e) No máximo {REGRAS.ocorrenciasMax} ocorrências registradas nos últimos {REGRAS.mesesAvaliacao} meses.</div>
             <div>f) Estágio na função: autônomo.</div>
-            <div>g) Requisitos do cargo de destino (formação, autorizações e habilitações) comprovados.</div>
-            <div>h) Necessidade da vaga e orçamento aprovados pela direção.</div>
+            <div>g) Cultura MinasLab: os {CULTURA.valores.length} valores da empresa conferidos pela liderança nos últimos {REGRAS.mesesAvaliacao} meses.</div>
+            <div>h) Requisitos do cargo de destino (formação, autorizações e habilitações) comprovados.</div>
+            <div>i) Necessidade da vaga e orçamento aprovados pela direção.</div>
           </td></tr>
           <Sec>5. Ciclo e registro</Sec><tr><td>{TEXTO_PLANO.ciclo}</td></tr>
           <Sec>6. Saúde ocupacional (PCMSO 2026)</Sec>

@@ -49,11 +49,12 @@ test("prontidão a partir dos registros", () => {
     notas: [{ mes: "2026-08", final: 8.5 }, { mes: "2026-09", final: 9 }, { mes: "2026-10", final: 8 }, { mes: "2025-01", final: 2 }],
     pdi: [{ trimestre: "2026-T3", status: "concluido" }],
     obrigatorios: [{ id: "a", nome: "A", feito: true }],
+    cultura: { em: "2026-10-01", valores: CULTURA.valores.map((v) => v.id) },
   });
   assert.equal(ok.situacao, "pronta", JSON.stringify(ok.criterios));
   const falta = prontidao({ ...base, desde: "2026-06-01", notas: [{ mes: "2026-10", final: 9 }], ocorrencias: [{ mes: "2026-10" }, { mes: "2026-09" }, { mes: "2026-08" }], obrigatorios: [{ id: "a", nome: "SPIN", feito: false }], naoEficazes: 1 });
   const por = Object.fromEntries(falta.criterios.map((c) => [c.id, c.ok]));
-  assert.deepEqual(por, { tempo: false, desempenho: false, treinamentos: false, eficacia: false, pdi: null, ocorrencias: false, estagio: true });
+  assert.deepEqual(por, { tempo: false, desempenho: false, treinamentos: false, eficacia: false, pdi: null, ocorrencias: false, estagio: true, cultura: null });
   assert.equal(falta.situacao, "desenvolvimento");
   assert.match(falta.criterios[2].detalhe, /SPIN/);
 });
@@ -124,4 +125,32 @@ test("validarFaixa recusa zero, negativo e mínimo maior que máximo", () => {
   assert.match(validarFaixa(2500, 2000), /maior que o máximo/);
   assert.equal(validarFaixa(1800, 2000), "");
   assert.equal(validarFaixa(null, null), "");
+});
+
+import { CULTURA, criterioCultura } from "./planoCarreira.js";
+
+test("cultura MinasLab: 12 valores com nome", () => {
+  assert.equal(CULTURA.valores.length, 12);
+  assert.ok(CULTURA.missao && CULTURA.visao);
+  assert.equal(new Set(CULTURA.valores.map((v) => v.id)).size, 12);
+});
+
+test("critério de cultura: conferido nos últimos 6 meses e todos os valores", () => {
+  const todos = CULTURA.valores.map((v) => v.id);
+  assert.equal(criterioCultura(null, "2026-11-13").ok, null);
+  assert.equal(criterioCultura({ em: "2026-10-01", valores: todos }, "2026-11-13").ok, true);
+  const falta = criterioCultura({ em: "2026-10-01", valores: todos.slice(1) }, "2026-11-13");
+  assert.equal(falta.ok, false);
+  assert.match(falta.detalhe, new RegExp(CULTURA.valores[0].nome));
+  assert.equal(criterioCultura({ em: "2026-04-01", valores: todos }, "2026-11-13").ok, null); // vencida
+});
+
+test("prontidão inclui a cultura", () => {
+  const todos = CULTURA.valores.map((v) => v.id);
+  const r = prontidao({ nivel: NIVEIS[1], hoje: "2026-11-04", desde: "2025-09-01", estagio: "autonomo",
+    notas: [{ mes: "2026-08", final: 9 }, { mes: "2026-09", final: 9 }, { mes: "2026-10", final: 9 }],
+    pdi: [{ trimestre: "2026-T3", status: "concluido" }], obrigatorios: [{ id: "a", nome: "A", feito: true }],
+    cultura: { em: "2026-10-20", valores: todos } });
+  assert.equal(r.criterios.find((c) => c.id === "cultura").ok, true);
+  assert.equal(r.situacao, "pronta");
 });
