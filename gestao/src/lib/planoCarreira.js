@@ -226,6 +226,40 @@ export const REGRAS = {
   ciclos: [1, 7], // análise das promoções em janeiro e julho
 };
 
+// Cultura MinasLab: missão, visão e valores (resumo da página oficial
+// minaslab.net/missao-e-valores — o texto completo está lá). A liderança
+// confere os valores de cada pessoa; vale por REGRAS.mesesAvaliacao meses.
+export const CULTURA = {
+  fonte: "https://minaslab.net/missao-e-valores/",
+  missao: "Contribuir para a proteção ambiental e a saúde pública com análises de água, efluentes, solos e alimentos, apoiando decisões sobre qualidade e segurança.",
+  visao: "Ser referência em análises ambientais no Norte de Minas, reconhecida pela qualidade técnica e pela agilidade dos serviços.",
+  valores: [
+    { id: "imparcialidade", nome: "Imparcialidade", desc: "Independência e fidelidade aos dados." },
+    { id: "responsabilidade", nome: "Responsabilidade", desc: "Cuidado com pessoas, amostras, informações e meio ambiente." },
+    { id: "excelencia", nome: "Excelência técnica", desc: "Conhecimento, rigor, rastreabilidade e melhoria contínua." },
+    { id: "principios", nome: "Princípios cristãos e respeito", desc: "Honestidade, humildade e respeito à dignidade de todos." },
+    { id: "servir", nome: "Orgulho em servir", desc: "Atenção e respeito em cada demanda." },
+    { id: "dono", nome: "Atitude de dono", desc: "Responsabilidade pelas decisões e pelos recursos." },
+    { id: "cliente", nome: "Compromisso com o cliente", desc: "Informações que apoiam as decisões do cliente." },
+    { id: "combinado", nome: "Cumprir o combinado", desc: "Escopo, condições e prazos claros e cumpridos." },
+    { id: "presenca", nome: "Presença e disponibilidade", desc: "Diálogo próximo e canais de atendimento claros." },
+    { id: "feedback", nome: "Abertura a feedback", desc: "Sugestões e críticas como oportunidades de melhoria." },
+    { id: "solucoes", nome: "Foco em soluções", desc: "Investigar causas e agir com agilidade, respeitando os métodos." },
+    { id: "concluir", nome: "Concluir com responsabilidade", desc: "Acompanhar o trabalho até a entrega e o esclarecimento de dúvidas." },
+  ],
+};
+
+/** Critério "Cultura MinasLab": conferência da liderança ({ em, valores: [ids] }) dentro da janela. */
+export function criterioCultura(conf, hoje) {
+  const meses = conf?.em ? mesesEntre(conf.em, hoje) : null;
+  if (meses == null || meses >= REGRAS.mesesAvaliacao) {
+    return { id: "cultura", nome: "Cultura MinasLab", ok: null, detalhe: conf?.em ? `conferida em ${conf.em.split("-").reverse().join("/")}; conferir de novo (vale ${REGRAS.mesesAvaliacao} meses)` : "a liderança ainda não conferiu os valores" };
+  }
+  const marcados = new Set(conf.valores || []);
+  const faltam = CULTURA.valores.filter((v) => !marcados.has(v.id));
+  return { id: "cultura", nome: "Cultura MinasLab", ok: !faltam.length, detalhe: faltam.length ? `valores a desenvolver: ${faltam.map((v) => v.nome).join(", ")}` : `os ${CULTURA.valores.length} valores conferidos em ${conf.em.split("-").reverse().join("/")}` };
+}
+
 export const nivelPorId = (id) => NIVEIS.find((n) => n.id === id) || null;
 const norm = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 /** Nível do plano pela função do sistema (nome da função). */
@@ -338,7 +372,7 @@ const mesMenos = (hoje, n) => {
  * Devolve { criterios: [{id, nome, ok, detalhe}], prontos, total, situacao }.
  * ok: true, false ou null (sem dado para conferir).
  */
-export function prontidao({ nivel, tempoMinimo, desde, hoje, notas = [], ocorrencias = [], pdi = [], obrigatorios = [], naoEficazes = 0, estagio = "" }) {
+export function prontidao({ nivel, tempoMinimo, desde, hoje, notas = [], ocorrencias = [], pdi = [], obrigatorios = [], naoEficazes = 0, estagio = "", cultura = null }) {
   const r = REGRAS;
   const ini = mesMenos(hoje, r.mesesAvaliacao - 1);
   const crit = [];
@@ -372,6 +406,8 @@ export function prontidao({ nivel, tempoMinimo, desde, hoje, notas = [], ocorren
 
   crit.push({ id: "estagio", nome: "Estágio na função", ok: estagio ? estagio === r.estagio : null, detalhe: estagio === r.estagio ? "autônomo" : estagio ? "ainda não está autônomo" : "estágio não avaliado em Pessoas e feedback" });
 
+  crit.push(criterioCultura(cultura, hoje));
+
   const prontos = crit.filter((c) => c.ok === true).length;
   const falhos = crit.filter((c) => c.ok === false).length;
   const semDado = crit.filter((c) => c.ok == null).length;
@@ -400,6 +436,7 @@ export const TEXTO_PLANO = {
   objetivo: "Mostrar a cada pessoa da MinasLab como crescer na empresa: quais cargos existem, o que cada um exige e o que é preciso mostrar para subir, com critérios iguais para todos e conferidos nos registros do sistema de gestão.",
   principios: [
     "Mérito comprovado: a promoção depende de resultado, treinamento e comportamento registrados, não de pedido.",
+    "Cultura MinasLab: só cresce quem vive a missão e os valores da empresa, conferidos pela liderança.",
     "Competência antes do cargo: a pessoa só assume ensaio, amostragem ou liberação de resultado em que está treinada e autorizada (ISO/IEC 17025, 6.2).",
     "Transparência: os critérios, os níveis e a situação de cada um ficam visíveis para a gestão e são conversados no feedback.",
     "Saúde e segurança: toda mudança de cargo segue o PCMSO (ASO de mudança de risco quando troca o grupo de risco).",

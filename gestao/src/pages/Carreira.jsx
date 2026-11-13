@@ -18,7 +18,7 @@ import { dataCurta, hojeBR, nomeProprio, numero } from "../lib/format.js";
 import {
   NIVEIS, TRILHAS_CARREIRA, LATERAIS, GRUPOS_RISCO, REGRAS, TEXTO_PLANO, SITUACOES, TIPOS_MOV, FORA_DO_PLANO,
   nivelPorId, nivelDaFuncao, proximosPassos, exigenciaPCMSO, mesesEntre, proximoCiclo, prontidao, nomeTipoMov,
-  faixaSalarial, formatarFaixa, lerReais, avisosFaixas, validarFaixa,
+  faixaSalarial, formatarFaixa, lerReais, avisosFaixas, validarFaixa, CULTURA,
 } from "../lib/planoCarreira.js";
 
 const MARCA = { true: ["✓", "ok"], false: ["✕", "ruim"], null: ["?", "neutro"] };
@@ -78,6 +78,7 @@ function useCarreira() {
       ocorrencias: dados.ocorrencias.filter((o) => o.pessoaId === membro.id),
       pdi: dados.pdi.filter((p) => p.pessoaId === membro.id),
       obrigatorios, naoEficazes, estagio: membro.estagio || "",
+      cultura: regs.find((r) => r.id === `cul_${membro.id}`) || null,
     });
     const passos = nivel ? proximosPassos(nivel.id) : [];
     const situacao = !nivel ? "sem" : !passos.length ? "topo" : pr.situacao;
@@ -180,6 +181,39 @@ function SeletorNivel({ id, valor, aoMudar }) {
   );
 }
 
+// Conferência da cultura MinasLab pela liderança: um a um, os valores que a
+// pessoa demonstra no dia a dia. Vale pela janela da avaliação (6 meses).
+function ConferirCultura({ p, c }) {
+  const atual = c.regs.find((r) => r.id === `cul_${p.membro.id}`);
+  const [marc, setMarc] = useState(() => new Set(atual?.valores || []));
+  const [obs, setObs] = useState(atual?.obs || "");
+  const [msg, setMsg] = useState("");
+  const alternar = (id) => setMarc((x) => { const n = new Set(x); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const salvar = async () => {
+    try {
+      await c.gravar("carreira", { id: `cul_${p.membro.id}`, tipo: "cultura", pessoaId: p.membro.id, nome: p.membro.nome, em: c.hoje, valores: [...marc], obs: obs.trim() });
+      setMsg("Conferência da cultura salva.");
+    } catch (e) { setMsg(e.message); }
+  };
+  return (
+    <div className="carr-bloco">
+      <h3>Cultura MinasLab</h3>
+      <div className="suave peq">Marque os valores que a pessoa demonstra no dia a dia. Para o próximo passo, todos precisam estar marcados numa conferência dos últimos 6 meses.{atual?.em ? ` Última conferência: ${dataCurta(atual.em)}.` : ""}</div>
+      <div className="carr-cultura">
+        {CULTURA.valores.map((v) => (
+          <label key={v.id} className="carr-check"><input type="checkbox" checked={marc.has(v.id)} onChange={() => alternar(v.id)} /> <span><b>{v.nome}</b> <span className="suave">· {v.desc}</span></span></label>
+        ))}
+      </div>
+      <div className="campo" style={{ marginTop: 8 }}><label htmlFor="cul-obs">Observações (exemplos do dia a dia)</label><input id="cul-obs" className="entrada" value={obs} onChange={(e) => setObs(e.target.value)} /></div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <button type="button" className="btn mini" onClick={salvar}>Salvar conferência de hoje</button>
+        <span className="suave peq">{marc.size} de {CULTURA.valores.length} valores</span>
+        {msg && <span className="peq">{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 function DetalhePessoa({ p, c, aoFechar }) {
   const { gravar, dados } = c;
   const [enq, setEnq] = useState({ nivelId: p.nivel?.id || "", desde: p.desde || "" });
@@ -215,6 +249,8 @@ function DetalhePessoa({ p, c, aoFechar }) {
         <div className="suave peq">{p.enq ? "Enquadramento registrado no plano." : `Sugerido pela função ${p.nomeFuncao ? `“${p.nomeFuncao}”` : ""} e pela data de entrada na equipe. Salve para confirmar.`}</div>
         {p.nivel?.alerta && <div className="aviso alerta peq" style={{ marginTop: 8 }}>{p.nivel.alerta}</div>}
       </div>
+
+      <ConferirCultura p={p} c={c} />
 
       {p.nivel && p.passos.length > 0 && (
         <div className="carr-bloco">
@@ -401,6 +437,13 @@ function Plano({ c, pessoas }) {
           </div>
         </Card>
       ))}
+      <Card>
+        <h3>Cultura MinasLab</h3>
+        <p className="peq"><b>Missão:</b> {CULTURA.missao}</p>
+        <p className="peq"><b>Visão:</b> {CULTURA.visao}</p>
+        <div className="peq"><b>Valores:</b> {CULTURA.valores.map((v) => v.nome).join(" · ")}.</div>
+        <div className="suave peq" style={{ marginTop: 6 }}>Requisito de todos os cargos: a liderança confere os valores na ficha de cada pessoa (aba Pessoas). <a href={CULTURA.fonte} target="_blank" rel="noreferrer">Texto completo</a>.</div>
+      </Card>
       <div className="grade grade-2">
         <Card>
           <h3>Movimentos laterais</h3>
@@ -424,6 +467,7 @@ function Plano({ c, pessoas }) {
             <li>Avaliação: média {REGRAS.notaMinima} ou mais em pelo menos {REGRAS.minimoAvaliacoes} meses avaliados nos últimos {REGRAS.mesesAvaliacao}.</li>
             <li>Treinamentos da função feitos e nenhuma eficácia não eficaz em aberto.</li>
             <li>PDI com item concluído nos últimos 2 trimestres e nada vencido.</li>
+            <li>Cultura MinasLab: os {CULTURA.valores.length} valores conferidos pela liderança nos últimos {REGRAS.mesesAvaliacao} meses.</li>
             <li>Até {REGRAS.ocorrenciasMax} ocorrências em {REGRAS.mesesAvaliacao} meses; estágio autônomo na função.</li>
             <li>{TEXTO_PLANO.ciclo}</li>
             <li>{TEXTO_PLANO.salario}</li>
