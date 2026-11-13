@@ -40,6 +40,9 @@ import { situacaoExperiencia } from "../../lib/rh/clt.js";
 import { SectionTitle, Empty, Modal, Card } from "../ui.jsx";
 import { anoRuim, tempoDeCasa } from "./uteis.js";
 import FichaPessoa from "./FichaPessoa.jsx";
+// Lista única de cargos: a do plano de carreira (Gestão). Promoções feitas lá
+// atualizam o cargo aqui; esta lista mantém os nomes iguais nos dois lugares.
+import { TRILHAS_CARREIRA, FORA_DO_PLANO, nivelPorId } from "../../../gestao/src/lib/planoCarreira.js";
 import { extrairDadosFichaRegistro, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 
 // "Hoje" circula como "AAAA-MM-DD"; a lib da CLT quer Date. Meia-noite LOCAL:
@@ -352,6 +355,38 @@ function CampoLongo({ id, rotulo, valor, aoMudar, linhas = 2, dica, ...resto }) 
       <label className="label" htmlFor={id}>{rotulo}</label>
       <textarea id={id} className="input" rows={linhas} value={valor ?? ""} onChange={aoMudar} {...resto} />
       {dica && <p className="mt-1 text-xs text-slate-500">{dica}</p>}
+    </div>
+  );
+}
+
+const CARGOS_FORA_DO_PLANO = ["Sócio", ...FORA_DO_PLANO];
+const CARGOS_DO_PLANO = [...new Set(TRILHAS_CARREIRA.flatMap((t) => t.niveis.map((id) => nivelPorId(id).cargo)))];
+const OUTRO = "__outro__";
+
+// Cargo: escolhido da lista do plano de carreira (por trilha) ou, se não
+// estiver lá, digitado em "Outro". Um cargo antigo fora da lista aparece como
+// está, para não mudar a ficha sem querer.
+function CampoCargo({ id, valor, aoMudar }) {
+  const v = String(valor ?? "");
+  const naLista = !v || CARGOS_DO_PLANO.includes(v) || CARGOS_FORA_DO_PLANO.includes(v);
+  const [digitando, setDigitando] = useState(!naLista);
+  useEffect(() => { if (!naLista) setDigitando(true); }, [naLista]);
+  const mudar = (x) => aoMudar({ target: { value: x } });
+  return (
+    <div>
+      <label className="label" htmlFor={id}>Cargo</label>
+      <select id={id} className="select" value={digitando ? OUTRO : v} onChange={(e) => { if (e.target.value === OUTRO) { setDigitando(true); } else { setDigitando(false); mudar(e.target.value); } }}>
+        <option value="">não informado</option>
+        {TRILHAS_CARREIRA.map((t) => (
+          <optgroup key={t.id} label={`Plano de carreira · ${t.nome}`}>
+            {t.niveis.map((n) => nivelPorId(n).cargo).map((c) => <option key={c} value={c}>{c}</option>)}
+          </optgroup>
+        ))}
+        <optgroup label="Fora do plano">{CARGOS_FORA_DO_PLANO.map((c) => <option key={c} value={c}>{c}</option>)}</optgroup>
+        <option value={OUTRO}>Outro (digitar)…</option>
+      </select>
+      {digitando && <input className="input mt-2" aria-label="Cargo (outro)" value={v} onChange={(e) => mudar(e.target.value)} placeholder="Nome do cargo" />}
+      <p className="mt-1 text-xs text-slate-500">Promoções registradas no Plano de carreira (Gestão) atualizam este campo.</p>
     </div>
   );
 }
@@ -682,7 +717,7 @@ function FormPessoa({
               <Campo id="p-matricula" rotulo="Matrícula" valor={form.matricula} aoMudar={setCampo("matricula")} />
               <Campo id="p-matricula-esocial" rotulo="Matrícula eSocial" valor={form.matriculaEsocial} aoMudar={setCampo("matriculaEsocial")} />
               <Campo id="p-admissao" rotulo="Admissão" tipo="date" valor={form.admissao} aoMudar={setCampo("admissao")} />
-              <Campo id="p-cargo" rotulo="Cargo" valor={form.cargo} aoMudar={setCampo("cargo")} />
+              <CampoCargo id="p-cargo" valor={form.cargo} aoMudar={setCampo("cargo")} />
               <Campo id="p-cbo" rotulo="CBO" valor={form.cbo} aoMudar={setCampo("cbo")} />
               <Campo id="p-pis" rotulo="PIS/PASEP" valor={form.pis} aoMudar={setCampo("pis")} />
               <Campo id="p-ctps" rotulo="CTPS" valor={form.ctps} aoMudar={setCampo("ctps")} />

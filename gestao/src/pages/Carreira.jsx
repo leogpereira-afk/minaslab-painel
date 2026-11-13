@@ -9,7 +9,7 @@ import { Abas, Card, Chip, Cabecalho, Kpi, Modal, Paginacao, usePaginacao } from
 import { Orientacao } from "../components/Orientacao.jsx";
 import { JanelaDocumento } from "../components/FormulariosTreinamento.jsx";
 import { DocPCC, DocRMC } from "../components/DocumentosCarreira.jsx";
-import { carregarTudo } from "../services/dados.js";
+import { carregarTudo, carreiraRH } from "../services/dados.js";
 import { catalogo, trilhaEmQualquerLugar } from "../lib/catalogo.js";
 import { treinamentosDaPessoa } from "../lib/treinamentosPessoa.js";
 import { resultadoEficacia } from "../lib/formulariosTreinamento.js";
@@ -275,7 +275,11 @@ function DetalhePessoa({ p, c, aoFechar }) {
 
 function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
   const { gravar, dados } = c;
-  const [f, setF] = useState({ tipoMov: inicial.tipoMov, para: inicial.para, data: c.hoje, requisitosOk: false, vagaOk: false, asoEm: "", formularioOk: false, atualizarFuncao: true, obs: "" });
+  const [f, setF] = useState({ tipoMov: inicial.tipoMov, para: inicial.para, data: c.hoje, salario: "", requisitosOk: false, vagaOk: false, asoEm: "", formularioOk: false, atualizarFuncao: true, obs: "" });
+  const [rh, setRh] = useState(null);
+  const temRH = !!p.membro.rhPessoaId;
+  const fx = f.para ? faixaSalarial(f.para, c.ajustes) : null;
+  const salNum = String(f.salario).trim() ? lerReais(f.salario) : null;
   const [erro, setErro] = useState("");
   const [salvo, setSalvo] = useState(null);
   const para = nivelPorId(f.para);
@@ -286,14 +290,21 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
   const salvar = async () => {
     if (!f.para) { setErro("Escolha o novo cargo."); return; }
     if (!f.data) { setErro("Informe a data."); return; }
+    if (temRH && f.data > c.hoje) { setErro("A data não pode ser futura: registre a mudança quando ela passar a valer (o RH muda junto)."); return; }
+    if (String(f.salario).trim() && !(salNum > 0)) { setErro("Salário inválido: use números, ex.: 2.400 ou 2400,50."); return; }
     try {
       const reg = await gravar("carreira", {
         tipo: "movimentacao", pessoaId: p.membro.id, nome: p.membro.nome, de: p.nivel?.id || "", deTexto: p.nomeFuncao, para: f.para, tipoMov: f.tipoMov, data: f.data,
         criterios: f.tipoMov === "enquadramento" ? [] : p.pr.criterios, conferidoEm: c.hoje, requisitosOk: f.requisitosOk, vagaOk: f.vagaOk,
         aso: !!pc?.aso, asoEm: pc?.aso ? f.asoEm : "", formularioOk: pc?.aso ? false : f.formularioOk, obs: f.obs.trim(),
+        ...(salNum ? { salario: salNum } : {}),
       });
       await gravar("carreira", { id: `enq_${p.membro.id}`, tipo: "enquadramento", pessoaId: p.membro.id, nome: p.membro.nome, nivelId: f.para, desde: f.data });
       if (f.atualizarFuncao && funcaoDestino && funcaoDestino.id !== p.membro.funcaoId) await gravar("equipe", { ...p.membro, funcaoId: funcaoDestino.id, funcao: funcaoDestino.nome });
+      if (temRH) {
+        try { setRh(await carreiraRH(c.setor, { membroId: p.membro.id, movId: reg.id })); }
+        catch (e) { setRh({ erro: e.message }); }
+      }
       setSalvo(reg);
     } catch (e) { setErro(e.message); }
   };
@@ -301,6 +312,7 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
   if (salvo) {
     return (
       <JanelaDocumento titulo="Registro de movimentação de cargo (RMC)" aoFechar={aoFechar}>
+        {rh && <div className={`aviso ${rh.erro ? "ruim" : "ok"} peq`} style={{ margin: "0 0 10px" }}>{rh.erro ? `A movimentação foi registrada, mas o RH não foi atualizado: ${rh.erro}` : rh.semRH ? "Esta pessoa não tem ficha no RH ligada; o RH não mudou." : !rh.marcos?.length ? "O RH já estava assim; nada mudou." : `${rh.fichaMudou ? `Ficha do RH atualizada (cargo “${rh.cargo}”)` : "Ficha do RH mantida, porque já tem uma mudança mais nova"}; histórico do RH: ${rh.marcos.join(" e ")}.`}</div>}
         <DocRMC mov={salvo} />
       </JanelaDocumento>
     );
@@ -312,8 +324,11 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
           <select id="mv-tipo" className="entrada" value={f.tipoMov} onChange={set("tipoMov")}>{TIPOS_MOV.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
         </div>
         <div className="campo" style={{ flex: "2 1 260px" }}><label htmlFor="mv-para">Novo cargo</label><SeletorNivel id="mv-para" valor={f.para} aoMudar={(v) => setF({ ...f, para: v })} /></div>
-        <div className="campo" style={{ flex: "1 1 150px" }}><label htmlFor="mv-data">Vale a partir de</label><input id="mv-data" type="date" className="entrada" value={f.data} onChange={set("data")} /></div>
+        <div className="campo" style={{ flex: "1 1 150px" }}><label htmlFor="mv-data">Vale a partir de</label><input id="mv-data" type="date" className="entrada" max={temRH ? c.hoje : undefined} value={f.data} onChange={set("data")} /></div>
+        <div className="campo" style={{ flex: "1 1 160px" }}><label htmlFor="mv-sal">Novo salário (R$, opcional)</label><input id="mv-sal" className="entrada" inputMode="decimal" placeholder={fx ? String(fx.min) : ""} value={f.salario} onChange={set("salario")} /></div>
       </div>
+      {fx && <div className="suave peq" style={{ marginTop: 4 }}>Faixa do novo cargo: {formatarFaixa(fx)}{salNum && (salNum < fx.min || salNum > fx.max) ? " — o salário informado está fora da faixa." : ""}</div>}
+      {temRH && <div className="suave peq" style={{ marginTop: 4 }}>Ao registrar, o cargo{String(f.salario).trim() ? " e o salário" : ""} na ficha do RH e o histórico do RH são atualizados.</div>}
       <div className="suave peq" style={{ marginTop: 4 }}>Cargo atual: {p.nivel?.cargo || p.nomeFuncao || "—"}</div>
 
       {f.tipoMov !== "enquadramento" && (
@@ -504,7 +519,7 @@ function Historico({ movs, c }) {
                 <td>{m.aso ? <Chip tom={m.asoEm ? "ok" : "alerta"}>{m.asoEm ? `ASO ${dataCurta(m.asoEm)}` : "ASO pendente"}</Chip> : <Chip tom={m.formularioOk ? "ok" : "neutro"}>{m.formularioOk ? "Formulário emitido" : "Formulário"}</Chip>}</td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button type="button" className="btn claro mini" onClick={() => setDoc(m)}>RMC</button>{" "}
-                  <button type="button" className="btn claro mini" onClick={() => window.confirm("Apagar esta movimentação do histórico? O cargo atual da pessoa não muda.") && c.remover("carreira", m.id)}>Apagar</button>
+                  <button type="button" className="btn claro mini" onClick={() => window.confirm("Apagar esta movimentação do histórico? O cargo atual da pessoa e a ficha do RH não mudam.") && c.remover("carreira", m.id)}>Apagar</button>
                 </td>
               </tr>
             ))}
