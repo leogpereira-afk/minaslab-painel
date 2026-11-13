@@ -15,7 +15,7 @@ name: Publicar funções (Supabase)
 on:
   push:
     branches: [main]
-    paths: ["supabase/functions/**"]
+    paths: ["supabase/functions/**", "gestao/supabase/functions/**"]
   workflow_dispatch:
     inputs:
       funcoes:
@@ -60,8 +60,10 @@ jobs:
               ANTES="$(git rev-parse "$DEPOIS~1")"
             fi
             MUDOU="$(git diff --name-only "$ANTES" "$DEPOIS" -- supabase/functions)"
+            # Funções da Gestão (gestao/supabase/functions/<nome>/) também publicam.
+            CANDIDATAS_GESTAO="$(git diff --name-only "$ANTES" "$DEPOIS" -- gestao/supabase/functions | grep -v '\.test\.mjs$' | cut -d/ -f4 | sort -u || true)"
             echo "Arquivos alterados:"; echo "$MUDOU"
-            CANDIDATAS="$(echo "$MUDOU" | grep -v '^supabase/functions/_shared/' | cut -d/ -f3 | sort -u || true)"
+            CANDIDATAS="$(echo "$MUDOU" | grep -v '^supabase/functions/_shared/' | cut -d/ -f3 | sort -u || true) $CANDIDATAS_GESTAO"
             for comp in $(echo "$MUDOU" | grep '^supabase/functions/_shared/' | xargs -r -n1 basename); do
               CANDIDATAS="$CANDIDATAS $(grep -l "_shared/$comp" supabase/functions/*/index.ts | cut -d/ -f3 || true)"
             done
@@ -69,7 +71,7 @@ jobs:
           FINAIS=""
           for f in $CANDIDATAS; do
             if ! [[ "$f" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then echo "::error::Nome inválido: $f"; exit 1; fi
-            if [ -f "supabase/functions/$f/index.ts" ]; then FINAIS="$FINAIS $f"; else echo "Sem index.ts (apagada?): $f — não publico."; fi
+            if [ -f "supabase/functions/$f/index.ts" ] || [ -f "gestao/supabase/functions/$f/index.ts" ]; then FINAIS="$FINAIS $f"; else echo "Sem index.ts (apagada?): $f — não publico."; fi
           done
           FINAIS="$(echo $FINAIS | tr ' ' '\n' | sort -u | tr '\n' ' ')"
           echo "Vou publicar: ${FINAIS:-nenhuma}"
@@ -84,7 +86,8 @@ jobs:
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then echo "::error::Falta o segredo SUPABASE_ACCESS_TOKEN"; exit 1; fi
           for f in $FUNCOES; do
             echo "::group::Publicando $f"
-            supabase functions deploy "$f" --project-ref "$PROJETO" --no-verify-jwt --use-api --yes
+            if [ -f "supabase/functions/$f/index.ts" ]; then DIR="."; else DIR="gestao"; fi
+            supabase functions deploy "$f" --workdir "$DIR" --project-ref "$PROJETO" --no-verify-jwt --use-api --yes
             echo "::endgroup::"
           done
           echo "Publicadas: $FUNCOES"
