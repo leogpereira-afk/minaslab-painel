@@ -10,6 +10,7 @@
 export const CARGOS_MINASLAB = [
   {
     nome: "Analista Comercial",
+    nivelId: "com-an1", setor: "comercial",
     identificacao: { setor: "Comercial / Operacional", vinculo: "Gerência Administrativa", colabora: "Suporte Operacional, Operações, Administrativo e Licitações" },
     missao: "Realizar a gestão comercial da MinasLab por meio da elaboração e do acompanhamento de propostas, do atendimento ao cliente, da atualização do CRM e da organização das coletas, garantindo agilidade, precisão e alinhamento com os padrões de qualidade e com a NBR ISO/IEC 17025.",
     responsabilidades: [
@@ -70,6 +71,7 @@ export const CARGOS_MINASLAB = [
   },
   {
     nome: "Assistente de Suporte Operacional, Atendimento e Licitações",
+    nivelId: "com-ass", setor: "comercial",
     versao: "2026-10-14", // descrição nova enviada em 14/10/2026 (recebimento de amostras, OS e provedores; sem compras e estoque)
     identificacao: { setor: "Suporte Operacional / Comercial / Administrativo", vinculo: "Gerência Administrativa", colabora: "Comercial, Operações, Administrativo e Licitações" },
     missao: "Prestar suporte operacional e administrativo garantindo organização, agilidade e precisão nos processos de atendimento ao cliente, gestão de materiais, licitações e apoio comercial, contribuindo para o bom funcionamento dos setores e para a conformidade com a NBR ISO/IEC 17025.",
@@ -150,6 +152,7 @@ export const CARGOS_MINASLAB = [
   },
   {
     nome: "Estagiário de Suporte Operacional",
+    nivelId: "com-est", setor: "comercial",
     identificacao: { setor: "Suporte Operacional / Atendimento / Administrativo", vinculo: "Assistente de Suporte Operacional (supervisão do estágio) e Gerência Administrativa", colabora: "Operações, Comercial, Administrativo e Licitações" },
     missao: "Apoiar as atividades operacionais, administrativas e de atendimento, contribuindo para a organização dos processos internos, o fluxo de materiais e amostras, o suporte ao cliente e a conformidade com os procedimentos internos e a NBR ISO/IEC 17025.",
     responsabilidades: [
@@ -200,6 +203,7 @@ export const CARGOS_MINASLAB = [
   },
   {
     nome: "Operador de Coletas e Logística",
+    nivelId: "col-op", setor: "comercial",
     identificacao: { setor: "Operações", vinculo: "Gerência Administrativa / Coordenação de Operações", colabora: "Comercial, Suporte Operacional e Laboratório" },
     missao: "Executar as coletas, a logística e o apoio operacional, garantindo que as amostras sejam coletadas, preservadas, transportadas, recebidas e registradas de forma correta, segura e rastreável, em conformidade com a NBR ISO/IEC 17025.",
     responsabilidades: [

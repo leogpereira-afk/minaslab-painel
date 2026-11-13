@@ -11,13 +11,13 @@ import { Orientacao } from "../components/Orientacao.jsx";
 import { TRILHAS, trilhaPorId } from "../lib/trilhas.js";
 import { numero, dataCurta, hojeBR } from "../lib/format.js";
 import { metasDaFuncao } from "../lib/calculos.js";
-import { CARGOS_MINASLAB } from "../lib/cargosMinasLab.js";
+import { TODOS_MODELOS, modelosDoSetor, nomeRepetido } from "../lib/modelosFuncoes.js";
 
 const linhas = (t) => String(t || "").split("\n").map((x) => x.trim()).filter(Boolean);
 const slug = (s) => String(s).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 // Modelos: as descrições de cargo da MinasLab, revisadas (lib/cargosMinasLab.js).
-const MODELOS = CARGOS_MINASLAB.map((c) => ({ ...c, criteriosTexto: c.criterios.map((x) => (x.desc ? `${x.nome} — ${x.desc}` : x.nome)).join("\n") }));
+const MODELOS = TODOS_MODELOS.map((c) => ({ ...c, criteriosTexto: c.criterios.map((x) => (x.desc ? `${x.nome} — ${x.desc}` : x.nome)).join("\n") }));
 
 export function paraRegistro(f) {
   const criterios = linhas(f.criteriosTexto).map((l) => {
@@ -38,15 +38,15 @@ export function paraRegistro(f) {
 const paraForm = (r) => ({ ...r, identificacao: { ...(r.identificacao || {}) }, metasPadrao: { ...(r.metasPadrao || {}) }, trilhas: r.trilhas || [], criteriosTexto: (r.criterios || []).map((c) => (c.desc ? `${c.nome} — ${c.desc}` : c.nome)).join("\n") });
 
 export default function Funcoes() {
-  const { dados, equipeAtual: equipe, gravar, remover } = useBase();
+  const { dados, equipeAtual: equipe, gravar, remover, setor } = useBase();
   const [editando, setEditando] = useState(null);
   const [vendo, setVendo] = useState(null);
   const [msg, setMsg] = useState("");
   const funcoes = [...dados.funcoes].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  const faltam = MODELOS.filter((m) => !dados.funcoes.some((f) => f.nome === m.nome));
+  const faltam = modelosDoSetor(setor, dados.funcoes).map((m) => MODELOS.find((x) => x.nome === m.nome && x.setor === m.setor));
   const carregarCargos = async () => {
     try {
-      for (const m of faltam) await gravar("funcoes", { ...paraRegistro(m), ...(m.versao ? { modeloVersao: m.versao } : {}) });
+      for (const m of faltam) await gravar("funcoes", { ...paraRegistro({ ...m, id: m.idFixo }), ...(m.versao ? { modeloVersao: m.versao } : {}), ...(m.rascunho ? { rascunho: true } : {}) });
       setMsg(`${faltam.length} descrição(ões) de cargo carregada(s). Revise metas e indicadores de cada uma.`);
     } catch (e) { setMsg(e.message); }
   };
@@ -81,11 +81,11 @@ export default function Funcoes() {
 
       {faltam.length > 0 && (
         <Card>
-          <h2>Descrições de cargo da MinasLab</h2>
-          <p className="suave peq">As 4 descrições enviadas, revisadas: indicadores com forma de medir e meta, requisitos de competência (ISO/IEC 17025, 6.2.2), autonomia e dono de cada tarefa compartilhada.</p>
+          <h2>Descrições de função (DF) do plano de carreira</h2>
+          <p className="suave peq">Cargos do plano de carreira que este setor ainda não tem. As marcadas como rascunho foram montadas a partir do plano e precisam da revisão da direção.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" className="btn" onClick={carregarCargos}>Carregar {faltam.length === MODELOS.length ? "as 4 descrições" : `as ${faltam.length} que faltam`}</button>
-            <span className="suave peq">{faltam.map((m) => m.nome).join(" · ")}</span>
+            <button type="button" className="btn" onClick={carregarCargos}>Carregar {faltam.length === 1 ? "a que falta" : `as ${faltam.length} que faltam`}</button>
+            <span className="suave peq">{faltam.map((m) => m.nome + (m.rascunho ? " (rascunho)" : "")).join(" · ")}</span>
           </div>
         </Card>
       )}
@@ -133,7 +133,7 @@ export default function Funcoes() {
 }
 
 function Editor({ inicial, aoFechar }) {
-  const { gravar } = useBase();
+  const { gravar, dados } = useBase();
   const [f, setF] = useState({ criteriosTexto: "", ...inicial });
   const [erro, setErro] = useState("");
   const [crm, setCrm] = useState(() => !!(numero(inicial.metasPadrao?.propostas) || numero(inicial.metasPadrao?.aprovacao) || numero(inicial.metasPadrao?.ligacoes)));
@@ -142,6 +142,7 @@ function Editor({ inicial, aoFechar }) {
   const alternar = (id) => setF((x) => ({ ...x, trilhas: x.trilhas?.includes(id) ? x.trilhas.filter((t) => t !== id) : [...(x.trilhas || []), id] }));
   const salvar = async () => {
     if (!f.nome?.trim()) { setErro("Dê um nome à função."); return; }
+    if (nomeRepetido(dados.funcoes, f.nome, f.id)) { setErro("Já existe uma função com este nome neste setor."); return; }
     try { await gravar("funcoes", paraRegistro(f)); aoFechar(); } catch (e) { setErro(e.message); }
   };
   const area = (id, rot, k, rows = 3, dica) => (
@@ -216,7 +217,7 @@ export function DocumentoCargo({ f }) {
   const sec = (titulo) => <h3 className="doc-sec">{++n}. {titulo}</h3>;
   return (
     <div className="doc-cargo">
-      <div className="doc-topo"><img src={logoMinasLab} alt="MinasLab" className="doc-logo" /><span>Descrição de cargo{f.revisadoEm ? ` · revisada em ${dataCurta(f.revisadoEm)}` : ""}</span></div>
+      <div className="doc-topo"><img src={logoMinasLab} alt="MinasLab" className="doc-logo" /><span><b>DF</b> · Descrição de Função{f.revisadoEm ? ` · revisada em ${dataCurta(f.revisadoEm)}` : ""}{f.rascunho ? " · rascunho" : ""}</span></div>
       <h2 className="doc-titulo">{f.nome}</h2>
       {sec("Identificação do cargo")}
       <table className="doc-tab"><tbody>
@@ -240,12 +241,21 @@ export function DocumentoCargo({ f }) {
   );
 }
 
+// O nome do arquivo salvo em PDF vem do título da página: "DF - <cargo>".
+function imprimirDF(f) {
+  const antes = document.title;
+  document.title = `DF - ${f.nome}`;
+  const voltar = () => { document.title = antes; window.removeEventListener("afterprint", voltar); };
+  window.addEventListener("afterprint", voltar);
+  window.print();
+}
+
 function VerDescricao({ f, aoFechar }) {
   return (
-    <Modal titulo="Descrição de cargo" aoFechar={aoFechar}>
+    <Modal titulo="DF · Descrição de Função" aoFechar={aoFechar}>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 12 }}>
         <button type="button" className="btn claro" onClick={aoFechar}>Fechar</button>
-        <button type="button" className="btn" onClick={() => window.print()}>Imprimir / salvar PDF</button>
+        <button type="button" className="btn" onClick={() => imprimirDF(f)}>Imprimir / salvar PDF</button>
       </div>
       <DocumentoCargo f={f} />
       {createPortal(<><style>{PAGINA_A4}</style><div className="impressao cert-avulso doc-avulso" aria-hidden="true"><DocumentoCargo f={f} /></div></>, document.body)}
