@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
     if (acao === "qualidade") {
       const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
       const { bens, manutencoes } = await sincronizarPatrimonio();
-      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos, recls, treins, efics, autzs, matriz, pessoasRh] = await Promise.all([
+      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos, recls, treins, efics, autzs, matriz, pessoasRh, estoque, desvios] = await Promise.all([
         sb.from("qualidade_documentos").select("*").order("codigo"),
         sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
         sb.from("qualidade_documento_leituras").select("documento_id,revisao,usuario,confirmado_em"),
@@ -392,8 +392,19 @@ Deno.serve(async (req) => {
         sb.from("qualidade_matriz").select("*"),
         // Colaboradores do RH (6.2): só o que a Qualidade precisa — nada de salário, CPF ou endereço.
         sb.from("ml_registros").select("id,registro").eq("colecao", "rh_pessoas").eq("apagado", false),
+        // Provedores externos (6.6): o cadastro, a FAPE, os documentos e a inspeção de recebimento ficam na Gestão de Estoque.
+        sb.from("ml_registros").select("colecao,id,registro").in("colecao", ["estoque_fornecedores", "estoque_documentos_fornecedor", "estoque_inspecoes", "estoque_avaliacoes_fornecedor"]).eq("apagado", false),
+        sb.from("qualidade_desvios_amostra").select("*").order("data", { ascending: false }).order("codigo", { ascending: false }),
       ]);
-      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos, recls, treins, efics, autzs, matriz, pessoasRh]) if (r.error) throw r.error;
+      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos, recls, treins, efics, autzs, matriz, pessoasRh, estoque, desvios]) if (r.error) throw r.error;
+      const est = (c: string) => ((estoque.data ?? []) as { colecao: string; id: string; registro: Record<string, unknown> }[]).filter((x) => x.colecao === c).map((x) => ({ ...x.registro, id: x.id }));
+      const anoAtras = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+      const provedores = {
+        fornecedores: est("estoque_fornecedores").map((f) => ({ id: f.id, nome: f.nome, cnpj: f.cnpj, tipo: f.tipoFornecedor, servico: f.tipoServico, status: f.status, requerQualificacao: f.requerQualificacao, resultado: f.resultadoQualificacao, ultima: f.dataUltimaAvaliacao, proxima: f.dataProximaAvaliacao, periodicidade: f.periodicidade, statusReavaliacao: f.statusReavaliacao })),
+        documentos: est("estoque_documentos_fornecedor").filter((d) => d.ativo !== false).map((d) => ({ fornecedorId: d.fornecedorId, tipo: d.tipoDocumento, validade: d.dataValidade, possuiValidade: d.possuiValidade })),
+        inspecoes: est("estoque_inspecoes").filter((i) => String(i.dataRecebimento ?? "") >= anoAtras).map((i) => ({ id: i.id, fornecedor: i.fornecedor, produto: i.produto, data: i.dataRecebimento, parecer: i.parecer, status: i.statusQualidade, nota: i.notaFinal })),
+        avaliacoes: est("estoque_avaliacoes_fornecedor").map((a) => ({ fornecedorId: a.fornecedorId, data: a.dataAvaliacao, resultado: a.resultadoFinal, classificacao: a.classificacaoNota, tipo: a.tipoAvaliacao })),
+      };
       const pessoas = ((pessoasRh.data ?? []) as { id: string; registro: Record<string, unknown> }[]).map(({ id, registro: p }) => ({
         id, nome: p.nome ?? "", cargo: p.cargo ?? "", setor: p.setor ?? "", admissao: p.admissao ?? null, escolaridade: p.escolaridade ?? "",
         formacao: p.formacao ?? "", registroConselho: p.registroConselho ?? "", vinculo: p.vinculo ?? "", ativo: p.ativo !== false && !p.desligadoEm, desligadoEm: p.desligadoEm ?? null,
@@ -403,6 +414,7 @@ Deno.serve(async (req) => {
         documentos: docs.data, revisoes: revs.data, leituras: leits.data, calibracoes: cals.data, manutencoes,
         equipamentos: (eqs.data ?? []).map((e: Record<string, unknown>) => ({ ...e, bem: e.bem_id ? bens.get(String(e.bem_id)) ?? null : null })),
         externos: externos.data, reclamacoes: recls.data,
+        provedores, desvios: desvios.data,
         treinamentos: treins.data, eficacias: efics.data, autorizacoes: autzs.data, matriz: matriz.data, pessoas,
         ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
         contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
@@ -730,6 +742,76 @@ Deno.serve(async (req) => {
       return json({ erro: "Tipo inválido." }, 400);
     }
 
+    // Desvio no recebimento de item de ensaio (7.4.3): consulta ao cliente, decisão e ressalva no relatório.
+    if (acao === "desvioSalvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const reg = (body.registro ?? {}) as Record<string, unknown>;
+      const id = uuid(reg.id);
+      const agora = new Date().toISOString(), hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const TIPOS = ["TEMPERATURA", "INTEGRIDADE", "VOLUME", "PRAZO", "IDENTIFICACAO", "PRESERVACAO", "FRASCO", "OUTRO"];
+      const d: Record<string, unknown> = {};
+      for (const c of ["os_referencia", "cliente_nome", "matriz", "descricao", "condicao_encontrada", "condicao_especificada", "consulta_meio", "consulta_com", "ressalva", "responsavel", "observacao"]) if (c in reg) d[c] = txt(reg[c]).slice(0, 4000) || null;
+      for (const c of ["data", "cliente_consultado_em"]) if (c in reg) d[c] = /^\d{4}-\d{2}-\d{2}$/.test(txt(reg[c])) ? txt(reg[c]) : null;
+      if ("tipos" in reg) d.tipos = (Array.isArray(reg.tipos) ? reg.tipos : []).map(String).filter((t) => TIPOS.includes(t));
+      if ("decisao" in reg) d.decisao = ["PROSSEGUIR_COM_RESSALVA", "NOVA_AMOSTRA", "CANCELAR", "AGUARDANDO"].includes(String(reg.decisao)) ? reg.decisao : null;
+      if ("encerrado" in reg) d.encerrado = reg.encerrado === true;
+      const { data: antes } = id ? await sb.from("qualidade_desvios_amostra").select("*").eq("id", id).maybeSingle() : { data: null };
+      if (id && !antes) return json({ erro: "Registro não encontrado." }, 404);
+      const junto = { ...(antes ?? {}), ...d } as Record<string, unknown>;
+      if (!txt(junto.descricao)) return json({ erro: "Descreva o desvio." }, 400);
+      if (junto.encerrado === true) {
+        if (!junto.cliente_consultado_em) return json({ erro: "Para encerrar, registre quando o cliente foi consultado (7.4.3)." }, 400);
+        if (!junto.decisao || junto.decisao === "AGUARDANDO") return json({ erro: "Para encerrar, registre a decisão do cliente." }, 400);
+        if (junto.decisao === "PROSSEGUIR_COM_RESSALVA" && !txt(junto.ressalva)) return json({ erro: "O ensaio segue com o desvio: escreva a ressalva que vai no relatório." }, 400);
+      }
+      if (!id) {
+        const data = (d.data as string) || hoje, ano = Number(data.slice(0, 4));
+        for (let i = 0; i < 3; i++) {
+          const { data: cods } = await sb.from("qualidade_desvios_amostra").select("codigo").like("codigo", `DES %/${ano}`);
+          const codigo = proximoCodigoAno("DES", ((cods ?? []) as { codigo: string }[]).map((x) => x.codigo), ano);
+          const { data: novo, error } = await sb.from("qualidade_desvios_amostra").insert({ ...d, data, codigo, responsavel: d.responsavel || usuario, historico: [{ em: agora, por: usuario, texto: "Desvio registrado." }], criado_por: usuario, atualizado_por: usuario }).select("*").single();
+          if (!error) return json({ ok: true, registro: novo });
+          if (String((error as { code?: string }).code) !== "23505") throw error;
+        }
+        return json({ erro: "Não foi possível gerar o número. Tente de novo." }, 409);
+      }
+      const mudou = Object.keys(d).filter((k) => JSON.stringify(d[k] ?? null) !== JSON.stringify((antes as Record<string, unknown>)[k] ?? null));
+      const hist = [...(Array.isArray(antes!.historico) ? antes!.historico : [])];
+      if (mudou.length) hist.push({ em: agora, por: usuario, texto: d.encerrado === true && !antes!.encerrado ? "Encerrado." : `Atualizou: ${mudou.join(", ")}.` });
+      const { data: salvo, error } = await sb.from("qualidade_desvios_amostra").update({ ...d, historico: hist.slice(-200), atualizado_em: agora, atualizado_por: usuario }).eq("id", id).select("*").single();
+      if (error) throw error;
+      return json({ ok: true, registro: salvo });
+    }
+
+    // Registros técnicos (7.5): trilha de alterações do LIMS — quem, quando, o que era e o que ficou (7.5.2).
+    if (acao === "registrosTecnicos") {
+      const de = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.de)) ? txt(body.de) : new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+      const ate = /^\d{4}-\d{2}-\d{2}$/.test(txt(body.ate)) ? txt(body.ate) : new Date().toISOString().slice(0, 10);
+      let qy = sb.from("ml_lims_auditoria").select("id,em,usuario,colecao,registro_id,acao,antes,depois", { count: "exact" })
+        .gte("em", `${de}T00:00:00-03:00`).lte("em", `${ate}T23:59:59-03:00`).order("em", { ascending: false });
+      if (txt(body.colecao)) qy = qy.eq("colecao", txt(body.colecao).slice(0, 60));
+      if (txt(body.usuario)) qy = qy.eq("usuario", txt(body.usuario).slice(0, 80));
+      if (body.semImportacao !== false) qy = qy.not("acao", "ilike", "Importou%");
+      const pagina = Math.max(1, Math.min(200, Number(body.pagina) || 1));
+      const { data, count, error } = await qy.range((pagina - 1) * 100, pagina * 100 - 1);
+      if (error) throw error;
+      const { data: cols } = await sb.from("ml_lims_auditoria").select("colecao").limit(1000);
+      return json({ itens: data ?? [], total: count ?? 0, pagina, colecoes: [...new Set(((cols ?? []) as { colecao: string }[]).map((c) => c.colecao))].sort() });
+    }
+
+    // Não conformidade de provedor externo (6.6 · 8.7): fornecimento fora do especificado, IR reprovada, documento vencido…
+    if (acao === "fornecedorNc") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const fornecedorId = txt(body.fornecedorId).slice(0, 80), descricao = txt(body.descricao).slice(0, 4000);
+      if (!fornecedorId || !descricao) return json({ erro: "Escolha o fornecedor e descreva o problema." }, 400);
+      const { data: fr } = await sb.from("ml_registros").select("registro").eq("colecao", "estoque_fornecedores").eq("id", fornecedorId).eq("apagado", false).maybeSingle();
+      if (!fr) return json({ erro: "Fornecedor não encontrado." }, 404);
+      const nomeF = txt((fr.registro as Record<string, unknown>).nome) || fornecedorId;
+      const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const nc = await abrirNc({ titulo: `Fornecedor ${nomeF}: ${descricao.split("\n")[0].slice(0, 140)}`, origem: "FORNECEDOR", etapa: "ABERTA", descricao, responsavel: txt(body.responsavel) || usuario, prazo: somaMeses(hoje, 1), trabalho_afetado: body.trabalhoAfetado === true, ref_tipo: "fornecedor", ref_id: null }, usuario);
+      return json({ ok: true, nc });
+    }
+
     // Reclamação procedente que pede ação corretiva: abre a NC (origem Reclamação) já ligada a ela (PG 013 → PG 014).
     if (acao === "reclamacaoNc") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
@@ -752,7 +834,7 @@ Deno.serve(async (req) => {
     if (acao === "arquivoEnviar") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const refTipo = txt(body.ref_tipo), refId = uuid(body.ref_id);
-      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia", "reclamacao", "treinamento", "autorizacao"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
+      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia", "reclamacao", "treinamento", "autorizacao", "desvio"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
       const nome = txt(body.nome).replace(/[\\/]/g, "_").slice(-150);
       const ext = nome.includes(".") ? nome.split(".").pop()!.toLowerCase() : "";
       const tipo = TIPOS_ARQ[ext];

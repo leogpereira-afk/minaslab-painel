@@ -2,7 +2,7 @@
 // Pesquisa de satisfação (mesmos dados do CRM), Documentos e POPs, Equipamentos, Não conformidades,
 // Auditorias e proficiência e Indicadores. Tudo pelo crachá do painel (Edge Function ml-qualidade).
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, ClipboardCheck, MessageSquareWarning, UserCheck, FileText, Gauge, Library, SearchCheck, Smile, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardCheck, FileClock, MessageSquareWarning, PackageX, Truck, UserCheck, FileText, Gauge, Library, SearchCheck, Smile, Wrench } from "lucide-react";
 import { lerQualidade, lerSatisfacao } from "../../services/qualidade.js";
 import { StatCard, CarregandoModulo, ErroModulo, Aviso } from "../ui.jsx";
 import PesquisaSatisfacao from "./PesquisaSatisfacao.jsx";
@@ -12,6 +12,9 @@ import Equipamentos, { situacaoEquip } from "./qualidade/Equipamentos.jsx";
 import NaoConformidades from "./qualidade/NaoConformidades.jsx";
 import Reclamacoes from "./qualidade/Reclamacoes.jsx";
 import Pessoal from "./qualidade/Pessoal.jsx";
+import ProvedoresExternos from "./qualidade/ProvedoresExternos.jsx";
+import DesviosAmostra from "./qualidade/DesviosAmostra.jsx";
+import RegistrosTecnicos from "./qualidade/RegistrosTecnicos.jsx";
 import { alertasPrazo } from "../../../supabase/functions/_shared/reclamacoes-regras.mjs";
 import Auditorias from "./qualidade/Auditorias.jsx";
 import Indicadores from "./qualidade/Indicadores.jsx";
@@ -23,12 +26,15 @@ const FUNCOES = [
   { valor: "externos", rotulo: "Documentos externos", icone: Library, cor: "bg-teal-50 text-teal-700", texto: "Normas, legislação e guias (CDOE): verificação trimestral e aviso do que está pendente de atualizar." },
   { valor: "equipamentos", rotulo: "Equipamentos", icone: Wrench, cor: "bg-amber-50 text-amber-700", texto: "Calibração, verificação intermediária e diária com alerta de vencimento e certificados." },
   { valor: "pessoal", rotulo: "Pessoal e competência", icone: UserCheck, cor: "bg-teal-50 text-teal-700", texto: "Treinamentos (RT/PAT) com eficácia (AVET), autorizações (AUTZ), matriz de competências (MC) e supervisão de novos." },
+  { valor: "provedores", rotulo: "Provedores externos", icone: Truck, cor: "bg-amber-50 text-amber-700", texto: "Qualificação e reavaliação (FAPE), documentos vencidos, IR reprovada e NC de fornecedor; cadastro na Gestão de Estoque." },
+  { valor: "desvios", rotulo: "Manuseio de amostras", icone: PackageX, cor: "bg-cyan-50 text-cyan-700", texto: "Desvios no recebimento (7.4.3): consulta ao cliente, decisão e ressalva no relatório; imprime o FM-LAB-117." },
+  { valor: "registros", rotulo: "Registros técnicos", icone: FileClock, cor: "bg-slate-100 text-slate-700", texto: "Trilha de alterações do LIMS: quem, quando, motivo e valor anterior (7.5.2); relatório do período." },
   { valor: "reclamacoes", rotulo: "Reclamações de clientes", icone: MessageSquareWarning, cor: "bg-orange-50 text-orange-700", texto: "Protocolo RRC, validação, confirmação ao cliente, investigação, resposta e encerramento; imprime o FM-LAB-113." },
   { valor: "nc", rotulo: "Não conformidades", icone: ClipboardCheck, cor: "bg-rose-50 text-rose-700", texto: "Registro, análise de causa, ação corretiva com responsável, prazo e eficácia." },
   { valor: "auditorias", rotulo: "Auditorias e proficiência", icone: SearchCheck, cor: "bg-violet-50 text-violet-700", texto: "Programa anual de auditoria interna e ensaios de proficiência com z-score." },
   { valor: "indicadores", rotulo: "Indicadores", icone: Gauge, cor: "bg-slate-100 text-slate-700", texto: "Prazo de liberação, reclamações, NPS, NC e proficiência com metas; pauta da análise crítica." },
 ];
-const PAGINAS = { documentos: Documentos, externos: DocumentosExternos, equipamentos: Equipamentos, nc: NaoConformidades, reclamacoes: Reclamacoes, pessoal: Pessoal, auditorias: Auditorias, indicadores: Indicadores };
+const PAGINAS = { documentos: Documentos, externos: DocumentosExternos, equipamentos: Equipamentos, nc: NaoConformidades, reclamacoes: Reclamacoes, pessoal: Pessoal, provedores: ProvedoresExternos, desvios: DesviosAmostra, registros: RegistrosTecnicos, auditorias: Auditorias, indicadores: Indicadores };
 
 export default function QualidadeLaboratorio({ aba, ir }) {
   const [q, setQ] = useState(null);

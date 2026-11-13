@@ -35,6 +35,9 @@ export const salvarRegistro = (modulo, registro) => chamar("salvar", { modulo, r
 export const salvarReclamacao = (registro, opcoes = {}) => chamar("reclamacaoSalvar", { registro: { ...registro, ...opcoes } }).then((r) => r.registro);
 // Pessoal e competência (6.2 · PT 001): tipo = treinamento | eficacia | autorizacao | matriz.
 export const salvarPessoal = (tipo, registro) => chamar("pessoalSalvar", { tipo, registro }).then((r) => r.registro);
+export const abrirNcDeFornecedor = (dados) => chamar("fornecedorNc", dados).then((r) => r.nc);
+export const salvarDesvio = (registro) => chamar("desvioSalvar", { registro }).then((r) => r.registro);
+export const lerRegistrosTecnicos = (filtros) => chamar("registrosTecnicos", filtros);
 export const abrirNcDaReclamacao = (id) => chamar("reclamacaoNc", { id }).then((r) => r.nc);
 export const excluirRegistro = (modulo, id) => chamar("excluir", { modulo, id });
 export const confirmarLeitura = (id) => chamar("ler", { id });
