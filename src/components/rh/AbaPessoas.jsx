@@ -42,7 +42,7 @@ import { anoRuim, tempoDeCasa } from "./uteis.js";
 import FichaPessoa from "./FichaPessoa.jsx";
 // Lista única de cargos: a do plano de carreira (Gestão). Promoções feitas lá
 // atualizam o cargo aqui; esta lista mantém os nomes iguais nos dois lugares.
-import { TRILHAS_CARREIRA, nivelPorId } from "../../../gestao/src/lib/planoCarreira.js";
+import { TRILHAS_CARREIRA, FORA_DO_PLANO, nivelPorId } from "../../../gestao/src/lib/planoCarreira.js";
 import { extrairDadosFichaRegistro, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 
 // "Hoje" circula como "AAAA-MM-DD"; a lib da CLT quer Date. Meia-noite LOCAL:
@@ -359,7 +359,7 @@ function CampoLongo({ id, rotulo, valor, aoMudar, linhas = 2, dica, ...resto }) 
   );
 }
 
-const CARGOS_FORA_DO_PLANO = ["Sócio", "Gerente", "Diretora"];
+const CARGOS_FORA_DO_PLANO = ["Sócio", ...FORA_DO_PLANO];
 const CARGOS_DO_PLANO = [...new Set(TRILHAS_CARREIRA.flatMap((t) => t.niveis.map((id) => nivelPorId(id).cargo)))];
 const OUTRO = "__outro__";
 

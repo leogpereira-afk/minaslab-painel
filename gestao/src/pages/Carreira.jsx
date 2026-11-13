@@ -302,7 +302,7 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
       await gravar("carreira", { id: `enq_${p.membro.id}`, tipo: "enquadramento", pessoaId: p.membro.id, nome: p.membro.nome, nivelId: f.para, desde: f.data });
       if (f.atualizarFuncao && funcaoDestino && funcaoDestino.id !== p.membro.funcaoId) await gravar("equipe", { ...p.membro, funcaoId: funcaoDestino.id, funcao: funcaoDestino.nome });
       if (temRH) {
-        try { setRh(await carreiraRH(c.setor, { membroId: p.membro.id, nivelId: f.para, salario: salNum, data: f.data, movId: reg.id })); }
+        try { setRh(await carreiraRH(c.setor, { membroId: p.membro.id, movId: reg.id })); }
         catch (e) { setRh({ erro: e.message }); }
       }
       setSalvo(reg);
@@ -312,7 +312,7 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
   if (salvo) {
     return (
       <JanelaDocumento titulo="Registro de movimentação de cargo (RMC)" aoFechar={aoFechar}>
-        {rh && <div className={`aviso ${rh.erro ? "ruim" : "ok"} peq`} style={{ margin: "0 0 10px" }}>{rh.erro ? `A movimentação foi registrada, mas o RH não foi atualizado: ${rh.erro}` : rh.semRH ? "Esta pessoa não tem ficha no RH ligada; o RH não mudou." : `RH atualizado: cargo “${rh.cargo}”${rh.marcos?.length ? `; histórico: ${rh.marcos.join(" e ")}` : ""}.`}</div>}
+        {rh && <div className={`aviso ${rh.erro ? "ruim" : "ok"} peq`} style={{ margin: "0 0 10px" }}>{rh.erro ? `A movimentação foi registrada, mas o RH não foi atualizado: ${rh.erro}` : rh.semRH ? "Esta pessoa não tem ficha no RH ligada; o RH não mudou." : !rh.marcos?.length ? "O RH já estava assim; nada mudou." : `${rh.fichaMudou ? `Ficha do RH atualizada (cargo “${rh.cargo}”)` : "Ficha do RH mantida, porque já tem uma mudança mais nova"}; histórico do RH: ${rh.marcos.join(" e ")}.`}</div>}
         <DocRMC mov={salvo} />
       </JanelaDocumento>
     );

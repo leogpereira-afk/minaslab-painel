@@ -617,16 +617,27 @@ async function dadosAcao(action: string, body: Record<string, unknown>, usuario:
       if (!podeGravar(perm, setor, "carreira")) return resp({ erro: "Você não tem acesso para editar o plano de carreira.", semPermissao: true }, 403);
       const membroId = String(body.membroId ?? ""), movId = String(body.movId ?? "");
       if (!ID_OK.test(membroId) || !ID_OK.test(movId)) return resp({ erro: "Registro inválido." }, 400);
+      // Tudo vem dos registros do servidor: a movimentação gravada (cargo, data,
+      // salário) e o membro da equipe (rhPessoaId). Do navegador só os ids.
+      const { data: mv, error: e0 } = await sb.from(T_REG).select("registro, apagado").eq("colecao", colecaoDe(setor, "carreira")).eq("id", movId).maybeSingle();
+      if (e0) throw e0;
+      const mov: any = mv?.registro;
+      if (!mv || mv.apagado || mov?.tipo !== "movimentacao" || mov?.pessoaId !== membroId) return resp({ erro: "Movimentação não encontrada." }, 404);
       const { data: mb, error: e1 } = await sb.from(T_REG).select("registro, apagado").eq("colecao", colecaoDe(setor, "equipe")).eq("id", membroId).maybeSingle();
       if (e1) throw e1;
       const rhId = String(mb?.registro?.rhPessoaId ?? "");
       if (!mb || mb.apagado || !rhId) return resp({ ok: true, semRH: true });
+      // A mesma ficha do RH ligada a mais de um membro (nos dois setores) é recusada.
+      let ligacoes = 0;
+      for (const s2 of Object.keys(SETORES)) ligacoes += (await listarColecao(colecaoDe(s2, "equipe"))).filter((x: any) => x?.rhPessoaId === rhId && x?.ativo !== false).length;
+      if (ligacoes > 1) return resp({ erro: "Esta ficha do RH está ligada a mais de uma pessoa da equipe. Corrija em Equipe e metas." }, 409);
       const { data: pe, error: e2 } = await sb.from(T_REG).select("registro, apagado").eq("colecao", "rh_pessoas").eq("id", rhId).maybeSingle();
       if (e2) throw e2;
       if (!pe || pe.apagado) return resp({ ok: true, semRH: true });
+      const pessoa = { ...pe.registro, id: rhId };
       const historico = (await listarColecao("rh_historico")).filter((h: any) => h?.pessoaId === rhId);
       const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
-      const r: any = aplicarCarreiraRH({ pessoa: pe.registro, historico, nivelId: String(body.nivelId ?? ""), salario: body.salario ?? null, data: String(body.data ?? ""), movId, hoje, usuario });
+      const r: any = aplicarCarreiraRH({ pessoa, historico, nivelId: String(mov.para ?? ""), salario: mov.salario ?? null, data: String(mov.data ?? ""), movId, hoje, usuario });
       if (r.erro) return resp({ erro: r.erro }, 400);
       const agora = new Date().toISOString();
       for (const mc of r.marcos) {
@@ -641,7 +652,7 @@ async function dadosAcao(action: string, body: Record<string, unknown>, usuario:
         if (error) throw error;
         await bump("rh_pessoas");
       }
-      return resp({ ok: true, cargo: r.pessoa?.cargo ?? pe.registro.cargo ?? "", marcos: r.marcos.map((m: any) => m.titulo) });
+      return resp({ ok: true, cargo: r.pessoa?.cargo ?? pessoa.cargo ?? "", fichaMudou: !!r.pessoa, fichaMantida: !!r.fichaMantida, marcos: r.marcos.map((m: any) => m.titulo) });
     }
     case "dadosImportarVotacao": {
       // Histórico importado da planilha (votação já encerrada, somas abertas).

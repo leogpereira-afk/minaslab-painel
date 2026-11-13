@@ -45,3 +45,19 @@ test("retroativo mais antigo que marco existente não sobrescreve a ficha", () =
   assert.equal(r.pessoa.salario, 2400);             // salário (sem marco mais novo) muda
   assert.equal(r.marcos.length, 2);                 // os dois marcos entram no histórico
 });
+
+test("retroativo: o 'de' vem do marco anterior à data, não da ficha atual", () => {
+  const historico = [
+    { pessoaId: "pes_1", tipo: "cargo", data: "2026-10-01", valorPara: "Analista de Laboratório I" },
+    { pessoaId: "pes_1", tipo: "cargo", data: "2026-11-05", valorPara: "Analista de Laboratório III" },
+  ];
+  const r = aplicarCarreiraRH({ ...base, pessoa: { ...pessoa, cargo: "Analista de Laboratório III" }, historico, nivelId: "lab-an2" });
+  assert.equal(r.marcos[0].valorDe, "Analista de Laboratório I");
+  assert.equal(r.pessoa, null);         // ficha não muda: há mudança mais nova
+  assert.equal(r.fichaMantida, true);
+});
+
+test("salário em texto com vírgula é entendido", () => {
+  const r = aplicarCarreiraRH({ ...base, pessoa: { ...pessoa, salario: "2.300,00" }, salario: 2300 });
+  assert.equal(r.marcos.filter((m) => m.tipo === "salario").length, 0);
+});
