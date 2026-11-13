@@ -9,6 +9,7 @@
 // Demais páginas da Qualidade: qualidade (tudo) · salvar {modulo} · excluir · ler (documento) · calibrar ·
 //        metaSalvar · arquivoEnviar · arquivoBaixar · arquivoApagar · verificarExternos (documentos externos/CDOE)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { proximoCodigoAno, somaDias as somaDiasP, faltaNaEficacia, DIAS_EFICACIA, ORIGENS_TREINAMENTO } from "../_shared/pessoal-regras.mjs";
 import { proximoCodigo, prazoResposta, prazoConfirmacao, proximaEtapa, faltaParaSeguir, ETAPAS_RECLAMACAO, PRAZO_RESPOSTA_DIAS } from "../_shared/reclamacoes-regras.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -370,7 +371,7 @@ Deno.serve(async (req) => {
     if (acao === "qualidade") {
       const umAno = new Date(Date.now() - 400 * 86400000).toISOString();
       const { bens, manutencoes } = await sincronizarPatrimonio();
-      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos, recls] = await Promise.all([
+      const [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, entradas, externos, recls, treins, efics, autzs, matriz, pessoasRh] = await Promise.all([
         sb.from("qualidade_documentos").select("*").order("codigo"),
         sb.from("qualidade_documento_revisoes").select("*").order("data", { ascending: false }),
         sb.from("qualidade_documento_leituras").select("documento_id,revisao,usuario,confirmado_em"),
@@ -385,13 +386,24 @@ Deno.serve(async (req) => {
         todos((a, b) => sb.from("ml_registros").select("registro").eq("colecao", "lab_entradas").eq("apagado", false).gte("atualizado_em", umAno).range(a, b)),
         sb.from("qualidade_documentos_externos").select("*").order("item", { nullsFirst: false }).order("documento"),
         sb.from("qualidade_reclamacoes").select("*").order("recebida_em", { ascending: false }).order("codigo", { ascending: false }),
+        sb.from("qualidade_treinamentos").select("*").order("data", { ascending: false, nullsFirst: true }).order("codigo", { ascending: false }),
+        sb.from("qualidade_treinamento_eficacia").select("*"),
+        sb.from("qualidade_autorizacoes").select("*").order("data_autorizacao", { ascending: false }),
+        sb.from("qualidade_matriz").select("*"),
+        // Colaboradores do RH (6.2): só o que a Qualidade precisa — nada de salário, CPF ou endereço.
+        sb.from("ml_registros").select("id,registro").eq("colecao", "rh_pessoas").eq("apagado", false),
       ]);
-      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos, recls]) if (r.error) throw r.error;
+      for (const r of [docs, revs, leits, eqs, cals, ncs, auds, profs, metas, arqs, contas, externos, recls, treins, efics, autzs, matriz, pessoasRh]) if (r.error) throw r.error;
+      const pessoas = ((pessoasRh.data ?? []) as { id: string; registro: Record<string, unknown> }[]).map(({ id, registro: p }) => ({
+        id, nome: p.nome ?? "", cargo: p.cargo ?? "", setor: p.setor ?? "", admissao: p.admissao ?? null, escolaridade: p.escolaridade ?? "",
+        formacao: p.formacao ?? "", registroConselho: p.registroConselho ?? "", vinculo: p.vinculo ?? "", ativo: p.ativo !== false && !p.desligadoEm, desligadoEm: p.desligadoEm ?? null,
+      })).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
       return json({
         podeEscrever, eu: usuario,
         documentos: docs.data, revisoes: revs.data, leituras: leits.data, calibracoes: cals.data, manutencoes,
         equipamentos: (eqs.data ?? []).map((e: Record<string, unknown>) => ({ ...e, bem: e.bem_id ? bens.get(String(e.bem_id)) ?? null : null })),
         externos: externos.data, reclamacoes: recls.data,
+        treinamentos: treins.data, eficacias: efics.data, autorizacoes: autzs.data, matriz: matriz.data, pessoas,
         ncs: ncs.data, auditorias: auds.data, proficiencia: profs.data, metas: metas.data, arquivos: arqs.data,
         contas: ((contas.data ?? []) as { usuario: string; nome: string; ativo: boolean }[]).filter((c) => c.ativo !== false).map((c) => ({ usuario: c.usuario, nome: c.nome || c.usuario })),
         entradas: (entradas as { registro: Record<string, unknown> }[]).map((x) => x.registro).filter((r) => r && r.cancelada !== true)
@@ -597,6 +609,127 @@ Deno.serve(async (req) => {
       return json({ ok: true, registro: data, rotulo: rotulo(String(data.etapa)) });
     }
 
+    // Pessoal e competência (6.2 · PT 001): RT/PAT (treinamento), AVET (eficácia), AUTZ (autorização) e MC (matriz).
+    if (acao === "pessoalSalvar") {
+      const bloq = exigeEscrita(); if (bloq) return bloq;
+      const tipo = txt(body.tipo);
+      const reg = (body.registro ?? {}) as Record<string, unknown>;
+      const id = uuid(reg.id);
+      const agora = new Date().toISOString(), hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const data = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(txt(v)) ? txt(v) : null);
+      const pessoaLimpa = (x: unknown) => { const o = (x ?? {}) as Record<string, unknown>; return { id: txt(o.id).slice(0, 80), nome: txt(o.nome).slice(0, 160), cargo: txt(o.cargo).slice(0, 120) }; };
+      const gerarCodigo = async (tabela: string, prefixo: string, ano: number) => {
+        const { data: cods } = await sb.from(tabela).select("codigo").like("codigo", `${prefixo} %/${ano}`);
+        return proximoCodigoAno(prefixo, ((cods ?? []) as { codigo: string }[]).map((x) => x.codigo), ano);
+      };
+      const inserirComCodigo = async (tabela: string, prefixo: string, ano: number, dados: Record<string, unknown>) => {
+        for (let i = 0; i < 3; i++) {
+          const codigo = await gerarCodigo(tabela, prefixo, ano);
+          const { data: novo, error } = await sb.from(tabela).insert({ ...dados, codigo }).select("*").single();
+          if (!error) return novo;
+          if (String((error as { code?: string }).code) !== "23505") throw error;
+        }
+        throw new Error("Não foi possível gerar o número. Tente de novo.");
+      };
+
+      if (tipo === "treinamento") {
+        const d: Record<string, unknown> = {};
+        for (const c of ["tema", "objetivo", "carga_horaria", "local", "instrutor", "responsavel", "observacao"]) if (c in reg) d[c] = txt(reg[c]).slice(0, c === "tema" || c === "objetivo" || c === "observacao" ? 4000 : 200) || null;
+        if ("status" in reg) d.status = ["PLANEJADO", "REALIZADO", "CANCELADO"].includes(String(reg.status)) ? reg.status : "REALIZADO";
+        if ("origem" in reg) d.origem = ORIGENS_TREINAMENTO.some(([k]) => k === reg.origem) ? reg.origem : "EVENTUAL";
+        if ("tipo" in reg) d.tipo = reg.tipo === "EXTERNO" ? "EXTERNO" : "INTERNO";
+        if ("data" in reg) d.data = data(reg.data);
+        if ("eficacia_prevista" in reg) d.eficacia_prevista = data(reg.eficacia_prevista);
+        if ("nc_id" in reg) d.nc_id = uuid(reg.nc_id);
+        if ("documentos" in reg) d.documentos = (Array.isArray(reg.documentos) ? reg.documentos : []).map((x) => txt(x).slice(0, 60)).filter(Boolean).slice(0, 60);
+        if ("participantes" in reg) d.participantes = (Array.isArray(reg.participantes) ? reg.participantes : []).map(pessoaLimpa).filter((p) => p.id && p.nome).slice(0, 80);
+        const status = String(d.status ?? "");
+        if ((status === "REALIZADO" || (!id && !d.status)) && d.data && !("eficacia_prevista" in reg && d.eficacia_prevista)) d.eficacia_prevista = somaDiasP(String(d.data), DIAS_EFICACIA);
+        if (!id) {
+          if (!txt(d.tema)) return json({ erro: "Informe o treinamento (tema)." }, 400);
+          if ((d.status ?? "REALIZADO") === "REALIZADO" && !d.data) return json({ erro: "Informe a data do treinamento." }, 400);
+          const ano = Number(String(d.data || hoje).slice(0, 4));
+          const novo = await inserirComCodigo("qualidade_treinamentos", "TRE", ano, { status: "REALIZADO", ...d, historico: [{ em: agora, por: usuario, texto: `Registrado (${d.status ?? "REALIZADO"}).` }], criado_por: usuario, atualizado_por: usuario });
+          return json({ ok: true, registro: novo });
+        }
+        const { data: antes } = await sb.from("qualidade_treinamentos").select("*").eq("id", id).maybeSingle();
+        if (!antes) return json({ erro: "Treinamento não encontrado." }, 404);
+        const junto = { ...antes, ...d };
+        if (junto.status === "REALIZADO" && !junto.data) return json({ erro: "Informe a data em que o treinamento foi realizado." }, 400);
+        if (junto.status === "REALIZADO" && !junto.eficacia_prevista && junto.data) d.eficacia_prevista = somaDiasP(String(junto.data), DIAS_EFICACIA);
+        const mudou = Object.keys(d).filter((k) => JSON.stringify(d[k] ?? null) !== JSON.stringify(antes[k] ?? null));
+        const hist = [...(Array.isArray(antes.historico) ? antes.historico : [])];
+        if (mudou.length) hist.push({ em: agora, por: usuario, texto: d.status && d.status !== antes.status ? `Status: ${antes.status} → ${d.status}.` : `Atualizou: ${mudou.join(", ")}.` });
+        const { data: salvo, error } = await sb.from("qualidade_treinamentos").update({ ...d, historico: hist.slice(-200), atualizado_em: agora, atualizado_por: usuario }).eq("id", id).select("*").single();
+        if (error) throw error;
+        return json({ ok: true, registro: salvo });
+      }
+
+      if (tipo === "eficacia") {
+        const treinamentoId = uuid(reg.treinamento_id);
+        const { data: t } = await sb.from("qualidade_treinamentos").select("id,codigo,status,documentos,participantes,data").eq("id", treinamentoId).maybeSingle();
+        if (!t) return json({ erro: "Treinamento não encontrado." }, 404);
+        if (t.status !== "REALIZADO") return json({ erro: "A eficácia é avaliada depois que o treinamento é realizado." }, 400);
+        const pessoa = ((t.participantes ?? []) as Record<string, unknown>[]).find((p) => String(p.id) === txt(reg.pessoa_id));
+        if (!pessoa) return json({ erro: "Essa pessoa não participou do treinamento." }, 400);
+        const a: Record<string, unknown> = {
+          treinamento_id: t.id, pessoa_id: String(pessoa.id), nome: pessoa.nome ?? null, cargo: pessoa.cargo ?? null,
+          data_avaliacao: data(reg.data_avaliacao) || hoje,
+          avaliadores: (Array.isArray(reg.avaliadores) ? reg.avaliadores : []).map((x) => txt(x).slice(0, 80)).filter(Boolean).slice(0, 6),
+          eficaz: reg.eficaz === true ? true : reg.eficaz === false ? false : null,
+        };
+        for (const c of ["nota_conhecimento", "nota_aplicacao", "nota_resultados", "nota_geral"]) { const n = Math.round(Number(reg[c])); a[c] = n >= 1 && n <= 5 ? n : null; }
+        for (const c of ["melhorias", "plano_causa", "plano_acao", "plano_responsavel", "plano_verificacao", "aprovado_por"]) a[c] = txt(reg[c]).slice(0, 4000) || null;
+        for (const c of ["plano_data", "plano_verificado_em", "aprovado_em"]) a[c] = data(reg[c]);
+        const falta = faltaNaEficacia(a);
+        if (falta) return json({ erro: falta }, 400);
+        const { data: salvo, error } = await sb.from("qualidade_treinamento_eficacia").upsert({ ...a, atualizado_em: agora, atualizado_por: usuario, criado_por: usuario }, { onConflict: "treinamento_id,pessoa_id" }).select("*").single();
+        if (error) throw error;
+        // Eficaz: os documentos treinados passam a constar como LIBERADOS na matriz de competências da pessoa.
+        const docsT = (t.documentos ?? []) as string[];
+        if (a.eficaz === true && docsT.length) {
+          const { data: tits } = await sb.from("qualidade_documentos").select("codigo,titulo").in("codigo", docsT);
+          const titulo = new Map(((tits ?? []) as { codigo: string; titulo: string }[]).map((x) => [x.codigo, x.titulo]));
+          await sb.from("qualidade_matriz").upsert(docsT.map((doc) => ({ pessoa_id: String(pessoa.id), documento: doc, documento_titulo: titulo.get(doc) ?? null, status: "LIBERADO", liberado_em: a.data_avaliacao, origem: t.codigo, atualizado_em: agora, atualizado_por: usuario })), { onConflict: "pessoa_id,documento" });
+        }
+        return json({ ok: true, registro: salvo });
+      }
+
+      if (tipo === "autorizacao") {
+        const d: Record<string, unknown> = {};
+        if ("pessoa" in reg) { const p = pessoaLimpa(reg.pessoa); if (!p.id) return json({ erro: "Escolha o colaborador." }, 400); Object.assign(d, { pessoa_id: p.id, nome: p.nome, cargo: p.cargo }); }
+        if ("cargo" in reg) d.cargo = txt(reg.cargo).slice(0, 120) || null;
+        for (const c of ["atividades", "fundamentacao", "autorizado_por", "revogada_motivo"]) if (c in reg) d[c] = txt(reg[c]).slice(0, 6000) || null;
+        for (const c of ["data_autorizacao", "revisar_em", "revogada_em"]) if (c in reg) d[c] = data(reg[c]);
+        if (d.revogada_em && !txt(d.revogada_motivo)) return json({ erro: "Informe o motivo da revogação." }, 400);
+        if (!id) {
+          if (!d.pessoa_id) return json({ erro: "Escolha o colaborador." }, 400);
+          if (!txt(d.atividades)) return json({ erro: "Liste as atividades autorizadas." }, 400);
+          const dt = (d.data_autorizacao as string) || hoje;
+          const novo = await inserirComCodigo("qualidade_autorizacoes", "AUTZ", Number(dt.slice(0, 4)), { ...d, data_autorizacao: dt, autorizado_por: d.autorizado_por || usuario, criado_por: usuario, atualizado_por: usuario });
+          return json({ ok: true, registro: novo });
+        }
+        const { data: salvo, error } = await sb.from("qualidade_autorizacoes").update({ ...d, atualizado_em: agora, atualizado_por: usuario }).eq("id", id).select("*").single();
+        if (error) throw error;
+        return json({ ok: true, registro: salvo });
+      }
+
+      if (tipo === "matriz") {
+        const pessoaId = txt(reg.pessoa_id).slice(0, 80), doc = txt(reg.documento).slice(0, 60);
+        if (!pessoaId || !doc) return json({ erro: "Informe colaborador e documento." }, 400);
+        if (reg.remover === true) { await sb.from("qualidade_matriz").delete().eq("pessoa_id", pessoaId).eq("documento", doc); return json({ ok: true }); }
+        const status = ["LIBERADO", "EM_TREINAMENTO", "NAO_APLICA"].includes(String(reg.status)) ? reg.status : "LIBERADO";
+        const { data: salvo, error } = await sb.from("qualidade_matriz").upsert({
+          pessoa_id: pessoaId, documento: doc, documento_titulo: txt(reg.documento_titulo).slice(0, 300) || null, status,
+          liberado_em: data(reg.liberado_em) || (status === "LIBERADO" ? hoje : null), origem: txt(reg.origem).slice(0, 60) || null,
+          observacao: txt(reg.observacao).slice(0, 1000) || null, atualizado_em: agora, atualizado_por: usuario,
+        }, { onConflict: "pessoa_id,documento" }).select("*").single();
+        if (error) throw error;
+        return json({ ok: true, registro: salvo });
+      }
+      return json({ erro: "Tipo inválido." }, 400);
+    }
+
     // Reclamação procedente que pede ação corretiva: abre a NC (origem Reclamação) já ligada a ela (PG 013 → PG 014).
     if (acao === "reclamacaoNc") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
@@ -619,7 +752,7 @@ Deno.serve(async (req) => {
     if (acao === "arquivoEnviar") {
       const bloq = exigeEscrita(); if (bloq) return bloq;
       const refTipo = txt(body.ref_tipo), refId = uuid(body.ref_id);
-      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia", "reclamacao"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
+      if (!refId || !["documento", "equipamento", "calibracao", "nc", "auditoria", "proficiencia", "reclamacao", "treinamento", "autorizacao"].includes(refTipo)) return json({ erro: "Anexo inválido." }, 400);
       const nome = txt(body.nome).replace(/[\\/]/g, "_").slice(-150);
       const ext = nome.includes(".") ? nome.split(".").pop()!.toLowerCase() : "";
       const tipo = TIPOS_ARQ[ext];
