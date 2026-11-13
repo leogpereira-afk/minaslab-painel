@@ -65,7 +65,7 @@ export function DocPCC({ ajustes = {} }) {
             <div>Toda mudança de cargo segue o PCMSO. Quando a mudança troca o grupo de risco, o ASO de mudança de risco é feito antes de começar na função nova; quando não troca, emite-se o formulário de alteração de cargo, sem ASO.</div>
             {Object.values(GRUPOS_RISCO).map((g) => <div key={g.nome}>• <b>{g.nome}</b>: {g.riscos}.</div>)}
           </td></tr>
-          <Sec>7. Remuneração</Sec><tr><td>{TEXTO_PLANO.salario}</td></tr>
+          <Sec>7. Remuneração e política salarial</Sec><tr><td>{TEXTO_PLANO.salario}{TEXTO_PLANO.politica.map((t) => <div key={t}>• {t}</div>)}</td></tr>
           <Sec>8. Base legal e revisão</Sec><tr><td>{TEXTO_PLANO.legal} {TEXTO_PLANO.revisao} Cargos fora do plano (de confiança, nomeados pela direção): {FORA_DO_PLANO.join(" e ")}.</td></tr>
         </tbody></table>
       </Folha>
@@ -79,7 +79,7 @@ export function DocPCC({ ajustes = {} }) {
                 const n = nivelPorId(id);
                 return (
                   <tr key={id}>
-                    <td><b>{n.cargo}</b>{n.pcmso && n.pcmso !== n.cargo ? <div>PCMSO: {n.pcmso}</div> : null}</td>
+                    <td><b>{n.cargo}</b>{n.cbo ? <div>CBO {n.cbo}</div> : null}{n.pcmso && n.pcmso !== n.cargo ? <div>PCMSO: {n.pcmso}</div> : null}</td>
                     <td>{GRUPOS_RISCO[n.grupo].nome}</td>
                     <td>{n.escopo}</td>
                     <td>{n.requisitos.map((r) => <div key={r}>• {r}</div>)}</td>

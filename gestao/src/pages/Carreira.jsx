@@ -18,7 +18,7 @@ import { dataCurta, hojeBR, nomeProprio, numero } from "../lib/format.js";
 import {
   NIVEIS, TRILHAS_CARREIRA, LATERAIS, GRUPOS_RISCO, REGRAS, TEXTO_PLANO, SITUACOES, TIPOS_MOV, FORA_DO_PLANO,
   nivelPorId, nivelDaFuncao, proximosPassos, exigenciaPCMSO, mesesEntre, proximoCiclo, prontidao, nomeTipoMov,
-  faixaSalarial, formatarFaixa, lerReais, avisosFaixas, validarFaixa, CULTURA,
+  faixaSalarial, formatarFaixa, lerReais, avisosFaixas, validarFaixa, CULTURA, degrausDaFaixa,
 } from "../lib/planoCarreira.js";
 
 const MARCA = { true: ["✓", "ok"], false: ["✕", "ruim"], null: ["?", "neutro"] };
@@ -363,7 +363,7 @@ function RegistrarMovimentacao({ p, c, inicial, aoFechar }) {
         <div className="campo" style={{ flex: "1 1 150px" }}><label htmlFor="mv-data">Vale a partir de</label><input id="mv-data" type="date" className="entrada" max={temRH ? c.hoje : undefined} value={f.data} onChange={set("data")} /></div>
         <div className="campo" style={{ flex: "1 1 160px" }}><label htmlFor="mv-sal">Novo salário (R$, opcional)</label><input id="mv-sal" className="entrada" inputMode="decimal" placeholder={fx ? String(fx.min) : ""} value={f.salario} onChange={set("salario")} /></div>
       </div>
-      {fx && <div className="suave peq" style={{ marginTop: 4 }}>Faixa do novo cargo: {formatarFaixa(fx)}{salNum && (salNum < fx.min || salNum > fx.max) ? " — o salário informado está fora da faixa." : ""}</div>}
+      {fx && <div className="suave peq" style={{ marginTop: 4 }}>Degraus do novo cargo: {degrausDaFaixa(fx).map((d) => `${d.nome} ${d.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}`).join(" · ")}. Na promoção, use o primeiro degrau que não reduza o salário atual. Faixa: {formatarFaixa(fx)}{salNum && (salNum < fx.min || salNum > fx.max) ? " — o salário informado está fora da faixa." : ""}</div>}
       {temRH && <div className="suave peq" style={{ marginTop: 4 }}>Ao registrar, o cargo{String(f.salario).trim() ? " e o salário" : ""} na ficha do RH e o histórico do RH são atualizados.</div>}
       <div className="suave peq" style={{ marginTop: 4 }}>Cargo atual: {p.nivel?.cargo || p.nomeFuncao || "—"}</div>
 
@@ -471,6 +471,7 @@ function Plano({ c, pessoas }) {
             <li>Até {REGRAS.ocorrenciasMax} ocorrências em {REGRAS.mesesAvaliacao} meses; estágio autônomo na função.</li>
             <li>{TEXTO_PLANO.ciclo}</li>
             <li>{TEXTO_PLANO.salario}</li>
+            {TEXTO_PLANO.politica.map((t) => <li key={t}>{t}</li>)}
           </ul>
         </Card>
       </div>
@@ -513,6 +514,7 @@ function DetalheNivel({ id, c, quem, aoFechar }) {
         <Chip tom={n.grupo === "administrativo" ? "neutro" : "alerta"}>Grupo {g.nome}</Chip>
         <Chip tom={existe ? "ok" : "marca"}>{existe ? "Função cadastrada neste setor" : "Função não cadastrada neste setor"}</Chip>
         <span className="suave peq">PCMSO: {n.pcmso || "não consta"}</span>
+        <span className="suave peq">CBO: {n.cbo || "definir com a contabilidade"}</span>
       </div>
       <p className="peq">{n.escopo}</p>
       <div className="peq"><b>Requisitos</b><ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{n.requisitos.map((r) => <li key={r}>{r}</li>)}</ul></div>
@@ -529,7 +531,8 @@ function DetalheNivel({ id, c, quem, aoFechar }) {
         </div>
         <div className="campo" style={{ marginTop: 8 }}><label htmlFor="nv-obs">Observações</label><input id="nv-obs" className="entrada" value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} /></div>
         <div className="suave peq" style={{ marginTop: 6 }}>
-          Faixa em vigor: <b>{formatarFaixa(fx)}</b>{fx?.obs ? ` (${fx.obs})` : ""}{fx?.ajustada ? " · ajustada pela direção" : " · padrão do plano"}.
+          Degraus: {degrausDaFaixa(fx).map((d) => `${d.nome} ${d.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}`).join(" · ")}.
+          {" "}Faixa em vigor: <b>{formatarFaixa(fx)}</b>{fx?.obs ? ` (${fx.obs})` : ""}{fx?.ajustada ? " · ajustada pela direção" : " · padrão do plano"}.
           {" "}Deixe o salário em branco para usar o padrão ({formatarFaixa(padrao)}). O tempo mínimo vale para sair deste cargo para o próximo.
         </div>
         {(f.salarioMin !== "" || f.salarioMax !== "") && <button type="button" className="btn claro mini" style={{ marginTop: 6 }} onClick={() => setF({ ...f, salarioMin: "", salarioMax: "" })}>Voltar ao padrão do plano</button>}
