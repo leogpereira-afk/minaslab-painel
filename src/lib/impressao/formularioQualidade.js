@@ -11,12 +11,12 @@ export const texto = (v) => esc(v).replace(/\n/g, "<br>");
 export function dadosDoFormulario(documentos, padrao) {
   const doc = (documentos || []).find((d) => String(d.codigo).replace(/\s+/g, "").toUpperCase() === padrao.codigo.replace(/\s+/g, "").toUpperCase());
   return doc
-    ? { codigo: doc.codigo, titulo: doc.titulo || padrao.titulo, revisao: doc.revisao || padrao.revisao, emissao: doc.vigencia_inicio || padrao.emissao, naListaMestra: true }
+    ? { ...padrao, codigo: doc.codigo, titulo: doc.titulo || padrao.titulo, revisao: doc.revisao || padrao.revisao, emissao: doc.vigencia_inicio || padrao.emissao, naListaMestra: true }
     : { ...padrao, naListaMestra: false };
 }
 
-const css = (rodape) => `
-@page { size: A4; margin: 12mm 12mm 16mm;
+const css = (rodape, paisagem) => `
+@page { size: A4${paisagem ? " landscape" : ""}; margin: 12mm 12mm 16mm;
   @bottom-left { content: "${rodape.replace(/["\\]/g, "'")}"; font: 8pt Arial, sans-serif; color: #444; }
   @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt Arial, sans-serif; color: #444; } }
 * { box-sizing: border-box; }
@@ -36,7 +36,7 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: top; }
 .marca { margin-top: 6px; text-align: center; font-weight: bold; font-size: 8pt; letter-spacing: .5px; }
 .sp { height: 6px; border: 0; padding: 0; }
 .ass { height: 12mm; }
-@media screen { body { max-width: 190mm; margin: 10mm auto; } .barra { position: sticky; top: 0; background: #fff; padding: 8px 0; text-align: right; } .barra button { font: 10pt Arial; padding: 6px 14px; } }
+@media screen { body { max-width: ${paisagem ? 277 : 190}mm; margin: 10mm auto; } .barra { position: sticky; top: 0; background: #fff; padding: 8px 0; text-align: right; } .barra button { font: 10pt Arial; padding: 6px 14px; } }
 @media print { .barra { display: none; } }
 `;
 
@@ -44,17 +44,17 @@ td, th { border: 1px solid #000; padding: 3px 5px; vertical-align: top; }
  * Abre a impressão numa janela própria. `corpo` é o HTML das linhas do formulário (já escapado).
  * `controlada`: true imprime "CÓPIA CONTROLADA" (registro oficial); false, "CÓPIA NÃO CONTROLADA".
  */
-export function htmlDoFormulario({ form, corpo, impressoPor, controlada = true }) {
+export function htmlDoFormulario({ form, corpo, impressoPor, controlada = true, paisagem = false }) {
   const agora = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
   const rodape = `${form.codigo} · Rev. ${form.revisao} · ${controlada ? "CÓPIA CONTROLADA – REPRODUÇÃO PROIBIDA" : "CÓPIA NÃO CONTROLADA"} · impresso em ${agora}${impressoPor ? ` por ${impressoPor}` : ""}`;
   const logoUrl = new URL(logo, window.location.href).href;
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(form.codigo)} - ${esc(form.titulo)}</title>
-<style>${css(rodape)}</style></head><body>
+<style>${css(rodape, paisagem)}</style></head><body>
 <div class="barra"><button onclick="window.print()">Imprimir</button></div>
 <table class="cab"><tr>
   <td class="logo"><img src="${esc(logoUrl)}" alt="MinasLab"></td>
   <td class="nome">${esc(form.titulo)}</td>
-  <td class="meta"><div>${esc(form.codigo)}</div><div>Emissão: ${esc(dataBr(form.emissao)) || "—"}</div><div>Rev. ${esc(form.revisao)}${form.emissao ? ` - ${esc(dataBr(form.emissao))}` : ""}</div><div>Emitente: ${esc(form.emitente || "Comitê da Qualidade")}</div></td>
+  <td class="meta"><div>${esc(form.codigo)}</div><div>Emissão: ${esc(dataBr(form.emissao)) || "—"}</div><div>Rev. ${esc(form.revisao)}${form.emissao ? ` - ${esc(dataBr(form.emissao))}` : ""}</div><div>${esc(form.extra || `Emitente: ${form.emitente || "Comitê da Qualidade"}`)}</div></td>
 </tr></table>
 ${corpo}
 <div class="marca">${controlada ? "CÓPIA CONTROLADA – REPRODUÇÃO PROIBIDA" : "CÓPIA NÃO CONTROLADA"}</div>
