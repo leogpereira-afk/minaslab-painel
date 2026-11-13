@@ -154,3 +154,31 @@ test("prontidão inclui a cultura", () => {
   assert.equal(r.criterios.find((c) => c.id === "cultura").ok, true);
   assert.equal(r.situacao, "pronta");
 });
+
+import { degrausDaFaixa, degrauDoSalario, salarioNaPromocao, cboDoCargo } from "./planoCarreira.js";
+
+test("CBO: formato oficial e principais cargos", () => {
+  for (const n of NIVEIS) assert.ok(n.cbo === "" || /^\d{4}-\d{2}$/.test(n.cbo), n.id);
+  assert.equal(nivelPorIdLocal("lab-an1").cbo, "3111-05");
+  assert.equal(nivelPorIdLocal("lab-aux").cbo, "8181-10");
+  assert.equal(nivelPorIdLocal("col-tec").cbo, "3115-05");
+  assert.equal(cboDoCargo("Supervisor Administrativo"), "4101-05");
+  assert.equal(cboDoCargo("Cargo que não existe"), "");
+});
+const nivelPorIdLocal = (id) => NIVEIS.find((n) => n.id === id);
+
+test("degraus A a D dentro da faixa", () => {
+  const d = degrausDaFaixa({ min: 2250, max: 2550 });
+  assert.deepEqual(d.map((x) => [x.nome, x.valor]), [["A", 2250], ["B", 2350], ["C", 2450], ["D", 2550]]);
+  assert.equal(degrauDoSalario({ min: 2250, max: 2550 }, 2300), "A");
+  assert.equal(degrauDoSalario({ min: 2250, max: 2550 }, 2450), "C");
+  assert.equal(degrauDoSalario({ min: 2250, max: 2550 }, 2000), "abaixo da faixa");
+  assert.equal(degrauDoSalario({ min: 2250, max: 2550 }, 2600), "acima da faixa");
+});
+
+test("promoção: primeiro degrau do novo cargo que não reduz o salário", () => {
+  assert.equal(salarioNaPromocao(1800, { min: 2000, max: 2250 }), 2000);
+  assert.equal(salarioNaPromocao(2050, { min: 2000, max: 2250 }), 2080);
+  assert.equal(salarioNaPromocao(2300, { min: 2000, max: 2250 }), 2300);
+  assert.equal(salarioNaPromocao(null, { min: 2000, max: 2250 }), 2000);
+});

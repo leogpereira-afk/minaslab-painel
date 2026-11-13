@@ -33,6 +33,7 @@ const N = (id, o) => ({ id, tempoMinimo: 12, treinamentos: [], ...o });
 export const NIVEIS = [
   // Laboratório
   N("lab-est", {
+    cbo: "",
     cargo: "Estagiário de Laboratório", funcao: "Estagiário de Laboratório", pcmso: "", grupo: "laboratorio", novo: true, tempoMinimo: 6,
     salario: { min: 800, max: 1100, obs: "bolsa-auxílio de estágio (Lei 11.788/2008)" },
     alerta: "Não aparece no PCMSO: confirme com a clínica o enquadramento do estagiário de laboratório (riscos biológicos e químicos).",
@@ -41,6 +42,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "pg011-armazenamento"],
   }),
   N("lab-aux", {
+    cbo: "8181-10",
     salario: { min: 1621, max: 1800 },
     cargo: "Auxiliar de Laboratório", funcao: "Auxiliar de Laboratório", pcmso: "Auxiliar de Laboratório", grupo: "coleta", novo: true, tempoMinimo: 6,
     escopo: "Prepara vidrarias, soluções, meios e materiais; apoia os ensaios sob supervisão e organiza o laboratório. Não libera resultado.",
@@ -48,6 +50,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "pg011-armazenamento"],
   }),
   N("lab-an1", {
+    cbo: "3111-05",
     salario: { min: 1800, max: 2000 },
     cargo: "Analista de Laboratório I", funcao: "Analista de Laboratório I", pcmso: "Analista I", grupo: "laboratorio", tempoMinimo: 12,
     escopo: "Executa os ensaios de rotina em que está autorizado, registra em planilhas e cartas controle e comunica desvios antes de liberar o resultado.",
@@ -55,6 +58,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "qualidade-programa", "pg010-recebimento", "pg011-armazenamento"],
   }),
   N("lab-an2", {
+    cbo: "3111-05",
     salario: { min: 2000, max: 2250 },
     cargo: "Analista de Laboratório II", funcao: "Analista de Laboratório II", pcmso: "Analista II", grupo: "laboratorio", tempoMinimo: 18,
     escopo: "Executa todos os ensaios do seu setor (FQ ou Micro) com autonomia, prepara padrões, analisa cartas controle, participa de ensaios de proficiência e treina o Analista I e estagiários.",
@@ -62,6 +66,7 @@ export const NIVEIS = [
     treinamentos: ["pg013-reclamacoes", "gestao-tempo"],
   }),
   N("lab-an3", {
+    cbo: "3111-05",
     salario: { min: 2250, max: 2550 },
     cargo: "Analista de Laboratório III", funcao: "Analista de Laboratório III", pcmso: "Analista III", grupo: "laboratorio", novo: true, tempoMinimo: 24,
     escopo: "Referência técnica: valida e verifica métodos, estima incerteza, faz a análise crítica dos resultados, investiga não conformidades (PG 014) e substitui a supervisão.",
@@ -69,6 +74,7 @@ export const NIVEIS = [
     treinamentos: ["analise-critica", "gestora"],
   }),
   N("lab-sup", {
+    cbo: "3111-05",
     salario: { min: 2700, max: 3200 },
     cargo: "Supervisor de Laboratório", funcao: "Supervisor de Laboratório", pcmso: "Supervisor de Laboratório", grupo: "laboratorio", novo: true, tempoMinimo: 24,
     escopo: "Coordena a rotina e a escala do laboratório, libera resultados como signatário autorizado e planeja manutenção, calibração e insumos.",
@@ -76,6 +82,7 @@ export const NIVEIS = [
     treinamentos: ["gestora", "analise-critica"],
   }),
   N("qual-est", {
+    cbo: "",
     cargo: "Estagiário da Qualidade", funcao: "Estagiário da Qualidade", pcmso: "", grupo: "administrativo", novo: true, tempoMinimo: 6,
     salario: { min: 800, max: 1100, obs: "bolsa-auxílio de estágio (Lei 11.788/2008)" },
     alerta: "Não aparece no PCMSO: confirme com a clínica o enquadramento do estagiário da Qualidade.",
@@ -84,6 +91,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "qualidade-programa"],
   }),
   N("qual-an", {
+    cbo: "3912-10",
     cargo: "Analista da Qualidade", funcao: "Analista da Qualidade", pcmso: "", grupo: "laboratorio", novo: true, tempoMinimo: 24,
     salario: { min: 2000, max: 2400 },
     alerta: "Não consta no PCMSO 2026: incluir na próxima revisão quando o cargo for criado.",
@@ -92,6 +100,7 @@ export const NIVEIS = [
     treinamentos: ["qualidade-programa", "analise-critica", "pg013-reclamacoes"],
   }),
   N("qual-sup", {
+    cbo: "3912-10",
     salario: { min: 2500, max: 3000 },
     cargo: "Supervisor da Qualidade", funcao: "Supervisor da Qualidade", pcmso: "Supervisor de Qualidade", grupo: "laboratorio", tempoMinimo: 24,
     escopo: "Mantém o Sistema de Gestão da Qualidade (ISO/IEC 17025): não conformidades, auditorias, análise crítica, documentos e acreditação.",
@@ -100,6 +109,7 @@ export const NIVEIS = [
   }),
   // Coleta
   N("col-op", {
+    cbo: "",
     salario: { min: 1700, max: 1950 },
     cargo: "Operador de Coletas e Logística", funcao: "Operador de Coletas e Logística", pcmso: "Aux. Administrativo Logística", grupo: "administrativo", tempoMinimo: 12,
     alerta: "Se a pessoa faz coletas em campo, confira com a clínica se o enquadramento no PCMSO não deveria ser Técnico de Amostragem e Coleta (grupo Coleta, com exames).",
@@ -108,6 +118,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "os-correta", "am-amostragem"],
   }),
   N("col-tec", {
+    cbo: "3115-05",
     salario: { min: 2100, max: 2600 },
     cargo: "Técnico de Amostragem e Coleta", funcao: "Técnico de Amostragem e Coleta", pcmso: "Técnico de Amostragem e Coleta", grupo: "coleta", novo: true, tempoMinimo: 18,
     escopo: "Faz amostragens com autonomia (POP-AM-001 a 006), inclusive coletas especiais e purga de baixa vazão, medições de campo e controles de qualidade; orienta quem está começando.",
@@ -116,6 +127,7 @@ export const NIVEIS = [
   }),
   // Comercial
   N("com-est", {
+    cbo: "",
     salario: { min: 800, max: 1100, obs: "bolsa-auxílio de estágio (Lei 11.788/2008)" },
     cargo: "Estagiário de Suporte Operacional", funcao: "Estagiário de Suporte Operacional", pcmso: "", grupo: "administrativo", tempoMinimo: 6,
     alerta: "Não aparece no PCMSO: confirme com a clínica o enquadramento do estagiário.",
@@ -124,6 +136,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "os-correta", "atendimento"],
   }),
   N("com-ass", {
+    cbo: "4110-05",
     salario: { min: 1621, max: 1850, obs: "mais comissão" },
     cargo: "Auxiliar Administrativo Comercial I", funcao: "Auxiliar Administrativo Comercial I", antigos: ["Auxiliar Administrativo Comercial", "Assistente de Suporte Operacional, Atendimento e Licitações"], pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", tempoMinimo: 12,
     escopo: "Atendimento, recebimento de amostras e OS, controle de provedores, licitações e apoio às propostas.",
@@ -131,6 +144,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s", "os-correta", "atendimento", "licitacoes", "crm-sem-furos"],
   }),
   N("com-an1", {
+    cbo: "4110-05",
     salario: { min: 1850, max: 2100, obs: "mais comissão" },
     cargo: "Auxiliar Administrativo Comercial II", funcao: "Auxiliar Administrativo Comercial II", antigos: ["Analista Comercial"], pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", tempoMinimo: 18,
     escopo: "Propostas, follow-up, CRM, atendimento e agendamento de coletas, com metas mensais de propostas e aprovação.",
@@ -138,6 +152,7 @@ export const NIVEIS = [
     treinamentos: ["crm-sem-furos", "follow-up", "proposta-sem-erro", "analise-critica", "atendimento"],
   }),
   N("com-an2", {
+    cbo: "4110-10",
     salario: { min: 2100, max: 2500 },
     cargo: "Analista Administrativo Comercial", funcao: "Analista Administrativo Comercial", pcmso: "Aux. Administrativo Comercial", grupo: "administrativo", novo: true, tempoMinimo: 24,
     escopo: "Cuida dos clientes-chave e das licitações mais complexas, faz propostas de escopo novo com a análise crítica, treina quem chega e responde pela meta de valor.",
@@ -145,6 +160,7 @@ export const NIVEIS = [
     treinamentos: ["spin", "tecnico", "pg012-satisfacao", "pg013-reclamacoes"],
   }),
   N("adm-sup", {
+    cbo: "4101-05",
     salario: { min: 2800, max: 3300 },
     cargo: "Supervisor Administrativo", funcao: "Supervisor Administrativo", pcmso: "Supervisor Administrativo", grupo: "administrativo", tempoMinimo: 24,
     escopo: "Coordena o comercial, o suporte e o administrativo: metas, rotina, indicadores e pessoas.",
@@ -153,6 +169,7 @@ export const NIVEIS = [
   }),
   // Administrativo
   N("adm-fin", {
+    cbo: "4110-05",
     salario: { min: 1700, max: 1950 },
     cargo: "Auxiliar Administrativo Financeiro", funcao: "Auxiliar Administrativo Financeiro", pcmso: "Aux. Administrativo Financeiro", grupo: "administrativo", novo: true, tempoMinimo: 18,
     escopo: "Documentos e classificação contábil, contas, guias, notas e arquivo.",
@@ -160,6 +177,7 @@ export const NIVEIS = [
     treinamentos: ["integracao", "qualidade-5s"],
   }),
   N("qual-ger", {
+    cbo: "",
     cargo: "Gerente da Qualidade", funcao: "Gerente da Qualidade", pcmso: "", grupo: "laboratorio", novo: true, tempoMinimo: 24,
     salario: { min: 3300, max: 4000 },
     alerta: "Não consta no PCMSO 2026: incluir na próxima revisão quando o cargo for criado.",
@@ -168,6 +186,7 @@ export const NIVEIS = [
     treinamentos: ["gestora", "analise-critica"],
   }),
   N("fin-an", {
+    cbo: "4110-10",
     cargo: "Analista Financeiro", funcao: "Analista Financeiro", pcmso: "", grupo: "administrativo", novo: true, tempoMinimo: 24,
     salario: { min: 2100, max: 2500 },
     alerta: "Não consta no PCMSO 2026: incluir na próxima revisão quando o cargo for criado.",
@@ -176,6 +195,7 @@ export const NIVEIS = [
     treinamentos: ["gestao-tempo"],
   }),
   N("adm-ger", {
+    cbo: "1421-05",
     cargo: "Gerente Administrativo", funcao: "Gerente Administrativo", pcmso: "", grupo: "administrativo", novo: true, tempoMinimo: 24,
     salario: { min: 3600, max: 4500 },
     alerta: "Não consta no PCMSO 2026: incluir na próxima revisão quando o cargo for criado.",
@@ -184,6 +204,7 @@ export const NIVEIS = [
     treinamentos: ["gestora", "gestao-tempo"],
   }),
   N("fin-ger", {
+    cbo: "1421-15",
     cargo: "Gerente Financeiro", funcao: "Gerente Financeiro", pcmso: "", grupo: "administrativo", novo: true, tempoMinimo: 24,
     salario: { min: 3600, max: 4500 },
     alerta: "Não consta no PCMSO 2026: incluir na próxima revisão quando o cargo for criado.",
@@ -258,6 +279,36 @@ export function criterioCultura(conf, hoje) {
   const marcados = new Set(conf.valores || []);
   const faltam = CULTURA.valores.filter((v) => !marcados.has(v.id));
   return { id: "cultura", nome: "Cultura MinasLab", ok: !faltam.length, detalhe: faltam.length ? `valores a desenvolver: ${faltam.map((v) => v.nome).join(", ")}` : `os ${CULTURA.valores.length} valores conferidos em ${conf.em.split("-").reverse().join("/")}` };
+}
+
+// CBO sugerido de cada cargo (Classificação Brasileira de Ocupações, usada no
+// eSocial). Vazio = definir com a contabilidade (estágio não exige CBO; Gerente
+// da Qualidade e Operador de Coletas dependem do conteúdo real do trabalho).
+// O enquadramento final é da contabilidade: vale o que a pessoa faz, não o nome.
+export const cboDoCargo = (cargo) => NIVEIS.find((n) => n.cargo === cargo)?.cbo || "";
+
+// Política salarial: cada faixa tem 4 degraus (A a D), do mínimo ao máximo.
+// Entrada no A; mérito sobe um degrau no ciclo (janeiro/julho) com os critérios
+// atendidos e orçamento; promoção vai ao primeiro degrau do novo cargo que não
+// reduz o salário; reajuste coletivo da data-base corrige todas as faixas.
+const DEGRAUS = ["A", "B", "C", "D"];
+const arred10 = (v) => Math.round(v / 10) * 10;
+export function degrausDaFaixa(f) {
+  if (!f) return [];
+  const passo = (f.max - f.min) / (DEGRAUS.length - 1);
+  return DEGRAUS.map((nome, i) => ({ nome, valor: i === 0 ? f.min : i === DEGRAUS.length - 1 ? f.max : arred10(f.min + passo * i) }));
+}
+export function degrauDoSalario(f, salario) {
+  if (!f || salario == null) return "";
+  if (salario < f.min) return "abaixo da faixa";
+  if (salario > f.max) return "acima da faixa";
+  return degrausDaFaixa(f).filter((d) => d.valor <= salario).at(-1).nome;
+}
+export function salarioNaPromocao(salarioAtual, faixaDestino) {
+  const d = degrausDaFaixa(faixaDestino);
+  if (!d.length) return null;
+  if (salarioAtual == null) return d[0].valor;
+  return (d.find((x) => x.valor >= salarioAtual) || { valor: salarioAtual }).valor;
 }
 
 export const nivelPorId = (id) => NIVEIS.find((n) => n.id === id) || null;
@@ -448,6 +499,14 @@ export const TEXTO_PLANO = {
     "Enquadramento: registrar o cargo atual de quem já está na empresa quando o plano começa.",
   ],
   ciclo: "As promoções são analisadas duas vezes por ano, em janeiro e em julho, pela gerência com a liderança direta. A mudança vale a partir do mês seguinte à aprovação, com registro no RMC, atualização do cargo no eSocial pela contabilidade e, quando muda o grupo de risco, ASO de mudança de risco antes de começar.",
+  politica: [
+    "Cada faixa tem 4 degraus (A, B, C e D), do mínimo ao máximo do cargo.",
+    "Entrada: no degrau A do cargo; acima dele só com justificativa registrada pela direção.",
+    "Mérito: nos ciclos de janeiro e julho, quem atende aos critérios do plano (avaliação, ocorrências e cultura) pode subir um degrau dentro da mesma faixa, conforme o orçamento.",
+    "Promoção: a pessoa vai para o primeiro degrau do novo cargo que não reduza o salário atual.",
+    "Reajuste coletivo: na data-base, o índice da convenção coletiva (ou o INPC, se não houver convenção) corrige os salários e todas as faixas, para todos.",
+    "Ninguém fica abaixo do mínimo da faixa do próprio cargo; quem está acima do máximo mantém o salário, sem novos aumentos por mérito até a faixa alcançar.",
+  ],
   salario: "Cada cargo tem uma faixa salarial (mínimo e máximo) definida pela direção, com referência no mercado de Montes Claros/MG em novembro de 2026. Dentro da mesma trilha, a faixa de um cargo começa acima da do cargo anterior. Estagiários recebem bolsa-auxílio (Lei 11.788/2008), não salário. As faixas são revistas uma vez por ano, junto com a revisão do plano.",
   legal: "O plano é norma interna da empresa (CLT, art. 461, §§ 2º e 3º): as promoções seguem critérios de merecimento e de tempo no cargo descritos aqui. Confirme a redação final com a contabilidade ou o jurídico.",
   revisao: "O plano é revisto uma vez por ano ou quando um cargo for criado ou mudar; toda mudança sobe a revisão do documento.",

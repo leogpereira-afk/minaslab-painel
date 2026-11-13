@@ -42,7 +42,7 @@ import { anoRuim, tempoDeCasa } from "./uteis.js";
 import FichaPessoa from "./FichaPessoa.jsx";
 // Lista única de cargos: a do plano de carreira (Gestão). Promoções feitas lá
 // atualizam o cargo aqui; esta lista mantém os nomes iguais nos dois lugares.
-import { TRILHAS_CARREIRA, FORA_DO_PLANO, nivelPorId } from "../../../gestao/src/lib/planoCarreira.js";
+import { TRILHAS_CARREIRA, FORA_DO_PLANO, nivelPorId, cboDoCargo } from "../../../gestao/src/lib/planoCarreira.js";
 import { extrairDadosFichaRegistro, extrairTextoPdf } from "../../lib/rh/leituraKit.js";
 
 // "Hoje" circula como "AAAA-MM-DD"; a lib da CLT quer Date. Meia-noite LOCAL:
@@ -717,8 +717,17 @@ function FormPessoa({
               <Campo id="p-matricula" rotulo="Matrícula" valor={form.matricula} aoMudar={setCampo("matricula")} />
               <Campo id="p-matricula-esocial" rotulo="Matrícula eSocial" valor={form.matriculaEsocial} aoMudar={setCampo("matriculaEsocial")} />
               <Campo id="p-admissao" rotulo="Admissão" tipo="date" valor={form.admissao} aoMudar={setCampo("admissao")} />
-              <CampoCargo id="p-cargo" valor={form.cargo} aoMudar={setCampo("cargo")} />
-              <Campo id="p-cbo" rotulo="CBO" valor={form.cbo} aoMudar={setCampo("cbo")} />
+              <CampoCargo id="p-cargo" valor={form.cargo} aoMudar={(e) => {
+                const cargo = e.target.value;
+                // CBO do plano: preenche quando está vazio ou ainda é o do cargo anterior
+                // (um CBO digitado à mão pela contabilidade não é sobrescrito).
+                setForm((f) => {
+                  const novo = cboDoCargo(cargo);
+                  const trocaCbo = novo && (!f.cbo || f.cbo === cboDoCargo(f.cargo));
+                  return { ...f, cargo, ...(trocaCbo ? { cbo: novo } : {}) };
+                });
+              }} />
+              <Campo id="p-cbo" rotulo="CBO" valor={form.cbo} aoMudar={setCampo("cbo")} dica={cboDoCargo(form.cargo) && form.cbo !== cboDoCargo(form.cargo) ? `CBO sugerido pelo plano: ${cboDoCargo(form.cargo)}` : undefined} />
               <Campo id="p-pis" rotulo="PIS/PASEP" valor={form.pis} aoMudar={setCampo("pis")} />
               <Campo id="p-ctps" rotulo="CTPS" valor={form.ctps} aoMudar={setCampo("ctps")} />
               <Campo id="p-serie-ctps" rotulo="Série CTPS" valor={form.serieCtps} aoMudar={setCampo("serieCtps")} />
