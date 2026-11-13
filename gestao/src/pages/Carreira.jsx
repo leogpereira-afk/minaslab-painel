@@ -18,7 +18,7 @@ import { dataCurta, hojeBR, nomeProprio, numero } from "../lib/format.js";
 import {
   NIVEIS, TRILHAS_CARREIRA, LATERAIS, GRUPOS_RISCO, REGRAS, TEXTO_PLANO, SITUACOES, TIPOS_MOV, FORA_DO_PLANO,
   nivelPorId, nivelDaFuncao, proximosPassos, exigenciaPCMSO, mesesEntre, proximoCiclo, prontidao, nomeTipoMov,
-  faixaSalarial, formatarFaixa, lerReais, avisosFaixas,
+  faixaSalarial, formatarFaixa, lerReais, avisosFaixas, validarFaixa,
 } from "../lib/planoCarreira.js";
 
 const MARCA = { true: ["✓", "ok"], false: ["✕", "ruim"], null: ["?", "neutro"] };
@@ -441,7 +441,8 @@ function DetalheNivel({ id, c, quem, aoFechar }) {
     const vMin = String(f.salarioMin).trim() ? lerReais(f.salarioMin) : null;
     const vMax = String(f.salarioMax).trim() ? lerReais(f.salarioMax) : null;
     if ((String(f.salarioMin).trim() && vMin == null) || (String(f.salarioMax).trim() && vMax == null)) { setMsg("Salário inválido: use números, ex.: 2.400 ou 2400,50."); return; }
-    if ((vMin ?? padrao.min) > (vMax ?? padrao.max)) { setMsg("O salário mínimo não pode ser maior que o máximo."); return; }
+    const erroFaixa = validarFaixa(vMin ?? padrao.min, vMax ?? padrao.max);
+    if (erroFaixa) { setMsg(erroFaixa); return; }
     try {
       await c.gravar("carreira", { id: `nivel_${id}`, tipo: "nivel", nivelId: id, salarioMin: vMin, salarioMax: vMax, faixa: aj.faixa || "", tempoMinimo: t, obs: f.obs.trim() });
       setMsg("Salvo.");

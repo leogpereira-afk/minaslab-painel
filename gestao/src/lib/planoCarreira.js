@@ -245,6 +245,12 @@ export function lerReais(texto) {
 const reais = (v) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 /** "R$ 2.250 a R$ 2.550". */
 export const formatarFaixa = (f) => (f ? `${reais(f.min)} a ${reais(f.max)}` : "");
+/** Mensagem de erro da faixa digitada ("" se estiver boa); null = usar o padrão. */
+export function validarFaixa(min, max) {
+  if ((min != null && min <= 0) || (max != null && max <= 0)) return "O salário deve ser maior que zero.";
+  if (min != null && max != null && min > max) return "O salário mínimo não pode ser maior que o máximo.";
+  return "";
+}
 /** Faixa do cargo: padrão do plano com o ajuste da direção por cima (campo vazio = padrão). */
 export function faixaSalarial(id, ajustes = {}) {
   const n = nivelPorId(id);
@@ -405,7 +411,7 @@ export const TEXTO_PLANO = {
     "Enquadramento: registrar o cargo atual de quem já está na empresa quando o plano começa.",
   ],
   ciclo: "As promoções são analisadas duas vezes por ano, em janeiro e em julho, pela gerência com a liderança direta. A mudança vale a partir do mês seguinte à aprovação, com registro no RMC, atualização do cargo no eSocial pela contabilidade e, quando muda o grupo de risco, ASO de mudança de risco antes de começar.",
-  salario: "Cada cargo tem uma faixa salarial (mínimo e máximo) definida pela direção, com referência no mercado de Montes Claros/MG em novembro de 2026 e diferença de 8% a 15% entre um cargo e o seguinte da mesma trilha. A promoção leva a pessoa pelo menos ao mínimo da faixa do novo cargo. Estagiários recebem bolsa-auxílio (Lei 11.788/2008), não salário. As faixas são revistas uma vez por ano, junto com a revisão do plano.",
+  salario: "Cada cargo tem uma faixa salarial (mínimo e máximo) definida pela direção, com referência no mercado de Montes Claros/MG em novembro de 2026. Dentro da mesma trilha, a faixa de um cargo começa acima da do cargo anterior. Estagiários recebem bolsa-auxílio (Lei 11.788/2008), não salário. As faixas são revistas uma vez por ano, junto com a revisão do plano.",
   legal: "O plano é norma interna da empresa (CLT, art. 461, §§ 2º e 3º): as promoções seguem critérios de merecimento e de tempo no cargo descritos aqui. Confirme a redação final com a contabilidade ou o jurídico.",
   revisao: "O plano é revisto uma vez por ano ou quando um cargo for criado ou mudar; toda mudança sobe a revisão do documento.",
 };

@@ -110,3 +110,18 @@ test("novos cargos e trilhas", () => {
   assert.equal(nivelDaFuncao("Gerente"), null);
   assert.equal(nivelDaFuncao("Gerente Financeiro")?.id, "fin-ger");
 });
+
+import { TEXTO_PLANO, validarFaixa } from "./planoCarreira.js";
+
+test("texto de remuneração não promete regra que a tabela não segue", () => {
+  assert.doesNotMatch(TEXTO_PLANO.salario, /8% a 15%/);
+  assert.doesNotMatch(TEXTO_PLANO.salario, /pelo menos ao mínimo/);
+});
+
+test("validarFaixa recusa zero, negativo e mínimo maior que máximo", () => {
+  assert.match(validarFaixa(0, 2000), /maior que zero/);
+  assert.match(validarFaixa(-100, null), /maior que zero/);
+  assert.match(validarFaixa(2500, 2000), /maior que o máximo/);
+  assert.equal(validarFaixa(1800, 2000), "");
+  assert.equal(validarFaixa(null, null), "");
+});
