@@ -1,0 +1,17 @@
+{
+  "name": "MinasLab · Painel de Gestão",
+  "short_name": "MinasLab",
+  "description": "Painel de Gestão MinasLab — agenda, licitações, compras, manutenções, RH e coletas de campo, tudo num lugar só.",
+  "lang": "pt-BR",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#24444f",
+  "theme_color": "#24444f",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
