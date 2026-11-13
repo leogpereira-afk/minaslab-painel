@@ -4,9 +4,11 @@
 // verificações e situação apto / não apto. Reprovação abre não conformidade e marca "não apto" nos três lugares.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardPlus, Download, ExternalLink, Pencil, Search, Wrench } from "lucide-react";
+import { ClipboardPlus, Download, ExternalLink, Pencil, Printer, Search, Tag, Wrench } from "lucide-react";
 import { salvarRegistro, registrarCalibracao, excluirRegistro } from "../../../services/qualidade.js";
 import { baixarPlanilha } from "../../../lib/planilha.js";
+import { abrirImpressao, dadosDoFormulario } from "../../../lib/impressao/formularioQualidade.js";
+import { FORM_PLCAL, FORM_FICHA_EQ, FORM_ETIQUETA_EQ, corpoPlcal, corpoFichaEquip, corpoEtiquetas } from "../../../lib/impressao/equipamentos.js";
 import { StatCard, Modal } from "../../ui.jsx";
 import { Anexos, Cabecalho, Campo, Pill, diasAte, fmtData, hojeYmd, nomeDe, Paginacao } from "./comum.jsx";
 
@@ -97,9 +99,17 @@ export default function Equipamentos({ q, voltar, recarregar, avisar }) {
       linhas: lista.map((e) => ({ codigo: e.codigo, nome: e.nome, setor: e.setor || "", controle: CONTROLES[e.controle], per: e.periodicidade_meses ?? "", prox: fmtData(e.proxima), crit: e.criterio || "", sit: situacaoEquip(e)[0] })) });
   }
 
+  // Impressão (PLCAL, FM-LAB-114 ficha e histórico, FM-LAB-115 etiquetas de situação).
+  const imprimir = (padrao, corpo, opcoes = {}) => { try { abrirImpressao({ form: dadosDoFormulario(q.documentos, padrao), corpo, impressoPor: nomeDe(contas, q.eu), ...opcoes }); } catch (er) { avisar({ tipo: "erro", texto: er.message }); } };
+  const imprimirPlcal = () => imprimir(FORM_PLCAL, corpoPlcal(equipamentos, calibracoes, { hojeYmd: hoje, responsavel: nomeDe(contas, q.eu) }), { paisagem: true });
+  const imprimirFicha = (e) => imprimir(FORM_FICHA_EQ, corpoFichaEquip(e, { calibracoes, manutencoes, ncs, hojeYmd: hoje }));
+  const imprimirEtiquetas = (ls) => imprimir(FORM_ETIQUETA_EQ, corpoEtiquetas(ls, calibracoes, { hojeYmd: hoje }), { controlada: false });
+
   return (
     <div className="space-y-4">
       <Cabecalho titulo="Equipamentos" iso="ISO 17025 · 6.4 e 6.5" voltar={voltar} acoes={<>
+        <button type="button" onClick={imprimirPlcal} className="btn-outline inline-flex items-center gap-1.5"><Printer className="h-4 w-4" aria-hidden /> PLCAL</button>
+        <button type="button" onClick={() => imprimirEtiquetas(lista.filter((e) => e.situacao !== "INATIVO"))} className="btn-outline inline-flex items-center gap-1.5" title="Etiquetas dos equipamentos da lista (com os filtros aplicados)"><Tag className="h-4 w-4" aria-hidden /> Etiquetas</button>
         <button type="button" onClick={exportar} className="btn-outline inline-flex items-center gap-1.5"><Download className="h-4 w-4" aria-hidden /> Plano (Excel)</button>
         <Link to="/patrimonio" className="btn-outline inline-flex items-center gap-1.5"><ExternalLink className="h-4 w-4" aria-hidden /> Cadastro no Patrimônio</Link>
       </>} />
@@ -157,6 +167,10 @@ export default function Equipamentos({ q, voltar, recarregar, avisar }) {
                 {sel.situacao === "MANUTENCAO" ? <button type="button" onClick={() => situacao(sel, "ATIVO")} className="btn-outline">Voltou ao uso</button> : <button type="button" onClick={() => situacao(sel, "MANUTENCAO")} className="btn-outline inline-flex items-center gap-1.5"><Wrench className="h-4 w-4" aria-hidden /> Fora de uso</button>}
                 <Link to="/manutencoes" className="btn-ghost inline-flex items-center gap-1.5"><ExternalLink className="h-4 w-4" aria-hidden /> Manutenções</Link>
               </div>}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => imprimirFicha(sel)} className="btn-outline inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"><Printer className="h-4 w-4" aria-hidden /> Ficha e histórico ({FORM_FICHA_EQ.codigo})</button>
+                <button type="button" onClick={() => imprimirEtiquetas([sel])} className="btn-outline inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"><Tag className="h-4 w-4" aria-hidden /> Etiqueta de situação</button>
+              </div>
               <div><span className="label">Certificados e documentos</span><Anexos refTipo="equipamento" refId={sel.id} arquivos={arquivos} podeEscrever={podeEscrever} aoMudar={recarregar} avisar={avisar} /></div>
             </div>
             <div className="card p-5"><h3 className="mb-2 font-display font-semibold text-slate-900">Histórico</h3>
