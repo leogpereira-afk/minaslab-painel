@@ -4,7 +4,7 @@
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import { dataCurta, nomeProprio } from "../lib/format.js";
 import {
-  DOC_PCC, DOC_RMC, GRUPOS_RISCO, NIVEIS, TRILHAS_CARREIRA, LATERAIS, REGRAS, TEXTO_PLANO, FORA_DO_PLANO, nivelPorId, exigenciaPCMSO, nomeTipoMov,
+  DOC_PCC, DOC_RMC, GRUPOS_RISCO, NIVEIS, TRILHAS_CARREIRA, LATERAIS, REGRAS, TEXTO_PLANO, FORA_DO_PLANO, nivelPorId, exigenciaPCMSO, nomeTipoMov, faixaSalarial, formatarFaixa,
 } from "../lib/planoCarreira.js";
 
 function Cab({ doc, folha, total }) {
@@ -30,9 +30,9 @@ const Assin = ({ rotulo, largura }) => <div className="fm-assin" style={largura 
 
 /** O plano completo: regras na folha 1, uma tabela por trilha nas seguintes. */
 export function DocPCC({ ajustes = {} }) {
-  const faixa = (id) => ajustes[id]?.faixa || "";
+  const faixa = (id) => { const f = faixaSalarial(id, ajustes); return f ? formatarFaixa(f) + (f.obs ? ` (${f.obs})` : "") : ""; };
   const tempo = (id) => ajustes[id]?.tempoMinimo ?? nivelPorId(id)?.tempoMinimo;
-  const grupos = [TRILHAS_CARREIRA.slice(0, 2), TRILHAS_CARREIRA.slice(2)];
+  const grupos = [TRILHAS_CARREIRA.slice(0, 2), TRILHAS_CARREIRA.slice(2, 4), TRILHAS_CARREIRA.slice(4)];
   const total = 1 + grupos.length + 1;
   return (
     <>

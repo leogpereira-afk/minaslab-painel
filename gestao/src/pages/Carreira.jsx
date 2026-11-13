@@ -18,6 +18,7 @@ import { dataCurta, hojeBR, nomeProprio, numero } from "../lib/format.js";
 import {
   NIVEIS, TRILHAS_CARREIRA, LATERAIS, GRUPOS_RISCO, REGRAS, TEXTO_PLANO, SITUACOES, TIPOS_MOV, FORA_DO_PLANO,
   nivelPorId, nivelDaFuncao, proximosPassos, exigenciaPCMSO, mesesEntre, proximoCiclo, prontidao, nomeTipoMov,
+  faixaSalarial, formatarFaixa, lerReais, avisosFaixas,
 } from "../lib/planoCarreira.js";
 
 const MARCA = { true: ["✓", "ok"], false: ["✕", "ruim"], null: ["?", "neutro"] };
@@ -350,8 +351,15 @@ function Plano({ c, pessoas }) {
   const [nivel, setNivel] = useState(null);
   const quem = (id) => pessoas.filter((p) => p.nivel?.id === id);
   const alertas = NIVEIS.filter((n) => n.alerta || !n.pcmso);
+  const avisos = avisosFaixas(c.ajustes);
   return (
     <>
+      {avisos.length > 0 && (
+        <Card>
+          <h3>Faixas salariais para conferir</h3>
+          {avisos.map((a) => <div key={a.trilha + a.para + (a.de || "")} className="ponto"><div>{a.texto}</div></div>)}
+        </Card>
+      )}
       {TRILHAS_CARREIRA.map((t) => (
         <Card key={t.id} className="carr-trilha">
           <div className="carr-trilha-topo"><h3>{t.nome}</h3><span className="suave peq">{t.desc}</span></div>
@@ -369,6 +377,7 @@ function Plano({ c, pessoas }) {
                       <Chip tom={n.grupo === "administrativo" ? "neutro" : "alerta"}>{GRUPOS_RISCO[n.grupo].nome}</Chip>
                       {n.novo && <Chip tom="marca">novo</Chip>}
                     </span>
+                    <span className="carr-degrau-salario">{formatarFaixa(faixaSalarial(id, c.ajustes))}</span>
                     <span className="suave peq">{q.length ? q.map((x) => nomeProprio(x.membro.nome).split(" ")[0]).join(", ") : "ninguém hoje"}</span>
                   </button>
                 </div>
@@ -420,14 +429,23 @@ function Plano({ c, pessoas }) {
 function DetalheNivel({ id, c, quem, aoFechar }) {
   const n = nivelPorId(id);
   const aj = c.ajustes[id] || {};
-  const [f, setF] = useState({ faixa: aj.faixa || "", tempoMinimo: String(aj.tempoMinimo ?? n.tempoMinimo), obs: aj.obs || "" });
+  const padrao = n.salario || {};
+  const fx = faixaSalarial(id, c.ajustes);
+  const [f, setF] = useState({ salarioMin: aj.salarioMin ?? "", salarioMax: aj.salarioMax ?? "", tempoMinimo: String(aj.tempoMinimo ?? n.tempoMinimo), obs: aj.obs || "" });
   const [msg, setMsg] = useState("");
   const g = GRUPOS_RISCO[n.grupo];
   const existe = c.dados.funcoes.some((x) => x.nome.toLowerCase() === n.funcao.toLowerCase());
   const salvar = async () => {
     const t = numero(f.tempoMinimo);
     if (t == null || t < 0) { setMsg("Tempo mínimo inválido."); return; }
-    try { await c.gravar("carreira", { id: `nivel_${id}`, tipo: "nivel", nivelId: id, faixa: f.faixa.trim(), tempoMinimo: t, obs: f.obs.trim() }); setMsg("Salvo."); } catch (e) { setMsg(e.message); }
+    const vMin = String(f.salarioMin).trim() ? lerReais(f.salarioMin) : null;
+    const vMax = String(f.salarioMax).trim() ? lerReais(f.salarioMax) : null;
+    if ((String(f.salarioMin).trim() && vMin == null) || (String(f.salarioMax).trim() && vMax == null)) { setMsg("Salário inválido: use números, ex.: 2.400 ou 2400,50."); return; }
+    if ((vMin ?? padrao.min) > (vMax ?? padrao.max)) { setMsg("O salário mínimo não pode ser maior que o máximo."); return; }
+    try {
+      await c.gravar("carreira", { id: `nivel_${id}`, tipo: "nivel", nivelId: id, salarioMin: vMin, salarioMax: vMax, faixa: aj.faixa || "", tempoMinimo: t, obs: f.obs.trim() });
+      setMsg("Salvo.");
+    } catch (e) { setMsg(e.message); }
   };
   return (
     <Modal titulo={n.cargo} aoFechar={aoFechar} largo>
@@ -445,11 +463,16 @@ function DetalheNivel({ id, c, quem, aoFechar }) {
       <div className="carr-bloco">
         <h3>Ajustes da direção</h3>
         <div className="carr-form">
-          <div className="campo" style={{ flex: "2 1 240px" }}><label htmlFor="nv-faixa">Faixa salarial</label><input id="nv-faixa" className="entrada" placeholder="Ex.: R$ 2.400 a R$ 2.800" value={f.faixa} onChange={(e) => setF({ ...f, faixa: e.target.value })} /></div>
+          <div className="campo" style={{ flex: "1 1 150px" }}><label htmlFor="nv-smin">Salário mínimo (R$)</label><input id="nv-smin" className="entrada" inputMode="decimal" placeholder={String(padrao.min ?? "")} value={f.salarioMin} onChange={(e) => setF({ ...f, salarioMin: e.target.value })} /></div>
+          <div className="campo" style={{ flex: "1 1 150px" }}><label htmlFor="nv-smax">Salário máximo (R$)</label><input id="nv-smax" className="entrada" inputMode="decimal" placeholder={String(padrao.max ?? "")} value={f.salarioMax} onChange={(e) => setF({ ...f, salarioMax: e.target.value })} /></div>
           <div className="campo" style={{ flex: "1 1 140px" }}><label htmlFor="nv-tempo">Tempo mínimo (meses)</label><input id="nv-tempo" className="entrada" inputMode="numeric" value={f.tempoMinimo} onChange={(e) => setF({ ...f, tempoMinimo: e.target.value })} /></div>
         </div>
         <div className="campo" style={{ marginTop: 8 }}><label htmlFor="nv-obs">Observações</label><input id="nv-obs" className="entrada" value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} /></div>
-        <div className="suave peq" style={{ marginTop: 6 }}>O tempo mínimo vale para sair deste cargo para o próximo.</div>
+        <div className="suave peq" style={{ marginTop: 6 }}>
+          Faixa em vigor: <b>{formatarFaixa(fx)}</b>{fx?.obs ? ` (${fx.obs})` : ""}{fx?.ajustada ? " · ajustada pela direção" : " · padrão do plano"}.
+          {" "}Deixe o salário em branco para usar o padrão ({formatarFaixa(padrao)}). O tempo mínimo vale para sair deste cargo para o próximo.
+        </div>
+        {(f.salarioMin !== "" || f.salarioMax !== "") && <button type="button" className="btn claro mini" style={{ marginTop: 6 }} onClick={() => setF({ ...f, salarioMin: "", salarioMax: "" })}>Voltar ao padrão do plano</button>}
         {msg && <div className="aviso marca peq" style={{ marginTop: 8 }}>{msg}</div>}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
