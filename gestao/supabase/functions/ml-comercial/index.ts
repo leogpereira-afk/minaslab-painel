@@ -30,6 +30,7 @@ import { CRITERIOS_LIDERANCA, MOTIVOS_ELIMINATORIOS, DIAS_CONVITE, conviteValido
 import { somarSetores } from "./setores.mjs";
 import { SETORES, CHAVES, PAGINAS, colecaoDe, permissoes, podeLer, podeGravar, podeAcao, limparSetores } from "./acessos.mjs";
 import { situacaoNoRH } from "./comissoes.mjs";
+import { aplicarCarreiraRH } from "./carreiraRH.mjs";
 import { PERGUNTAS_EQUIPE, PERGUNTAS_GESTAO, votanteDaConta, validarVoto, aplicarVoto, resultado, gerarCodigos, normalizarCodigo, codigoValido } from "./pesquisa.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -607,6 +608,40 @@ async function dadosAcao(action: string, body: Record<string, unknown>, usuario:
       if (error) throw error;
       await bump(colecao);
       return resp({ ok: true });
+    }
+    case "carreiraRH": {
+      // Promoção registrada no plano de carreira → ficha e histórico do RH.
+      // Porta estreita: só cargo, salário e marcos no histórico, da pessoa
+      // ligada ao membro da equipe DAQUELE setor (o rhPessoaId vem do servidor).
+      if (!Object.prototype.hasOwnProperty.call(SETORES, setor)) return resp({ erro: "Setor desconhecido." }, 400);
+      if (!podeGravar(perm, setor, "carreira")) return resp({ erro: "Você não tem acesso para editar o plano de carreira.", semPermissao: true }, 403);
+      const membroId = String(body.membroId ?? ""), movId = String(body.movId ?? "");
+      if (!ID_OK.test(membroId) || !ID_OK.test(movId)) return resp({ erro: "Registro inválido." }, 400);
+      const { data: mb, error: e1 } = await sb.from(T_REG).select("registro, apagado").eq("colecao", colecaoDe(setor, "equipe")).eq("id", membroId).maybeSingle();
+      if (e1) throw e1;
+      const rhId = String(mb?.registro?.rhPessoaId ?? "");
+      if (!mb || mb.apagado || !rhId) return resp({ ok: true, semRH: true });
+      const { data: pe, error: e2 } = await sb.from(T_REG).select("registro, apagado").eq("colecao", "rh_pessoas").eq("id", rhId).maybeSingle();
+      if (e2) throw e2;
+      if (!pe || pe.apagado) return resp({ ok: true, semRH: true });
+      const historico = (await listarColecao("rh_historico")).filter((h: any) => h?.pessoaId === rhId);
+      const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+      const r: any = aplicarCarreiraRH({ pessoa: pe.registro, historico, nivelId: String(body.nivelId ?? ""), salario: body.salario ?? null, data: String(body.data ?? ""), movId, hoje, usuario });
+      if (r.erro) return resp({ erro: r.erro }, 400);
+      const agora = new Date().toISOString();
+      for (const mc of r.marcos) {
+        const reg = { ...mc, atualizadoEm: agora };
+        const { error } = await sb.from(T_REG).upsert({ colecao: "rh_historico", id: mc.id, registro: reg, apagado: false, atualizado_em: agora });
+        if (error) throw error;
+      }
+      if (r.marcos.length) await bump("rh_historico");
+      if (r.pessoa) {
+        const reg = { ...r.pessoa, atualizadoPor: usuario, atualizadoEm: agora };
+        const { error } = await sb.from(T_REG).upsert({ colecao: "rh_pessoas", id: rhId, registro: reg, apagado: false, atualizado_em: agora });
+        if (error) throw error;
+        await bump("rh_pessoas");
+      }
+      return resp({ ok: true, cargo: r.pessoa?.cargo ?? pe.registro.cargo ?? "", marcos: r.marcos.map((m: any) => m.titulo) });
     }
     case "dadosImportarVotacao": {
       // Histórico importado da planilha (votação já encerrada, somas abertas).

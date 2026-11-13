@@ -51,6 +51,9 @@ export async function elencoRH() {
   return r?.pessoas ?? [];
 }
 
+/** Promoção no plano → cargo, salário e histórico do RH (servidor confere tudo). */
+export const carreiraRH = (setor, dados) => chamar("carreiraRH", { setor, ...dados });
+
 /** Grava uma votação histórica importada da planilha (Destaque do mês). */
 export async function importarVotacao(registro) {
   const r = await chamar("dadosImportarVotacao", { registro });
