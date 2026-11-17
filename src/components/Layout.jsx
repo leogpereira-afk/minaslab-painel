@@ -4,7 +4,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowUpRight, BarChart3, Sparkles, Microscope, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LockKeyhole, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Sparkles, Microscope, Boxes, Briefcase, CalendarCheck, CalendarDays, Clock, ContactRound, FlaskConical, FolderOpen, Gavel, KeyRound, LockKeyhole, LayoutDashboard, ListChecks, LogOut, Mail, Megaphone, Menu, Newspaper, MessageCircle, PackageSearch, PanelLeftClose, PanelLeftOpen, Search, ShoppingCart, Users, Wallet, Wrench, X } from "lucide-react";
 import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
@@ -29,6 +29,7 @@ const MODULOS = [
   { id: "canais", rotulo: "Canais MinasLab", caminho: "/canais", icone: Newspaper, grupo: "Agenda" },
   { id: "tarefas", rotulo: "Tarefas", caminho: "/tarefas", icone: ListChecks, grupo: "Agenda" },
   { id: "mensagens", rotulo: "Mensagens", caminho: "/mensagens", icone: MessageCircle, grupo: "Agenda" },
+  { id: "email", rotulo: "E-mail", caminho: "/email", icone: Mail, grupo: "Agenda" },
   /* Assistente de IA (Claude): para todo usuário ativo, como Tarefas e Mensagens. */
   { id: "assistente", rotulo: "Assistente IA", caminho: "/assistente", icone: Sparkles, grupo: "Agenda" },
   { id: "calendario", rotulo: "Calendário", caminho: "/calendario", icone: CalendarDays, grupo: "Agenda" },
@@ -60,7 +61,7 @@ const MODULOS = [
 
 const CORES_MODULO = {
   patrimonio: ["#0369a1", "#e0f2fe"],
-  inicio: ["#0f766e", "#d9f4ef"], canais: ["#db2777", "#fce5f1"], tarefas: ["#0369a1", "#e0f2fe"], mensagens: ["#0e7490", "#cffafe"], assistente: ["#c2410c", "#ffeadc"], calendario: ["#2563eb", "#e5edff"],
+  inicio: ["#0f766e", "#d9f4ef"], canais: ["#db2777", "#fce5f1"], tarefas: ["#0369a1", "#e0f2fe"], mensagens: ["#0e7490", "#cffafe"], email: ["#0f766e", "#cfeee3"], assistente: ["#c2410c", "#ffeadc"], calendario: ["#2563eb", "#e5edff"],
   compromissos: ["#7c3aed", "#eee7ff"], licitacoes: ["#b45309", "#fff0cf"],
   marketing: ["#db2777", "#fce5f1"], "google-drive": ["#16803d", "#dcf5e4"],
   compras: ["#c2410c", "#ffeadc"], "gestao-estoque": ["#0f766e", "#d9f4ef"], manutencoes: ["#475569", "#e6edf5"],
