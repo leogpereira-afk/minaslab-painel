@@ -5,7 +5,7 @@
 // trazem TODOS os menus do painel (pedido da Ana, 05/11/2026). Alguns não se
 // marcam aqui: veja PAGINAS_DE_TODOS, PAGINAS_SO_DIRECAO e PAGINAS_COM_ACESSO_PROPRIO.
 export const GRUPOS_PERMISSOES = [
-  { titulo: "Agenda", paginas: [["inicio", "Início"], ["canais", "Canais MinasLab"], ["tarefas", "Tarefas"], ["mensagens", "Mensagens"], ["calendario", "Calendário"], ["compromissos", "Compromissos"]] },
+  { titulo: "Agenda", paginas: [["inicio", "Início"], ["canais", "Canais MinasLab"], ["tarefas", "Tarefas"], ["mensagens", "Mensagens"], ["email", "E-mail"], ["calendario", "Calendário"], ["compromissos", "Compromissos"]] },
   { titulo: "Operação", paginas: [["compras", "Compras"], ["gestao-estoque", "Gestão de Estoque"], ["patrimonio", "Patrimônio"], ["manutencoes", "Manutenções"], ["laboratorio", "Laboratório"], ["lims", "MinasLab LIMS"]] },
   { titulo: "Negócios", paginas: [["licitacoes", "Licitações"], ["marketing", "Marketing"], ["crm", "CRM"], ["gestao", "Gestão"], ["curva-abc", "Curva ABC"]] },
   { titulo: "Administração", paginas: [["google-drive", "Google Drive"], ["rh", "RH"], ["folha-pagamento", "Folha de Pagamento"], ["ponto", "Ponto"], ["senhas", "Senhas e acessos"], ["acessos", "Acessos"]] },
@@ -13,7 +13,7 @@ export const GRUPOS_PERMISSOES = [
 ];
 
 // Menus que todo mundo do painel já tem (não dependem de liberação).
-export const PAGINAS_DE_TODOS = new Set(["canais", "tarefas", "mensagens"]);
+export const PAGINAS_DE_TODOS = new Set(["canais", "tarefas", "mensagens", "email"]);
 // Menus que ficam só com a direção, sem como liberar (quem tem Acessos libera tudo para todos).
 export const PAGINAS_SO_DIRECAO = new Set(["acessos"]);
 // Menus com tela de acessos própria: aqui só aparece onde liberar.
