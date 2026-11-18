@@ -5,8 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
-  Archive, ArrowLeft, Bold, ChevronLeft, ChevronRight, Download, FileText, Folder, Forward, Inbox, Italic, Link2, List, Loader2, Mail,
-  MailOpen, Paperclip, Pencil, Plus, RefreshCw, Reply, ReplyAll, Search, Send, Settings2, ShieldAlert, Star, Trash2, Underline, X,
+  Archive, ArrowLeft, Bold, ChevronLeft, ChevronRight, Columns2, Download, FileText, Folder, Forward, Inbox, Italic, Link2, List, Loader2, Mail,
+  MailOpen, Paperclip, Pencil, Plus, RefreshCw, Reply, ReplyAll, Rows3, Search, Send, Settings2, ShieldAlert, Star, Trash2, Underline, X,
 } from "lucide-react";
 import { Aviso, CarregandoModulo, ErroModulo, Modal } from "../components/ui.jsx";
 import {
@@ -20,6 +20,7 @@ const CORES_CAIXA = ["#0f766e", "#d97706", "#4f6fd8", "#be123c", "#7c3aed", "#0e
 const ICONE_PASTA = { entrada: Inbox, enviados: Send, rascunhos: FileText, lixeira: Trash2, spam: ShieldAlert, estrela: Star, arquivo: Archive, todos: Mail };
 const LIMITE_ANEXOS = 18 * 1024 * 1024;
 const LEMBRAR = "ml-email-caixa";
+const LEMBRAR_LAYOUT = "ml-email-layout";
 
 const lerLocal = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const gravarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
@@ -57,6 +58,11 @@ export default function Email() {
   const [erroIni, setErroIni] = useState("");
   const [aviso, setAviso] = useState(null);
   const [contaId, setContaId] = useState(() => lerLocal(LEMBRAR));
+  // Layout como no webmail da Hostinger: "coluna" (lista ao lado da mensagem) ou "linha"
+  // (lista na largura toda; a mensagem abre no lugar da lista).
+  const [layout, setLayoutEstado] = useState(() => (lerLocal(LEMBRAR_LAYOUT) === "linha" ? "linha" : "coluna"));
+  const setLayout = (v) => { setLayoutEstado(v); gravarLocal(LEMBRAR_LAYOUT, v); };
+  const emLinha = layout === "linha";
   const [pastas, setPastas] = useState([]);
   const [erroPastas, setErroPastas] = useState("");
   const [pastaId, setPastaId] = useState("INBOX");
@@ -227,6 +233,14 @@ export default function Email() {
           {filtro.busca && <button type="button" className="text-slate-400 hover:text-slate-600" aria-label="Limpar pesquisa" onClick={() => { setBuscaDigitada(""); setPagina(1); setFiltro((f) => ({ ...f, busca: "" })); }}><X size={16} /></button>}
         </form>
         <div className="ml-auto flex items-center gap-2">
+          <div className="hidden items-center rounded-lg border border-slate-200 p-0.5 md:flex" role="group" aria-label="Layout">
+            {[["coluna", "Coluna", Columns2], ["linha", "Linha", Rows3]].map(([v, rot, Ic]) => (
+              <button key={v} type="button" onClick={() => setLayout(v)} aria-pressed={layout === v} title={`Layout em ${rot.toLowerCase()}`}
+                className={clsx("flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold", layout === v ? "bg-brand-ink text-white" : "text-slate-500 hover:bg-slate-100")}>
+                <Ic size={15} aria-hidden="true" /><span className="hidden xl:inline">{rot}</span>
+              </button>
+            ))}
+          </div>
           <label className="sr-only" htmlFor="email-caixa">Caixa de e-mail</label>
           <select id="email-caixa" className="input h-9 max-w-[15rem] py-0 text-sm" value={conta.id} onChange={(e) => setContaId(e.target.value)}>
             {contas.map((c) => <option key={c.id} value={c.id}>{c.email}</option>)}
@@ -273,7 +287,9 @@ export default function Email() {
         </nav>
 
         {/* Lista */}
-        <section className={clsx("flex min-w-0 flex-col border-r border-slate-200 md:w-[22rem] md:shrink-0 xl:w-[25rem] 2xl:w-[30rem]", sel ? "hidden md:flex" : "flex flex-1 md:flex-none")} aria-label="Mensagens">
+        <section className={clsx("flex min-w-0 flex-col",
+          emLinha ? (sel ? "hidden" : "flex flex-1")
+            : clsx("border-r border-slate-200 md:w-[22rem] md:shrink-0 xl:w-[25rem] 2xl:w-[30rem]", sel ? "hidden md:flex" : "flex flex-1 md:flex-none"))} aria-label="Mensagens">
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <input type="checkbox" className="h-4 w-4 accent-brand-600" aria-label="Marcar todas desta página" checked={todosMarcados}
               onChange={() => setMarcados(todosMarcados ? new Set() : new Set(msgs.map((m) => m.uid)))} />
@@ -306,7 +322,7 @@ export default function Email() {
               <p className="p-8 text-center text-sm text-slate-500">{filtro.busca || filtro.naoLidas || filtro.comAnexo ? "Nada encontrado com esse filtro." : "Nenhuma mensagem nesta pasta."}</p>
             )}
             {msgs.map((m) => (
-              <LinhaMensagem key={m.uid} m={m} ativa={m.uid === sel} marcada={marcados.has(m.uid)} enviados={pasta?.tipo === "enviados" || pasta?.tipo === "rascunhos"}
+              <LinhaMensagem key={m.uid} m={m} larga={emLinha} ativa={m.uid === sel} marcada={marcados.has(m.uid)} enviados={pasta?.tipo === "enviados" || pasta?.tipo === "rascunhos"}
                 aoAbrir={() => abrir(m)} aoMarcar={() => setMarcados((s) => { const n = new Set(s); n.has(m.uid) ? n.delete(m.uid) : n.add(m.uid); return n; })}
                 aoEstrela={() => agir([m.uid], m.estrela ? "semEstrela" : "estrela")} />
             ))}
@@ -321,11 +337,11 @@ export default function Email() {
         </section>
 
         {/* Leitura */}
-        <section className={clsx("min-w-0 flex-1 flex-col", sel ? "flex" : "hidden md:flex")} aria-label="Mensagem aberta">
+        <section className={clsx("min-w-0 flex-1 flex-col", sel ? "flex" : emLinha ? "hidden" : "hidden md:flex")} aria-label="Mensagem aberta">
           {!sel && <div className="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400"><div><MailOpen size={40} className="mx-auto mb-2 opacity-40" aria-hidden="true" />Escolha uma mensagem para ler.</div></div>}
           {sel && carregandoMsg && <div className="grid flex-1 place-items-center text-sm text-slate-500"><Loader2 className="animate-spin" aria-label="Abrindo a mensagem" /></div>}
           {sel && aberta && (
-            <Leitura m={aberta} pasta={pasta} pastasMover={pastasMover} ocupado={ocupado} temArquivo={pastas.some((p) => p.tipo === "arquivo")} temSpam={pastas.some((p) => p.tipo === "spam")}
+            <Leitura m={aberta} emLinha={emLinha} pasta={pasta} pastasMover={pastasMover} ocupado={ocupado} temArquivo={pastas.some((p) => p.tipo === "arquivo")} temSpam={pastas.some((p) => p.tipo === "spam")}
               aoVoltar={() => { setSel(null); setAberta(null); }}
               aoResponder={(modo) => novaEscrita(modo, aberta)}
               aoAgir={(tipo, destino) => agir([aberta.uid], tipo, destino)}
@@ -372,8 +388,24 @@ function ListaCarregando() {
   return <div className="space-y-px">{Array.from({ length: 8 }, (_, i) => <div key={i} className="flex gap-3 px-4 py-3"><div className="h-4 w-4 rounded bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 w-1/2 rounded bg-slate-100" /><div className="h-3 w-4/5 rounded bg-slate-100" /></div></div>)}</div>;
 }
 
-function LinhaMensagem({ m, ativa, marcada, enviados, aoAbrir, aoMarcar, aoEstrela }) {
+function LinhaMensagem({ m, larga, ativa, marcada, enviados, aoAbrir, aoMarcar, aoEstrela }) {
   const quem = enviados ? `Para: ${m.para.map(nomeOuEmail).join(", ") || "—"}` : nomeOuEmail(m.de);
+  if (larga) {
+    return (
+      <div className={clsx("group relative flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-2", ativa ? "bg-brand-50/70" : marcada ? "bg-amber-50/50" : m.lida ? "hover:bg-slate-50" : "bg-white hover:bg-slate-50")} onClick={aoAbrir}>
+        {!m.lida && <span className="absolute inset-y-0 left-0 w-[3px] bg-brand-600" aria-hidden="true" />}
+        <input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-600" aria-label={`Marcar mensagem de ${quem}`} checked={marcada} onClick={(e) => e.stopPropagation()} onChange={aoMarcar} />
+        <button type="button" className={clsx("shrink-0", m.estrela ? "text-amber-500" : "text-slate-300 hover:text-slate-500")} aria-label={m.estrela ? "Tirar estrela" : "Pôr estrela"} onClick={(e) => { e.stopPropagation(); aoEstrela(); }}>
+          <Star size={16} fill={m.estrela ? "currentColor" : "none"} />
+        </button>
+        <span className={clsx("w-36 shrink-0 truncate text-[13.5px] sm:w-56", m.lida ? "text-slate-600" : "font-bold text-slate-900")}>{quem}</span>
+        {m.respondida && <Reply size={12} className="shrink-0 text-slate-400" aria-label="Respondida" />}
+        <span className={clsx("min-w-0 flex-1 truncate text-[13.5px]", m.lida ? "text-slate-600" : "font-semibold text-slate-800")}>{m.assunto || "(sem assunto)"}</span>
+        {m.temAnexo && <Paperclip size={14} className="shrink-0 text-slate-400" aria-label="Com anexo" />}
+        <span className={clsx("w-16 shrink-0 text-right text-xs", m.lida ? "text-slate-400" : "font-bold text-brand-700")}>{quando(m.data)}</span>
+      </div>
+    );
+  }
   return (
     <div className={clsx("group relative flex cursor-pointer items-start gap-2.5 border-b border-slate-100 px-3 py-2.5", ativa ? "bg-brand-50/70" : marcada ? "bg-amber-50/50" : "hover:bg-slate-50")} onClick={aoAbrir}>
       {ativa && <span className="absolute inset-y-0 left-0 w-[3px] bg-brand-600" aria-hidden="true" />}
@@ -407,13 +439,13 @@ function CorpoMensagem({ html }) {
   return <iframe ref={ref} title="Conteúdo da mensagem" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={doc} onLoad={() => { medir(); setTimeout(medir, 400); setTimeout(medir, 1500); }} className="w-full border-0" style={{ height: altura }} />;
 }
 
-function Leitura({ m, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar }) {
+function Leitura({ m, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar }) {
   const [baixando, setBaixando] = useState(null);
   const data = m.data ? new Date(m.data).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2 sm:px-5">
-        <button type="button" className="btn-ghost h-9 w-9 p-0 md:hidden" aria-label="Voltar para a lista" onClick={aoVoltar}><ArrowLeft size={18} /></button>
+        <button type="button" className={clsx("btn-ghost h-9 w-9 p-0", !emLinha && "md:hidden")} title="Voltar para a lista" aria-label="Voltar para a lista" onClick={aoVoltar}><ArrowLeft size={18} /></button>
         <button type="button" className="btn-primary h-9 px-3 text-sm" onClick={() => aoResponder("responder")}><Reply size={15} aria-hidden="true" /> Responder</button>
         <button type="button" className="btn-outline hidden h-9 px-3 text-sm sm:inline-flex" onClick={() => aoResponder("responderTodos")}><ReplyAll size={15} aria-hidden="true" /> Responder a todos</button>
         <button type="button" className="btn-outline h-9 px-3 text-sm" onClick={() => aoResponder("encaminhar")}><Forward size={15} aria-hidden="true" /> <span className="hidden sm:inline">Encaminhar</span></button>
