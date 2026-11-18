@@ -28,6 +28,27 @@ function comPrazo<T>(p: Promise<T>, msg: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, r) => { t = setTimeout(() => r(new ErroEmail(msg, "rede")), ESPERA); })]).finally(() => clearTimeout(t));
 }
 
+// Deno.Conn.write pode gravar só PARTE do buffer (o resto ficava para trás e o servidor
+// esperava para sempre ou derrubava a conexão — foi o "Enviando…" eterno de 18/11/2026).
+// Grava tudo, em pedaços, com prazo.
+export async function gravarTudo(c: Deno.Conn, dados: Uint8Array) {
+  let feito = 0;
+  while (feito < dados.length) {
+    const n = await comPrazo(c.write(dados.subarray(feito, Math.min(dados.length, feito + 65536))), "O servidor de e-mail parou de receber.");
+    if (n <= 0) throw new ErroEmail("A conexão com o servidor de e-mail caiu.", "rede");
+    feito += n;
+  }
+}
+// Erros de rede/TLS (conexão derrubada no meio) viram mensagem clara.
+export function erroDeRede(e: unknown, envio = false): never {
+  if (e instanceof ErroEmail) throw e;
+  const nome = (e as Error)?.name || "";
+  if (/UnexpectedEof|ConnectionReset|BrokenPipe|ConnectionAborted|Interrupted|InvalidData/i.test(nome)) {
+    throw new ErroEmail(envio ? "O servidor de envio derrubou a conexão no meio do envio. Tente de novo." : "A conexão com o servidor de e-mail caiu. Tente de novo.", "rede");
+  }
+  throw e;
+}
+
 export class Imap {
   private buf = new Uint8Array(1 << 16);
   private ini = 0;
@@ -91,13 +112,13 @@ export class Imap {
     blocos.push(atual + "\r\n");
     // Envia até o primeiro literal; cada literal espera o "+" do servidor.
     let i = 0;
-    await this.c.write(enc.encode(blocos[i++] as string));
+    await gravarTudo(this.c, enc.encode(blocos[i++] as string));
     const linhas: string[] = [], literais: Uint8Array[] = [];
     for (;;) {
       let l = await this.linha();
       if (l.startsWith("+") && i < blocos.length) {
-        await this.c.write(blocos[i++] as Uint8Array);
-        await this.c.write(enc.encode(blocos[i++] as string));
+        await gravarTudo(this.c, blocos[i++] as Uint8Array);
+        await gravarTudo(this.c, enc.encode(blocos[i++] as string));
         continue;
       }
       while (/\{\d+\}$/.test(l)) {
@@ -141,7 +162,7 @@ export async function comImap<T>(cred: Credencial, fn: (imap: Imap) => Promise<T
   try {
     await imap.entrar(cred.email, cred.senha, cred.provedor);
     return await fn(imap);
-  } finally { await imap.sair(); }
+  } catch (e) { erroDeRede(e); } finally { await imap.sair(); }
 }
 
 // Nome da pasta no comando (literal quando não é ASCII simples).
@@ -363,7 +384,7 @@ export async function smtp(cred: Credencial, envio?: { de: string; destinos: str
     }
   };
   const passo = async (linha: string | null, esperado: string, erro?: ErroEmail) => {
-    if (linha !== null) await c.write(enc.encode(linha + "\r\n"));
+    if (linha !== null) await gravarTudo(c, enc.encode(linha + "\r\n"));
     const r = await ler();
     const ultima = r.split("\n").pop()!;
     if (!ultima.startsWith(esperado)) throw erro || new ErroEmail(`O servidor de envio recusou: ${ultima.slice(0, 200)}`);
@@ -388,11 +409,11 @@ export async function smtp(cred: Credencial, envio?: { de: string; destinos: str
       await passo("DATA", "354");
       // Linhas que começam com "." ganham outro "." (RFC 5321 §4.5.2).
       const texto = dec.decode(envio.mensagem).replace(/\r\n\./g, "\r\n..");
-      await c.write(enc.encode(texto.endsWith("\r\n") ? texto : texto + "\r\n"));
+      await gravarTudo(c, enc.encode(texto.endsWith("\r\n") ? texto : texto + "\r\n"));
       await passo(".", "250");
     }
-    try { await c.write(enc.encode("QUIT\r\n")); } catch { /* ok */ }
-  } finally { try { c.close(); } catch { /* ok */ } }
+    try { await gravarTudo(c, enc.encode("QUIT\r\n")); } catch { /* ok */ }
+  } catch (e) { erroDeRede(e, true); } finally { try { c.close(); } catch { /* ok */ } }
 }
 
 export { lerEnderecos, deBase64 };
