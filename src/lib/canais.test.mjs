@@ -162,3 +162,43 @@ test("visual da publicação: valida e varia sozinho", async () => {
   const cores = new Set(["a1", "b2", "c3", "d4", "e5", "f6", "g7", "h8"].map((id) => visualDoPost({ id, tipo: "noticia" }).cor.nome));
   assert.ok(cores.size >= 3, "posts diferentes ganham cores diferentes");
 });
+
+test("canais por setor: papel de cada pessoa", async () => {
+  const { papelNoCanal, podeMexerNoPost } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const canal = { responsaveis: ["ana"], membros: ["bia", "caio"], publicacao: "responsaveis", visibilidade: "setor" };
+  const ana = papelNoCanal(canal, "ana");
+  assert.equal(ana.publicar, true); assert.equal(ana.moderar, true); assert.equal(ana.trocarResponsaveis, false);
+  const bia = papelNoCanal(canal, "bia");
+  assert.equal(bia.ver, true); assert.equal(bia.interagir, true); assert.equal(bia.publicar, false); assert.equal(bia.moderar, false);
+  const fora = papelNoCanal(canal, "zeca");
+  assert.equal(fora.ver, false); assert.equal(fora.interagir, false);
+  assert.equal(papelNoCanal({ ...canal, visibilidade: "empresa" }, "zeca").ver, true);
+  assert.equal(papelNoCanal({ ...canal, visibilidade: "empresa" }, "zeca").interagir, false);
+  assert.equal(papelNoCanal({ ...canal, publicacao: "todos" }, "bia").publicar, true);
+  const dir = papelNoCanal(canal, "dona", true);
+  assert.equal(dir.ver && dir.publicar && dir.moderar && dir.apagarCanal && dir.trocarResponsaveis, true);
+  assert.equal(papelNoCanal(canal, "").ver, false);
+  // autor mexe no próprio post só enquanto ainda pode publicar
+  assert.equal(podeMexerNoPost(papelNoCanal({ ...canal, publicacao: "todos" }, "bia"), { autor: "bia" }, "bia"), true);
+  assert.equal(podeMexerNoPost(bia, { autor: "bia" }, "bia"), false);
+  assert.equal(podeMexerNoPost(ana, { autor: "bia" }, "ana"), true);
+});
+
+test("validarCanal limpa nomes, contas inativas e repetidos", async () => {
+  const { validarCanal } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const contas = new Set(["ana", "bia", "caio"]);
+  assert.equal(validarCanal({ nome: "  ", responsaveis: ["ana"] }, contas).ok, false);
+  assert.equal(validarCanal({ nome: "Micro", responsaveis: ["fantasma"] }, contas).ok, false);
+  const v = validarCanal({ nome: "  Micro   biologia ", responsaveis: ["ana", "ana"], membros: ["ana", "bia", "zeca", "bia"], publicacao: "x", visibilidade: "empresa" }, contas);
+  assert.deepEqual(v.canal, { nome: "Micro biologia", descricao: "", responsaveis: ["ana"], membros: ["bia"], publicacao: "responsaveis", visibilidade: "empresa" });
+});
+
+test("resumoLeitura conta só quem precisa ler (sem o autor)", async () => {
+  const { resumoLeitura } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const canal = { responsaveis: ["ana"], membros: ["bia", "caio", "dani"] };
+  const nomes = new Map([["bia", "Bia"], ["caio", "Caio"], ["dani", "Dani"]]);
+  const r = resumoLeitura({ autor: "ana" }, canal, [{ usuario: "bia" }, { usuario: "intruso" }], "caio", { moderar: true, nomes });
+  assert.deepEqual(r, { total: 3, lidos: 1, li: false, precisoLer: true, quemLeu: ["Bia"], faltam: ["Caio", "Dani"] });
+  const semLista = resumoLeitura({ autor: "ana" }, canal, [], "ana");
+  assert.equal(semLista.precisoLer, false); assert.equal(semLista.quemLeu, undefined);
+});

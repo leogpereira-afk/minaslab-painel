@@ -1,11 +1,15 @@
-// Canais MinasLab: o mural da empresa. Notícias, comunicados e eventos
-// publicados pela gestão; parabéns automático no dia do aniversário;
-// aniversariantes do mês e informativo de férias. Todo mundo com login no
-// painel curte e comenta. Quem pode o quê é decidido no servidor (ml-canais).
+// Canais MinasLab: o mural da empresa e os canais de cada setor.
+// Mural geral: notícias, comunicados e eventos publicados pela gestão; parabéns
+// automático no dia do aniversário; aniversariantes do mês e informativo de
+// férias. Todo mundo com login no painel curte e comenta.
+// Canais de setor: cada setor tem o seu, com responsáveis e membros; quem
+// publica e quem vê é regra de cada canal, e o responsável pode pedir
+// confirmação de leitura ("Li e entendi"). Quem pode o quê é decidido no
+// servidor (ml-canais); a tela só mostra os botões.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { clsx } from "clsx";
-import { Award, Cake, Heart, ImagePlus, MessageCircle, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2 } from "lucide-react";
+import { Award, Cake, CheckCircle2, Hash, Heart, ImagePlus, Lock, MessageCircle, Newspaper, Palmtree, Pencil, Pin, Plus, RefreshCw, Send, Settings2, Trash2, Users } from "lucide-react";
 import { PageTitle, Card, Modal, Empty, ErroModulo, Aviso, CarregandoModulo } from "../components/ui.jsx";
 import Avatar from "../components/tarefas/Avatar.jsx";
 import { nomeCurto } from "../lib/nomes.js";
@@ -13,7 +17,7 @@ import { TIPOS_POST, MESES, tempoRelativo, periodoFerias, fraseAniversario, visu
 import ArtePost from "../components/canais/ArtePost.jsx";
 import {
   canaisFeed, canaisPublicar, canaisApagarPost, canaisComentar, canaisApagarComentario, canaisCurtir, canaisConfig, canaisSalvarConfig,
-  canaisDestaqueOpcoes, canaisSalvarDestaque,
+  canaisDestaqueOpcoes, canaisSalvarDestaque, canaisConfirmarLeitura, canaisCanalFormulario, canaisSalvarCanal, canaisApagarCanal,
 } from "../services/canais.js";
 
 const FILTROS = [
@@ -25,7 +29,8 @@ const FILTROS = [
 ];
 
 export default function Canais() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const canalId = params.get("canal") || "";
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState(null);
@@ -34,12 +39,15 @@ export default function Canais() {
   const [ajustes, setAjustes] = useState(false);
   const [editarDestaque, setEditarDestaque] = useState(false);
   const [previaAniv, setPreviaAniv] = useState(false);
+  const [editarCanal, setEditarCanal] = useState(null); // null | "novo" | id do canal
   const rolou = useRef(false);
 
   const carregar = useCallback(async () => {
-    try { setErro(""); setDados(await canaisFeed()); } catch (e) { setErro(e.message); }
-  }, []);
-  useEffect(() => { carregar(); }, [carregar]);
+    try { setErro(""); setDados(await canaisFeed(canalId)); } catch (e) { setErro(e.message); }
+  }, [canalId]);
+  useEffect(() => { setDados(null); setFiltro("tudo"); carregar(); }, [carregar]);
+
+  const irPara = (id) => setParams(id ? { canal: id } : {});
 
   const alvo = params.get("post");
   useEffect(() => {
@@ -71,63 +79,258 @@ export default function Canais() {
     try { await canaisApagarPost(p.id); setAviso({ tipo: "ok", texto: "Publicação apagada." }); carregar(); } catch (e) { falhou(e); }
   }
   async function fixar(p) {
-    try { await canaisPublicar({ ...p, fixado: !p.fixado }); carregar(); } catch (e) { falhou(e); }
+    try { await canaisPublicar({ ...p, fixado: !p.fixado, pedirLeitura: p.pedir_leitura }); carregar(); } catch (e) { falhou(e); }
+  }
+  async function confirmarLeitura(p) {
+    mudarPost(p.id, (x) => ({ ...x, leitura: { ...x.leitura, li: true, precisoLer: false, lidos: x.leitura.lidos + 1 } }));
+    try { await canaisConfirmarLeitura(p.id); carregar(); } catch (e) { falhou(e); carregar(); }
   }
 
   if (erro && !dados) return <ErroModulo mensagem={erro} aoTentar={carregar} />;
   if (!dados) return <CarregandoModulo />;
 
+  const canal = dados.canal;
+  const comLista = dados.canais.length > 0 || dados.gerirCanais;
+  const filtros = canal ? FILTROS.filter((f) => f.id !== "aniversario") : FILTROS;
+
   return (
     <div>
       <Aviso aviso={aviso} aoFechar={() => setAviso(null)} />
       <PageTitle
-        titulo="Canais MinasLab"
-        descricao="Notícias, comunicados, eventos, aniversariantes e férias da equipe. Curta e comente!"
+        titulo={canal ? `# ${canal.nome}` : "Canais MinasLab"}
+        descricao={canal ? canal.descricao || "Canal do setor." : "Notícias, comunicados, eventos, aniversariantes e férias da equipe. Curta e comente!"}
         acao={<div className="flex flex-wrap gap-2">
           <button type="button" className="btn-ghost" onClick={carregar} aria-label="Atualizar"><RefreshCw size={18} /></button>
-          {dados.direcao && <button type="button" className="btn-outline" onClick={() => setAjustes(true)}><Settings2 size={16} /> Ajustes</button>}
+          {!canal && dados.direcao && <button type="button" className="btn-outline" onClick={() => setAjustes(true)}><Settings2 size={16} /> Ajustes</button>}
+          {canal?.podeEditar && <button type="button" className="btn-outline" onClick={() => setEditarCanal(canal.id)}><Settings2 size={16} /> Ajustar canal</button>}
           {dados.podePublicar && <button type="button" className="btn-primary" onClick={() => setEditando({})}><Plus size={16} /> Nova publicação</button>}
         </div>}
       />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className={clsx("grid gap-5", comLista ? "lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_300px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
+        {comLista && <ListaCanais canais={dados.canais} atual={canal?.id || ""} aoEscolher={irPara} aoNovo={dados.gerirCanais ? () => setEditarCanal("novo") : null} />}
+
         <div className="min-w-0 space-y-4">
+          {canal && !dados.podeInteragir && (
+            <p className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <Lock size={16} className="shrink-0" /> Você não é deste setor: pode ler, mas não curte nem comenta aqui.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filtrar publicações">
-            {FILTROS.map((f) => (
+            {filtros.map((f) => (
               <button key={f.id} type="button" role="tab" aria-selected={filtro === f.id} onClick={() => setFiltro(f.id)}
                 className={clsx("rounded-full border px-3 py-1.5 text-sm font-medium transition", filtro === f.id ? "border-brand bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:border-brand-300")}>
                 {f.rotulo}
               </button>
             ))}
           </div>
-          {posts.length === 0 && <Empty>{filtro === "tudo" ? "Nada publicado ainda." : "Nada nesta categoria por enquanto."}</Empty>}
+          {posts.length === 0 && <Empty>{filtro !== "tudo" ? "Nada nesta categoria por enquanto." : canal ? "Nada publicado neste canal ainda." : "Nada publicado ainda."}</Empty>}
           {posts.map((p) => (
-            <Post key={p.id} post={p} destaque={String(p.id) === alvo} eu={dados.eu} podePublicar={dados.podePublicar}
+            <Post key={p.id} post={p} destaque={String(p.id) === alvo} eu={dados.eu} podeInteragir={dados.podeInteragir}
               aoCurtir={() => curtir(p)} aoComentar={(t) => comentar(p, t)} aoApagarComentario={(c) => apagarComentario(p, c)}
-              aoEditar={() => setEditando(p)} aoApagar={() => apagarPost(p)} aoFixar={() => fixar(p)} />
+              aoEditar={() => setEditando(p)} aoApagar={() => apagarPost(p)} aoFixar={() => fixar(p)} aoConfirmarLeitura={() => confirmarLeitura(p)} />
           ))}
         </div>
 
-        <aside className="space-y-4">
-          <Destaque destaque={dados.destaque} podeEditar={dados.podePublicar} aoEditar={() => setEditarDestaque(true)} />
-          <Aniversariantes lista={dados.aniversariantes} hoje={dados.hoje} aoVerPrevia={dados.direcao ? () => setPreviaAniv(true) : null} />
-          <Ferias lista={dados.ferias} direcao={dados.direcao} />
+        <aside className={clsx("space-y-4", comLista && "lg:col-start-2 xl:col-start-auto")}>
+          {canal
+            ? <InfoCanal canal={canal} />
+            : <>
+                <Destaque destaque={dados.destaque} podeEditar={dados.podePublicar} aoEditar={() => setEditarDestaque(true)} />
+                <Aniversariantes lista={dados.aniversariantes} hoje={dados.hoje} aoVerPrevia={dados.direcao ? () => setPreviaAniv(true) : null} />
+                <Ferias lista={dados.ferias} direcao={dados.direcao} />
+              </>}
         </aside>
       </div>
 
-      <Compositor post={editando} aoFechar={() => setEditando(null)}
-        aoSalvar={async (p) => { await canaisPublicar(p); setEditando(null); setAviso({ tipo: "ok", texto: p.id ? "Publicação atualizada." : "Publicado! Todos foram avisados no sino." }); carregar(); }} />
+      <Compositor post={editando} canal={canal} podeFixar={canal ? canal.podeEditar : dados.podePublicar} aoFechar={() => setEditando(null)}
+        aoSalvar={async (p) => {
+          await canaisPublicar(canal && !p.id ? { ...p, canal: canal.id } : p);
+          setEditando(null);
+          setAviso({ tipo: "ok", texto: p.id ? "Publicação atualizada." : canal ? "Publicado! As pessoas do canal foram avisadas no sino." : "Publicado! Todos foram avisados no sino." });
+          carregar();
+        }} />
       <Modal titulo="Prévia do parabéns automático" aberto={previaAniv} aoFechar={() => setPreviaAniv(false)} largura="max-w-2xl">
         <p className="mb-3 text-sm text-slate-600">É assim que o post aparece sozinho no mural, às 8h do dia do aniversário, com o nome que está no RH. Esta prévia não é publicada: ninguém mais vê.</p>
-        <Post post={previaParabens(dados.nome, dados.hoje, dados.eu)} eu={dados.eu} podePublicar={false} aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} />
+        <Post post={previaParabens(dados.nome, dados.hoje, dados.eu)} eu={dados.eu} podeInteragir aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} aoConfirmarLeitura={() => {}} />
       </Modal>
       <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={() => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: "Destaque do mês atualizado." }); carregar(); }} />
       <Ajustes aberto={ajustes} aoFechar={() => setAjustes(false)} aoSalvo={() => { setAjustes(false); setAviso({ tipo: "ok", texto: "Ajustes salvos." }); carregar(); }} />
+      <EditarCanal alvo={editarCanal} aoFechar={() => setEditarCanal(null)}
+        aoSalvo={(id, novo) => { setEditarCanal(null); setAviso({ tipo: "ok", texto: novo ? "Canal criado. As pessoas do canal foram avisadas no sino." : "Canal atualizado." }); if (id !== canalId) irPara(id); else carregar(); }}
+        aoApagado={() => { setEditarCanal(null); setAviso({ tipo: "ok", texto: "Canal apagado." }); irPara(""); }} />
     </div>
   );
 }
 
-function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApagarComentario, aoEditar, aoApagar, aoFixar }) {
+const TituloLista = ({ children }) => <p className="hidden px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-500 lg:block">{children}</p>;
+
+/* Lista de canais: coluna à esquerda no computador, faixa rolável no celular. */
+function ListaCanais({ canais, atual, aoEscolher, aoNovo }) {
+  const caixa = useRef(null);
+  // No celular a lista é uma faixa rolável: traz o canal aberto para a vista.
+  useEffect(() => { caixa.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [atual]);
+  const meus = canais.filter((k) => k.meu), outros = canais.filter((k) => !k.meu);
+  const item = (ativo) => clsx("flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition lg:w-full",
+    ativo ? "bg-brand-50 font-semibold text-brand-800" : "bg-white text-slate-700 hover:bg-slate-50 lg:bg-transparent");
+  return (
+    <nav aria-label="Canais" className="min-w-0 lg:self-start">
+      <Card className="!p-2">
+        <div ref={caixa} className="flex gap-1.5 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-visible">
+          <button type="button" className={item(!atual)} aria-current={!atual ? "page" : undefined} onClick={() => aoEscolher("")}>
+            <Newspaper size={16} className="shrink-0" aria-hidden="true" /> <span className="flex-1">Mural geral</span>
+          </button>
+          {meus.length > 0 && <TituloLista>Meus setores</TituloLista>}
+          {meus.map((k) => (
+            <button key={k.id} type="button" className={item(atual === k.id)} aria-current={atual === k.id ? "page" : undefined} onClick={() => aoEscolher(k.id)}>
+              <Hash size={16} className="shrink-0" aria-hidden="true" /> <span className="flex-1 truncate" title={k.nome}>{k.nome}</span>
+              {k.pendentes > 0 && <span className="rounded-full bg-orange-600 px-1.5 py-0.5 text-xs font-bold text-white" title={`${k.pendentes} aviso(s) para confirmar leitura`}>{k.pendentes}<span className="sr-only"> aviso(s) para confirmar</span></span>}
+            </button>
+          ))}
+          {outros.length > 0 && <TituloLista>Outros setores</TituloLista>}
+          {outros.map((k) => (
+            <button key={k.id} type="button" className={item(atual === k.id)} aria-current={atual === k.id ? "page" : undefined} onClick={() => aoEscolher(k.id)}>
+              <Lock size={15} className="shrink-0 text-slate-400" aria-hidden="true" /> <span className="flex-1 truncate" title={k.nome}>{k.nome}</span>
+            </button>
+          ))}
+          {aoNovo && (
+            <button type="button" onClick={aoNovo} className="flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 lg:mt-2 lg:w-full lg:border-t lg:border-slate-100">
+              <Plus size={16} aria-hidden="true" /> Novo canal
+            </button>
+          )}
+        </div>
+      </Card>
+    </nav>
+  );
+}
+
+const REGRA_PUBLICACAO = { responsaveis: "Só os responsáveis publicam", todos: "Todos do setor publicam" };
+const REGRA_VISIBILIDADE = { setor: "Visível só para o setor", empresa: "Toda a empresa lê" };
+
+function PessoaCanal({ p }) {
+  return (
+    <li className="flex items-center gap-2.5 py-1.5">
+      <Avatar usuario={p.usuario} nome={p.nome} tamanho={28} />
+      <span className="truncate text-sm text-slate-700">{nomeCurto(p.nome) || p.usuario}</span>
+    </li>
+  );
+}
+
+function InfoCanal({ canal }) {
+  return (
+    <Card className="overflow-hidden !p-0">
+      <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-sky-50 px-4 py-3">
+        <Users size={18} className="text-teal-700" />
+        <h2 className="font-display font-bold text-slate-800">Sobre o canal</h2>
+      </div>
+      <div className="space-y-4 px-4 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">{REGRA_PUBLICACAO[canal.publicacao]}</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{REGRA_VISIBILIDADE[canal.visibilidade]}</span>
+        </div>
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{canal.responsaveis.length > 1 ? "Responsáveis" : "Responsável"}</h3>
+          <ul>{canal.responsaveis.map((p) => <PessoaCanal key={p.usuario} p={p} />)}</ul>
+        </section>
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Equipe · {canal.membros.length}</h3>
+          {canal.membros.length === 0 && <p className="py-1.5 text-sm text-slate-500">Ninguém além dos responsáveis.</p>}
+          <ul className="max-h-72 overflow-auto">{canal.membros.map((p) => <PessoaCanal key={p.usuario} p={p} />)}</ul>
+        </section>
+      </div>
+    </Card>
+  );
+}
+
+function EditarCanal({ alvo, aoFechar, aoSalvo, aoApagado }) {
+  const [op, setOp] = useState(null);
+  const [f, setF] = useState(null);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    if (!alvo) return;
+    setOp(null); setF(null); setErro("");
+    canaisCanalFormulario(alvo === "novo" ? "" : alvo).then((r) => {
+      setOp(r);
+      const k = r.canal;
+      setF(k
+        ? { id: k.id, nome: k.nome, descricao: k.descricao, responsaveis: k.responsaveis, membros: k.membros.filter((u) => !k.responsaveis.includes(u)), publicacao: k.publicacao, visibilidade: k.visibilidade }
+        : { nome: "", descricao: "", responsaveis: [], membros: [], publicacao: "responsaveis", visibilidade: "setor" });
+    }).catch((e) => setErro(e.message));
+  }, [alvo]);
+  const alternar = (campo, u) => setF((x) => ({ ...x, [campo]: x[campo].includes(u) ? x[campo].filter((y) => y !== u) : [...x[campo], u] }));
+  async function salvar(e) {
+    e.preventDefault();
+    setSalvando(true); setErro("");
+    try { const r = await canaisSalvarCanal(f); aoSalvo(r.id, !f.id); } catch (er) { setErro(er.message); }
+    setSalvando(false);
+  }
+  async function apagar() {
+    if (!window.confirm(`Apagar o canal "${f.nome}"? As publicações dele deixam de aparecer para todos.`)) return;
+    setSalvando(true); setErro("");
+    try { await canaisApagarCanal(f.id); aoApagado(); } catch (er) { setErro(er.message); }
+    setSalvando(false);
+  }
+  const opcao = (campo, valor, titulo, dica) => (
+    <label key={valor} className={clsx("flex cursor-pointer items-start gap-2.5 rounded-xl border p-3", f[campo] === valor ? "border-brand bg-brand-50/50" : "border-slate-200")}>
+      <input type="radio" name={campo} className="mt-1" checked={f[campo] === valor} onChange={() => setF((x) => ({ ...x, [campo]: valor }))} />
+      <span><span className="block text-sm font-semibold text-slate-800">{titulo}</span><span className="block text-xs text-slate-500">{dica}</span></span>
+    </label>
+  );
+  return (
+    <Modal titulo={alvo === "novo" ? "Novo canal de setor" : "Ajustar canal"} aberto={!!alvo} aoFechar={aoFechar} largura="max-w-2xl">
+      {!f && !erro && <p className="text-sm text-slate-500">Carregando…</p>}
+      {erro && <p className="mb-3 text-sm text-bad-700" role="alert">{erro}</p>}
+      {f && op && (
+        <form onSubmit={salvar} className="space-y-4">
+          <label className="block"><span className="label">Nome do canal</span>
+            <input className="input w-full" value={f.nome} maxLength={60} required autoFocus placeholder="Ex.: Microbiologia" onChange={(e) => setF((x) => ({ ...x, nome: e.target.value }))} /></label>
+          <label className="block"><span className="label">Descrição (opcional)</span>
+            <input className="input w-full" value={f.descricao} maxLength={300} placeholder="Para que serve este canal" onChange={(e) => setF((x) => ({ ...x, descricao: e.target.value }))} /></label>
+          <fieldset>
+            <legend className="label">Responsáveis</legend>
+            <p className="mb-2 text-xs text-slate-500">{op.trocarResponsaveis ? "Publicam, fixam avisos, pedem confirmação de leitura e moderam os comentários." : "Só a direção troca os responsáveis."}</p>
+            <div className="grid max-h-48 gap-1 overflow-auto sm:grid-cols-2">
+              {op.contas.map((c) => (
+                <label key={c.usuario} className={clsx("flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm", op.trocarResponsaveis ? "hover:bg-slate-50" : "opacity-70")}>
+                  <input type="checkbox" disabled={!op.trocarResponsaveis} checked={f.responsaveis.includes(c.usuario)} onChange={() => alternar("responsaveis", c.usuario)} /> {nomeCurto(c.nome) || c.usuario}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="label">Equipe do setor</legend>
+            <p className="mb-2 text-xs text-slate-500">Quem entra recebe um aviso no sino.</p>
+            <div className="grid max-h-48 gap-1 overflow-auto sm:grid-cols-2">
+              {op.contas.filter((c) => !f.responsaveis.includes(c.usuario)).map((c) => (
+                <label key={c.usuario} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <input type="checkbox" checked={f.membros.includes(c.usuario)} onChange={() => alternar("membros", c.usuario)} /> {nomeCurto(c.nome) || c.usuario}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="space-y-2">
+            <legend className="label">Quem pode publicar</legend>
+            {opcao("publicacao", "responsaveis", "Só os responsáveis", "Mural de avisos: a equipe lê, curte, comenta e confirma leitura.")}
+            {opcao("publicacao", "todos", "Todos do setor", "Qualquer pessoa da equipe pode publicar.")}
+          </fieldset>
+          <fieldset className="space-y-2">
+            <legend className="label">Quem pode ver</legend>
+            {opcao("visibilidade", "setor", "Só o setor", "O canal não aparece para os outros setores.")}
+            {opcao("visibilidade", "empresa", "Toda a empresa, só leitura", "Outros setores leem, mas não curtem nem comentam.")}
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-2">
+            {op.apagar && <button type="button" className="btn-ghost mr-auto text-bad-600" disabled={salvando} onClick={apagar}><Trash2 size={16} /> Apagar canal</button>}
+            <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Salvando…" : f.id ? "Salvar" : "Criar canal"}</button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function Post({ post: p, destaque, eu, podeInteragir, aoCurtir, aoComentar, aoApagarComentario, aoEditar, aoApagar, aoFixar, aoConfirmarLeitura }) {
   const tipo = TIPOS_POST[p.tipo] || TIPOS_POST.noticia;
   const aniv = p.tipo === "aniversario";
   const [abrirComentarios, setAbrirComentarios] = useState(p.comentarios.length > 0 && p.comentarios.length <= 3);
@@ -157,9 +360,9 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
             </div>
             <p className="text-xs text-slate-500">{tempoRelativo(p.criado_em)}{p.editado_em ? " · editado" : ""}</p>
           </div>
-          {podePublicar && !aniv && (
+          {p.podeMexer && !aniv && (
             <div className="flex shrink-0 gap-1">
-              <button type="button" className="btn-ghost h-9 w-9 p-0" title={p.fixado ? "Desafixar" : "Fixar no topo"} aria-label={p.fixado ? "Desafixar" : "Fixar no topo"} onClick={aoFixar}><Pin size={16} className={p.fixado ? "text-brand" : ""} /></button>
+              {p.podeModerar && <button type="button" className="btn-ghost h-9 w-9 p-0" title={p.fixado ? "Desafixar" : "Fixar no topo"} aria-label={p.fixado ? "Desafixar" : "Fixar no topo"} onClick={aoFixar}><Pin size={16} className={p.fixado ? "text-brand" : ""} /></button>}
               <button type="button" className="btn-ghost h-9 w-9 p-0" title="Editar" aria-label="Editar" onClick={aoEditar}><Pencil size={16} /></button>
               <button type="button" className="btn-ghost h-9 w-9 p-0 text-bad-600" title="Apagar" aria-label="Apagar" onClick={aoApagar}><Trash2 size={16} /></button>
             </div>
@@ -174,10 +377,11 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
             <img src={p.imagemUrl} alt="" loading="lazy" className="mx-auto max-h-[85vh] w-auto max-w-full rounded-xl border border-slate-100 object-contain" referrerPolicy="no-referrer" />
           </a>
         )}
+        {p.leitura && <Leitura l={p.leitura} podeConfirmar={podeInteragir && p.leitura.precisoLer} aoConfirmar={aoConfirmarLeitura} />}
 
         <div className="flex items-center gap-1 border-t border-slate-100 pt-2">
-          <button type="button" onClick={aoCurtir} aria-pressed={p.curti}
-            className={clsx("inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition", p.curti ? "text-pink-600" : "text-slate-600 hover:bg-slate-50")}>
+          <button type="button" onClick={aoCurtir} aria-pressed={p.curti} disabled={!podeInteragir}
+            className={clsx("inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-default disabled:hover:bg-transparent", p.curti ? "text-pink-600" : "text-slate-600 hover:bg-slate-50")}>
             <Heart size={18} className={p.curti ? "fill-pink-500 text-pink-500" : ""} /> {aniv ? "Parabéns" : "Curtir"}{p.curtidas ? ` · ${p.curtidas}` : ""}
           </button>
           <button type="button" onClick={() => setAbrirComentarios((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -197,15 +401,39 @@ function Post({ post: p, destaque, eu, podePublicar, aoCurtir, aoComentar, aoApa
                     <span className="shrink-0 text-xs text-slate-400">{tempoRelativo(c.criado_em)}</span>
                   </div>
                   <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{c.texto}</p>
-                  {(c.usuario === eu || podePublicar) && <button type="button" onClick={() => aoApagarComentario(c)} className="mt-1 text-xs text-slate-400 hover:text-bad-600">apagar</button>}
+                  {(c.usuario === eu || p.podeModerar) && <button type="button" onClick={() => aoApagarComentario(c)} className="mt-1 text-xs text-slate-400 hover:text-bad-600">apagar</button>}
                 </div>
               </div>
             ))}
-            <NovoComentario aoEnviar={aoComentar} placeholder={aniv ? "Deixe seu recado de parabéns…" : "Escreva um comentário…"} />
+            {podeInteragir && <NovoComentario aoEnviar={aoComentar} placeholder={aniv ? "Deixe seu recado de parabéns…" : "Escreva um comentário…"} />}
+            {!podeInteragir && p.comentarios.length === 0 && <p className="text-sm text-slate-500">Nenhum comentário.</p>}
           </div>
         )}
       </div>
     </Card>
+  );
+}
+
+/* Confirmação de leitura de um aviso do canal: barra, botão "Li e entendi" e, para quem modera, quem falta. */
+function Leitura({ l, podeConfirmar, aoConfirmar }) {
+  const pct = l.total ? Math.round((l.lidos / l.total) * 100) : 0;
+  return (
+    <div className="space-y-2 rounded-xl bg-teal-50/70 p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="h-2 min-w-[120px] flex-1 overflow-hidden rounded-full bg-teal-100" role="progressbar" aria-valuemin={0} aria-valuemax={l.total} aria-valuenow={l.lidos} aria-label="Confirmações de leitura">
+          <div className="h-full rounded-full bg-teal-600" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-sm font-semibold text-teal-900">{l.lidos} de {l.total} confirmaram a leitura</span>
+        {podeConfirmar && <button type="button" className="btn-primary" onClick={aoConfirmar}><CheckCircle2 size={16} /> Li e entendi</button>}
+        {l.li && <span className="inline-flex items-center gap-1 text-sm font-semibold text-teal-700"><CheckCircle2 size={16} /> Você confirmou</span>}
+      </div>
+      {l.faltam && l.faltam.length > 0 && (
+        <details className="text-sm text-slate-700">
+          <summary className="cursor-pointer font-medium text-teal-800">Falta{l.faltam.length > 1 ? "m" : ""} {l.faltam.length}</summary>
+          <p className="mt-1">{l.faltam.map((n) => nomeCurto(n) || n).join(", ")}</p>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -402,7 +630,7 @@ function Linha({ f }) {
   );
 }
 
-const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false, visual: {} };
+const VAZIO = { tipo: "noticia", titulo: "", texto: "", imagem: "", fixado: false, visual: {}, pedirLeitura: false };
 
 /* Reduz a foto no navegador antes de enviar: até 1600 px no lado maior, JPEG. */
 function reduzirFoto(arquivo, max = 1600) {
@@ -462,7 +690,7 @@ function EscolhaVisual({ f, temFoto, aoMudar }) {
   );
 }
 
-function Compositor({ post, aoFechar, aoSalvar }) {
+function Compositor({ post, canal, podeFixar, aoFechar, aoSalvar }) {
   const [f, setF] = useState(VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -470,7 +698,7 @@ function Compositor({ post, aoFechar, aoSalvar }) {
   const [previaAntiga, setPreviaAntiga] = useState("");
   useEffect(() => {
     if (post) {
-      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado, visual: post.visual || {} } : {}) });
+      setF({ ...VAZIO, ...(post.id ? { id: post.id, tipo: post.tipo, titulo: post.titulo, texto: post.texto, imagem: post.imagem, fixado: post.fixado, visual: post.visual || {}, pedirLeitura: !!post.pedir_leitura } : {}) });
       setFoto(null); setPreviaAntiga(post.id ? post.imagemUrl || "" : ""); setErro("");
     }
   }, [post]);
@@ -520,10 +748,14 @@ function Compositor({ post, aoFechar, aoSalvar }) {
           {!previa && <input className="input mt-2 w-full" type="url" value={f.imagem} onChange={set("imagem")} placeholder="ou cole o link de uma imagem (https://…)" aria-label="Link de uma imagem" />}
         </div>
         <EscolhaVisual f={f} temFoto={!!previa} aoMudar={(v) => setF((x) => ({ ...x, visual: { ...x.visual, ...v } }))} />
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={f.fixado} onChange={set("fixado")} /> Fixar no topo do mural
-        </label>
-        {!f.id && <p className="text-xs text-slate-500">Ao publicar, todos com login no painel recebem um aviso no sino.</p>}
+        {podeFixar && <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={f.fixado} onChange={set("fixado")} /> {canal ? "Fixar no topo do canal" : "Fixar no topo do mural"}
+        </label>}
+        {canal && <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-0.5" checked={f.pedirLeitura} onChange={set("pedirLeitura")} />
+          <span>Pedir confirmação de leitura<span className="block text-xs text-slate-500">Cada pessoa do canal clica em “Li e entendi” e você acompanha quem falta.</span></span>
+        </label>}
+        {!f.id && <p className="text-xs text-slate-500">{canal ? `Ao publicar, as pessoas do canal ${canal.nome} recebem um aviso no sino.` : "Ao publicar, todos com login no painel recebem um aviso no sino."}</p>}
         {erro && <p className="text-sm text-bad-700" role="alert">{erro}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>

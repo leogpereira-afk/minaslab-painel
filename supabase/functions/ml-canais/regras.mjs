@@ -197,3 +197,69 @@ export function validarDestaque(b) {
   const fotoId = String(b.fotoId ?? "").trim().slice(0, 80);
   return { ok: true, destaque: { nome, mes, itens, fotoId } };
 }
+
+/* ------------------------------------------------------------------ canais por setor
+   Além do mural geral (canal_id nulo), cada setor pode ter o seu canal.
+   publicacao: "responsaveis" (mural de avisos) | "todos" (qualquer membro publica)
+   visibilidade: "setor" (só membros veem) | "empresa" (todos leem, só membros interagem)
+   A direção vê e administra todos os canais. */
+export const PUBLICACAO = ["responsaveis", "todos"];
+export const VISIBILIDADE = ["setor", "empresa"];
+
+/** Quem está no canal: responsáveis e membros, sem repetir. */
+export const pessoasDoCanal = (canal) => [...new Set([...(canal?.responsaveis || []), ...(canal?.membros || [])])];
+
+/** O que `eu` pode fazer no canal. `direcao` = papel "direcao" do painel. */
+export function papelNoCanal(canal, eu, direcao = false) {
+  const responsavel = !!eu && (canal?.responsaveis || []).includes(eu);
+  const membro = responsavel || (!!eu && (canal?.membros || []).includes(eu));
+  const gerir = !!direcao || responsavel;
+  return {
+    responsavel,
+    membro,
+    ver: !!direcao || membro || canal?.visibilidade === "empresa",
+    interagir: !!direcao || membro, // curtir, comentar, confirmar leitura
+    publicar: gerir || (membro && canal?.publicacao === "todos"),
+    moderar: gerir, // fixar, editar e apagar qualquer publicação ou comentário
+    editarCanal: gerir,
+    trocarResponsaveis: !!direcao,
+    apagarCanal: !!direcao,
+  };
+}
+
+/** Pode editar/apagar esta publicação? Quem modera, ou o próprio autor se ainda pode publicar no canal. */
+export const podeMexerNoPost = (papel, post, eu) => !!papel?.moderar || (!!papel?.publicar && post?.autor === eu);
+
+/**
+ * Confere e limpa o canal vindo da tela. `contas`: usuários ativos do painel
+ * (Set ou lista). Responsáveis também contam como membros; ninguém aparece duas vezes.
+ */
+export function validarCanal(b, contas) {
+  const ativas = contas instanceof Set ? contas : new Set(contas || []);
+  const nome = String(b?.nome ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!nome) return { ok: false, erro: "Dê um nome para o canal." };
+  const descricao = String(b?.descricao ?? "").trim().slice(0, 300);
+  const lista = (x) => (Array.isArray(x) ? [...new Set(x.map((u) => String(u ?? "").trim()).filter((u) => ativas.has(u)))].slice(0, 200) : []);
+  const responsaveis = lista(b?.responsaveis);
+  if (!responsaveis.length) return { ok: false, erro: "Escolha pelo menos um responsável." };
+  const membros = lista(b?.membros).filter((u) => !responsaveis.includes(u));
+  const publicacao = PUBLICACAO.includes(b?.publicacao) ? b.publicacao : "responsaveis";
+  const visibilidade = VISIBILIDADE.includes(b?.visibilidade) ? b.visibilidade : "setor";
+  return { ok: true, canal: { nome, descricao, responsaveis, membros, publicacao, visibilidade } };
+}
+
+/**
+ * Confirmação de leitura de um aviso: quem precisa ler são as pessoas do canal,
+ * menos o autor. `leituras`: [{ usuario, nome }]. Lista de quem leu/falta só para quem modera.
+ */
+export function resumoLeitura(post, canal, leituras, eu, { moderar = false, nomes = new Map() } = {}) {
+  const precisam = pessoasDoCanal(canal).filter((u) => u !== post?.autor);
+  const leram = new Set((leituras || []).map((l) => l.usuario));
+  const lidos = precisam.filter((u) => leram.has(u));
+  const out = { total: precisam.length, lidos: lidos.length, li: leram.has(eu), precisoLer: precisam.includes(eu) && !leram.has(eu) };
+  if (moderar) {
+    out.quemLeu = lidos.map((u) => nomes.get(u) || u);
+    out.faltam = precisam.filter((u) => !leram.has(u)).map((u) => nomes.get(u) || u);
+  }
+  return out;
+}

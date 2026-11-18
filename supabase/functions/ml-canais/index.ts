@@ -9,14 +9,23 @@
 // Do RH sai só o mínimo: nome/apelido, dia e mês do aniversário (sem ano) e o
 // período de férias. Nada mais da ficha.
 //
-// Ações: feed, publicar, apagarPost, comentar, apagarComentario, curtir, config, salvarConfig,
-// destaqueOpcoes, salvarDestaque (funcionário do mês na lateral; foto vem de Gestão › Destaque do mês › Fotos).
+// Canais de setor (tabela ml_canais): além do mural geral, cada setor pode ter
+// o seu canal, com responsáveis, membros e regras próprias (quem publica, quem
+// vê). As regras de quem pode o quê ficam em regras.mjs (papelNoCanal). Avisos
+// de canal vão só para as pessoas do canal; os responsáveis podem pedir
+// confirmação de leitura ("Li e entendi").
+//
+// Ações: feed (com `canal` = canal de setor; sem = mural geral), publicar, apagarPost,
+// comentar, apagarComentario, curtir, config, salvarConfig, destaqueOpcoes, salvarDestaque
+// (funcionário do mês na lateral; foto vem de Gestão › Destaque do mês › Fotos),
+// confirmarLeitura, canalFormulario, salvarCanal, apagarCanal.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   hojeSP, aniversariantesDoMes, parabensRecentes, informativoFerias, ehRefAniversario,
   validarPost, validarComentario, naCasa, nomeCurto, validarDestaque, normNome,
   lerFoto, ehFotoGuardada,
+  papelNoCanal, podeMexerNoPost, pessoasDoCanal, validarCanal, resumoLeitura,
 } from "./regras.mjs";
 const BUCKET = "ml-arquivos";
 
@@ -115,36 +124,70 @@ async function lerRH() {
 }
 
 // ---------------------------------------------------------------- avisos (sino)
-async function notificar(c: Ctx, para: string[], n: { titulo: string; corpo?: string; postId: string }) {
+async function notificar(c: Ctx, para: string[], n: { titulo: string; corpo?: string; link: string; refId: string }) {
   const rows = [...new Set(para)].filter((u) => u !== c.eu && c.nomes.has(u)).map((usuario) => ({
-    usuario, tipo: "canais", titulo: n.titulo, corpo: n.corpo ?? "", link: `/canais?post=${n.postId}`, ref_tipo: "canais", ref_id: n.postId,
+    usuario, tipo: "canais", titulo: n.titulo, corpo: n.corpo ?? "", link: n.link, ref_tipo: "canais", ref_id: n.refId,
   }));
   if (!rows.length) return;
   const { error } = await sb.from("ml_notificacoes").insert(rows);
   if (error) console.error("notificacoes", error);
 }
+const linkPost = (postId: string, canalId?: string | null) => (canalId ? `/canais?canal=${canalId}&post=${postId}` : `/canais?post=${postId}`);
 
-// ---------------------------------------------------------------- ações
-async function feed(c: Ctx, b: any) {
-  const hoje = hojeSP();
-  const ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
-  const limite = Math.min(Math.max(Number(b.limite) || 40, 1), 100);
-  const [{ data: posts, error }, rh, destaque] = await Promise.all([
-    sb.from("ml_canais_posts").select("*").eq("apagado", false).order("fixado", { ascending: false }).order("criado_em", { ascending: false }).limit(limite),
-    lerRH(),
-    destaqueComFoto(c.cfg.destaque),
-  ]);
+// ---------------------------------------------------------------- canais de setor
+type Canal = { id: string; nome: string; descricao: string; responsaveis: string[]; membros: string[]; publicacao: string; visibilidade: string };
+
+async function lerCanais(): Promise<Canal[]> {
+  const { data, error } = await sb.from("ml_canais").select("id,nome,descricao,responsaveis,membros,publicacao,visibilidade").eq("apagado", false).order("nome");
   if (error) throw error;
-  const parabens = parabensRecentes(rh.pessoas, hoje, { ocultos: c.cfg.ocultos });
-  const todos: any[] = [...(posts ?? []), ...parabens];
-  const refs = todos.map((p) => String(p.id));
+  return (data ?? []) as Canal[];
+}
+async function lerCanal(id: string): Promise<Canal> {
+  if (!UUID.test(id)) erro(400, "Canal inválido.");
+  const { data, error } = await sb.from("ml_canais").select("id,nome,descricao,responsaveis,membros,publicacao,visibilidade").eq("id", id).eq("apagado", false).maybeSingle();
+  if (error) throw error;
+  if (!data) erro(404, "Esse canal não existe mais.");
+  return data as Canal;
+}
 
-  const [{ data: curtidas, error: e1 }, { data: comentarios, error: e2 }] = await Promise.all([
-    refs.length ? sb.from("ml_canais_curtidas").select("post_ref,usuario,nome").in("post_ref", refs) : Promise.resolve({ data: [], error: null }),
-    refs.length ? sb.from("ml_canais_comentarios").select("id,post_ref,usuario,nome,texto,criado_em").in("post_ref", refs).eq("apagado", false).order("criado_em", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+/* Lista da lateral: só os canais que a pessoa pode ver, com quantos avisos ela ainda não confirmou. */
+async function listaCanais(c: Ctx, canais?: Canal[]) {
+  const todos = canais ?? await lerCanais();
+  const visiveis = todos.map((k) => ({ k, p: papelNoCanal(k, c.eu, c.direcao) })).filter((x) => x.p.ver);
+  const meus = visiveis.filter((x) => x.p.membro).map((x) => x.k.id);
+  const pendentes = new Map<string, number>();
+  if (meus.length) {
+    const { data: avisos, error } = await sb.from("ml_canais_posts").select("id,canal_id,autor").in("canal_id", meus).eq("pedir_leitura", true).eq("apagado", false);
+    if (error) throw error;
+    const ids = (avisos ?? []).filter((a: any) => a.autor !== c.eu).map((a: any) => a.id);
+    let lidos = new Set<string>();
+    if (ids.length) {
+      const { data: l, error: e2 } = await sb.from("ml_canais_leituras").select("post_id").eq("usuario", c.eu).in("post_id", ids);
+      if (e2) throw e2;
+      lidos = new Set((l ?? []).map((x: any) => x.post_id));
+    }
+    for (const a of avisos ?? []) if (a.autor !== c.eu && !lidos.has(a.id)) pendentes.set(a.canal_id, (pendentes.get(a.canal_id) ?? 0) + 1);
+  }
+  return visiveis.map(({ k, p }) => ({
+    id: k.id, nome: k.nome, meu: p.membro, responsavel: p.responsavel, somenteLeitura: !p.interagir, pendentes: pendentes.get(k.id) ?? 0,
+  }));
+}
+
+const nomesDe = (c: Ctx, us: string[]) => us.filter((u) => c.nomes.has(u)).map((usuario) => ({ usuario, nome: c.nomes.get(usuario)! }));
+
+/* Curtidas, comentários, fotos e leituras de uma lista de publicações. */
+async function montarPosts(c: Ctx, todos: any[], opc: { podeMexer: (p: any) => boolean; canal?: Canal | null; moderar?: boolean }) {
+  const refs = todos.map((p) => String(p.id));
+  const avisos = todos.filter((p) => p.pedir_leitura && UUID.test(String(p.id))).map((p) => p.id);
+  const vazio = Promise.resolve({ data: [], error: null });
+  const [{ data: curtidas, error: e1 }, { data: comentarios, error: e2 }, { data: leituras, error: e4 }] = await Promise.all([
+    refs.length ? sb.from("ml_canais_curtidas").select("post_ref,usuario,nome").in("post_ref", refs) : vazio,
+    refs.length ? sb.from("ml_canais_comentarios").select("id,post_ref,usuario,nome,texto,criado_em").in("post_ref", refs).eq("apagado", false).order("criado_em", { ascending: true }) : vazio,
+    opc.canal && avisos.length ? sb.from("ml_canais_leituras").select("post_id,usuario,nome").in("post_id", avisos) : vazio,
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+  if (e4) throw e4;
 
   const caminhos = todos.map((p) => p.imagem).filter(ehFotoGuardada);
   const links = new Map<string, string>();
@@ -154,9 +197,10 @@ async function feed(c: Ctx, b: any) {
     for (const a of ass ?? []) if (a.path && a.signedUrl) links.set(a.path, a.signedUrl);
   }
 
-  const saida = todos.map((p) => {
+  return todos.map((p) => {
     const ref = String(p.id);
     const cs = (curtidas ?? []).filter((x: any) => x.post_ref === ref);
+    const mexe = !p.automatico && opc.podeMexer(p);
     return {
       ...p,
       imagemUrl: ehFotoGuardada(p.imagem) ? links.get(p.imagem) ?? "" : p.imagem || "",
@@ -164,11 +208,35 @@ async function feed(c: Ctx, b: any) {
       curti: cs.some((x: any) => x.usuario === c.eu),
       quemCurtiu: cs.map((x: any) => x.nome || x.usuario),
       comentarios: (comentarios ?? []).filter((x: any) => x.post_ref === ref).map((x: any) => ({ ...x, meu: x.usuario === c.eu })),
+      podeMexer: mexe,
+      podeModerar: !!opc.moderar,
+      leitura: opc.canal && p.pedir_leitura
+        ? resumoLeitura(p, opc.canal, (leituras ?? []).filter((l: any) => l.post_id === p.id), c.eu, { moderar: mexe || !!opc.moderar, nomes: c.nomes })
+        : null,
     };
   }).sort((a, b) => Number(!!b.fixado) - Number(!!a.fixado) || String(b.criado_em).localeCompare(String(a.criado_em)));
+}
+
+// ---------------------------------------------------------------- ações
+async function feed(c: Ctx, b: any) {
+  const canalId = txt(b.canal);
+  if (canalId) return feedCanal(c, canalId, b);
+  const hoje = hojeSP();
+  const ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
+  const limite = Math.min(Math.max(Number(b.limite) || 40, 1), 100);
+  const [{ data: posts, error }, rh, destaque, canais] = await Promise.all([
+    sb.from("ml_canais_posts").select("*").is("canal_id", null).eq("apagado", false).order("fixado", { ascending: false }).order("criado_em", { ascending: false }).limit(limite),
+    lerRH(),
+    destaqueComFoto(c.cfg.destaque),
+    listaCanais(c),
+  ]);
+  if (error) throw error;
+  const parabens = parabensRecentes(rh.pessoas, hoje, { ocultos: c.cfg.ocultos });
+  const saida = await montarPosts(c, [...(posts ?? []), ...parabens], { podeMexer: () => c.publica, moderar: c.publica });
 
   return {
-    eu: c.eu, nome: c.nome, podePublicar: c.publica, direcao: c.direcao, hoje,
+    eu: c.eu, nome: c.nome, podePublicar: c.publica, podeInteragir: true, direcao: c.direcao, hoje,
+    canais, canal: null, gerirCanais: c.direcao,
     posts: saida,
     aniversariantes: aniversariantesDoMes(rh.pessoas, ano, mes, c.cfg.ocultos),
     ferias: informativoFerias(rh.ferias, rh.pessoas, hoje, 30),
@@ -176,10 +244,56 @@ async function feed(c: Ctx, b: any) {
   };
 }
 
+async function feedCanal(c: Ctx, id: string, b: any) {
+  const canais = await lerCanais();
+  const canal = canais.find((k) => k.id === id) ?? await lerCanal(id);
+  const p = papelNoCanal(canal, c.eu, c.direcao);
+  if (!p.ver) erro(403, "Esse canal é só para as pessoas do setor.");
+  const limite = Math.min(Math.max(Number(b.limite) || 40, 1), 100);
+  const [{ data: posts, error }, lista] = await Promise.all([
+    sb.from("ml_canais_posts").select("*").eq("canal_id", id).eq("apagado", false).order("fixado", { ascending: false }).order("criado_em", { ascending: false }).limit(limite),
+    listaCanais(c, canais),
+  ]);
+  if (error) throw error;
+  const saida = await montarPosts(c, posts ?? [], { podeMexer: (x) => podeMexerNoPost(p, x, c.eu), canal, moderar: p.moderar });
+  return {
+    eu: c.eu, nome: c.nome, direcao: c.direcao, hoje: hojeSP(),
+    podePublicar: p.publicar, podeInteragir: p.interagir, gerirCanais: c.direcao,
+    canais: lista,
+    canal: {
+      id: canal.id, nome: canal.nome, descricao: canal.descricao, publicacao: canal.publicacao, visibilidade: canal.visibilidade,
+      responsaveis: nomesDe(c, canal.responsaveis), membros: nomesDe(c, canal.membros.filter((u) => !canal.responsaveis.includes(u))),
+      souResponsavel: p.responsavel, souMembro: p.membro, podeEditar: p.editarCanal,
+    },
+    posts: saida,
+  };
+}
+
 async function publicar(c: Ctx, b: any) {
-  exigirPublicador(c);
   const v = validarPost(b);
   if (!v.ok) erro(400, v.erro);
+  const id = txt(b.id);
+  let canal: Canal | null = null;
+  let papel: ReturnType<typeof papelNoCanal> | null = null;
+  if (id) {
+    if (!UUID.test(id)) erro(400, "Publicação inválida.");
+    const { data: atual, error } = await sb.from("ml_canais_posts").select("id,autor,canal_id").eq("id", id).eq("apagado", false).maybeSingle();
+    if (error) throw error;
+    if (!atual) erro(404, "Não encontrei essa publicação.");
+    if (atual.canal_id) {
+      canal = await lerCanal(atual.canal_id);
+      papel = papelNoCanal(canal, c.eu, c.direcao);
+      if (!podeMexerNoPost(papel, atual, c.eu)) erro(403, "Você não pode editar esta publicação.");
+    } else exigirPublicador(c);
+  } else if (txt(b.canal)) {
+    canal = await lerCanal(txt(b.canal));
+    papel = papelNoCanal(canal, c.eu, c.direcao);
+    if (!papel.publicar) erro(403, papel.membro ? "Neste canal só os responsáveis publicam." : "Você não faz parte deste canal.");
+  } else exigirPublicador(c);
+
+  const post: Record<string, unknown> = { ...v.post, pedir_leitura: !!canal && !!b.pedirLeitura };
+  if (papel && !papel.moderar) { if (id) delete post.fixado; else post.fixado = false; } // fixar é de quem modera
+
   if (b.foto) {
     const f = lerFoto(b.foto);
     if (!f.ok) erro(400, f.erro);
@@ -187,59 +301,81 @@ async function publicar(c: Ctx, b: any) {
     const bin = Uint8Array.from(atob(f.base64), (ch) => ch.charCodeAt(0));
     const { error: eu } = await sb.storage.from(BUCKET).upload(caminho, bin, { contentType: f.mime, upsert: false });
     if (eu) throw eu;
-    v.post.imagem = caminho;
+    post.imagem = caminho;
   }
-  const id = txt(b.id);
   if (id) {
-    if (!UUID.test(id)) erro(400, "Publicação inválida.");
-    const { data, error } = await sb.from("ml_canais_posts").update({ ...v.post, editado_em: new Date().toISOString() }).eq("id", id).eq("apagado", false).select("id").maybeSingle();
+    const { data, error } = await sb.from("ml_canais_posts").update({ ...post, editado_em: new Date().toISOString() }).eq("id", id).eq("apagado", false).select("id").maybeSingle();
     if (error) throw error;
     if (!data) erro(404, "Não encontrei essa publicação.");
     return { ok: true, id };
   }
-  const { data, error } = await sb.from("ml_canais_posts").insert({ ...v.post, autor: c.eu, autor_nome: c.nome }).select("id").single();
+  const { data, error } = await sb.from("ml_canais_posts").insert({ ...post, canal_id: canal?.id ?? null, autor: c.eu, autor_nome: c.nome }).select("id").single();
   if (error) throw error;
   const rotulo = v.post.tipo === "comunicado" ? "Novo comunicado" : v.post.tipo === "evento" ? "Novo evento" : "Nova notícia";
-  await notificar(c, [...c.nomes.keys()], { titulo: `${rotulo} no Canais MinasLab`, corpo: v.post.titulo, postId: data.id });
+  if (canal) {
+    await notificar(c, pessoasDoCanal(canal), {
+      titulo: `${post.pedir_leitura ? "Aviso para confirmar" : rotulo} no canal ${canal.nome}`, corpo: v.post.titulo, link: linkPost(data.id, canal.id), refId: data.id,
+    });
+  } else {
+    await notificar(c, [...c.nomes.keys()], { titulo: `${rotulo} no Canais MinasLab`, corpo: v.post.titulo, link: linkPost(data.id), refId: data.id });
+  }
   return { ok: true, id: data.id };
 }
 
 async function apagarPost(c: Ctx, b: any) {
-  exigirPublicador(c);
   const id = txt(b.id);
   if (!UUID.test(id)) erro(400, "Publicação inválida.");
+  const { data: atual, error: e0 } = await sb.from("ml_canais_posts").select("id,autor,canal_id").eq("id", id).maybeSingle();
+  if (e0) throw e0;
+  if (!atual) erro(404, "Não encontrei essa publicação.");
+  if (atual.canal_id) {
+    const canal = await lerCanal(atual.canal_id);
+    if (!podeMexerNoPost(papelNoCanal(canal, c.eu, c.direcao), atual, c.eu)) erro(403, "Você não pode apagar esta publicação.");
+  } else exigirPublicador(c);
   const { error } = await sb.from("ml_canais_posts").update({ apagado: true }).eq("id", id);
   if (error) throw error;
   return { ok: true };
 }
 
-async function conferirRef(ref: string) {
-  if (ehRefAniversario(ref)) return { autor: null as string | null, titulo: "parabéns" };
+/* Confere a publicação e o que `c` pode fazer nela. Parabéns automático e mural geral: todos interagem. */
+async function conferirRef(c: Ctx, ref: string) {
+  if (ehRefAniversario(ref)) return { autor: null as string | null, titulo: "parabéns", canal: null as Canal | null, interagir: true, moderar: c.publica };
   if (!UUID.test(ref)) erro(400, "Publicação inválida.");
-  const { data, error } = await sb.from("ml_canais_posts").select("id,autor,titulo").eq("id", ref).eq("apagado", false).maybeSingle();
+  const { data, error } = await sb.from("ml_canais_posts").select("id,autor,titulo,canal_id,pedir_leitura").eq("id", ref).eq("apagado", false).maybeSingle();
   if (error) throw error;
   if (!data) erro(404, "Essa publicação não existe mais.");
-  return { autor: data.autor as string, titulo: data.titulo as string };
+  if (!data.canal_id) return { autor: data.autor as string, titulo: data.titulo as string, canal: null, interagir: true, moderar: c.publica, pedirLeitura: false };
+  const canal = await lerCanal(data.canal_id);
+  const p = papelNoCanal(canal, c.eu, c.direcao);
+  if (!p.ver) erro(403, "Esse canal é só para as pessoas do setor.");
+  return { autor: data.autor as string, titulo: data.titulo as string, canal, interagir: p.interagir, moderar: p.moderar, pedirLeitura: !!data.pedir_leitura };
 }
+const exigirInteragir = (post: { interagir: boolean }) => { if (!post.interagir) erro(403, "Só as pessoas do setor comentam e curtem neste canal."); };
 
 async function comentar(c: Ctx, b: any) {
   const ref = txt(b.ref);
-  const post = await conferirRef(ref);
+  const post = await conferirRef(c, ref);
+  exigirInteragir(post);
   const v = validarComentario(b.texto);
   if (!v.ok) erro(400, v.erro);
   const { data, error } = await sb.from("ml_canais_comentarios").insert({ post_ref: ref, usuario: c.eu, nome: c.nome, texto: v.texto }).select("id").single();
   if (error) throw error;
-  if (post.autor && UUID.test(ref)) await notificar(c, [post.autor], { titulo: `${c.nome} comentou no Canais`, corpo: post.titulo, postId: ref });
+  if (post.autor && UUID.test(ref)) {
+    await notificar(c, [post.autor], { titulo: `${c.nome} comentou ${post.canal ? `no canal ${post.canal.nome}` : "no Canais"}`, corpo: post.titulo, link: linkPost(ref, post.canal?.id), refId: ref });
+  }
   return { ok: true, id: data.id };
 }
 
 async function apagarComentario(c: Ctx, b: any) {
   const id = txt(b.id);
   if (!UUID.test(id)) erro(400, "Comentário inválido.");
-  const { data, error } = await sb.from("ml_canais_comentarios").select("usuario").eq("id", id).maybeSingle();
+  const { data, error } = await sb.from("ml_canais_comentarios").select("usuario,post_ref").eq("id", id).maybeSingle();
   if (error) throw error;
   if (!data) erro(404, "Comentário não encontrado.");
-  if (data.usuario !== c.eu && !c.publica) erro(403, "Você só pode apagar os seus comentários.");
+  if (data.usuario !== c.eu) {
+    const post = await conferirRef(c, data.post_ref);
+    if (!post.moderar) erro(403, "Você só pode apagar os seus comentários.");
+  }
   const { error: e2 } = await sb.from("ml_canais_comentarios").update({ apagado: true }).eq("id", id);
   if (e2) throw e2;
   return { ok: true };
@@ -247,7 +383,7 @@ async function apagarComentario(c: Ctx, b: any) {
 
 async function curtir(c: Ctx, b: any) {
   const ref = txt(b.ref);
-  await conferirRef(ref);
+  exigirInteragir(await conferirRef(c, ref));
   const { data: ja, error } = await sb.from("ml_canais_curtidas").select("usuario").eq("post_ref", ref).eq("usuario", c.eu).maybeSingle();
   if (error) throw error;
   if (ja) {
@@ -258,6 +394,67 @@ async function curtir(c: Ctx, b: any) {
   const { error: e } = await sb.from("ml_canais_curtidas").insert({ post_ref: ref, usuario: c.eu, nome: c.nome });
   if (e) throw e;
   return { ok: true, curti: true };
+}
+
+// "Li e entendi" num aviso de canal que pede confirmação.
+async function confirmarLeitura(c: Ctx, b: any) {
+  const ref = txt(b.id);
+  const post = await conferirRef(c, ref);
+  if (!post.canal || !post.pedirLeitura) erro(400, "Esta publicação não pede confirmação de leitura.");
+  exigirInteragir(post);
+  const { error } = await sb.from("ml_canais_leituras").upsert({ post_id: ref, usuario: c.eu, nome: c.nome }, { onConflict: "post_id,usuario", ignoreDuplicates: true });
+  if (error) throw error;
+  return { ok: true };
+}
+
+// Abrir o formulário de canal: contas ativas para escolher responsáveis e membros.
+async function canalFormulario(c: Ctx, b: any) {
+  const id = txt(b.id);
+  let canal: Canal | null = null;
+  if (id) {
+    canal = await lerCanal(id);
+    if (!papelNoCanal(canal, c.eu, c.direcao).editarCanal) erro(403, "Só a direção e os responsáveis ajustam este canal.");
+  } else if (!c.direcao) erro(403, "Só a direção cria canais.");
+  return {
+    canal,
+    trocarResponsaveis: c.direcao,
+    apagar: c.direcao && !!canal,
+    contas: [...c.nomes.entries()].map(([usuario, nome]) => ({ usuario, nome })).sort((a, b2) => a.nome.localeCompare(b2.nome, "pt-BR")),
+  };
+}
+
+async function salvarCanal(c: Ctx, b: any) {
+  const id = txt(b.id);
+  let antes: Canal | null = null;
+  if (id) {
+    antes = await lerCanal(id);
+    if (!papelNoCanal(antes, c.eu, c.direcao).editarCanal) erro(403, "Só a direção e os responsáveis ajustam este canal.");
+  } else if (!c.direcao) erro(403, "Só a direção cria canais.");
+  // Responsável ajusta o próprio canal, mas não troca quem é responsável.
+  const entrada = antes && !c.direcao ? { ...b, responsaveis: antes.responsaveis } : b;
+  const v = validarCanal(entrada, new Set(c.nomes.keys()));
+  if (!v.ok) erro(400, v.erro);
+  let canalId = id;
+  if (antes) {
+    const { error } = await sb.from("ml_canais").update({ ...v.canal, atualizado_em: new Date().toISOString() }).eq("id", id).eq("apagado", false);
+    if (error) throw error;
+  } else {
+    const { data, error } = await sb.from("ml_canais").insert({ ...v.canal, criado_por: c.eu }).select("id").single();
+    if (error) throw error;
+    canalId = data.id;
+  }
+  const ja = new Set(antes ? pessoasDoCanal(antes) : []);
+  const novos = pessoasDoCanal(v.canal).filter((u) => !ja.has(u));
+  await notificar(c, novos, { titulo: `Você entrou no canal ${v.canal.nome}`, corpo: v.canal.descricao, link: `/canais?canal=${canalId}`, refId: canalId });
+  return { ok: true, id: canalId };
+}
+
+async function apagarCanal(c: Ctx, b: any) {
+  if (!c.direcao) erro(403, "Só a direção apaga canais.");
+  const canal = await lerCanal(txt(b.id));
+  const { error } = await sb.from("ml_canais").update({ apagado: true, atualizado_em: new Date().toISOString() }).eq("id", canal.id);
+  if (error) throw error;
+  return { ok: true };
 }
 
 // Configuração (só direção): quem publica e quem prefere não aparecer nos aniversários.
@@ -299,6 +496,7 @@ async function salvarDestaque(c: Ctx, b: any) {
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
   feed, publicar, apagarPost, comentar, apagarComentario, curtir, config: (c) => config(c), salvarConfig,
   destaqueOpcoes: (c) => destaqueOpcoes(c), salvarDestaque,
+  confirmarLeitura, canalFormulario, salvarCanal, apagarCanal,
 };
 
 Deno.serve(async (req) => {

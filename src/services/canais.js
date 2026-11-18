@@ -11,7 +11,7 @@ async function canais(action, corpo = {}) {
   return encurtarNomes(dados || {});
 }
 
-export const canaisFeed = () => canais("feed");
+export const canaisFeed = (canal) => canais("feed", canal ? { canal } : {});
 export const canaisPublicar = (post) => canais("publicar", post);
 export const canaisApagarPost = (id) => canais("apagarPost", { id });
 export const canaisComentar = (ref, texto) => canais("comentar", { ref, texto });
@@ -21,3 +21,7 @@ export const canaisConfig = () => canais("config");
 export const canaisSalvarConfig = (cfg) => canais("salvarConfig", cfg);
 export const canaisDestaqueOpcoes = () => canais("destaqueOpcoes");
 export const canaisSalvarDestaque = (d) => canais("salvarDestaque", d);
+export const canaisConfirmarLeitura = (id) => canais("confirmarLeitura", { id });
+export const canaisCanalFormulario = (id) => canais("canalFormulario", id ? { id } : {});
+export const canaisSalvarCanal = (canal) => canais("salvarCanal", canal);
+export const canaisApagarCanal = (id) => canais("apagarCanal", { id });
