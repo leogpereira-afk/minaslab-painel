@@ -477,6 +477,9 @@ Deno.serve(async (req) => {
         ["fin_receber", "fin_clientes", "fin_categorias"].includes(colecao) &&
         permissoes.some(p => p === "curva-abc" || p.startsWith("curva-abc/"));
       if (!matrizAtiva) return true;
+      // Estoque de Compras: TODOS veem o saldo (Léo, 19/11/2026). Escrever segue
+      // podeEscreverColecao (Acessos).
+      if (colecao === "produtos" || colecao === "estoque_mov") return true;
       const pagina = COLECAO_PAGINA[colecao];
       return !!pagina && (
         permissoes.includes(pagina) ||

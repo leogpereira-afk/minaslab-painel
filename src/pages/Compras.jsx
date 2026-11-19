@@ -54,7 +54,10 @@ const K_ABA = "ml_compras_aba";
 
 /* "Solicitar material" e "Minhas solicitações" são de TODO MUNDO do painel
    (Compras › Pedidos, do lado de quem pede). A lista "Pedidos" (quem compra),
-   Estoque, Ordens e Retiradas seguem a tela Acessos: a direção e o responsável
+   ESTOQUE: todos VEEM (saldo do que tem na casa — Léo, 19/11/2026); EDITAR o
+   estoque (produto, entrada, retirada, ajuste) só a direção e quem tem Compras ou
+   a aba Estoque liberada em Acessos.
+   Ordens e Retiradas seguem a tela Acessos: a direção e o responsável
    pelo controle. */
 const ABAS = [
   { valor: "solicitar", rotulo: "Solicitar material" },
@@ -64,7 +67,7 @@ const ABAS = [
   { valor: "ordens", rotulo: "Ordens de compra" },
   { valor: "retiradas", rotulo: "Retiradas" },
 ];
-const ABAS_DE_TODOS = new Set(["solicitar", "minhas"]);
+const ABAS_DE_TODOS = new Set(["solicitar", "minhas", "estoque"]);
 const COLECOES_POR_ABA = {
   solicitar: [],
   minhas: [],
@@ -77,6 +80,10 @@ const COLECOES_POR_ABA = {
 export default function Compras() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
+  // Estoque aberto para ver; mexer nele só com permissão própria (Compras inteiro ou a aba Estoque).
+  const paginasSessao = sessao?.paginas_consulta || [];
+  const editaEstoque = editavel && (sessao?.papel === "direcao" || !paginasSessao.includes("__matriz_v1") ||
+    paginasSessao.includes("compras") || paginasSessao.includes("compras/estoque"));
   // Pedir material grava: quem só tem acesso de leitura acompanha, mas não pede.
   const podeSolicitar = sessao?.papel === "equipe" || sessao?.papel === "direcao";
   const abasPermitidas = ABAS.filter((item) =>
@@ -899,7 +906,7 @@ export default function Compras() {
           resumo={resumo}
           equipe={equipe}
           hojeISO={hojeISO}
-          editavel={editavel}
+          editavel={editaEstoque}
           salvando={salvando}
           formProduto={formProduto}
           setFormProduto={setFormProduto}
