@@ -113,3 +113,13 @@ test("aviso de aprovação diz quanto foi aprovado", async () => {
   const a = m.aplicarAprovacao({ item: "LUVA", qtde: "10 caixas", quantidade: 10, unidade: "caixa" }, 5, "t", "x");
   assert.deepEqual(m.avisoMudanca([a], "aprovada"), { titulo: "Sua solicitação: LUVA — Aprovada", corpo: "Aprovado: 5 caixas (pedido 10 caixas)" });
 });
+
+test("produto escolhido da lista do Estoque leva o id; categoria do estoque vira a da solicitação", async () => {
+  const m = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  const { itens } = m.normalizarItens([{ produtoId: "prd-1", produto: "Luva", quantidade: 2, unidade: "caixa", categoria: "epi" }, { produto: "Caneta", quantidade: 1 }]);
+  assert.equal(itens[0].produtoId, "prd-1");
+  assert.ok(!("produtoId" in itens[1]), "item escrito à mão não leva produtoId");
+  assert.equal(m.categoriaDoProdutoEstoque("reagente"), "laboratorio");
+  assert.equal(m.categoriaDoProdutoEstoque("peca"), "manutencao");
+  assert.equal(m.categoriaDoProdutoEstoque("xyz"), "outros");
+});

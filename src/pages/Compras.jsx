@@ -70,7 +70,7 @@ const ABAS = [
 ];
 const ABAS_DE_TODOS = new Set(["solicitar", "minhas", "estoque"]);
 const COLECOES_POR_ABA = {
-  solicitar: [],
+  solicitar: [COL_PRODUTOS, COL_MOV], // a lista de produtos do Estoque (com saldo) para escolher
   minhas: [],
   estoque: [COL_PRODUTOS, COL_MOV],
   pedidos: [COL_PEDIDOS, COL_PRODUTOS, COL_MOV, COL_ORDENS],
@@ -908,6 +908,8 @@ export default function Compras() {
         <SolicitarMaterial
           sessao={sessao}
           sugestoes={minhas.sugestoes}
+          produtos={dados?.produtos || []}
+          saldos={resumo}
           avisar={setAviso}
           aoEnviar={() => { recarregar(); trocarAba("minhas"); }}
         />
