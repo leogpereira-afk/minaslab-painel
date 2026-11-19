@@ -135,7 +135,11 @@ export function tipoDaPasta(nome, flags = []) {
   if (f.includes("\\flagged")) return "estrela";
   if (f.includes("\\all")) return "todos";
   if (f.includes("\\archive")) return "arquivo";
-  const n = pastaDecodificar(nome).toLowerCase().split(/[./]/).pop();
+  // Pelo nome, só no primeiro nível (INBOX.Sent, [Gmail]/Spam): uma subpasta do usuário
+  // chamada "Arquivo" ou "Enviados" (ex.: Boletos.Arquivo) é pasta comum, não a do sistema.
+  const partes = pastaDecodificar(nome).toLowerCase().replace(/^inbox[./]/, "").replace(/^\[(gmail|google mail)\]\//, "").split(/[./]/);
+  if (partes.length > 1) return null;
+  const n = partes[0];
   if (/^(sent|enviad|itens enviados|sent items|sent messages)/.test(n)) return "enviados";
   if (/^(drafts?|rascunho)/.test(n)) return "rascunhos";
   if (/^(trash|lixeira|lixo|deleted|itens exclu|exclu)/.test(n)) return "lixeira";
