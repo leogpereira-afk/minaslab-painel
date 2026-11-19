@@ -317,6 +317,15 @@ export function montarMensagem(o) {
 }
 
 // "Re: " / "Enc: " sem acumular ("Re: Re: Re:").
+// Assunto sem "Re:", "RES:", "Enc:", "Fwd:", "TR:" (repetidos) — é o que junta a conversa.
+export function assuntoBase(assunto) {
+  return String(assunto || "").replace(/^\s*((re|res|enc|fwd?|tr)\s*(\[\d+\])?\s*:\s*)+/i, "").replace(/\s+/g, " ").trim();
+}
+export const mesmaConversa = (a, b) => {
+  const x = assuntoBase(a).toLowerCase(), y = assuntoBase(b).toLowerCase();
+  return !!x && x === y;
+};
+
 export function assuntoResposta(assunto, modo) {
   const base = String(assunto || "").replace(/^\s*((re|res|enc|fwd?|tr)\s*:\s*)+/i, "");
   return (modo === "encaminhar" ? "Enc: " : "Re: ") + base;

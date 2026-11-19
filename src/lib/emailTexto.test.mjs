@@ -93,3 +93,12 @@ test("mensagem montada: acentos no cabeçalho, imagens da assinatura e anexo", (
   assert.match(t, /Content-Disposition: attachment; filename="laudo\.pdf"/);
   assert.ok([...t].every((c) => c.charCodeAt(0) < 128), "mensagem toda em ASCII");
 });
+
+test("conversa: mesmo assunto sem Re:/RES:/Enc:/Fwd:", async () => {
+  const { assuntoBase, mesmaConversa } = await import("../../supabase/functions/_shared/email-texto.mjs");
+  assert.equal(assuntoBase("RES: Enc: RE:  Reunião de alinhamentos"), "Reunião de alinhamentos");
+  assert.equal(assuntoBase("Fwd[2]: Proposta"), "Proposta");
+  assert.ok(mesmaConversa("Reunião de alinhamentos", "Re: reunião de  alinhamentos"));
+  assert.ok(!mesmaConversa("Reunião de alinhamentos", "Reunião de alinhamentos 2"));
+  assert.ok(!mesmaConversa("", "Re:"));
+});
