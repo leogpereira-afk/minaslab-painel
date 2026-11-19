@@ -24,7 +24,8 @@
 // da página; datas sempre ymdLocal; "hoje" é ESTADO.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { listar, salvar, apagar, elenco } from "../services/dados.js";
+import { useSearchParams } from "react-router-dom";
+import { listar, salvar, apagar, elenco, comprasSituacao } from "../services/dados.js";
 import { getSessao, podeEditar, podeVerSecao } from "../lib/sessao.js";
 import { ymdLocal, paraNumero, dataCurta } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
@@ -39,6 +40,8 @@ import AbaEstoque, { movimentoVazio, produtoParaForm } from "../components/compr
 import AbaPedidos, { pedidoParaForm } from "../components/compras/AbaPedidos.jsx";
 import AbaOrdens, { ordemParaForm } from "../components/compras/AbaOrdens.jsx";
 import AbaRetiradas, { retiradaVazia } from "../components/compras/AbaRetiradas.jsx";
+import { SolicitarMaterial, MinhasSolicitacoes, useMinhasSolicitacoes } from "../components/compras/AbaSolicitacao.jsx";
+import { ROTULO_SITUACAO } from "../../supabase/functions/_shared/compras-solicitacao.mjs";
 
 const COL_PEDIDOS = "compras";
 const COL_PRODUTOS = "produtos";
@@ -49,13 +52,22 @@ const COL_ORDENS = "ordens";
 // quer voltar para Pedidos toda vez que atualiza a página.
 const K_ABA = "ml_compras_aba";
 
+/* "Solicitar material" e "Minhas solicitações" são de TODO MUNDO do painel
+   (Compras › Pedidos, do lado de quem pede). A lista "Pedidos" (quem compra),
+   Estoque, Ordens e Retiradas seguem a tela Acessos: a direção e o responsável
+   pelo controle. */
 const ABAS = [
-  { valor: "estoque", rotulo: "Estoque" },
+  { valor: "solicitar", rotulo: "Solicitar material" },
+  { valor: "minhas", rotulo: "Minhas solicitações" },
   { valor: "pedidos", rotulo: "Pedidos" },
+  { valor: "estoque", rotulo: "Estoque" },
   { valor: "ordens", rotulo: "Ordens de compra" },
   { valor: "retiradas", rotulo: "Retiradas" },
 ];
+const ABAS_DE_TODOS = new Set(["solicitar", "minhas"]);
 const COLECOES_POR_ABA = {
+  solicitar: [],
+  minhas: [],
   estoque: [COL_PRODUTOS, COL_MOV],
   pedidos: [COL_PEDIDOS, COL_PRODUTOS, COL_MOV, COL_ORDENS],
   ordens: [COL_ORDENS, COL_PEDIDOS, COL_PRODUTOS],
@@ -65,7 +77,12 @@ const COLECOES_POR_ABA = {
 export default function Compras() {
   const sessao = getSessao();
   const editavel = podeEditar(sessao);
-  const abasPermitidas = ABAS.filter(item => podeVerSecao("compras", item.valor, sessao));
+  // Pedir material grava: quem só tem acesso de leitura acompanha, mas não pede.
+  const podeSolicitar = sessao?.papel === "equipe" || sessao?.papel === "direcao";
+  const abasPermitidas = ABAS.filter((item) =>
+    item.valor === "solicitar" ? podeSolicitar : ABAS_DE_TODOS.has(item.valor) || podeVerSecao("compras", item.valor, sessao)
+  );
+  const [busca, setBusca] = useSearchParams();
   const colecoesPermitidas = [...new Set(abasPermitidas.flatMap(item => COLECOES_POR_ABA[item.valor]))];
 
   const [dados, setDados] = useState(null); // { pedidos, produtos, movs, ordens }
@@ -75,6 +92,10 @@ export default function Compras() {
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [aba, setAba] = useState(() => {
+    // Link do sino (/compras?aba=minhas) manda na aba de abertura.
+    const pedida = busca.get("aba");
+    if (abasPermitidas.some((a) => a.valor === pedida)) return pedida;
+    if (pedida === "pedidos" && abasPermitidas.some((a) => a.valor === "minhas")) return "minhas";
     try {
       const guardada = localStorage.getItem(K_ABA);
       return abasPermitidas.some((a) => a.valor === guardada) ? guardada : abasPermitidas[0]?.valor || "estoque";
@@ -92,6 +113,9 @@ export default function Compras() {
   // um pedido velho se a lista recarregasse no meio.
   const [recebendo, setRecebendo] = useState(null); // { pedidoIds: [] } | null
 
+  // O lado de quem pede: o que EU pedi + nomes já pedidos (sugestão do Produto).
+  const minhas = useMinhasSolicitacoes();
+
   // "Hoje" é ESTADO, não conta do render: a tela fica aberta de um dia para o
   // outro e o dia congelado mentiria o prazo da ordem e o mês dos cartões.
   const [hojeISO, setHojeISO] = useState(() => ymdLocal(new Date()));
@@ -108,6 +132,7 @@ export default function Compras() {
     }));
     setAtualizando(true);
     setHojeISO(ymdLocal(new Date()));
+    minhas.recarregar();
     Promise.all(colecoesPermitidas.map(async nome => [nome, await listar(nome)]))
       .then(entradas => {
         const colecoes = Object.fromEntries(entradas);
@@ -151,6 +176,7 @@ export default function Compras() {
   const trocarAba = (valor) => {
     if (!abasPermitidas.some(item => item.valor === valor)) return;
     setAba(valor);
+    if (busca.get("aba")) setBusca({}, { replace: true });
     // Um recebimento aberto pertence à aba onde começou: levá-lo junto para
     // outra aba assustaria quem só queria olhar o estoque.
     setRecebendo(null);
@@ -318,6 +344,10 @@ export default function Compras() {
       obs: f.obs.trim(),
       produtoId: f.produtoId || "",
       ordemId: f.ordemId || "",
+      detalhes: f.detalhes.trim(),
+      categoria: f.categoria || "outros",
+      urgencia: f.urgencia || "media",
+      setor: f.setor || "",
       /* Com entrada CARIMBADA no livro, a quantidade recebida é do LIVRO, não
          do formulário: corrigir 10 para 7 aqui faria a tela dizer 7 com o saldo
          parado em 10, em silêncio — uma segunda verdade. O campo vem travado na
@@ -729,6 +759,42 @@ export default function Compras() {
     recarregar();
   };
 
+  // ---- solicitações: situação em lote (o servidor avisa quem pediu) ----
+  const situacaoLote = async (ids, status, motivo = "") => {
+    setSalvando(true);
+    try {
+      const r = await comprasSituacao(ids, status, motivo);
+      const rot = ROTULO_SITUACAO[status] || status;
+      setAviso({
+        tipo: "ok",
+        texto: `${r.alterados} ${r.alterados === 1 ? "item agora está" : "itens agora estão"} “${rot}”. Quem pediu foi avisado no sino.${
+          r.ignorados ? ` ${r.ignorados} já ${r.ignorados === 1 ? "estava" : "estavam"} nessa situação, recebido ou recusado e não mudou.` : ""
+        }`,
+      });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  /* "Recebida" em lote passa pela MESMA conferência do recebimento avulso:
+     quantidade que chegou e, se for de estoque, a entrada no livro. Item que
+     já entrou no estoque antes só muda de situação — oferecer de novo dobraria
+     o saldo. */
+  const receberVarios = (ids) => {
+    const alvo = dados.pedidos.filter((c) => ids.includes(c.id) && c.status !== "recebida" && c.status !== "cancelada");
+    const paraConferir = alvo.filter((c) => !temEntrada(c.id));
+    for (const c of alvo.filter((x) => temEntrada(x.id))) {
+      gravar(COL_PEDIDOS, { ...c, status: "recebida", dataRecebida: c.dataRecebida || ymdLocal(new Date()) }, `${c.item}: marcado como recebido (já tinha entrado no estoque).`);
+    }
+    if (paraConferir.length) setRecebendo({ pedidoIds: paraConferir.map((c) => c.id) });
+    return true;
+  };
+
   const acoes = {
     // estoque
     abrirProduto: (p) =>
@@ -745,6 +811,8 @@ export default function Compras() {
     salvarPedido,
     avancarPedido,
     removerPedido,
+    situacaoLote,
+    receberVarios,
     // ordens
     abrirOrdem: (id) =>
       setFormOrdem(ordemParaForm(id ? dados.ordens.find((o) => o.id === id) : null, dados.ordens, dados.pedidos)),
@@ -760,6 +828,8 @@ export default function Compras() {
     abrirRetirada: () => setFormRetirada(retiradaVazia()),
     registrarRetirada,
   };
+
+  const novas = (dados?.pedidos || []).filter((c) => c.status === "solicitada").length;
 
   if (erro && !dados && !atualizando) return <ErroModulo mensagem={erro} aoTentar={recarregar} />;
   if (!dados) return <CarregandoModulo />;
@@ -778,12 +848,27 @@ export default function Compras() {
       )}
       <PageTitle
         titulo="Compras"
-        descricao="O material da casa num lugar só: o que está acabando, o que já foi pedido e quem levou o quê."
+        descricao={abasPermitidas.some((a) => !ABAS_DE_TODOS.has(a.valor))
+          ? "O material da casa num lugar só: o que está acabando, o que já foi pedido e quem levou o quê."
+          : "Peça o material que falta e acompanhe cada item até chegar."}
       />
 
       <div role="group" aria-label="Seções de Compras" className="mb-6 max-w-full">
-        <Segmented opcoes={abasPermitidas} valor={aba} onChange={trocarAba} className="!grid w-full grid-cols-2 sm:!flex sm:w-fit" />
+        <Segmented opcoes={abasPermitidas.map((a) => (a.valor === "pedidos" && novas ? { ...a, rotulo: `Pedidos · ${novas} ${novas > 1 ? "novas" : "nova"}` } : a))} valor={aba} onChange={trocarAba} className="!grid w-full grid-cols-2 sm:!flex sm:w-fit sm:flex-wrap" />
       </div>
+
+      {aba === "solicitar" && (
+        <SolicitarMaterial
+          sessao={sessao}
+          sugestoes={minhas.sugestoes}
+          avisar={setAviso}
+          aoEnviar={() => { recarregar(); trocarAba("minhas"); }}
+        />
+      )}
+
+      {aba === "minhas" && (
+        <MinhasSolicitacoes itens={minhas.itens} erro={minhas.erro} aoRecarregar={minhas.recarregar} />
+      )}
 
       {aba === "estoque" && (
         <AbaEstoque

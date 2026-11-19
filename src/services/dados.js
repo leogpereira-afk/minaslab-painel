@@ -334,3 +334,19 @@ export const rhDocumentoConfirmarPreenchimento = (documentoId, pessoaId, dadosCo
 
 // Usuários ativos — lista mínima (nome/login) para rastreabilidade operacional.
 export const usuariosAtivos = () => chamar("usuariosAtivos").then((r) => r.usuarios || []);
+
+// -----------------------------------------------------------------------------
+// Compras › Solicitação de materiais. Solicitante e data são carimbados no
+// servidor, pelo crachá. Cada item vira um pedido "solicitada" em `compras`.
+// -----------------------------------------------------------------------------
+export const comprasSolicitar = (dados) => chamar("comprasSolicitar", dados).then((r) => {
+  if (!r?.ok || !Array.isArray(r.itens) || !r.itens.length) throw new Error("O servidor não confirmou a solicitação. Recarregue e confira em Minhas solicitações.");
+  esquecerColecao("compras");
+  return r.itens;
+});
+export const comprasMinhas = () => chamar("comprasMinhas").then((r) => ({ itens: r.itens || [], sugestoes: r.sugestoes || [] }));
+export const comprasSituacao = (ids, status, motivo = "") => chamar("comprasSituacao", { ids, status, motivo }).then((r) => {
+  if (!r?.ok) throw new Error("O servidor não confirmou a mudança de situação.");
+  esquecerColecao("compras");
+  return r;
+});
