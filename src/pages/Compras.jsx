@@ -925,6 +925,7 @@ export default function Compras() {
           equipe={equipe}
           hojeISO={hojeISO}
           editavel={editaEstoque}
+          podeExcluirEntrada={sessao?.papel === "direcao"}
           salvando={salvando}
           formProduto={formProduto}
           setFormProduto={setFormProduto}
