@@ -901,6 +901,17 @@ Deno.serve(async (req) => {
         return resp(data??{ok:true});
       }
 
+      case "estoquePedidoCancelar": {
+        // Cancelar item PENDENTE com motivo (e observação opcional); devolve os itens do pedido para o PDF de controle.
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        const id=String(body.id??"").trim(); if(!id) return resp({erro:"Item do pedido obrigatório."},400);
+        const {data,error}=await sb.rpc("ml_estoque_pedido_cancelar",{p_id:id,p_motivo:String(body.motivo??""),p_observacao:String(body.observacao??""),p_usuario:usuario||"maquina"});
+        if(error) throw error;
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(data??{ok:true});
+      }
+
       case "estoquePedidoExcluir": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
