@@ -107,8 +107,78 @@ export function destinatariosSolicitacao(contas, autor) {
 // Situações que quem compra pode dar a vários de uma vez. "recebida" fica de
 // fora: chegar passa pela conferência de quantidade (entrada no estoque).
 export const SITUACOES_LOTE = ["cotando", "comprada", "cancelada"];
-export const ROTULO_SITUACAO = { solicitada: "Solicitada", cotando: "Em cotação", comprada: "Comprada", recebida: "Recebida", cancelada: "Recusada" };
-export const ANDAMENTO = ["solicitada", "cotando", "comprada", "recebida"];
+export const ROTULO_SITUACAO = { solicitada: "Solicitada", aprovada: "Aprovada", cotando: "Em cotação", comprada: "Comprada", recebida: "Recebida", cancelada: "Recusada" };
+export const ANDAMENTO = ["solicitada", "aprovada", "cotando", "comprada", "recebida"];
+
+/* APROVAÇÃO (Léo, 19/11/2026): quem trata compras aprova cada item e diz QUANTO
+   foi aprovado (pode ser menos que o pedido). "Não aprovar" é a recusa, com motivo.
+   A quantidade aprovada passa a ser a quantidade do pedido (é ela que vai para a
+   ordem de compra e para o recebimento); a pedida fica guardada em
+   quantidadeSolicitada/qtdeSolicitada, só na primeira aprovação — reaprovar
+   ajusta a aprovada sem perder o que foi pedido. */
+export const PODE_APROVAR = new Set(["solicitada", "aprovada"]);
+
+// Número da quantidade em texto livre ("2 cx", "1,5 litro") — pedido antigo não tem `quantidade`.
+export function numeroDaQuantidade(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  const m = String(v ?? "").replace(/\./g, "").match(/(\d+(?:,\d+)?)/) || String(v ?? "").match(/(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Unidade do pedido: a gravada ou, no pedido antigo, o que vem depois do número ("2 cx" → "cx").
+const unidadeDoPedido = (c) => c.unidade || String(c.qtde ?? "").replace(/^[\s\d.,]+/, "").trim();
+
+export function quantidadePedida(c) {
+  const n = Number.isFinite(Number(c.quantidadeSolicitada)) && c.quantidadeSolicitada !== "" && c.quantidadeSolicitada != null
+    ? Number(c.quantidadeSolicitada)
+    : Number.isFinite(Number(c.quantidade)) && c.quantidade !== "" && c.quantidade != null ? Number(c.quantidade) : numeroDaQuantidade(c.qtde);
+  return n;
+}
+
+/* Confere a lista [{ id, quantidade }] da aprovação. Quantidade tem de ser > 0
+   (zero não é aprovar: é "Não aprovar", que pede o motivo). */
+export function normalizarAprovacao(lista) {
+  const itens = [];
+  const erros = [];
+  const vistos = new Set();
+  for (const b of Array.isArray(lista) ? lista : []) {
+    const id = String(b?.id ?? "").trim();
+    if (!id || vistos.has(id)) continue;
+    vistos.add(id);
+    const q = Number(String(b?.quantidade ?? "").replace(",", "."));
+    if (!Number.isFinite(q) || q <= 0 || q > 100000) { erros.push("Quantidade aprovada inválida (use “Não aprovar” para recusar)."); continue; }
+    itens.push({ id, quantidade: Math.round(q * 1000) / 1000 });
+  }
+  if (itens.length > 200) erros.push("No máximo 200 itens por vez.");
+  return { itens, erros };
+}
+
+// Registro aprovado: guarda a pedida (só na primeira vez) e troca a quantidade pela aprovada.
+export function aplicarAprovacao(c, quantidade, por, em) {
+  const unidade = unidadeDoPedido(c);
+  const pedida = quantidadePedida(c);
+  const jaGuardada = c.qtdeSolicitada !== undefined && c.qtdeSolicitada !== null && c.qtdeSolicitada !== "";
+  return {
+    ...c,
+    status: "aprovada",
+    ...(jaGuardada ? {} : { qtdeSolicitada: c.qtde || textoQuantidade(pedida, unidade), quantidadeSolicitada: pedida }),
+    quantidade,
+    qtde: textoQuantidade(quantidade, unidade),
+    aprovadoPor: por,
+    aprovadoEm: em,
+  };
+}
+
+// "aprovado 5 de 10 caixas" quando mudou; vazio quando aprovou o que foi pedido.
+export function textoAprovacao(c) {
+  if (!c || !c.qtdeSolicitada) return "";
+  const pedida = quantidadePedida(c);
+  const aprovada = Number(c.quantidade);
+  if (pedida != null && Number.isFinite(aprovada) && pedida === aprovada) return "";
+  return `aprovado ${c.qtde} (pedido ${c.qtdeSolicitada})`;
+}
 
 // A frase do aviso para quem pediu. Um aviso por pessoa, mesmo que mude cinco itens dela.
 export function avisoMudanca(itens, status, motivo = "") {
@@ -118,7 +188,11 @@ export function avisoMudanca(itens, status, motivo = "") {
     ? `Sua solicitação: ${nomes[0] || "item"} — ${rot}`
     : `Sua solicitação: ${itens.length} itens — ${rot}`;
   const lista = nomes.length > 1 ? nomes.slice(0, 5).join(", ") + (nomes.length > 5 ? "…" : "") : "";
-  const corpo = [lista, status === "cancelada" && motivo ? `Motivo: ${motivo}` : ""].filter(Boolean).join(" · ");
+  // Na aprovação, quem pediu precisa saber QUANTO foi aprovado — sobretudo se veio menos.
+  const quantos = status === "aprovada"
+    ? itens.map((i) => (itens.length > 1 ? `${i.item}: ${i.qtde || "?"}` : `Aprovado: ${i.qtde || "?"}`) + (i.qtdeSolicitada && textoAprovacao(i) ? ` (pedido ${i.qtdeSolicitada})` : "")).slice(0, 5).join(" · ")
+    : "";
+  const corpo = [status === "aprovada" ? quantos : lista, status === "cancelada" && motivo ? `Motivo: ${motivo}` : ""].filter(Boolean).join(" · ");
   return { titulo, corpo };
 }
 

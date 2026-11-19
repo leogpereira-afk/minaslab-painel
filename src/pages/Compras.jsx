@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { listar, salvar, apagar, elenco, comprasSituacao } from "../services/dados.js";
+import { listar, salvar, apagar, elenco, comprasSituacao, comprasAprovar } from "../services/dados.js";
 import { getSessao, podeEditar, podeVerSecao } from "../lib/sessao.js";
 import { ymdLocal, paraNumero, dataCurta } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
@@ -380,7 +380,7 @@ export default function Compras() {
     const c = dados.pedidos.find((x) => x.id === id);
     if (!c) return avisarErro("Este pedido não está mais na lista. Recarregue e tente de novo.");
     const prox = PROXIMO_PEDIDO[c.status];
-    if (!prox) return;
+    if (!prox || prox === "aprovada") return; // aprovar passa pela janela da quantidade (AbaPedidos)
     // Chegar em "recebida" é a única etapa que não anda sozinha: a quantidade
     // que chegou precisa ser conferida antes de virar saldo.
     if (prox === "recebida") {
@@ -781,6 +781,27 @@ export default function Compras() {
     }
   };
 
+  // ---- aprovação: quantidade aprovada por item (o servidor avisa quem pediu) ----
+  const aprovarLote = async (itens) => {
+    setSalvando(true);
+    try {
+      const r = await comprasAprovar(itens);
+      setAviso({
+        tipo: "ok",
+        texto: `${r.alterados} ${r.alterados === 1 ? "item aprovado" : "itens aprovados"}. Quem pediu foi avisado no sino com a quantidade aprovada.${
+          r.ignorados ? ` ${r.ignorados} não ${r.ignorados === 1 ? "mudou" : "mudaram"} (já em compra, recebido, recusado ou com a mesma quantidade).` : ""
+        }`,
+      });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   /* "Recebida" em lote passa pela MESMA conferência do recebimento avulso:
      quantidade que chegou e, se for de estoque, a entrada no livro. Item que
      já entrou no estoque antes só muda de situação — oferecer de novo dobraria
@@ -812,6 +833,7 @@ export default function Compras() {
     avancarPedido,
     removerPedido,
     situacaoLote,
+    aprovarLote,
     receberVarios,
     // ordens
     abrirOrdem: (id) =>

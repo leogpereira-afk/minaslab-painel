@@ -4,14 +4,16 @@
 // espera há mais tempo. Marque vários e mude a situação de uma vez: quem pediu
 // é avisado no sino (o servidor manda um aviso por pessoa).
 //
-// O fluxo anda numa direção só (solicitada → em cotação → comprada → recebida).
+// O fluxo anda numa direção só (solicitada → aprovada → em cotação → comprada → recebida).
+// Aprovar pede a QUANTIDADE aprovada (pode ser menos que a pedida); "Não aprovar" é a
+// recusa com motivo. "Imprimir lista" gera a folha para entregar a quem vai comprar.
 // A ÚNICA mudança de rumo: chegar em "recebida" passa pelo modal de
 // recebimento, onde a quantidade é conferida antes de virar estoque.
 
 import { useMemo, useState } from "react";
 import {
   Plus, Pencil, Trash2, ArrowRight, ClipboardList, ShoppingCart, Search, Flame,
-  Download, ScrollText,
+  Download, ScrollText, BadgeCheck, Printer,
 } from "lucide-react";
 import { dataCurta, ymdLocal, moedaCheia } from "../../lib/format.js";
 import { StatCard, Empty, Modal, Card } from "../ui.jsx";
@@ -21,7 +23,10 @@ import {
 } from "./comum.jsx";
 import {
   CATEGORIAS_SOLICITACAO, URGENCIAS, SETORES, agruparPorCategoria, rotuloCategoria, rotuloUrgencia,
+  PODE_APROVAR, quantidadePedida, textoAprovacao,
 } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
+import { imprimirListaCompras, qtdePedidaTexto, qtdeAprovadaTexto } from "../../lib/impressao/listaCompras.js";
+import { getSessao } from "../../lib/sessao.js";
 import { TagSituacao, COR_URGENCIA } from "./AbaSolicitacao.jsx";
 
 // "Em aberto" ou "Todas": a escolha sobrevive ao recarregar da página.
@@ -35,7 +40,7 @@ export const PEDIDO_VAZIO = {
   detalhes: "", categoria: "outros", urgencia: "media", setor: "", solicitanteUsuario: "",
 };
 
-function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar }) {
+function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar, aoAprovar }) {
   const Icone = c.st.icone;
   const final = FINAL.has(c.status);
   const proxima = PROXIMO_PEDIDO[c.status];
@@ -61,6 +66,7 @@ function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar }) {
           {c.item}
           {c.qtde ? <span className="font-normal text-slate-500"> — {c.qtde}</span> : null}
         </span>
+        {textoAprovacao(c) && <span className="block text-xs font-medium text-warn-700">{textoAprovacao(c)}</span>}
         {c.detalhes && <span className="block break-words text-xs text-slate-600">{c.detalhes}</span>}
         <span className="block break-words text-xs text-slate-500">
           {[
@@ -105,11 +111,12 @@ function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar }) {
             <button
               type="button"
               disabled={salvando}
-              onClick={() => acoes.avancarPedido(c.id)}
-              aria-label={`${proxima === "recebida" ? "Conferir recebimento" : `Avançar para ${STATUS_PEDIDO[proxima].rotulo}`}: ${c.item}`}
+              onClick={() => (proxima === "aprovada" ? aoAprovar([c.id]) : acoes.avancarPedido(c.id))}
+              aria-label={`${proxima === "recebida" ? "Conferir recebimento" : proxima === "aprovada" ? "Aprovar (com a quantidade)" : `Avançar para ${STATUS_PEDIDO[proxima].rotulo}`}: ${c.item}`}
               title={
                 proxima === "recebida"
                   ? "Marcar recebida (confere a quantidade antes de entrar no estoque)"
+                  : proxima === "aprovada" ? "Aprovar (diz a quantidade aprovada)"
                   : `Avançar para ${STATUS_PEDIDO[proxima].rotulo}`
               }
               className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
@@ -143,10 +150,79 @@ function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar }) {
   );
 }
 
+// Aprovar: uma linha por item com a quantidade aprovada (começa com a pedida).
+function ModalAprovacao({ itens, salvando, aoConfirmar, aoFechar }) {
+  const [qtd, setQtd] = useState(() => Object.fromEntries(itens.map((c) => {
+    const n = c.status === "aprovada" ? Number(c.quantidade) : quantidadePedida(c);
+    return [c.id, n != null && Number.isFinite(n) ? String(n).replace(".", ",") : ""];
+  })));
+  const invalidos = itens.filter((c) => { const n = Number(String(qtd[c.id] ?? "").replace(",", ".")); return !Number.isFinite(n) || n <= 0; });
+  const unidade = (c) => c.unidade || String(c.qtdeSolicitada || c.qtde || "").replace(/^[\s\d.,]+/, "").trim();
+  return (
+    <Modal titulo={`Aprovar ${itens.length} ${itens.length === 1 ? "item" : "itens"}`} aberto aoFechar={aoFechar} largura="max-w-2xl">
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (!invalidos.length && !salvando) aoConfirmar(itens.map((c) => ({ id: c.id, quantidade: String(qtd[c.id]).replace(",", ".") }))); }}>
+        <p className="text-sm text-slate-600">Confira a quantidade aprovada de cada item. Pode aprovar menos do que foi pedido — quem pediu vê no sino quanto foi aprovado. Para não aprovar, feche e use “Não aprovar…”.</p>
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+          {itens.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
+              <span className="min-w-0 flex-1 basis-56">
+                <span className="block font-medium text-slate-900">{c.item}</span>
+                <span className="block text-xs text-slate-500">pedido: {qtdePedidaTexto(c) || "—"}{c.solicitante ? ` · ${c.solicitante}` : ""}{c.detalhes ? ` · ${c.detalhes}` : ""}</span>
+              </span>
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-slate-600">Aprovado</span>
+                <input type="text" inputMode="decimal" className="input w-24" value={qtd[c.id] ?? ""} onChange={(e) => setQtd((q) => ({ ...q, [c.id]: e.target.value }))} aria-label={`Quantidade aprovada de ${c.item}`} aria-invalid={invalidos.includes(c)} />
+                <span className="min-w-12 text-slate-500">{unidade(c)}</span>
+              </label>
+            </div>
+          ))}
+        </div>
+        {invalidos.length > 0 && <p className="text-sm text-bad-700" role="alert">Coloque uma quantidade maior que zero em {invalidos.length === 1 ? "1 item" : `${invalidos.length} itens`}.</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={aoFechar}>Voltar</button>
+          <button type="submit" className="btn-primary" disabled={salvando || invalidos.length > 0}><BadgeCheck size={16} /> {salvando ? "Gravando…" : "Aprovar"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Imprimir: o que vai para a folha.
+function ModalImprimir({ vm, lista, recorteAtivo, aoImprimir, aoFechar }) {
+  const aprovadas = vm.todos.filter((c) => c.status === "aprovada");
+  const abertas = vm.todos.filter((c) => !FINAL.has(c.status));
+  const [o, setO] = useState(aprovadas.length ? "aprovadas" : "abertas");
+  const opcoes = [
+    ["aprovadas", "Só as aprovadas — para comprar", aprovadas],
+    ["paraAprovar", "Só as que esperam aprovação", vm.todos.filter((c) => c.status === "solicitada")],
+    ["abertas", "Tudo em aberto (solicitadas, aprovadas, em cotação e compradas)", abertas],
+    ["tela", recorteAtivo ? "O que está na tela agora (com o filtro)" : "O que está na tela agora", lista],
+  ];
+  const escolhida = opcoes.find((x) => x[0] === o);
+  return (
+    <Modal titulo="Imprimir lista de compras" aberto aoFechar={aoFechar}>
+      <div className="space-y-3">
+        {opcoes.map(([v, rot, itens]) => (
+          <label key={v} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${o === v ? "border-brand-500 bg-brand-50" : ""}`} style={o === v ? undefined : { borderColor: "var(--hairline)" }}>
+            <input type="radio" name="impr" className="accent-brand-600" checked={o === v} onChange={() => setO(v)} />
+            <span className="flex-1 text-sm text-slate-800">{rot}</span>
+            <span className="text-xs text-slate-500">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
+          </label>
+        ))}
+        <p className="text-xs text-slate-500">A folha sai agrupada por categoria, com quantidade pedida e aprovada, quem pediu e espaço para anotar fornecedor e valor.</p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
+          <button type="button" className="btn-primary" disabled={!escolhida[2].length} onClick={() => aoImprimir(escolhida[2], escolhida[1])}><Printer size={16} /> Imprimir</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ModalRecusa({ quantos, salvando, aoConfirmar, aoFechar }) {
   const [motivo, setMotivo] = useState("");
   return (
-    <Modal titulo={`Recusar ${quantos} ${quantos === 1 ? "item" : "itens"}`} aberto aoFechar={aoFechar}>
+    <Modal titulo={`Não aprovar ${quantos} ${quantos === 1 ? "item" : "itens"}`} aberto aoFechar={aoFechar}>
       <form
         className="space-y-4"
         onSubmit={(e) => { e.preventDefault(); if (motivo.trim() && !salvando) aoConfirmar(motivo.trim()); }}
@@ -157,7 +233,7 @@ function ModalRecusa({ quantos, salvando, aoConfirmar, aoFechar }) {
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={aoFechar}>Voltar</button>
-          <button type="submit" className="btn-primary" disabled={salvando || !motivo.trim()}>{salvando ? "Gravando…" : "Recusar"}</button>
+          <button type="submit" className="btn-primary" disabled={salvando || !motivo.trim()}>{salvando ? "Gravando…" : "Não aprovar"}</button>
         </div>
       </form>
     </Modal>
@@ -315,6 +391,8 @@ export default function AbaPedidos({
   });
   const [marcados, setMarcados] = useState(() => new Set());
   const [recusando, setRecusando] = useState(false);
+  const [aprovando, setAprovando] = useState(null); // ids
+  const [imprimindo, setImprimindo] = useState(false);
 
   const vm = useMemo(() => {
     const nomeProduto = new Map(produtos.map((p) => [p.id, p.nome]));
@@ -331,6 +409,7 @@ export default function AbaPedidos({
     return {
       todos,
       novas: todos.filter((c) => c.status === "solicitada").length,
+      aprovadas: todos.filter((c) => c.status === "aprovada").length,
       alta: abertos.filter((c) => c.urgencia === "alta").length,
       cotando: todos.filter((c) => c.status === "cotando").length,
       comprada: todos.filter((c) => c.status === "comprada").length,
@@ -339,6 +418,7 @@ export default function AbaPedidos({
 
   const lista = vm.todos.filter((c) => {
     if (recorte === "novas") return c.status === "solicitada";
+    if (recorte === "aprovadas") return c.status === "aprovada";
     if (recorte === "alta") return c.urgencia === "alta" && !FINAL.has(c.status);
     if (recorte === "cotando") return c.status === "cotando";
     if (recorte === "comprada") return c.status === "comprada";
@@ -348,6 +428,7 @@ export default function AbaPedidos({
   // Marcado que saiu da tela (filtro, recarga, outra pessoa mudou) não conta.
   const idsVisiveis = new Set(lista.filter((c) => !FINAL.has(c.status)).map((c) => c.id));
   const sel = [...marcados].filter((id) => idsVisiveis.has(id));
+  const paraAprovar = sel.filter((id) => PODE_APROVAR.has(vm.todos.find((c) => c.id === id)?.status));
 
   const marcar = (id, sim) => setMarcados((m) => { const n = new Set(m); if (sim) n.add(id); else n.delete(id); return n; });
   const marcarGrupo = (itens, sim) => setMarcados((m) => {
@@ -377,6 +458,7 @@ export default function AbaPedidos({
         { chave: "item", rotulo: "Produto", tipo: "texto" },
         { chave: "detalhes", rotulo: "Detalhes", tipo: "texto" },
         { chave: "qtde", rotulo: "Quantidade pedida", tipo: "texto" },
+        { chave: "qtdeAprovada", rotulo: "Quantidade aprovada", tipo: "texto" },
         { chave: "urgencia", rotulo: "Urgência", tipo: "texto" },
         { chave: "solicitante", rotulo: "Quem pediu", tipo: "texto" },
         { chave: "setor", rotulo: "Setor", tipo: "texto" },
@@ -396,7 +478,8 @@ export default function AbaPedidos({
         categoria: rotuloCategoria(c.categoria),
         item: c.item || "",
         detalhes: c.detalhes || null,
-        qtde: c.qtde || null,
+        qtde: qtdePedidaTexto(c) || null,
+        qtdeAprovada: qtdeAprovadaTexto(c) || null,
         urgencia: rotuloUrgencia(c.urgencia),
         solicitante: c.solicitante || null,
         setor: c.setor || null,
@@ -420,8 +503,9 @@ export default function AbaPedidos({
 
   return (
     <div>
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard rotulo="Novas solicitações" valor={String(vm.novas)} sub="esperando quem compra" tom={vm.novas ? "brand" : "neutral"} icone={ClipboardList} onClick={() => alternarRecorte("novas")} ativo={recorte === "novas"} />
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <StatCard rotulo="Novas solicitações" valor={String(vm.novas)} sub="esperando aprovação" tom={vm.novas ? "brand" : "neutral"} icone={ClipboardList} onClick={() => alternarRecorte("novas")} ativo={recorte === "novas"} />
+        <StatCard rotulo="Aprovadas" valor={String(vm.aprovadas)} sub="para comprar" tom={vm.aprovadas ? "ok" : "neutral"} icone={BadgeCheck} onClick={() => alternarRecorte("aprovadas")} ativo={recorte === "aprovadas"} />
         <StatCard rotulo="Urgência alta" valor={String(vm.alta)} sub="em aberto" tom={vm.alta ? "bad" : "neutral"} icone={Flame} onClick={() => alternarRecorte("alta")} ativo={recorte === "alta"} />
         <StatCard rotulo="Em cotação" valor={String(vm.cotando)} sub="pedindo preço" tom={vm.cotando ? "warn" : "neutral"} icone={Search} onClick={() => alternarRecorte("cotando")} ativo={recorte === "cotando"} />
         <StatCard rotulo="Compradas" valor={String(vm.comprada)} sub="aguardando chegar" tom="neutral" icone={ShoppingCart} onClick={() => alternarRecorte("comprada")} ativo={recorte === "comprada"} />
@@ -436,6 +520,9 @@ export default function AbaPedidos({
               <option value="abertas">Em aberto</option>
               <option value="todas">Todas</option>
             </select>
+            <button type="button" className="btn-outline min-h-11" onClick={() => setImprimindo(true)}>
+              <Printer size={16} strokeWidth={2.2} /> Imprimir lista
+            </button>
             <button type="button" className="btn-outline min-h-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={exportar} disabled={!lista.length}>
               <Download size={16} strokeWidth={2.2} /> Baixar planilha
             </button>
@@ -453,7 +540,7 @@ export default function AbaPedidos({
 
         {recorte && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
-            <p role="status" className="text-sm text-brand-800">Filtro ativo: {({ novas: "Novas solicitações", alta: "Urgência alta", cotando: "Em cotação", comprada: "Compradas" })[recorte]}.</p>
+            <p role="status" className="text-sm text-brand-800">Filtro ativo: {({ novas: "Novas solicitações", aprovadas: "Aprovadas", alta: "Urgência alta", cotando: "Em cotação", comprada: "Compradas" })[recorte]}.</p>
             <button type="button" className="btn-outline min-h-11" onClick={() => setRecorte(null)}>Limpar filtro</button>
           </div>
         )}
@@ -476,7 +563,7 @@ export default function AbaPedidos({
                 </h3>
                 <div className="space-y-2">
                   {g.itens.map((c) => (
-                    <Linha key={c.id} salvando={salvando} c={c} editavel={editavel} acoes={acoes} marcado={marcados.has(c.id)} aoMarcar={marcar} />
+                    <Linha key={c.id} salvando={salvando} c={c} editavel={editavel} acoes={acoes} marcado={marcados.has(c.id)} aoMarcar={marcar} aoAprovar={setAprovando} />
                   ))}
                 </div>
               </section>
@@ -492,12 +579,31 @@ export default function AbaPedidos({
           <span className="text-sm font-medium text-slate-700" role="status">{sel.length} {sel.length > 1 ? "itens marcados" : "item marcado"}</span>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => setMarcados(new Set())}>Desmarcar</button>
-            <button type="button" className="btn-outline min-h-11 text-bad-700" disabled={salvando} onClick={() => setRecusando(true)}>Recusar…</button>
+            <button type="button" className="btn-outline min-h-11 text-bad-700" disabled={salvando} onClick={() => setRecusando(true)}>Não aprovar…</button>
+            <button type="button" className="btn-outline min-h-11 border-emerald-300 text-emerald-800 disabled:opacity-50" disabled={salvando || !paraAprovar.length} title={paraAprovar.length ? "" : "Só itens solicitados ou já aprovados"} onClick={() => setAprovando(paraAprovar)}><BadgeCheck size={15} /> Aprovar…</button>
             <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => lote("cotando")}>Em cotação</button>
             <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => lote("comprada")}>Comprada</button>
             <button type="button" className="btn-primary min-h-11" disabled={salvando} onClick={() => lote("recebida")}>Recebida</button>
           </div>
         </div>
+      )}
+
+      {aprovando && (() => {
+        const itens = pedidos.filter((p) => aprovando.includes(p.id) && PODE_APROVAR.has(p.status));
+        return itens.length ? (
+          <ModalAprovacao key={aprovando.join("|")} itens={itens} salvando={salvando} aoFechar={() => setAprovando(null)}
+            aoConfirmar={async (lista) => { const ok = await acoes.aprovarLote(lista); if (ok !== false) { setAprovando(null); setMarcados(new Set()); } }} />
+        ) : null;
+      })()}
+
+      {imprimindo && (
+        <ModalImprimir vm={vm} lista={lista} recorteAtivo={!!recorte} aoFechar={() => setImprimindo(false)}
+          aoImprimir={(itens, rotulo) => {
+            try {
+              imprimirListaCompras({ pedidos: itens, titulo: "Lista de compras", subtitulo: rotulo, impressoPor: getSessao()?.nome || "" });
+              setImprimindo(false);
+            } catch (e) { window.alert(e.message); }
+          }} />
       )}
 
       {recusando && (

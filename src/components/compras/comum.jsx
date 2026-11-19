@@ -4,7 +4,7 @@
 // (pages/Compras.jsx) e as quatro abas puxam deste arquivo.
 
 import { useState } from "react";
-import { ClipboardList, Search, ShoppingCart, PackageCheck, XCircle } from "lucide-react";
+import { ClipboardList, Search, ShoppingCart, PackageCheck, XCircle, BadgeCheck } from "lucide-react";
 import { Modal } from "../ui.jsx";
 import { paraNumero } from "../../lib/format.js";
 
@@ -26,14 +26,16 @@ export const rotuloCategoria = (c) => CATEGORIAS[c] || CATEGORIAS.outro;
 // Etapas do pedido. O ícone diz a etapa antes de a pessoa ler o cabeçalho.
 export const STATUS_PEDIDO = {
   solicitada: { rotulo: "Solicitada", icone: ClipboardList, cor: "text-slate-500" },
+  aprovada: { rotulo: "Aprovada", icone: BadgeCheck, cor: "text-emerald-700" },
   cotando: { rotulo: "Em cotação", icone: Search, cor: "text-warn-700" },
   comprada: { rotulo: "Comprada", icone: ShoppingCart, cor: "text-brand-600" },
   recebida: { rotulo: "Recebida", icone: PackageCheck, cor: "text-ok-700" },
   cancelada: { rotulo: "Cancelada", icone: XCircle, cor: "text-bad-700" },
 };
 
-export const FLUXO_PEDIDO = ["solicitada", "cotando", "comprada", "recebida"];
-export const PROXIMO_PEDIDO = { solicitada: "cotando", cotando: "comprada", comprada: "recebida" };
+export const FLUXO_PEDIDO = ["solicitada", "aprovada", "cotando", "comprada", "recebida"];
+// Solicitada → Aprovada não anda pela seta sozinha: aprovar pede a QUANTIDADE (janela de aprovação).
+export const PROXIMO_PEDIDO = { solicitada: "aprovada", aprovada: "cotando", cotando: "comprada", comprada: "recebida" };
 
 // Pedido que ainda pode entrar numa ordem de compra: não chegou nem morreu.
 export const PEDIDO_EM_ABERTO = (c) => c.status !== "recebida" && c.status !== "cancelada";

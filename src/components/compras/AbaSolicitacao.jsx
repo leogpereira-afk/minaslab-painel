@@ -13,7 +13,7 @@ import { Card, Empty } from "../ui.jsx";
 import { dataCurta, ymdLocal } from "../../lib/format.js";
 import { comprasMinhas, comprasSolicitar } from "../../services/dados.js";
 import {
-  CATEGORIAS_SOLICITACAO, UNIDADES_SOLICITACAO, URGENCIAS, SETORES, ROTULO_SITUACAO, ANDAMENTO,
+  CATEGORIAS_SOLICITACAO, UNIDADES_SOLICITACAO, URGENCIAS, SETORES, ROTULO_SITUACAO, ANDAMENTO, textoAprovacao,
   rotuloUrgencia, MAX_ITENS,
 } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
 
@@ -23,6 +23,7 @@ const itemVazio = () => ({ chave: Math.random().toString(36).slice(2), produto: 
 export const COR_URGENCIA = { alta: "text-bad-700 font-semibold", media: "text-warn-700 font-semibold", baixa: "text-slate-500" };
 export const TAG_SITUACAO = {
   solicitada: "bg-slate-200 text-slate-700",
+  aprovada: "bg-emerald-100 text-emerald-800",
   cotando: "bg-warn-100 text-warn-800",
   comprada: "bg-sky-100 text-sky-700",
   recebida: "bg-ok-100 text-ok-800",
@@ -209,7 +210,10 @@ export function MinhasSolicitacoes({ itens, erro, aoRecarregar }) {
                     {p.detalhes && <span className="block text-xs text-slate-500">{p.detalhes}</span>}
                     {p.status === "cancelada" && p.motivoRecusa && <span className="block text-xs text-bad-700">Motivo: {p.motivoRecusa}</span>}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2">{p.qtde || "—"}</td>
+                  <td className="whitespace-nowrap px-2 py-2">
+                    {p.qtde || "—"}
+                    {p.qtdeSolicitada && textoAprovacao(p) && <span className="block text-xs font-medium text-warn-700">aprovado de {p.qtdeSolicitada} pedidos</span>}
+                  </td>
                   <td className={`px-2 py-2 ${COR_URGENCIA[p.urgencia] || ""}`}>{rotuloUrgencia(p.urgencia)}</td>
                   <td className="px-2 py-2"><TagSituacao status={p.status} /></td>
                   <td className="px-2 py-2"><Andamento status={p.status} />{p.status === "recebida" && p.dataRecebida ? <span className="ml-2 text-xs text-slate-500">{dataCurta(p.dataRecebida)}</span> : null}</td>

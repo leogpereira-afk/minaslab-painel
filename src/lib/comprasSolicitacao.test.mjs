@@ -81,3 +81,35 @@ test("quantidade em texto e urgência padrão", () => {
   assert.equal(textoQuantidade(1.5, "litro"), "1,5 litros");
   assert.equal(normalizarUrgencia("xpto"), "media");
 });
+
+test("aprovação: guarda a pedida só na primeira vez e troca pela aprovada", async () => {
+  const m = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  const pedido = { item: "LUVA", qtde: "10 caixas", quantidade: 10, unidade: "caixa", status: "solicitada" };
+  const a = m.aplicarAprovacao(pedido, 5, "thayna", "2026-11-19T10:00:00Z");
+  assert.equal(a.status, "aprovada");
+  assert.equal(a.qtde, "5 caixas");
+  assert.equal(a.qtdeSolicitada, "10 caixas");
+  assert.equal(a.quantidadeSolicitada, 10);
+  assert.equal(m.textoAprovacao(a), "aprovado 5 caixas (pedido 10 caixas)");
+  const b = m.aplicarAprovacao(a, 10, "thayna", "2026-11-19T11:00:00Z");
+  assert.equal(b.qtdeSolicitada, "10 caixas", "reaprovar não perde o pedido");
+  assert.equal(m.textoAprovacao(b), "", "aprovou tudo: nada a destacar");
+  const antigo = m.aplicarAprovacao({ item: "PAPEL", qtde: "2 cx" }, 1, "t", "x");
+  assert.equal(antigo.qtde, "1 cx");
+  assert.equal(antigo.qtdeSolicitada, "2 cx");
+});
+
+test("aprovação: quantidade tem de ser maior que zero; ids repetidos contam uma vez", async () => {
+  const m = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  assert.deepEqual(m.normalizarAprovacao([{ id: "a", quantidade: "2,5" }, { id: "a", quantidade: 9 }]).itens, [{ id: "a", quantidade: 2.5 }]);
+  assert.equal(m.normalizarAprovacao([{ id: "b", quantidade: 0 }]).erros.length, 1);
+  assert.equal(m.normalizarAprovacao([{ id: "c", quantidade: "x" }]).erros.length, 1);
+  assert.ok(m.PODE_APROVAR.has("solicitada") && m.PODE_APROVAR.has("aprovada") && !m.PODE_APROVAR.has("comprada"));
+  assert.deepEqual(m.ANDAMENTO.slice(0, 3), ["solicitada", "aprovada", "cotando"]);
+});
+
+test("aviso de aprovação diz quanto foi aprovado", async () => {
+  const m = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  const a = m.aplicarAprovacao({ item: "LUVA", qtde: "10 caixas", quantidade: 10, unidade: "caixa" }, 5, "t", "x");
+  assert.deepEqual(m.avisoMudanca([a], "aprovada"), { titulo: "Sua solicitação: LUVA — Aprovada", corpo: "Aprovado: 5 caixas (pedido 10 caixas)" });
+});
