@@ -15,6 +15,7 @@ async function chamar(acao, corpo = {}) {
 }
 
 export const iniciarEmail = () => chamar("inicio");
+export const contarNaoLidasEmail = () => chamar("naoLidas");
 export const salvarCaixa = (conta) => chamar("contaSalvar", { conta }).then((r) => r.conta);
 export const removerCaixa = (id) => chamar("contaApagar", { id });
 export const lerPastas = (conta) => chamar("pastas", { conta }).then((r) => r.pastas);

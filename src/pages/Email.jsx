@@ -13,6 +13,7 @@ import {
   iniciarEmail, salvarCaixa, removerCaixa, lerPastas, listarEmails, abrirEmail, baixarAnexoEmail, agirEmail, enviarEmail,
 } from "../services/email.js";
 import { assinaturaHtml, citacaoHtml } from "../lib/emailAssinatura.js";
+import { emailMudou } from "../lib/emailContador.js";
 import { assuntoResposta, lerEnderecos } from "../../supabase/functions/_shared/email-texto.mjs";
 
 const BASE = import.meta.env.BASE_URL || "/";
@@ -96,7 +97,7 @@ export default function Email() {
   const carregarPastas = useCallback(async (silencioso = false) => {
     if (!conta) return;
     if (!silencioso) { setErroPastas(""); setPastas([]); }
-    try { setPastas(await lerPastas(conta.id)); setErroPastas(""); } catch (e) { if (!silencioso) setErroPastas(e.message); }
+    try { setPastas(await lerPastas(conta.id)); setErroPastas(""); emailMudou(500); } catch (e) { if (!silencioso) setErroPastas(e.message); }
   }, [conta?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -136,6 +137,7 @@ export default function Email() {
       if (!m.lida) {
         setLista((l) => l && { ...l, mensagens: l.mensagens.map((x) => (x.uid === m.uid ? { ...x, lida: true } : x)) });
         setPastas((ps) => ps.map((p) => (p.id === pastaId && p.naoLidas ? { ...p, naoLidas: p.naoLidas - 1 } : p)));
+        emailMudou();
       }
     } catch (e) { erroMsg(e); setSel(null); } finally { setCarregandoMsg(false); }
   }
@@ -161,6 +163,7 @@ export default function Email() {
         if (tipo === "naoLido" && uids.includes(sel)) { setSel(null); setAberta(null); }
       }
       atualizarTudo();
+      emailMudou();
     } catch (e) { erroMsg(e); } finally { setOcupado(false); }
   }
 
@@ -357,7 +360,7 @@ export default function Email() {
       <FormCaixa aberto={!!caixaForm} inicial={caixaForm} ini={ini} aoFechar={() => setCaixaForm(null)}
         aoSalvar={(c) => { setCaixaForm(null); setContaId(c.id); setAviso({ tipo: "ok", texto: "Caixa salva." }); carregarInicio(); if (c.id === conta.id) carregarPastas(); }}
         aoRemover={async (c) => {
-          try { await removerCaixa(c.id); setCaixaForm(null); setContaId(null); setAviso({ tipo: "ok", texto: "Caixa desconectada do painel. Os e-mails continuam na caixa." }); carregarInicio(); } catch (e) { erroMsg(e); }
+          try { await removerCaixa(c.id); setCaixaForm(null); setContaId(null); setAviso({ tipo: "ok", texto: "Caixa desconectada do painel. Os e-mails continuam na caixa." }); carregarInicio(); emailMudou(300); } catch (e) { erroMsg(e); }
         }} />
     </div>
   );

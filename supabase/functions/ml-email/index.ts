@@ -10,12 +10,12 @@
 // - a senha da caixa fica cifrada (AES-256-GCM, chave no Vault: ml_email_chave, presa ao id da
 //   conta) e nunca volta para o navegador.
 //
-// Ações: inicio · contaSalvar · contaApagar · pastas · listar · ler · anexo · agir · enviar
+// Ações: naoLidas · inicio · contaSalvar · contaApagar · pastas · listar · ler · anexo · agir · enviar
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, baixarAnexo, agir, smtp,
-  guardarEnviado, marcarRespondida, anexosDoOriginal, type Credencial, type AcaoMensagem,
+  guardarEnviado, marcarRespondida, anexosDoOriginal, naoLidasEntrada, type Credencial, type AcaoMensagem,
 } from "../_shared/email-cliente.ts";
 import { deBase64, paraBase64, emailValido, lerEnderecos, montarMensagem, textoDeHtml } from "../_shared/email-texto.mjs";
 
@@ -146,6 +146,22 @@ Deno.serve(async (req) => {
     };
     const credencial = async (c: ContaEmail): Promise<Credencial> => ({ servidor: SERVIDORES[c.provedor], provedor: c.provedor, email: c.email, senha: await decifrar(c.senha_cifra, c.id) });
     const pasta = () => { const p = txt(body.pasta, 400); if (!p) throw new ErroEmail("Escolha a pasta."); return p; };
+
+    // Bolinha do menu: não lidas da Caixa de entrada de TODAS as caixas da pessoa.
+    // Caixa com problema de acesso não derruba a conta das outras.
+    if (acao === "naoLidas") {
+      const contas = await minhas();
+      if (!contas.length) return json({ ok: true, total: 0, semCaixas: true, porCaixa: [] });
+      const porCaixa = await Promise.all(contas.map(async (c) => {
+        try {
+          const n = await comImap(await credencial(c), (imap) => naoLidasEntrada(imap));
+          return { id: c.id, email: c.email, naoLidas: n };
+        } catch {
+          return { id: c.id, email: c.email, naoLidas: 0, erro: true };
+        }
+      }));
+      return json({ ok: true, total: porCaixa.reduce((s, x) => s + x.naoLidas, 0), porCaixa });
+    }
 
     if (acao === "inicio") {
       const contas = await minhas();

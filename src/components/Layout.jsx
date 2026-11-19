@@ -17,6 +17,7 @@ import Notificacoes from "./Notificacoes.jsx";
 import Avatar from "./tarefas/Avatar.jsx";
 import { nomeCurto } from "../lib/nomes.js";
 import ContadorMensagens from "./mensagens/ContadorMensagens.jsx";
+import ContadorEmail from "./ContadorEmail.jsx";
 import BalaoMensagens from "./mensagens/BalaoMensagens.jsx";
 import VigiaMensagens from "./mensagens/VigiaMensagens.jsx";
 
@@ -110,6 +111,7 @@ function ItensMenu({ sessao, aoNavegar }) {
               <span className="ml-emoji-tile" aria-hidden="true" style={{ "--tile-color": CORES_MODULO[mo.id][0], "--tile-bg": CORES_MODULO[mo.id][1] }}><Icone size={18} strokeWidth={2.2} /></span>
               <span className="ml-menu-text">{mo.rotulo}</span>
               {mo.id === "mensagens" && <ContadorMensagens />}
+              {mo.id === "email" && <ContadorEmail />}
               {mo.externo && <ArrowUpRight size={13} className="ml-external-icon" aria-hidden="true"/>}
             </>;
             return mo.externo ? <a key={mo.id} href={mo.caminho} target="_blank" rel="noopener noreferrer" onClick={aoNavegar} className="ml-menu-link" title={mo.rotulo} aria-label={`${mo.rotulo} (abre em nova aba)`}>{conteudo}</a> :
