@@ -40,9 +40,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Versão FIXA: "latest" faz o setup-cli perguntar ao GitHub qual é a última,
+      # sem login, e esse limite estourou em 19/11/2026 (publicação falhou duas vezes).
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.2.0
 
       - name: Descobrir as funções a publicar
         id: lista
