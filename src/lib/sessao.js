@@ -165,7 +165,9 @@ export function podeAbrir(modulo, sessao = getSessao()) {
   if (sessao.paginas_consulta?.includes("__matriz_v1")) {
     // Finanças abre com qualquer página do financeiro liberada (cada rota confere a sua).
     if (modulo === "financas") return temFinanceiro(sessao.paginas_consulta);
-    return modulo === "inicio" || modulo === "canais" || modulo === "guia" || modulo === "tarefas" || modulo === "mensagens" || modulo === "email" || modulo === "assistente" || sessao.paginas_consulta.includes(modulo) ||
+    // Compras abre para todos: pedir material e acompanhar o que pediu (as
+    // abas de quem compra seguem a matriz, ver podeVerSecao).
+    return modulo === "inicio" || modulo === "compras" || modulo === "canais" || modulo === "guia" || modulo === "tarefas" || modulo === "mensagens" || modulo === "email" || modulo === "assistente" || sessao.paginas_consulta.includes(modulo) ||
       (["compras", "gestao-estoque", "patrimonio", "curva-abc", "laboratorio"].includes(modulo) && sessao.paginas_consulta.some(p => p.startsWith(`${modulo}/`)));
   }
   if (modulo === "financas") return ehDirecao(sessao) || sessao.paginas_consulta?.includes("financas/servicos-gerados") === true;

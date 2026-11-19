@@ -33,6 +33,10 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  normalizarItens, normalizarUrgencia, normalizarSetor, textoQuantidade, gerePedidos,
+  destinatariosSolicitacao, avisoMudanca, rotuloUrgencia, SITUACOES_LOTE, ROTULO_SITUACAO,
+} from "../_shared/compras-solicitacao.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -162,6 +166,19 @@ async function bump(colecao: string) {
     valor: { rev: agora, porColecao: { ...(atual.porColecao ?? {}), [colecao]: agora } },
     atualizado_em: new Date().toISOString(),
   });
+}
+
+// Sino do painel (ml_notificacoes) para Compras › Pedidos. Aviso é conforto:
+// se falhar, a gravação do pedido já aconteceu e não pode ser desfeita por isso.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function avisarCompras(para: string[], titulo: string, corpo: string, refId = "", link = "/compras?aba=pedidos") {
+  const rows = [...new Set(para.filter(Boolean))].map((u) => ({
+    usuario: u, tipo: "compras", titulo, corpo, link,
+    ref_tipo: "compra", ref_id: UUID_RE.test(refId) ? refId : null,
+  }));
+  if (!rows.length) return;
+  const { error } = await sb.from("ml_notificacoes").insert(rows);
+  if (error) console.error("avisarCompras", error);
 }
 
 /* Desativar tem de fechar a porta ANTES de o crachá vencer: a cada chamada
@@ -485,6 +502,10 @@ Deno.serve(async (req) => {
     const podeEditarEstoque = (secao: string) => ehDirecao || (papel === "equipe" && (
       !matrizAtiva || permissoes.includes("gestao-estoque") || permissoes.includes("gestao-estoque/" + secao)
     ));
+
+    // Compras › Pedidos: quem GERE (vê a lista da equipe e muda a situação) e
+    // quem só PEDE e acompanha o que pediu (todo o resto do painel).
+    const gereCompras = gerePedidos({ papel: ehMaquina ? "maquina" : papel, permissoes }) && podeEscreverColecao("compras");
 
     switch (action) {
       case "rev": {
@@ -1102,6 +1123,24 @@ Deno.serve(async (req) => {
         // aqui — dedução depois já produziu 118 falsos positivos na Impresilk.
         registro.atualizadoPor = usuario || "maquina";
         registro.atualizadoEm = new Date().toISOString();
+        // Pedido de compra que veio de uma solicitação: mudou a situação, fica no
+        // histórico e quem pediu é avisado no sino (seja pela seta, pela edição
+        // ou pelo recebimento no estoque).
+        let antesCompra: Record<string, unknown> | null = null;
+        if (colecao === "compras") {
+          const { data: ant } = await sb.from(T_REG).select("registro, apagado").eq("colecao", "compras").eq("id", String(registro.id)).maybeSingle();
+          antesCompra = ant && !ant.apagado ? ant.registro as Record<string, unknown> : null;
+          if (antesCompra) {
+            // Quem pediu não muda por edição: é o carimbo do login.
+            for (const k of ["solicitanteUsuario", "solicitacaoId", "origem"]) {
+              if (antesCompra[k] !== undefined) registro[k] = antesCompra[k];
+            }
+            if (antesCompra.status !== registro.status) {
+              const hist = Array.isArray(antesCompra.historico) ? antesCompra.historico : [];
+              registro.historico = [...hist, { em: registro.atualizadoEm, por: usuario || "maquina", status: registro.status }].slice(-30);
+            }
+          }
+        }
         const { data, error } = await sb
           .from(T_REG)
           .upsert({ colecao, id: String(registro.id), registro, apagado: false, atualizado_em: new Date().toISOString() })
@@ -1109,6 +1148,10 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (error) throw error;
         await bump(colecao);
+        if (antesCompra && antesCompra.status !== registro.status && registro.solicitanteUsuario && registro.solicitanteUsuario !== usuario) {
+          const a = avisoMudanca([registro as { item?: string }], String(registro.status ?? ""), String(registro.motivoRecusa ?? ""));
+          await avisarCompras([String(registro.solicitanteUsuario)], a.titulo, a.corpo, String(registro.solicitacaoId ?? ""), "/compras?aba=minhas");
+        }
         // Devolve o registro COMO FICOU: a tela confere o efeito, não a ausência de erro.
         return resp({ ok: true, registro: data?.registro ?? null });
       }
@@ -1695,6 +1738,113 @@ Deno.serve(async (req) => {
 
         await bump("cfg");
         return resp({ ok: true });
+      }
+
+      // ---------------- Compras › Solicitação de materiais ----------------
+      // Qualquer pessoa do painel pede material. Solicitante, usuário e data
+      // são carimbados AQUI, do crachá — a tela não escolhe quem pediu.
+      case "comprasSolicitar": {
+        if (papel !== "equipe" && papel !== "direcao") return resp({ erro: "Seu acesso só consulta; peça a quem compra.", semPermissao: true }, 403);
+        const { itens, erros } = normalizarItens(body.itens);
+        if (erros.length) return resp({ erro: erros.join(" · ") }, 400);
+        if (!itens.length) return resp({ erro: "Escreva pelo menos um produto." }, 400);
+        const { data: eu, error: eEu } = await sb.from(T_CONTAS).select("nome").eq("usuario", usuario).maybeSingle();
+        if (eEu) throw eEu;
+        const nome = String(eu?.nome ?? usuario);
+        const urgencia = normalizarUrgencia(String(body.urgencia ?? ""));
+        const setor = normalizarSetor(String(body.setor ?? ""));
+        const obs = String(body.obs ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+        const solicitacaoId = crypto.randomUUID();
+        const agora = new Date().toISOString();
+        const data = hojeBR();
+        const linhas = itens.map((it) => {
+          const id = `com-${crypto.randomUUID()}`;
+          return {
+            colecao: "compras", id, apagado: false, atualizado_em: agora,
+            registro: {
+              id, item: it.produto, qtde: textoQuantidade(it.quantidade, it.unidade), quantidade: it.quantidade, unidade: it.unidade,
+              detalhes: it.detalhes, categoria: it.categoria, urgencia, setor,
+              status: "solicitada", solicitante: nome, solicitanteUsuario: usuario, data, dataRecebida: "",
+              fornecedor: "", valor: "", os: "", obs, produtoId: "", ordemId: "", qtdeRecebida: "",
+              origem: "solicitacao", solicitacaoId, historico: [{ em: agora, por: usuario, status: "solicitada" }],
+              criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
+            },
+          };
+        });
+        const { data: gravados, error } = await sb.from(T_REG).insert(linhas).select("registro");
+        if (error) throw error;
+        await bump("compras");
+        const { data: contas } = await sb.from(T_CONTAS).select("usuario,papel,ativo,paginas_consulta");
+        const nomes = itens.map((i) => i.produto);
+        await avisarCompras(
+          destinatariosSolicitacao(contas ?? [], usuario),
+          `Solicitação de material: ${nome.split(" ")[0]} pediu ${itens.length === 1 ? nomes[0] : `${itens.length} itens`}`,
+          [`Urgência ${rotuloUrgencia(urgencia).toLowerCase()}`, setor, itens.length > 1 ? nomes.slice(0, 5).join(", ") + (nomes.length > 5 ? "…" : "") : "", obs].filter(Boolean).join(" · "),
+          solicitacaoId,
+        );
+        return resp({ ok: true, itens: (gravados ?? []).map((g) => g.registro) });
+      }
+
+      // O que EU pedi (qualquer pessoa) + os nomes já pedidos, para o campo
+      // Produto sugerir. Só nomes de produto: quem pediu o quê é da lista de quem compra.
+      case "comprasMinhas": {
+        const { data, error } = await sb.from(T_REG).select("registro, apagado")
+          .eq("colecao", "compras").eq("registro->>solicitanteUsuario", usuario);
+        if (error) throw error;
+        const { data: nomes, error: eNomes } = await sb.from(T_REG).select("registro->>item")
+          .eq("colecao", "compras").eq("apagado", false).order("atualizado_em", { ascending: false }).limit(2000);
+        if (eNomes) throw eNomes;
+        const sugestoes = [...new Set((nomes ?? []).map((n) => String((n as Record<string, unknown>).item ?? "").trim().toLocaleUpperCase("pt-BR")).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, "pt-BR")).slice(0, 500);
+        const itens = (data ?? []).filter((r) => !r.apagado).map((r) => {
+          const c = r.registro as Record<string, unknown>;
+          // A pessoa acompanha o item, não o preço nem o fornecedor.
+          return { id: c.id, item: c.item, detalhes: c.detalhes, qtde: c.qtde, categoria: c.categoria, urgencia: c.urgencia, setor: c.setor,
+            status: c.status, data: c.data, dataRecebida: c.dataRecebida, motivoRecusa: c.motivoRecusa ?? "", criadoEm: c.criadoEm };
+        });
+        return resp({ itens, sugestoes });
+      }
+
+      // Quem compra muda a situação de VÁRIOS de uma vez. Um aviso por pessoa
+      // que pediu, não um por item. "Recebida" não passa por aqui: chegar é
+      // conferido item a item (e pode dar entrada no estoque).
+      case "comprasSituacao": {
+        if (!gereCompras) return resp({ erro: "Só quem compra muda a situação dos pedidos.", semPermissao: true }, 403);
+        const status = String(body.status ?? "");
+        if (!SITUACOES_LOTE.includes(status)) return resp({ erro: "Situação inválida." }, 400);
+        const motivo = String(body.motivo ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+        if (status === "cancelada" && !motivo) return resp({ erro: "Diga o motivo da recusa: quem pediu vai ler." }, 400);
+        const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(String))].slice(0, 200);
+        if (!ids.length) return resp({ erro: "Marque os itens primeiro." }, 400);
+        const { data: atuais, error: eAt } = await sb.from(T_REG).select("id, registro, apagado").eq("colecao", "compras").in("id", ids);
+        if (eAt) throw eAt;
+        const agora = new Date().toISOString();
+        const mudados: Record<string, unknown>[] = [];
+        let ignorados = 0;
+        for (const r of atuais ?? []) {
+          const c = r.registro as Record<string, unknown>;
+          if (r.apagado || c.status === "recebida" || c.status === "cancelada" || c.status === status) { ignorados += 1; continue; }
+          const hist = Array.isArray(c.historico) ? c.historico : [];
+          const novo = { ...c, status, ...(status === "cancelada" ? { motivoRecusa: motivo } : {}),
+            historico: [...hist, { em: agora, por: usuario || "maquina", status, ...(motivo && status === "cancelada" ? { motivo } : {}) }].slice(-30),
+            atualizadoPor: usuario || "maquina", atualizadoEm: agora };
+          const { error } = await sb.from(T_REG).update({ registro: novo, atualizado_em: agora }).eq("colecao", "compras").eq("id", r.id);
+          if (error) throw error;
+          mudados.push(novo);
+        }
+        ignorados += ids.length - (atuais ?? []).length;
+        if (mudados.length) await bump("compras");
+        const porPessoa = new Map<string, Record<string, unknown>[]>();
+        for (const c of mudados) {
+          const u = String(c.solicitanteUsuario ?? "");
+          if (!u || u === usuario) continue;
+          porPessoa.set(u, [...(porPessoa.get(u) ?? []), c]);
+        }
+        for (const [u, lista] of porPessoa) {
+          const a = avisoMudanca(lista as { item?: string }[], status, motivo);
+          await avisarCompras([u], a.titulo, a.corpo, String(lista[0].solicitacaoId ?? ""), "/compras?aba=minhas");
+        }
+        return resp({ ok: true, alterados: mudados.length, ignorados, rotulo: ROTULO_SITUACAO[status] });
       }
 
       /* elenco: porta ESTREITA de propósito. As coleções rh_* são da direção,

@@ -25,7 +25,7 @@ export const PAGINAS_COM_ACESSO_PROPRIO = { gestao: "Liberado na tela Acessos da
 // isolar também as consultas de dados da aba deixaria vazar outras seções.
 export const SUBPAGINAS_PERMISSOES = {
   "gestao-estoque": [["dashboard", "Dashboard"], ["cadastro-insumo", "Cadastro de insumos"], ["entrada-lote", "Entrada de estoque"], ["retirada-baixa", "Saída / baixa"], ["fornecedores", "Fornecedores"], ["etiquetas", "Etiquetas"], ["relatorios", "Relatórios"], ["configuracoes", "Configurações"], ["pedido-compra", "Pedido de compra"]],
-  compras: [["estoque", "Estoque"], ["pedidos", "Pedidos"], ["ordens", "Ordens de compra"], ["retiradas", "Retiradas"]],
+  compras: [["estoque", "Estoque"], ["pedidos", "Pedidos (lista de quem compra)"], ["ordens", "Ordens de compra"], ["retiradas", "Retiradas"]],
   patrimonio: [["inventario", "Inventário"], ["setores", "Por setor"], ["pendencias", "Pendências"]],
   rh: [["gestao", "Visão geral"], ["pessoas", "Pessoas"], ["ferias", "Férias"], ["feedback", "Feedback"], ["exames", "Exames"], ["vencimentos", "Vencimentos"], ["relatorios", "Relatórios"]],
   ponto: [["relatorios", "Conferência"], ["ponto", "Ajustes e fechamento"], ["faltas", "Faltas e abonos"], ["analises", "Relatórios"], ["folha", "Folha mensal"]],
