@@ -1854,10 +1854,9 @@ Deno.serve(async (req) => {
 
       // Excluir ENTRADA do estoque de Compras lançada errado (Léo, 19/11/2026). Não apaga:
       // marca excluida + quem/quando/motivo, o saldo deixa de contar e o extrato mostra riscado.
-      // Só quem edita o estoque: direção, Compras inteiro ou a aba Estoque em Acessos.
+      // SÓ A DIREÇÃO (Léo, 19/11/2026).
       case "comprasExcluirEntrada": {
-        const editaEstoqueCompras = ehDirecao || (papel === "equipe" && (!matrizAtiva || permissoes.includes("compras") || permissoes.includes("compras/estoque")));
-        if (!editaEstoqueCompras) return resp({ erro: "Só quem edita o estoque exclui entrada.", semPermissao: true }, 403);
+        if (!ehDirecao) return resp({ erro: "Só a direção exclui entrada do estoque.", semPermissao: true }, 403);
         const id = String(body.id ?? "");
         const motivo = String(body.motivo ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
         if (!id) return resp({ erro: "Entrada não informada." }, 400);
