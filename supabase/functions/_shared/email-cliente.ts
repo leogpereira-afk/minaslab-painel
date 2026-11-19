@@ -185,6 +185,13 @@ export async function listarPastas(imap: Imap, comContagem = true) {
   return pastas;
 }
 
+// Só o número de não lidas da Caixa de entrada (para a bolinha do menu).
+export async function naoLidasEntrada(imap: Imap) {
+  const s = await imap.cmd('STATUS "INBOX" (UNSEEN)');
+  const st = s.ok ? s.linhas.map((l) => lerLinhaStatus(l, s.literais)).find(Boolean) : null;
+  return st ? st.naoLidas : 0;
+}
+
 async function pastaDoTipo(imap: Imap, tipo: string) {
   const pastas = await listarPastas(imap, false);
   return pastas.find((p) => p.tipo === tipo)?.id || null;
