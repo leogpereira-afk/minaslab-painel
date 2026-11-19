@@ -36,6 +36,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   normalizarItens, normalizarUrgencia, normalizarSetor, textoQuantidade, gerePedidos,
   destinatariosSolicitacao, avisoMudanca, rotuloUrgencia, SITUACOES_LOTE, ROTULO_SITUACAO,
+  normalizarAprovacao, aplicarAprovacao, PODE_APROVAR,
 } from "../_shared/compras-solicitacao.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1800,7 +1801,8 @@ Deno.serve(async (req) => {
           const c = r.registro as Record<string, unknown>;
           // A pessoa acompanha o item, não o preço nem o fornecedor.
           return { id: c.id, item: c.item, detalhes: c.detalhes, qtde: c.qtde, categoria: c.categoria, urgencia: c.urgencia, setor: c.setor,
-            status: c.status, data: c.data, dataRecebida: c.dataRecebida, motivoRecusa: c.motivoRecusa ?? "", criadoEm: c.criadoEm };
+            status: c.status, data: c.data, dataRecebida: c.dataRecebida, motivoRecusa: c.motivoRecusa ?? "", criadoEm: c.criadoEm,
+            qtdeSolicitada: c.qtdeSolicitada ?? "", quantidadeSolicitada: c.quantidadeSolicitada ?? null, quantidade: c.quantidade ?? null };
         });
         return resp({ itens, sugestoes });
       }
@@ -1845,6 +1847,47 @@ Deno.serve(async (req) => {
           await avisarCompras([u], a.titulo, a.corpo, String(lista[0].solicitacaoId ?? ""), "/compras?aba=minhas");
         }
         return resp({ ok: true, alterados: mudados.length, ignorados, rotulo: ROTULO_SITUACAO[status] });
+      }
+
+      // Quem trata compras APROVA itens com a quantidade aprovada (pode ser menor
+      // que a pedida). Reaprovar um item já aprovado ajusta a quantidade. Um aviso
+      // por pessoa que pediu, dizendo quanto foi aprovado.
+      case "comprasAprovar": {
+        if (!gereCompras) return resp({ erro: "Só quem trata compras aprova pedidos.", semPermissao: true }, 403);
+        const { itens, erros } = normalizarAprovacao(body.itens);
+        if (erros.length) return resp({ erro: erros[0] }, 400);
+        if (!itens.length) return resp({ erro: "Marque os itens primeiro." }, 400);
+        const qtdPorId = new Map(itens.map((i) => [i.id, i.quantidade]));
+        const { data: atuais, error: eAt } = await sb.from(T_REG).select("id, registro, apagado").eq("colecao", "compras").in("id", [...qtdPorId.keys()]);
+        if (eAt) throw eAt;
+        const agora = new Date().toISOString();
+        const mudados: Record<string, unknown>[] = [];
+        let ignorados = 0;
+        for (const r of atuais ?? []) {
+          const c = r.registro as Record<string, unknown>;
+          if (r.apagado || !PODE_APROVAR.has(String(c.status))) { ignorados += 1; continue; }
+          const q = qtdPorId.get(String(r.id))!;
+          if (c.status === "aprovada" && Number(c.quantidade) === q) { ignorados += 1; continue; }
+          const hist = Array.isArray(c.historico) ? c.historico : [];
+          const aprovado = aplicarAprovacao(c, q, usuario || "maquina", agora) as Record<string, unknown>;
+          const novo = { ...aprovado, historico: [...hist, { em: agora, por: usuario || "maquina", status: "aprovada", quantidade: aprovado.qtde }].slice(-30), atualizadoPor: usuario || "maquina", atualizadoEm: agora };
+          const { error } = await sb.from(T_REG).update({ registro: novo, atualizado_em: agora }).eq("colecao", "compras").eq("id", r.id);
+          if (error) throw error;
+          mudados.push(novo);
+        }
+        ignorados += qtdPorId.size - (atuais ?? []).length;
+        if (mudados.length) await bump("compras");
+        const porPessoa = new Map<string, Record<string, unknown>[]>();
+        for (const c of mudados) {
+          const u = String(c.solicitanteUsuario ?? "");
+          if (!u || u === usuario) continue;
+          porPessoa.set(u, [...(porPessoa.get(u) ?? []), c]);
+        }
+        for (const [u, lista] of porPessoa) {
+          const a = avisoMudanca(lista as { item?: string }[], "aprovada");
+          await avisarCompras([u], a.titulo, a.corpo, String(lista[0].solicitacaoId ?? ""), "/compras?aba=minhas");
+        }
+        return resp({ ok: true, alterados: mudados.length, ignorados });
       }
 
       /* elenco: porta ESTREITA de propósito. As coleções rh_* são da direção,

@@ -345,6 +345,11 @@ export const comprasSolicitar = (dados) => chamar("comprasSolicitar", dados).the
   return r.itens;
 });
 export const comprasMinhas = () => chamar("comprasMinhas").then((r) => ({ itens: r.itens || [], sugestoes: r.sugestoes || [] }));
+export const comprasAprovar = (itens) => chamar("comprasAprovar", { itens }).then((r) => {
+  if (!r?.ok) throw new Error("O servidor não confirmou a aprovação.");
+  esquecerColecao("compras");
+  return r;
+});
 export const comprasSituacao = (ids, status, motivo = "") => chamar("comprasSituacao", { ids, status, motivo }).then((r) => {
   if (!r?.ok) throw new Error("O servidor não confirmou a mudança de situação.");
   esquecerColecao("compras");
