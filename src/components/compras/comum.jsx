@@ -92,10 +92,15 @@ export function sinalDe(mv) {
    movimentos do produto.
    Produto sem movimento NENHUM não entra no mapa de propósito: "nunca lancei"
    é diferente de "acabou", e a tela precisa dizer coisas diferentes. */
+// ENTRADA EXCLUÍDA (Léo, 19/11/2026): lançada errado, excluída com motivo. Fica no
+// extrato, riscada, para o livro continuar provando o que aconteceu — mas não conta
+// no saldo e não segura o pedido como "já entrou".
+export const movimentoValido = (mv) => !!mv && mv.excluida !== true;
+
 export function resumoEstoque(movs) {
   const mapa = new Map();
   for (const mv of movs || []) {
-    if (!mv?.produtoId) continue;
+    if (!mv?.produtoId || !movimentoValido(mv)) continue;
     let r = mapa.get(mv.produtoId);
     if (!r) {
       r = { saldo: 0, movimentos: 0, ultima: "" };
@@ -137,7 +142,7 @@ export const temValor = (c) => temNumero(c?.valor);
    movimento e quem mostra a "quantidade recebida" precisam responder a mesma
    coisa; três réguas parecidas divergem em silêncio. */
 export const entradaDoPedido = (movs, pedidoId) =>
-  (pedidoId && (movs || []).find((m) => m.pedidoId === pedidoId && m.tipo === "entrada")) || null;
+  (pedidoId && (movs || []).find((m) => m.pedidoId === pedidoId && m.tipo === "entrada" && movimentoValido(m))) || null;
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
 

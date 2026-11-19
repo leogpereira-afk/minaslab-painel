@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import {
   Plus, Pencil, Download, Search, Package, PackagePlus, PackageMinus, MapPin,
-  Boxes, AlertTriangle, HandCoins, Clock, ChevronDown, ChevronRight,
+  Boxes, AlertTriangle, HandCoins, Clock, ChevronDown, ChevronRight, Trash2,
 } from "lucide-react";
 import { dataCurta, dataLonga, diasEntre, moedaCheia, ymdLocal } from "../../lib/format.js";
 import { StatCard, Empty, Modal, Card } from "../ui.jsx";
@@ -21,14 +21,15 @@ import {
 
 const SEM_LOCAL = "__sem_local";
 
-// Uma linha do extrato do produto. O livro é APPEND-ONLY: não há botão de
-// editar nem de apagar aqui de propósito — o conserto de um lançamento errado
-// é um AJUSTE novo, que fica registrado. Livro que se apaga não prova nada.
-function LinhaMovimento({ mv, unidade }) {
+// Uma linha do extrato do produto. O livro não se apaga: saída e ajuste errados se
+// consertam com um AJUSTE novo. ENTRADA lançada errado pode ser EXCLUÍDA (Léo,
+// 19/11/2026) — com motivo; ela continua aqui, riscada, e só deixa de contar no saldo.
+function LinhaMovimento({ mv, unidade, editavel, salvando, aoExcluir }) {
   const sinal = sinalDe(mv);
   const origem = mv.pedidoId ? "recebimento de pedido" : "";
+  const excluida = mv.excluida === true;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2" style={{ borderTop: "1px solid var(--fio-lista)" }}>
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2 ${excluida ? "opacity-70" : ""}`} style={{ borderTop: "1px solid var(--fio-lista)" }}>
       <span className="w-14 shrink-0 text-xs tabular-nums text-slate-500">
         {mv.data ? dataCurta(mv.data) : "sem data"}
       </span>
@@ -39,15 +40,50 @@ function LinhaMovimento({ mv, unidade }) {
         {sinal < 0 ? "−" : "+"}
         {comUnidade(Math.abs(Number(mv.quantidade) || 0), unidade)}
       </span>
-      <span className="min-w-0 flex-1 basis-40 break-words text-xs text-slate-500">
+      <span className={`min-w-0 flex-1 basis-40 break-words text-xs text-slate-500 ${excluida ? "line-through" : ""}`}>
         {[mv.motivo, mv.pessoaNome && `por ${mv.pessoaNome}`, origem, mv.obs].filter(Boolean).join(" · ") ||
           "sem motivo registrado"}
       </span>
+      {excluida && (
+        <span className="basis-full text-xs font-medium text-bad-700 sm:basis-auto">
+          Excluída{mv.excluidaPorNome ? ` por ${mv.excluidaPorNome}` : ""}{mv.excluidaEm ? ` em ${dataCurta(String(mv.excluidaEm).slice(0, 10))}` : ""}{mv.motivoExclusao ? `: ${mv.motivoExclusao}` : ""} — não conta no saldo
+        </span>
+      )}
+      {editavel && !excluida && mv.tipo === "entrada" && (
+        <button type="button" disabled={salvando} onClick={() => aoExcluir(mv)} title="Excluir esta entrada (lançada errado)" aria-label={`Excluir entrada de ${comUnidade(Math.abs(Number(mv.quantidade) || 0), unidade)}`}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-bad-50 hover:text-bad-700">
+          <Trash2 size={14} />
+        </button>
+      )}
     </div>
   );
 }
 
-function LinhaProduto({ salvando, p, editavel, aberto, aoAbrir, extrato, acoes }) {
+function ModalExcluirEntrada({ mv, unidade, produto, salvando, aoConfirmar, aoFechar }) {
+  const [motivo, setMotivo] = useState("");
+  const q = comUnidade(Math.abs(Number(mv.quantidade) || 0), unidade);
+  return (
+    <Modal titulo="Excluir entrada" aberto aoFechar={aoFechar}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (motivo.trim() && !salvando) aoConfirmar(motivo.trim()); }}>
+        <p className="text-sm text-slate-700">
+          Entrada de <b>{q}</b> de <b>{produto}</b>{mv.data ? ` em ${dataCurta(mv.data)}` : ""}. O saldo diminui {q}.
+          A entrada continua no extrato, riscada, com o motivo — não some do histórico.
+        </p>
+        {mv.pedidoId && <p className="rounded-lg bg-warn-50 p-2 text-xs text-warn-800">Esta entrada veio do recebimento de um pedido. O pedido continua como “Recebida”; se precisar, ajuste-o em Pedidos.</p>}
+        <div>
+          <label className="label" htmlFor="exc-motivo">Motivo</label>
+          <textarea id="exc-motivo" className="input" rows={2} maxLength={300} required autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: lancei 100 em vez de 10." />
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={aoFechar}>Voltar</button>
+          <button type="submit" className="btn-primary bg-bad-600 hover:bg-bad-700" disabled={salvando || !motivo.trim()}>{salvando ? "Excluindo…" : "Excluir entrada"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LinhaProduto({ salvando, p, editavel, aberto, aoAbrir, extrato, acoes, aoExcluirEntrada }) {
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: "var(--hairline)" }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -155,7 +191,7 @@ function LinhaProduto({ salvando, p, editavel, aberto, aoAbrir, extrato, acoes }
           ) : (
             <div>
               {extrato.map((mv) => (
-                <LinhaMovimento key={mv.id} mv={mv} unidade={p.unidade} />
+                <LinhaMovimento key={mv.id} mv={mv} unidade={p.unidade} editavel={editavel} salvando={salvando} aoExcluir={(m) => aoExcluirEntrada(m, p)} />
               ))}
             </div>
           )}
@@ -364,6 +400,7 @@ export default function AbaEstoque({
   produtos, movs, resumo, equipe, hojeISO, editavel, salvando,
   formProduto, setFormProduto, formMov, setFormMov, acoes, aoExportar,
 }) {
+  const [excluindo, setExcluindo] = useState(null); // { mv, produto, unidade }
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("");
   const [local, setLocal] = useState("");
@@ -615,11 +652,17 @@ export default function AbaEstoque({
                 aoAbrir={() => setAberto(aberto === p.id ? null : p.id)}
                 extrato={aberto === p.id ? extratoDe(p.id) : []}
                 acoes={acoes}
+                aoExcluirEntrada={(mv, prod) => setExcluindo({ mv, produto: prod.nome, unidade: prod.unidade })}
               />
             ))}
           </div>
         )}
       </Card>
+
+      {excluindo && (
+        <ModalExcluirEntrada {...excluindo} salvando={salvando} aoFechar={() => setExcluindo(null)}
+          aoConfirmar={async (motivo) => { const ok = await acoes.excluirEntrada(excluindo.mv.id, motivo); if (ok) setExcluindo(null); }} />
+      )}
 
       <FormProduto
         form={formProduto}
