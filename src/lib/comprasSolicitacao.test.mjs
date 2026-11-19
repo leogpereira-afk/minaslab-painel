@@ -50,6 +50,10 @@ test("aviso de solicitação nova vai ao responsável; sem responsável, à dire
   assert.deepEqual(destinatariosSolicitacao(contas, "brenda"), ["thayna"]);
   assert.deepEqual(destinatariosSolicitacao(contas, "thayna"), ["ana"]);
   assert.deepEqual(destinatariosSolicitacao(contas.filter((c) => c.usuario !== "thayna"), "brenda"), ["ana"]);
+  // Pedidos liberado para todos (decisão da Ana) não faz de todos "quem trata compras".
+  const comPedidos = [...contas, { usuario: "mariana", papel: "equipe", ativo: true, paginas_consulta: ["__matriz_v1", "compras/pedidos"] }];
+  assert.deepEqual(destinatariosSolicitacao(comPedidos, "brenda"), ["thayna"]);
+  assert.deepEqual(destinatariosSolicitacao([{ usuario: "x", papel: "equipe", ativo: true, paginas_consulta: ["__matriz_v1", "compras/ordens"] }], "brenda"), ["x"]);
 });
 
 test("lista de compras: agrupa por categoria, urgência alta primeiro, depois a mais antiga", () => {

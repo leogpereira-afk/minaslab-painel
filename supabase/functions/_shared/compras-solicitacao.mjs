@@ -88,14 +88,17 @@ export function gerePedidos({ papel, permissoes }) {
   return p.includes("compras") || p.includes("compras/pedidos");
 }
 
-/* Quem recebe o aviso de solicitação nova: quem tem Compras liberado na tela
-   Acessos (o responsável pelo controle). Se ninguém tiver, a direção — aviso
-   que não chega a ninguém é pedido parado sem ninguém saber. */
+/* Quem recebe o aviso de solicitação nova: QUEM TRATA COMPRAS — Compras
+   inteiro, Estoque ou Ordens de compra liberados na tela Acessos (o
+   responsável pelo controle). A aba Pedidos sozinha NÃO conta: a Ana libera
+   Pedidos para todos (é por ela que se pede material), e o aviso iria para a
+   casa inteira. Se ninguém tratar, a direção — aviso que não chega a ninguém
+   é pedido parado sem ninguém saber. */
 export function destinatariosSolicitacao(contas, autor) {
   const ativas = (contas || []).filter((c) => c && c.ativo === true && c.usuario && c.usuario !== autor);
   const responsaveis = ativas.filter((c) => {
     const p = Array.isArray(c.paginas_consulta) ? c.paginas_consulta : [];
-    return c.papel === "equipe" && p.includes("__matriz_v1") && (p.includes("compras") || p.includes("compras/pedidos"));
+    return c.papel === "equipe" && p.includes("__matriz_v1") && ["compras", "compras/estoque", "compras/ordens"].some((x) => p.includes(x));
   });
   const lista = responsaveis.length ? responsaveis : ativas.filter((c) => c.papel === "direcao");
   return [...new Set(lista.map((c) => c.usuario))];
