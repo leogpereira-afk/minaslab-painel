@@ -163,6 +163,12 @@ export const estoqueScanToken = () => chamar("estoqueScanToken", {}).then((r) =>
 export const estoqueScanBuscar = (sid) => chamar("estoqueScanBuscar", { sid });
 export const estoquePedidoAnexoUrl = (pedidoCodigo) => chamar("estoquePedidoAnexoUrl", { pedidoCodigo }).then((r) => r?.url || null);
 
+// Cancelar parte da quantidade, desfazer o último parcial e reativar item cancelado (tudo com motivo e log).
+const acaoPedido = (acao, dados, frase) => chamar(acao, dados).then((r) => { if (!r?.ok) throw new Error(frase); esquecerColecao("estoque_pedidos"); esquecerColecao("estoque_logs_compras"); return r; });
+export const estoquePedidoCancelarParcial = (id, quantidade, motivo, observacao = "", valorNovo = "") => acaoPedido("estoquePedidoCancelarParcial", { id, quantidade, motivo, observacao, valorNovo }, "O servidor não confirmou o cancelamento parcial.");
+export const estoquePedidoDesfazerParcial = (id, motivo) => acaoPedido("estoquePedidoDesfazerParcial", { id, motivo }, "O servidor não confirmou o desfazer.");
+export const estoquePedidoReativar = (id, motivo) => acaoPedido("estoquePedidoReativar", { id, motivo }, "O servidor não confirmou a reativação.");
+
 export const estoquePedidoExcluir = (ids) => chamar("estoquePedidoExcluir", { ids }).then((r) => { if (!r?.ok) throw new Error("O servidor não confirmou a exclusão do pedido."); esquecerColecao("estoque_pedidos"); return r; });
 
 export const estoqueEntrada = (lote, movimento = {}) =>

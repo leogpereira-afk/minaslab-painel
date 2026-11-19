@@ -933,6 +933,35 @@ Deno.serve(async (req) => {
         return resp(data??{ok:true});
       }
 
+      // Cancelar PARTE da quantidade de um item (ex.: pediu 4, cancela 2 e segue
+      // com 2). Desfazer o último parcial e reativar item cancelado: o
+      // engano se conserta pela tela, com motivo, e tudo fica no log do pedido.
+      case "estoquePedidoCancelarParcial":
+      case "estoquePedidoDesfazerParcial":
+      case "estoquePedidoReativar": {
+        if (!podeEditarEstoque("pedido-compra")) return resp({ erro:"Seu acesso lê, mas não edita pedidos.", semPermissao:true },403);
+        if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro:"Você não tem acesso aos pedidos de compra.", semPermissao:true },403);
+        const id=String(body.id??"").trim(); if(!id) return resp({erro:"Item do pedido obrigatório."},400);
+        const quem=usuario||"maquina";
+        let r;
+        if (action==="estoquePedidoCancelarParcial") {
+          const qtd=Number(String(body.quantidade??"").replace(",","."));
+          if(!Number.isFinite(qtd)||qtd<=0) return resp({erro:"Informe quantos quer cancelar."},400);
+          // Valor novo: o digitado (fornecedor cobra diferente) ou, em branco, o proporcional calculado no banco.
+          const vTxt=String(body.valorNovo??"").trim(), vNum=vTxt===""?null:Number(vTxt.replace(",","."));
+          if(vNum!==null&&(!Number.isFinite(vNum)||vNum<0)) return resp({erro:"Novo valor inválido."},400);
+          r=await sb.rpc("ml_estoque_pedido_cancelar_parcial",{p_id:id,p_quantidade:qtd,p_motivo:String(body.motivo??""),p_observacao:String(body.observacao??""),p_usuario:quem,p_valor_novo:vNum});
+        } else if (action==="estoquePedidoDesfazerParcial") {
+          r=await sb.rpc("ml_estoque_pedido_desfazer_parcial",{p_id:id,p_motivo:String(body.motivo??""),p_usuario:quem});
+        } else {
+          r=await sb.rpc("ml_estoque_pedido_reativar",{p_id:id,p_motivo:String(body.motivo??""),p_usuario:quem});
+        }
+        // Erro de regra (motivo curto, quantidade, situação do item) volta como frase para a tela.
+        if(r.error) return resp({erro:String(r.error.message||"Não foi possível concluir.")},409);
+        await bump("estoque_pedidos"); await bump("estoque_logs_compras");
+        return resp(r.data??{ok:true});
+      }
+
       case "estoquePedidoExcluir": {
         if (!podeEditarEstoque("pedido-compra")) return resp({ erro: "Seu acesso lê, mas não edita.", semPermissao: true }, 403);
         if (!podeConsultarColecao("estoque_pedidos")) return resp({ erro: "Você não tem acesso aos pedidos de compra.", semPermissao: true }, 403);
