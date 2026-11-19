@@ -1852,6 +1852,31 @@ Deno.serve(async (req) => {
         return resp({ ok: true, alterados: mudados.length, ignorados, rotulo: ROTULO_SITUACAO[status] });
       }
 
+      // Excluir ENTRADA do estoque de Compras lançada errado (Léo, 19/11/2026). Não apaga:
+      // marca excluida + quem/quando/motivo, o saldo deixa de contar e o extrato mostra riscado.
+      // Só quem edita o estoque: direção, Compras inteiro ou a aba Estoque em Acessos.
+      case "comprasExcluirEntrada": {
+        const editaEstoqueCompras = ehDirecao || (papel === "equipe" && (!matrizAtiva || permissoes.includes("compras") || permissoes.includes("compras/estoque")));
+        if (!editaEstoqueCompras) return resp({ erro: "Só quem edita o estoque exclui entrada.", semPermissao: true }, 403);
+        const id = String(body.id ?? "");
+        const motivo = String(body.motivo ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+        if (!id) return resp({ erro: "Entrada não informada." }, 400);
+        if (!motivo) return resp({ erro: "Diga o motivo da exclusão (fica no extrato)." }, 400);
+        const { data: atual, error: eAt } = await sb.from(T_REG).select("registro, apagado").eq("colecao", "estoque_mov").eq("id", id).maybeSingle();
+        if (eAt) throw eAt;
+        const mv = atual && !atual.apagado ? atual.registro as Record<string, unknown> : null;
+        if (!mv) return resp({ erro: "Esta entrada não está mais no estoque. Recarregue a tela." }, 404);
+        if (mv.tipo !== "entrada") return resp({ erro: "Só entrada pode ser excluída. Saída e ajuste se corrigem com um ajuste novo." }, 400);
+        if (mv.excluida === true) return resp({ erro: "Esta entrada já foi excluída." }, 400);
+        const { data: eu } = await sb.from(T_CONTAS).select("nome").eq("usuario", usuario).maybeSingle();
+        const agora = new Date().toISOString();
+        const novo = { ...mv, excluida: true, excluidaEm: agora, excluidaPor: usuario, excluidaPorNome: String(eu?.nome ?? usuario), motivoExclusao: motivo, atualizadoPor: usuario, atualizadoEm: agora };
+        const { error } = await sb.from(T_REG).update({ registro: novo, atualizado_em: agora }).eq("colecao", "estoque_mov").eq("id", id);
+        if (error) throw error;
+        await bump("estoque_mov");
+        return resp({ ok: true, registro: novo });
+      }
+
       // Quem trata compras APROVA itens com a quantidade aprovada (pode ser menor
       // que a pedida). Reaprovar um item já aprovado ajusta a quantidade. Um aviso
       // por pessoa que pediu, dizendo quanto foi aprovado.

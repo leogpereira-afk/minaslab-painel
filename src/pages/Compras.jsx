@@ -12,7 +12,8 @@
 // AS DECISÕES QUE SUSTENTAM O MÓDULO:
 // - O SALDO É CALCULADO, NUNCA GRAVADO (a conta está em comum.jsx). Saldo num
 //   campo vira segunda verdade que envelhece calada.
-// - `estoque_mov` é APPEND-ONLY: é o livro. Conserto de lançamento errado é um
+// - `estoque_mov` é o livro (não se apaga). ENTRADA errada pode ser marcada como
+//   excluída (com motivo; fica riscada e sai do saldo). O resto se conserta com um
 //   AJUSTE novo, com sinal explícito — livro que se apaga não prova nada.
 // - Pedido não vira estoque sozinho: o recebimento passa por um modal que
 //   confere a quantidade que CHEGOU. Estoque que mente é pior que nenhum.
@@ -25,7 +26,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { listar, salvar, apagar, elenco, comprasSituacao, comprasAprovar } from "../services/dados.js";
+import { listar, salvar, apagar, elenco, comprasSituacao, comprasAprovar, comprasExcluirEntrada } from "../services/dados.js";
 import { getSessao, podeEditar, podeVerSecao } from "../lib/sessao.js";
 import { ymdLocal, paraNumero, dataCurta } from "../lib/format.js";
 import { baixarPlanilha } from "../lib/planilha.js";
@@ -788,6 +789,22 @@ export default function Compras() {
     }
   };
 
+  // ---- excluir entrada lançada errado (fica riscada no extrato, sai do saldo) ----
+  const excluirEntrada = async (id, motivo) => {
+    setSalvando(true);
+    try {
+      await comprasExcluirEntrada(id, motivo);
+      setAviso({ tipo: "ok", texto: "Entrada excluída. Ela continua no extrato, riscada, e não conta mais no saldo." });
+      recarregar();
+      return true;
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   // ---- aprovação: quantidade aprovada por item (o servidor avisa quem pediu) ----
   const aprovarLote = async (itens) => {
     setSalvando(true);
@@ -841,6 +858,7 @@ export default function Compras() {
     removerPedido,
     situacaoLote,
     aprovarLote,
+    excluirEntrada,
     receberVarios,
     // ordens
     abrirOrdem: (id) =>
