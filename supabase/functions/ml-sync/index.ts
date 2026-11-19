@@ -36,7 +36,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   normalizarItens, normalizarUrgencia, normalizarSetor, textoQuantidade, gerePedidos,
   destinatariosSolicitacao, avisoMudanca, rotuloUrgencia, SITUACOES_LOTE, ROTULO_SITUACAO,
-  normalizarAprovacao, aplicarAprovacao, PODE_APROVAR,
+  normalizarAprovacao, aplicarAprovacao, PODE_APROVAR, categoriaDoProdutoEstoque,
 } from "../_shared/compras-solicitacao.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1781,6 +1781,21 @@ Deno.serve(async (req) => {
         const { itens, erros } = normalizarItens(body.itens);
         if (erros.length) return resp({ erro: erros.join(" · ") }, 400);
         if (!itens.length) return resp({ erro: "Escreva pelo menos um produto." }, 400);
+        // Produto escolhido da lista do Estoque: nome, unidade e categoria vêm do CADASTRO.
+        const idsProduto = [...new Set(itens.map((i) => i.produtoId).filter(Boolean))];
+        if (idsProduto.length) {
+          const { data: prods, error: eP } = await sb.from(T_REG).select("id, registro, apagado").eq("colecao", "produtos").in("id", idsProduto);
+          if (eP) throw eP;
+          const porId = new Map((prods ?? []).filter((p) => !p.apagado).map((p) => [String(p.id), p.registro as Record<string, unknown>]));
+          for (const it of itens) {
+            if (!it.produtoId) continue;
+            const p = porId.get(it.produtoId);
+            if (!p || p.ativo === false) return resp({ erro: `"${it.produto}" não está mais cadastrado no Estoque. Escolha de novo na lista.` }, 400);
+            it.produto = String(p.nome ?? it.produto).trim().toLocaleUpperCase("pt-BR").slice(0, 120);
+            it.unidade = String(p.unidade ?? it.unidade).slice(0, 20);
+            it.categoria = categoriaDoProdutoEstoque(String(p.categoria ?? ""));
+          }
+        }
         const { data: eu, error: eEu } = await sb.from(T_CONTAS).select("nome").eq("usuario", usuario).maybeSingle();
         if (eEu) throw eEu;
         const nome = String(eu?.nome ?? usuario);
@@ -1798,7 +1813,7 @@ Deno.serve(async (req) => {
               id, item: it.produto, qtde: textoQuantidade(it.quantidade, it.unidade), quantidade: it.quantidade, unidade: it.unidade,
               detalhes: it.detalhes, categoria: it.categoria, urgencia, setor,
               status: "solicitada", solicitante: nome, solicitanteUsuario: usuario, data, dataRecebida: "",
-              fornecedor: "", valor: "", os: "", obs, produtoId: "", ordemId: "", qtdeRecebida: "",
+              fornecedor: "", valor: "", os: "", obs, produtoId: it.produtoId || "", ordemId: "", qtdeRecebida: "",
               origem: "solicitacao", solicitacaoId, historico: [{ em: agora, por: usuario, status: "solicitada" }],
               criadoEm: agora, atualizadoPor: usuario, atualizadoEm: agora,
             },

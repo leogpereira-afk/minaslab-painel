@@ -19,6 +19,13 @@ export const CATEGORIAS_SOLICITACAO = {
   outros: "Outros",
 };
 
+/* PRODUTO DO ESTOQUE (Léo, 19/11/2026): em "Solicitar material" o colaborador
+   ESCOLHE o produto da lista do Estoque — digitar é só para buscar. O item leva o
+   produtoId, e o nome, a unidade e a categoria vêm do cadastro (o servidor relê).
+   Produto que ainda não está cadastrado pode ser escrito à parte ("não está na lista"). */
+export const CATEGORIA_DO_ESTOQUE = { reagente: "laboratorio", vidraria: "laboratorio", epi: "epi", papelaria: "papelaria", peca: "manutencao", outro: "outros" };
+export const categoriaDoProdutoEstoque = (c) => CATEGORIA_DO_ESTOQUE[c] || "outros";
+
 export const UNIDADES_SOLICITACAO = ["unidade", "caixa", "pacote", "rolo", "frasco", "litro", "fardo", "par", "kit"];
 
 export const URGENCIAS = { alta: "Alta", media: "Média", baixa: "Baixa" };
@@ -51,7 +58,9 @@ export function normalizarItens(lista) {
       erros.push(`${produto}: quantidade inválida`);
       continue;
     }
+    const produtoId = txt(bruto?.produtoId, 80);
     itens.push({
+      ...(produtoId ? { produtoId } : {}),
       produto,
       detalhes: txt(bruto?.detalhes, 200),
       categoria: Object.prototype.hasOwnProperty.call(CATEGORIAS_SOLICITACAO, bruto?.categoria) ? bruto.categoria : "outros",

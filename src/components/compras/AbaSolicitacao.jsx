@@ -7,18 +7,102 @@
 // lista de quem compra. A pessoa acompanha cada item até chegar, e cada
 // mudança de situação chega no sino.
 
-import { useCallback, useMemo, useState } from "react";
-import { Plus, Send, X, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Send, X, RefreshCw, Search, Package, PencilLine } from "lucide-react";
 import { Card, Empty } from "../ui.jsx";
 import { dataCurta, ymdLocal } from "../../lib/format.js";
 import { comprasMinhas, comprasSolicitar } from "../../services/dados.js";
 import {
   CATEGORIAS_SOLICITACAO, UNIDADES_SOLICITACAO, URGENCIAS, SETORES, ROTULO_SITUACAO, ANDAMENTO, textoAprovacao,
-  rotuloUrgencia, MAX_ITENS,
+  rotuloUrgencia, MAX_ITENS, categoriaDoProdutoEstoque,
 } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
+import { comUnidade } from "./comum.jsx";
 
 const K_SETOR = "ml_compras_setor";
-const itemVazio = () => ({ chave: Math.random().toString(36).slice(2), produto: "", detalhes: "", categoria: "outros", quantidade: "1", unidade: "unidade" });
+const itemVazio = () => ({ chave: Math.random().toString(36).slice(2), produtoId: "", livre: false, produto: "", detalhes: "", categoria: "outros", quantidade: "1", unidade: "unidade" });
+const semAcento = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/* PRODUTO DA LISTA (Léo, 19/11/2026): o colaborador escolhe o produto cadastrado no
+   Estoque; digitar só BUSCA. Mostra o saldo para ninguém pedir o que já tem.
+   Produto que ainda não foi cadastrado: "Não está na lista — escrever o nome". */
+function EscolherProduto({ indice, item, produtos, saldoDe, aoEscolher, aoLivre, aoMudarLivre, aoLimpar }) {
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const [ativo, setAtivo] = useState(0);
+  const caixa = useRef(null);
+  const termos = semAcento(busca).split(/\s+/).filter(Boolean);
+  const achados = useMemo(() => produtos.filter((p) => termos.every((t) => semAcento(`${p.nome} ${p.local || ""}`).includes(t))).slice(0, 40), [produtos, busca]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const fora = (e) => { if (caixa.current && !caixa.current.contains(e.target)) setAberto(false); };
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [aberto]);
+  const idLista = `sol-prod-lista-${item.chave}`;
+
+  if (item.produtoId) {
+    const s = saldoDe(item.produtoId);
+    return (
+      <div className="col-span-2 flex min-h-11 items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 lg:col-span-1">
+        <Package size={15} className="shrink-0 text-brand-700" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-900">{item.produto}</span>
+          {s !== null && <span className="block text-[11px] text-slate-500">no estoque: {comUnidade(s, item.unidade)}</span>}
+        </span>
+        <button type="button" className="shrink-0 text-xs font-semibold text-brand-700 hover:underline" onClick={aoLimpar} aria-label={`Trocar o produto do item ${indice + 1}`}>Trocar</button>
+      </div>
+    );
+  }
+  if (item.livre) {
+    return (
+      <div className="col-span-2 flex items-center gap-1 lg:col-span-1">
+        <input aria-label={`Produto do item ${indice + 1} (não está na lista)`} list="sol-sugestoes" className="input" placeholder="Nome do produto que não está na lista" value={item.produto} onChange={aoMudarLivre} maxLength={120} autoFocus />
+        <button type="button" className="grid h-11 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" title="Voltar para a lista" aria-label="Voltar para a lista de produtos" onClick={aoLimpar}><Search size={15} /></button>
+      </div>
+    );
+  }
+  const escolher = (p) => { aoEscolher(p); setBusca(""); setAberto(false); };
+  return (
+    <div ref={caixa} className="relative col-span-2 lg:col-span-1">
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <input
+          role="combobox" aria-expanded={aberto} aria-controls={idLista} aria-autocomplete="list"
+          aria-label={`Produto do item ${indice + 1}: busque e escolha na lista`}
+          className="input pl-9" placeholder={produtos.length ? "Buscar produto do estoque…" : "Nenhum produto cadastrado ainda"}
+          value={busca} onFocus={() => setAberto(true)}
+          onChange={(e) => { setBusca(e.target.value); setAberto(true); setAtivo(0); }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setAberto(true); setAtivo((a) => Math.min(a + 1, achados.length)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setAtivo((a) => Math.max(a - 1, 0)); }
+            else if (e.key === "Enter" && aberto) { e.preventDefault(); if (achados[ativo]) escolher(achados[ativo]); else if (ativo === achados.length) { aoLivre(busca); setAberto(false); } }
+            else if (e.key === "Escape") setAberto(false);
+          }}
+        />
+      </div>
+      {aberto && (
+        <ul id={idLista} role="listbox" className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+          {achados.map((p, k) => {
+            const s = saldoDe(p.id);
+            return (
+              <li key={p.id} role="option" aria-selected={k === ativo} onMouseDown={(e) => { e.preventDefault(); escolher(p); }} onMouseEnter={() => setAtivo(k)}
+                className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm ${k === ativo ? "bg-brand-50" : ""}`}>
+                <Package size={14} className="shrink-0 text-slate-400" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-slate-800">{p.nome}</span>
+                <span className={`shrink-0 text-xs ${s === null ? "text-slate-400" : s > 0 ? "text-ok-700" : "text-bad-700"}`}>{s === null ? "sem saldo lançado" : `tem ${comUnidade(s, p.unidade)}`}</span>
+              </li>
+            );
+          })}
+          {!achados.length && <li className="px-3 py-2 text-sm text-slate-500">{produtos.length ? "Nenhum produto com esse nome." : "O Estoque ainda não tem produtos cadastrados."}</li>}
+          <li role="option" aria-selected={ativo === achados.length} onMouseDown={(e) => { e.preventDefault(); aoLivre(busca); setAberto(false); }} onMouseEnter={() => setAtivo(achados.length)}
+            className={`flex cursor-pointer items-center gap-2 border-t border-slate-100 px-3 py-2 text-sm font-medium text-brand-700 ${ativo === achados.length ? "bg-brand-50" : ""}`}>
+            <PencilLine size={14} aria-hidden="true" /> Não está na lista — escrever o nome{busca.trim() ? ` “${busca.trim()}”` : ""}
+          </li>
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export const COR_URGENCIA = { alta: "text-bad-700 font-semibold", media: "text-warn-700 font-semibold", baixa: "text-slate-500" };
 export const TAG_SITUACAO = {
@@ -63,7 +147,9 @@ export function useMinhasSolicitacoes() {
   return { ...estado, recarregar };
 }
 
-export function SolicitarMaterial({ sessao, sugestoes, aoEnviar, avisar }) {
+export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, aoEnviar, avisar }) {
+  const produtosAtivos = useMemo(() => (produtos || []).filter((p) => p.ativo !== false && p.nome).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR")), [produtos]);
+  const saldoDe = (id) => { const r = saldos?.get?.(id); return r ? r.saldo : null; };
   const [setor, setSetor] = useState(() => {
     try { return localStorage.getItem(K_SETOR) || SETORES[0]; } catch { return SETORES[0]; }
   });
@@ -73,6 +159,7 @@ export function SolicitarMaterial({ sessao, sugestoes, aoEnviar, avisar }) {
   const [enviando, setEnviando] = useState(false);
   const hoje = ymdLocal(new Date());
 
+  const atualizar = (chave, mudanca) => setItens((l) => l.map((it) => (it.chave === chave ? { ...it, ...mudanca } : it)));
   const mudar = (chave, campo) => (e) => setItens((l) => l.map((it) => (it.chave === chave ? { ...it, [campo]: e.target.value } : it)));
   const tirar = (chave) => setItens((l) => (l.length > 1 ? l.filter((it) => it.chave !== chave) : l));
   const preenchidos = itens.filter((it) => it.produto.trim());
@@ -87,7 +174,7 @@ export function SolicitarMaterial({ sessao, sugestoes, aoEnviar, avisar }) {
     try {
       const gravados = await comprasSolicitar({
         setor, urgencia, obs,
-        itens: preenchidos.map(({ produto, detalhes, categoria, quantidade, unidade }) => ({ produto, detalhes, categoria, quantidade, unidade })),
+        itens: preenchidos.map(({ produtoId, produto, detalhes, categoria, quantidade, unidade }) => ({ produtoId, produto, detalhes, categoria, quantidade, unidade })),
       });
       try { localStorage.setItem(K_SETOR, setor); } catch { /* só não lembra o setor */ }
       setItens([itemVazio()]);
@@ -141,14 +228,18 @@ export function SolicitarMaterial({ sessao, sugestoes, aoEnviar, avisar }) {
           </div>
           {itens.map((it, i) => (
             <div key={it.chave} className="grid grid-cols-2 gap-2 rounded-xl border p-2 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_5rem_minmax(0,1.2fr)_2.75rem] lg:border-0 lg:p-0" style={{ borderColor: "var(--hairline)" }}>
-              <input aria-label={`Produto do item ${i + 1}`} list="sol-sugestoes" className="input col-span-2 lg:col-span-1" placeholder="Digite: o painel sugere o que já foi pedido" value={it.produto} onChange={mudar(it.chave, "produto")} maxLength={120} />
+              <EscolherProduto indice={i} item={it} produtos={produtosAtivos} saldoDe={saldoDe}
+                aoEscolher={(p) => atualizar(it.chave, { produtoId: p.id, livre: false, produto: p.nome, unidade: p.unidade || "un", categoria: categoriaDoProdutoEstoque(p.categoria) })}
+                aoLivre={(texto) => atualizar(it.chave, { produtoId: "", livre: true, produto: String(texto || "").toLocaleUpperCase("pt-BR") })}
+                aoMudarLivre={mudar(it.chave, "produto")}
+                aoLimpar={() => atualizar(it.chave, { produtoId: "", livre: false, produto: "", unidade: "unidade", categoria: "outros" })} />
               <input aria-label={`Detalhes do item ${i + 1}`} className="input col-span-2 lg:col-span-1" placeholder="Ex.: tamanho M, 1 L" value={it.detalhes} onChange={mudar(it.chave, "detalhes")} maxLength={200} />
-              <select aria-label={`Categoria do item ${i + 1}`} className="select col-span-2 lg:col-span-1" value={it.categoria} onChange={mudar(it.chave, "categoria")}>
+              <select aria-label={`Categoria do item ${i + 1}`} className="select col-span-2 disabled:bg-slate-50 disabled:text-slate-500 lg:col-span-1" value={it.categoria} onChange={mudar(it.chave, "categoria")} disabled={!!it.produtoId} title={it.produtoId ? "Vem do cadastro do produto" : undefined}>
                 {Object.entries(CATEGORIAS_SOLICITACAO).map(([v, r]) => <option key={v} value={v}>{r}</option>)}
               </select>
               <input aria-label={`Quantidade do item ${i + 1}`} type="number" min="0.001" step="any" inputMode="decimal" className="input" value={it.quantidade} onChange={mudar(it.chave, "quantidade")} />
-              <select aria-label={`Unidade do item ${i + 1}`} className="select" value={it.unidade} onChange={mudar(it.chave, "unidade")}>
-                {UNIDADES_SOLICITACAO.map((u) => <option key={u}>{u}</option>)}
+              <select aria-label={`Unidade do item ${i + 1}`} className="select disabled:bg-slate-50 disabled:text-slate-500" value={it.unidade} onChange={mudar(it.chave, "unidade")} disabled={!!it.produtoId} title={it.produtoId ? "Vem do cadastro do produto" : undefined}>
+                {[...new Set([...(it.produtoId ? [it.unidade] : []), ...UNIDADES_SOLICITACAO])].map((u) => <option key={u}>{u}</option>)}
               </select>
               <button type="button" onClick={() => tirar(it.chave)} disabled={itens.length === 1} className="col-span-2 grid h-11 place-items-center rounded-lg text-slate-500 hover:bg-bad-50 hover:text-bad-700 disabled:opacity-40 lg:col-span-1 lg:w-11" title="Tirar item" aria-label={`Tirar o item ${i + 1}`}>
                 <X size={15} />
