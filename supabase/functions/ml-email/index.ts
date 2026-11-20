@@ -10,11 +10,11 @@
 // - a senha da caixa fica cifrada (AES-256-GCM, chave no Vault: ml_email_chave, presa ao id da
 //   conta) e nunca volta para o navegador.
 //
-// Ações: naoLidas · inicio · contaSalvar · contaApagar · pastas · listar · ler · anexo · agir · enviar
+// Ações: naoLidas · inicio · contaSalvar · contaApagar · pastas · listar · ler · conversa · anexo · agir · enviar
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, baixarAnexo, agir, smtp,
+  SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, lerConversa, baixarAnexo, agir, smtp,
   guardarEnviado, marcarRespondida, anexosDoOriginal, naoLidasEntrada, type Credencial, type AcaoMensagem,
 } from "../_shared/email-cliente.ts";
 import { deBase64, paraBase64, emailValido, lerEnderecos, montarMensagem, textoDeHtml } from "../_shared/email-texto.mjs";
@@ -235,6 +235,12 @@ Deno.serve(async (req) => {
       if (!uid) return json({ erro: "Mensagem inválida." }, 400);
       const m = await comImap(await credencial(c), (imap) => lerMensagem(imap, pasta(), uid, body.marcarLida !== false));
       return json({ ok: true, mensagem: m });
+    }
+
+    if (acao === "conversa") {
+      const c = await pegarConta(body.conta);
+      const mensagens = await comImap(await credencial(c), (imap) => lerConversa(imap, pasta(), txt(body.assunto, 500)));
+      return json({ ok: true, mensagens });
     }
 
     if (acao === "anexo") {

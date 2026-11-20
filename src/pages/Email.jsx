@@ -10,12 +10,12 @@ import {
 } from "lucide-react";
 import { Aviso, CarregandoModulo, ErroModulo, Modal } from "../components/ui.jsx";
 import {
-  iniciarEmail, salvarCaixa, removerCaixa, lerPastas, listarEmails, abrirEmail, baixarAnexoEmail, agirEmail, enviarEmail,
+  iniciarEmail, salvarCaixa, removerCaixa, lerPastas, listarEmails, abrirEmail, conversaEmail, baixarAnexoEmail, agirEmail, enviarEmail,
 } from "../services/email.js";
 import { assinaturaHtml, citacaoHtml } from "../lib/emailAssinatura.js";
 import { emailMudou } from "../lib/emailContador.js";
 import { arvoreDePastas, pastasVisiveis, ancestrais } from "../lib/emailPastas.js";
-import { assuntoResposta, lerEnderecos } from "../../supabase/functions/_shared/email-texto.mjs";
+import { assuntoBase, assuntoResposta, lerEnderecos } from "../../supabase/functions/_shared/email-texto.mjs";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const CORES_CAIXA = ["#0f766e", "#d97706", "#4f6fd8", "#be123c", "#7c3aed", "#0e7490"];
@@ -376,12 +376,12 @@ export default function Email() {
           {!sel && <div className="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400"><div><MailOpen size={40} className="mx-auto mb-2 opacity-40" aria-hidden="true" />Escolha uma mensagem para ler.</div></div>}
           {sel && carregandoMsg && <div className="grid flex-1 place-items-center text-sm text-slate-500"><Loader2 className="animate-spin" aria-label="Abrindo a mensagem" /></div>}
           {sel && aberta && (
-            <Leitura m={aberta} emLinha={emLinha} pasta={pasta} pastasMover={pastasMover} ocupado={ocupado} temArquivo={pastas.some((p) => p.tipo === "arquivo")} temSpam={pastas.some((p) => p.tipo === "spam")}
+            <Leitura key={`${pastaId}|${aberta.uid}`} m={aberta} contaId={conta.id} pastaId={pastaId} emLinha={emLinha} pasta={pasta} pastasMover={pastasMover} ocupado={ocupado} temArquivo={pastas.some((p) => p.tipo === "arquivo")} temSpam={pastas.some((p) => p.tipo === "spam")}
               aoVoltar={() => { setSel(null); setAberta(null); }}
               aoResponder={(modo) => novaEscrita(modo, aberta)}
               aoAgir={(tipo, destino) => agir([aberta.uid], tipo, destino)}
-              aoBaixar={async (a) => {
-                try { const r = await baixarAnexoEmail(conta.id, pastaId, aberta.uid, a.indice); baixarBase64(r.nome, r.tipo, r.base64); } catch (e) { erroMsg(e); }
+              aoBaixar={async (a, origem = { pasta: pastaId, uid: aberta.uid }) => {
+                try { const r = await baixarAnexoEmail(conta.id, origem.pasta, origem.uid, a.indice); baixarBase64(r.nome, r.tipo, r.base64); } catch (e) { erroMsg(e); }
               }} />
           )}
         </section>
@@ -505,9 +505,47 @@ function CorpoMensagem({ html }) {
   return <iframe ref={ref} title="Conteúdo da mensagem" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={doc} onLoad={() => { medir(); setTimeout(medir, 400); setTimeout(medir, 1500); }} className="w-full border-0" style={{ height: altura }} />;
 }
 
-function Leitura({ m, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar }) {
-  const [baixando, setBaixando] = useState(null);
-  const data = m.data ? new Date(m.data).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+// Leitura em conversa (como no webmail): as mensagens com o mesmo assunto (sem Re:/Enc:) — da
+// pasta aberta, da Caixa de entrada e de Enviados — em cartões, da mais antiga para a mais nova.
+// A que foi clicada já vem aberta; as outras mostram só quem, quando e uma prévia, e abrem no clique.
+function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar }) {
+  const chaveDe = (x) => `${x.pasta}|${x.uid}`;
+  const minha = chaveDe({ pasta: pastaId, uid: m.uid });
+  const [conversa, setConversa] = useState(null);
+  const [abertas, setAbertas] = useState(() => new Set([minha]));
+  const [corpos, setCorpos] = useState({});
+  const [carregando, setCarregando] = useState(null);
+  const [erro, setErro] = useState("");
+  const minhaRef = useRef(null);
+
+  useEffect(() => {
+    let vivo = true;
+    conversaEmail(contaId, pastaId, m.assunto).then((l) => vivo && setConversa(l || [])).catch(() => vivo && setConversa([]));
+    return () => { vivo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lista final: a conversa achada no servidor, sempre com a mensagem aberta dentro.
+  const itens = useMemo(() => {
+    const l = (conversa || []).filter((x) => !(x.messageId && m.messageId && x.messageId === m.messageId && chaveDe(x) !== minha));
+    const temMinha = l.some((x) => chaveDe(x) === minha);
+    const todos = temMinha ? l : [...l, { ...m, pasta: pastaId }];
+    return todos.sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
+  }, [conversa]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (itens.length > 1) minhaRef.current?.scrollIntoView({ block: "start" }); }, [itens.length]);
+
+  async function alternar(x) {
+    const k = chaveDe(x);
+    if (abertas.has(k)) { setAbertas((a) => { const n = new Set(a); n.delete(k); return n; }); return; }
+    setAbertas((a) => new Set([...a, k]));
+    if (corpos[k]) return;
+    setCarregando(k); setErro("");
+    try { const c = await abrirEmail(contaId, x.pasta, x.uid); setCorpos((cs) => ({ ...cs, [k]: c })); }
+    catch (e) { setErro(e.message); setAbertas((a) => { const n = new Set(a); n.delete(k); return n; }); }
+    finally { setCarregando(null); }
+  }
+
+  const varias = itens.length > 1;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2 sm:px-5">
@@ -525,30 +563,72 @@ function Leitura({ m, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam,
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-7">
-        <h2 className="mb-3 font-display text-xl font-semibold text-slate-900">{m.assunto || "(sem assunto)"}</h2>
-        <div className="flex items-start gap-3 border-b border-slate-100 pb-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-ink font-semibold text-white">{inicial(m.de)}</span>
-          <div className="min-w-0 flex-1 text-sm">
-            <div className="truncate"><b className="text-slate-800">{nomeOuEmail(m.de)}</b> {m.de?.nome && <span className="text-slate-400">&lt;{m.de.email}&gt;</span>}</div>
-            <div className="truncate text-xs text-slate-500">Para: {listaTexto(m.para) || "—"}{m.cc?.length ? ` · Cc: ${listaTexto(m.cc)}` : ""}</div>
-          </div>
-          <span className="shrink-0 text-xs text-slate-400">{data}</span>
-        </div>
-        <div className="py-3"><CorpoMensagem html={m.html} /></div>
-        {m.anexos?.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-            {m.anexos.map((a) => (
-              <button key={a.indice} type="button" disabled={baixando === a.indice} onClick={async () => { setBaixando(a.indice); await aoBaixar(a); setBaixando(null); }}
-                className="flex w-64 items-center gap-2.5 rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50">
-                <span className="grid h-9 w-8 shrink-0 place-items-center rounded bg-slate-600 text-[9px] font-bold uppercase text-white">{(a.nome.split(".").pop() || "arq").slice(0, 4)}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{a.nome}</span><span className="text-xs text-slate-500">{tamanho(a.tamanho)} · Baixar</span></span>
-                {baixando === a.indice ? <Loader2 size={16} className="animate-spin text-slate-400" /> : <Download size={16} className="text-slate-400" aria-hidden="true" />}
-              </button>
-            ))}
+        <h2 className="font-display text-xl font-semibold text-slate-900">{assuntoBase(m.assunto) || m.assunto || "(sem assunto)"}</h2>
+        <p className="mb-3 mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+          {conversa === null ? <><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Buscando a conversa…</> : `${itens.length} ${itens.length > 1 ? "mensagens" : "mensagem"}`}
+        </p>
+        {erro && <p className="mb-2 rounded-lg bg-bad-50 p-2 text-xs text-bad-700">{erro}</p>}
+        {!varias ? (
+          <CorpoCompleto m={m} aoBaixar={(a) => aoBaixar(a)} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {itens.map((x) => {
+              const k = chaveDe(x), aberto = abertas.has(k), c = k === minha ? m : corpos[k];
+              return (
+                <article key={k} ref={k === minha ? minhaRef : undefined} className={clsx("scroll-mt-2 rounded-xl border bg-white", aberto ? "border-slate-200 shadow-sm" : "border-slate-200 hover:bg-slate-50")}>
+                  {aberto && c ? (
+                    <div className="px-4 pb-3 pt-3">
+                      <CorpoCompleto m={c} aoRecolher={() => alternar(x)} aoBaixar={(a) => aoBaixar(a, { pasta: x.pasta, uid: x.uid })} />
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => alternar(x)} className="block w-full px-4 py-3 text-left" aria-expanded={aberto}>
+                      <span className="flex items-center gap-2">
+                        <b className={clsx("min-w-0 flex-1 truncate text-sm", x.lida === false ? "text-slate-900" : "text-slate-700")}>{nomeOuEmail(x.de)}</b>
+                        {x.temAnexo && <Paperclip size={13} className="shrink-0 text-slate-400" aria-label="Com anexo" />}
+                        <span className="shrink-0 text-xs text-slate-400">{quando(x.data)}</span>
+                        {carregando === k && <Loader2 size={14} className="shrink-0 animate-spin text-slate-400" aria-label="Abrindo" />}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">{x.previa || (x.para?.length ? `Para: ${listaTexto(x.para)}` : "")}</span>
+                    </button>
+                  )}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// Uma mensagem por inteiro: quem mandou, para quem, quando, corpo e anexos.
+function CorpoCompleto({ m, aoBaixar, aoRecolher }) {
+  const [baixando, setBaixando] = useState(null);
+  const data = m.data ? new Date(m.data).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  return (
+    <>
+      <div className={clsx("flex items-start gap-3 border-b border-slate-100 pb-3", aoRecolher && "cursor-pointer")} onClick={aoRecolher} title={aoRecolher ? "Recolher" : undefined}>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-ink font-semibold text-white">{inicial(m.de)}</span>
+        <div className="min-w-0 flex-1 text-sm">
+          <div className="truncate"><b className="text-slate-800">{nomeOuEmail(m.de)}</b> {m.de?.nome && <span className="text-slate-400">&lt;{m.de.email}&gt;</span>}</div>
+          <div className="truncate text-xs text-slate-500">Para: {listaTexto(m.para) || "—"}{m.cc?.length ? ` · Cc: ${listaTexto(m.cc)}` : ""}</div>
+        </div>
+        <span className="shrink-0 text-xs text-slate-400">{data}</span>
+      </div>
+      <div className="py-3"><CorpoMensagem html={m.html} /></div>
+      {m.anexos?.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+          {m.anexos.map((a) => (
+            <button key={a.indice} type="button" disabled={baixando === a.indice} onClick={async () => { setBaixando(a.indice); await aoBaixar(a); setBaixando(null); }}
+              className="flex w-64 items-center gap-2.5 rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50">
+              <span className="grid h-9 w-8 shrink-0 place-items-center rounded bg-slate-600 text-[9px] font-bold uppercase text-white">{(a.nome.split(".").pop() || "arq").slice(0, 4)}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{a.nome}</span><span className="text-xs text-slate-500">{tamanho(a.tamanho)} · Baixar</span></span>
+              {baixando === a.indice ? <Loader2 size={16} className="animate-spin text-slate-400" /> : <Download size={16} className="text-slate-400" aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

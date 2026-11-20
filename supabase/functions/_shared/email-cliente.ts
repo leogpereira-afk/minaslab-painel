@@ -4,7 +4,7 @@
 import PostalMime from "https://esm.sh/postal-mime@2.4.4";
 import {
   aspas, conjuntoUids, deBase64, lerLinhaFetch, lerLinhaList, lerLinhaStatus, lerSearch, limparHtml,
-  htmlDeTexto, organizarPastas, pastaDecodificar, paraBase64, resumoDaMensagem, lerEnderecos, dataIso,
+  htmlDeTexto, organizarPastas, assuntoBase, mesmaConversa, textoDeHtml, lerCabecalhos, pastaDecodificar, paraBase64, resumoDaMensagem, lerEnderecos, dataIso,
 } from "./email-texto.mjs";
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -299,6 +299,54 @@ export async function lerMensagem(imap: Imap, pasta: string, uid: number, marcar
     anexos: anexos.map((a, i) => ({ indice: i, nome: a.filename || `anexo-${i + 1}`, tipo: a.mimeType, tamanho: tamanhoDe(a.content), oculto: embutidos.has(a) }))
       .filter((a) => !a.oculto).map(({ oculto: _o, ...a }) => a),
   };
+}
+
+// Conversa: as mensagens com o mesmo assunto (sem Re:/Enc:) na pasta aberta, na Caixa de
+// entrada e em Enviados — como o webmail mostra "3 mensagens" ao abrir um e-mail.
+// Volta só o resumo de cada uma (quem, quando, prévia); o corpo é aberto ao clicar.
+const MAX_CONVERSA = 30;
+export async function lerConversa(imap: Imap, pastaAtual: string, assunto: string) {
+  const base = assuntoBase(assunto);
+  if (!base) return [];
+  const todas = await listarPastas(imap, false);
+  const ids = [pastaAtual, ...todas.filter((p) => p.tipo === "entrada" || p.tipo === "enviados").map((p) => p.id)];
+  const termo = base.slice(0, 120);
+  const utf8 = !/^[\x20-\x7e]*$/.test(termo);
+  const achadas: Record<string, unknown>[] = [];
+  const vistos = new Set<string>();
+  for (const pasta of [...new Set(ids)]) {
+    const sel = await imap.cmd("EXAMINE ", ...nomeCmd(pasta));
+    if (!sel.ok) continue;
+    const s = await imap.cmd("UID SEARCH", ...(utf8 ? [" CHARSET UTF-8 SUBJECT ", "", enc.encode(termo)] : [" SUBJECT ", aspas(termo)]));
+    if (!s.ok) continue;
+    const uids = lerSearch(s.linhas).slice(0, MAX_CONVERSA);
+    if (!uids.length) continue;
+    const r = await imap.ok(`UID FETCH ${conjuntoUids(uids)} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE CONTENT-TYPE MESSAGE-ID)] BODY.PEEK[]<0.32768>)`);
+    for (const l of r.linhas) {
+      const f = lerLinhaFetch(l, r.literais);
+      if (!f?.uid) continue;
+      const cabBytes = f.corpos.find((c: { secao: string }) => c.secao.startsWith("HEADER"))?.bytes || new Uint8Array();
+      const resumo = resumoDaMensagem({ ...f, corpos: [{ secao: "HEADER", bytes: cabBytes }] });
+      if (!mesmaConversa(resumo.assunto, assunto)) continue;
+      const mid = ((lerCabecalhos(cabBytes)["message-id"] || "").match(/<[^>]+>/) || [""])[0];
+      const chave = mid || `${resumo.data}|${resumo.de.email}`;
+      const daqui = pasta === pastaAtual;
+      if (vistos.has(chave)) { if (!daqui) continue; } // mesma mensagem em duas pastas: fica a da pasta aberta
+      vistos.add(chave);
+      let previa = "";
+      try {
+        const parcial = f.corpos.find((c: { secao: string }) => c.secao === "")?.bytes;
+        if (parcial) { const m = await new PostalMime().parse(parcial); previa = (m.text || textoDeHtml(m.html || "")).replace(/\s+/g, " ").trim().slice(0, 220); }
+      } catch { /* sem prévia */ }
+      const i = achadas.findIndex((x) => x.chave === chave);
+      const item = { ...resumo, pasta, chave, previa };
+      if (i >= 0) achadas[i] = item; else achadas.push(item);
+    }
+  }
+  return achadas
+    .sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")))
+    .slice(-MAX_CONVERSA)
+    .map(({ chave: _c, ...x }) => x);
 }
 
 export async function baixarAnexo(imap: Imap, pasta: string, uid: number, indice: number) {
