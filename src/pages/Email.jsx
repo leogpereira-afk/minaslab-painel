@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
-  Archive, ArrowLeft, Bold, ChevronLeft, ChevronRight, Columns2, Download, FileText, Folder, Forward, Inbox, Italic, Link2, List, Loader2, Mail,
+  Archive, ArrowLeft, Bold, ChevronDown, ChevronLeft, ChevronRight, Columns2, Download, FileText, Folder, Folders, Forward, Inbox, Italic, Link2, List, Loader2, Mail,
   MailOpen, Paperclip, Pencil, Plus, RefreshCw, Reply, ReplyAll, Rows3, Search, Send, Settings2, ShieldAlert, Star, Trash2, Underline, X,
 } from "lucide-react";
 import { Aviso, CarregandoModulo, ErroModulo, Modal } from "../components/ui.jsx";
@@ -14,6 +14,7 @@ import {
 } from "../services/email.js";
 import { assinaturaHtml, citacaoHtml } from "../lib/emailAssinatura.js";
 import { emailMudou } from "../lib/emailContador.js";
+import { arvoreDePastas, pastasVisiveis, ancestrais } from "../lib/emailPastas.js";
 import { assuntoBase, assuntoResposta, lerEnderecos } from "../../supabase/functions/_shared/email-texto.mjs";
 
 const BASE = import.meta.env.BASE_URL || "/";
@@ -22,6 +23,7 @@ const ICONE_PASTA = { entrada: Inbox, enviados: Send, rascunhos: FileText, lixei
 const LIMITE_ANEXOS = 18 * 1024 * 1024;
 const LEMBRAR = "ml-email-caixa";
 const LEMBRAR_LAYOUT = "ml-email-layout";
+const LEMBRAR_ABERTAS = "ml-email-pastas-abertas:"; // + id da caixa
 
 const lerLocal = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const gravarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
@@ -86,6 +88,25 @@ export default function Email() {
   const conta = contas.find((c) => c.id === contaId) || contas[0] || null;
   const corDe = (id) => CORES_CAIXA[Math.max(0, contas.findIndex((c) => c.id === id)) % CORES_CAIXA.length];
   const pasta = pastas.find((p) => p.id === pastaId) || null;
+  const { sistema: pastasSistema, arvore } = useMemo(() => arvoreDePastas(pastas), [pastas]);
+  // Pastas com subpastas: começam fechadas; o que a pessoa abre fica lembrado por caixa.
+  const [abertas, setAbertas] = useState(() => new Set());
+  useEffect(() => {
+    if (!conta?.id) return;
+    try { setAbertas(new Set(JSON.parse(lerLocal(LEMBRAR_ABERTAS + conta.id) || "[]"))); } catch { setAbertas(new Set()); }
+  }, [conta?.id]);
+  const alternarPasta = (chave) => setAbertas((a) => {
+    const n = new Set(a);
+    if (n.has(chave)) n.delete(chave); else n.add(chave);
+    if (conta?.id) gravarLocal(LEMBRAR_ABERTAS + conta.id, JSON.stringify([...n]));
+    return n;
+  });
+  // A pasta atual nunca fica escondida dentro de uma mãe fechada.
+  useEffect(() => {
+    const falta = ancestrais(arvore, pastaId).filter((c) => !abertas.has(c));
+    if (falta.length) setAbertas((a) => new Set([...a, ...falta]));
+  }, [arvore, pastaId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nomeDaPasta = (id) => arvore.find((p) => p.id === id)?.caminho || pastas.find((p) => p.id === id)?.rotulo || "";
   const erroMsg = (e) => setAviso({ tipo: "erro", texto: e?.message || String(e) });
 
   const carregarInicio = useCallback(async () => {
@@ -154,8 +175,9 @@ export default function Email() {
       if (sai) {
         if (uids.includes(sel)) { setSel(null); setAberta(null); }
         setMarcados(new Set());
-        const textos = { excluir: "Excluída", arquivar: "Arquivada", spam: "Marcada como spam", mover: "Movida" };
-        setAviso({ tipo: "ok", texto: `${textos[tipo]}${uids.length > 1 ? `s ${uids.length} mensagens` : ""}.` });
+        const textos = { excluir: ["Excluída", "excluídas"], arquivar: ["Arquivada", "arquivadas"], spam: ["Marcada como spam", "marcadas como spam"], mover: ["Movida", "movidas"] };
+        const para = tipo === "mover" && nomeDaPasta(destino) ? ` para "${nomeDaPasta(destino)}"` : "";
+        setAviso({ tipo: "ok", texto: uids.length > 1 ? `${uids.length} mensagens ${textos[tipo][1]}${para}.` : `${textos[tipo][0]}${para}.` });
       } else {
         const muda = { lido: { lida: true }, naoLido: { lida: false }, estrela: { estrela: true }, semEstrela: { estrela: false } }[tipo];
         setLista((l) => l && { ...l, mensagens: l.mensagens.map((x) => (uids.includes(x.uid) ? { ...x, ...muda } : x)) });
@@ -220,7 +242,13 @@ export default function Email() {
   const totalPaginas = lista ? Math.max(1, Math.ceil(lista.total / lista.porPagina)) : 1;
   const todosMarcados = msgs.length > 0 && msgs.every((m) => marcados.has(m.uid));
   const marcadosArr = [...marcados];
-  const pastasMover = pastas.filter((p) => p.id !== pastaId && !["estrela", "todos", "rascunhos"].includes(p.tipo));
+  // "Mover para…": pastas do sistema que aceitam mensagem + a árvore inteira (com recuo).
+  // A pasta atual e os agrupadores (\Noselect) aparecem, mas desativados, para não quebrar a árvore.
+  const pastasMover = [
+    ...pastasSistema.filter((p) => p.id !== pastaId && !["estrela", "todos", "rascunhos"].includes(p.tipo)),
+    ...arvore.map((p) => ({ ...p, desativada: p.virtual || p.id === pastaId })),
+  ];
+  const abrirPasta = (id) => { setPastaId(id); setPagina(1); setSel(null); setAberta(null); setMarcados(new Set()); };
 
   return (
     <div className="email-app flex h-[calc(100dvh-6rem)] min-h-[520px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100dvh-5.25rem)]">
@@ -258,23 +286,26 @@ export default function Email() {
           <button type="button" className="btn-primary mb-3 h-11 w-full justify-center rounded-xl" onClick={() => novaEscrita("novo")}><Pencil size={16} aria-hidden="true" /> Escrever</button>
           {erroPastas && <p className="rounded-lg bg-bad-50 p-2 text-xs text-bad-700">{erroPastas} <button type="button" className="underline" onClick={() => carregarPastas()}>tentar de novo</button></p>}
           {!pastas.length && !erroPastas && <p className="flex items-center gap-2 p-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin" /> Abrindo a caixa…</p>}
-          {pastas.map((p, i) => {
+          {pastasSistema.map((p) => {
             const Ic = ICONE_PASTA[p.tipo] || Folder;
-            const primeiraSua = !p.tipo && (i === 0 || pastas[i - 1].tipo);
             return (
-              <div key={p.id}>
-                {primeiraSua && <p className="mb-1 mt-3 px-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">PASTAS</p>}
-                <button type="button" onClick={() => { setPastaId(p.id); setPagina(1); setSel(null); setAberta(null); setMarcados(new Set()); }}
-                  className={clsx("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm", p.id === pastaId ? "bg-brand-50 font-semibold text-brand-800" : "text-slate-600 hover:bg-white")}>
-                  <Ic size={16} className="shrink-0 opacity-70" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{p.rotulo}</span>
-                  {p.naoLidas > 0 && p.tipo !== "enviados" && p.tipo !== "lixeira" && (
-                    <span className={clsx("rounded-full px-1.5 text-[11px] font-semibold", p.tipo === "entrada" ? "bg-brand-600 text-white" : "text-slate-500")}>{p.naoLidas}</span>
-                  )}
-                </button>
-              </div>
+              <button key={p.id} type="button" onClick={() => abrirPasta(p.id)}
+                className={clsx("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm", p.id === pastaId ? "bg-brand-50 font-semibold text-brand-800" : "text-slate-600 hover:bg-white")}>
+                <Ic size={16} className="shrink-0 opacity-70" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{p.rotulo}</span>
+                {p.naoLidas > 0 && p.tipo !== "enviados" && p.tipo !== "lixeira" && (
+                  <span className={clsx("rounded-full px-1.5 text-[11px] font-semibold", p.tipo === "entrada" ? "bg-brand-600 text-white" : "text-slate-500")}>{p.naoLidas}</span>
+                )}
+              </button>
             );
           })}
+          {arvore.length > 0 && <p className="mb-1 mt-3 px-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">PASTAS</p>}
+          <ul role="tree" aria-label="Suas pastas" className="flex flex-col gap-0.5">
+            {pastasVisiveis(arvore, abertas).map((p) => (
+              <ItemArvore key={p.chave} p={p} aberta={abertas.has(p.chave)} atual={p.id && p.id === pastaId}
+                aoAlternar={() => alternarPasta(p.chave)} aoAbrir={() => (p.virtual ? alternarPasta(p.chave) : abrirPasta(p.id))} />
+            ))}
+          </ul>
           <p className="mb-1 mt-4 px-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">MINHAS CAIXAS</p>
           {contas.map((c) => (
             <button key={c.id} type="button" onClick={() => setContaId(c.id)} title={c.email}
@@ -308,7 +339,8 @@ export default function Email() {
               <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
                 <button type="button" className="btn-primary h-8 shrink-0 px-2.5 text-xs lg:hidden" onClick={() => novaEscrita("novo")}><Pencil size={14} aria-hidden="true" /> Escrever</button>
                 <select className="input h-8 min-w-[8rem] py-0 text-xs lg:hidden" aria-label="Pasta" value={pastaId} onChange={(e) => { setPastaId(e.target.value); setPagina(1); }}>
-                  {pastas.map((p) => <option key={p.id} value={p.id}>{p.rotulo}{p.naoLidas ? ` (${p.naoLidas})` : ""}</option>)}
+                  {pastasSistema.map((p) => <option key={p.id} value={p.id}>{p.rotulo}{p.naoLidas ? ` (${p.naoLidas})` : ""}</option>)}
+                  {arvore.map((p) => <option key={p.chave} value={p.id || ""} disabled={p.virtual}>{recuo(p.nivel)}{p.nome}{p.naoLidas ? ` (${p.naoLidas})` : ""}</option>)}
                 </select>
                 {[["naoLidas", "Não lidas"], ["comAnexo", "Com anexo"]].map(([k, r]) => (
                   <button key={k} type="button" onClick={() => { setPagina(1); setFiltro((f) => ({ ...f, [k]: !f[k] })); }}
@@ -375,13 +407,44 @@ function BotaoIcone({ titulo, icone: Ic, onClick, desativado, perigo, girando })
   );
 }
 
+// Recuo das subpastas dentro de um <select> (o navegador não deixa estilizar <option>).
+const recuo = (nivel) => "\u00a0\u00a0\u00a0\u00a0".repeat(nivel);
+
+// Uma linha da árvore de pastas: setinha (abre/fecha) + pasta. Fechada, mostra as não lidas
+// das subpastas somadas, para nada ficar escondido.
+function ItemArvore({ p, aberta, atual, aoAlternar, aoAbrir }) {
+  const naoLidas = p.temFilhos && !aberta ? p.naoLidasTotal : p.naoLidas || 0;
+  const Ic = p.temFilhos ? Folders : Folder;
+  return (
+    <li role="treeitem" aria-level={p.nivel + 1} aria-expanded={p.temFilhos ? aberta : undefined} aria-selected={!!atual}>
+      <div className={clsx("group flex w-full items-center rounded-lg text-sm", atual ? "bg-brand-50 font-semibold text-brand-800" : "text-slate-600 hover:bg-white")}
+        style={{ paddingLeft: `${p.nivel * 14}px` }}>
+        {p.temFilhos ? (
+          <button type="button" onClick={aoAlternar} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:text-slate-700"
+            aria-label={`${aberta ? "Fechar" : "Abrir"} ${p.nome}`} title={aberta ? "Fechar" : "Abrir subpastas"}>
+            <ChevronDown size={15} className={clsx("transition-transform", !aberta && "-rotate-90")} aria-hidden="true" />
+          </button>
+        ) : <span className="w-6 shrink-0" aria-hidden="true" />}
+        <button type="button" onClick={aoAbrir} title={p.caminho}
+          className={clsx("flex min-w-0 flex-1 items-center gap-2 py-2 pr-2.5 text-left", p.virtual && "text-slate-500")}>
+          <Ic size={16} className="shrink-0 opacity-70" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{p.nome}</span>
+          {naoLidas > 0 && <span className="rounded-full px-1.5 text-[11px] font-semibold text-slate-500">{naoLidas}</span>}
+        </button>
+      </div>
+    </li>
+  );
+}
+
 function SeletorMover({ pastas, aoEscolher, desativado, rotulo = false }) {
   return (
     <label className={clsx("relative inline-flex items-center", rotulo ? "btn-outline h-9 gap-1.5 px-3 text-sm" : "h-8 w-8 justify-center rounded-lg text-slate-500 hover:bg-slate-100")} title="Mover para…">
       <Folder size={16} aria-hidden="true" />{rotulo && <span>Mover para…</span>}
       <select className="absolute inset-0 cursor-pointer opacity-0" aria-label="Mover para a pasta" value="" disabled={desativado} onChange={(e) => e.target.value && aoEscolher(e.target.value)}>
         <option value="">Mover para…</option>
-        {pastas.map((p) => <option key={p.id} value={p.id}>{p.rotulo}</option>)}
+        {pastas.map((p) => (
+          <option key={p.chave || p.id} value={p.id || ""} disabled={p.desativada}>{p.chave ? `${recuo(p.nivel)}${p.nome}` : p.rotulo}</option>
+        ))}
       </select>
     </label>
   );
