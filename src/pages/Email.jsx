@@ -149,6 +149,7 @@ export default function Email() {
       const r = await listarEmails(conta.id, pastaId, pagina, filtro);
       if (v !== versaoLista.current) return;
       setLista(r); setErroLista("");
+      return r;
     } catch (e) {
       if (v === versaoLista.current && !silencioso) setErroLista(e.message);
     } finally { if (v === versaoLista.current) setCarregandoLista(false); }
@@ -162,6 +163,19 @@ export default function Email() {
   }, [carregarLista, carregarPastas, escrita]);
 
   const atualizarTudo = () => { carregarLista(); carregarPastas(true); };
+  // Botão Atualizar: confere a caixa agora e diz se chegou coisa nova.
+  const [atualizando, setAtualizando] = useState(false);
+  async function atualizarAgora() {
+    if (atualizando) return;
+    const antes = Math.max(0, ...msgs.map((m) => m.uid));
+    setAtualizando(true);
+    try {
+      const [r] = await Promise.all([carregarLista(), carregarPastas(true)]);
+      if (!r) return;
+      const novos = antes ? (r.mensagens || []).filter((m) => m.uid > antes).length : 0;
+      setAviso({ tipo: "ok", texto: novos ? `${novos} ${novos > 1 ? "e-mails novos" : "e-mail novo"}.` : "Caixa atualizada. Nenhum e-mail novo." });
+    } finally { setAtualizando(false); }
+  }
 
   async function abrir(m) {
     setSel(m.uid); setAberta(null); setCarregandoMsg(true);
@@ -361,7 +375,11 @@ export default function Email() {
                 ))}
               </div>
             )}
-            <BotaoIcone titulo="Atualizar" icone={RefreshCw} onClick={atualizarTudo} girando={carregandoLista} />
+            <button type="button" onClick={atualizarAgora} disabled={atualizando} title="Buscar e-mails novos agora"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60">
+              <RefreshCw size={14} className={atualizando || carregandoLista ? "animate-spin" : ""} aria-hidden="true" />
+              <span className="hidden sm:inline">{atualizando ? "Atualizando…" : "Atualizar"}</span>
+            </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {erroLista && <div className="m-3 rounded-lg bg-bad-50 p-3 text-sm text-bad-700">{erroLista} <button type="button" className="underline" onClick={() => carregarLista()}>Tentar de novo</button></div>}
