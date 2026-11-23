@@ -263,3 +263,20 @@ export function resumoLeitura(post, canal, leituras, eu, { moderar = false, nome
   }
   return out;
 }
+
+/* Publicação do Destaque do mês no mural (botão "Salvar e postar no mural").
+   Com foto, a foto é a arte; sem foto, capa amarela. */
+const MESES_NOME = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+export function postDoDestaque(d, temFoto = false) {
+  const nome = primeiroEUltimo(d?.nome) || String(d?.nome ?? "").trim();
+  const mes = MESES_NOME[Number(String(d?.mes ?? "").slice(5, 7)) - 1] || "";
+  const linhas = (d?.itens || []).map((i) => `• ${i.rotulo ? `${i.rotulo}: ` : ""}${i.texto}`);
+  const texto = [`Parabéns, ${nome}! Você é o destaque${mes ? ` de ${mes}` : " do mês"} da MinasLab. Obrigado pela dedicação!`, linhas.length ? linhas.join("\n") : "", "Deixe aqui o seu recado de parabéns!"].filter(Boolean).join("\n\n");
+  return {
+    tipo: "noticia",
+    titulo: `Destaque do mês${mes ? ` de ${mes}` : ""}: ${nome}`.slice(0, 160),
+    texto,
+    fixado: false,
+    visual: temFoto ? { cor: "amarelo" } : { estilo: "capa", cor: "amarelo", destaque: "Destaque do mês" },
+  };
+}

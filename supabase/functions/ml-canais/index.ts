@@ -25,7 +25,7 @@ import {
   hojeSP, aniversariantesDoMes, parabensRecentes, informativoFerias, ehRefAniversario,
   validarPost, validarComentario, naCasa, nomeCurto, validarDestaque, normNome,
   lerFoto, ehFotoGuardada,
-  papelNoCanal, podeMexerNoPost, pessoasDoCanal, validarCanal, resumoLeitura,
+  papelNoCanal, podeMexerNoPost, pessoasDoCanal, validarCanal, resumoLeitura, postDoDestaque,
 } from "./regras.mjs";
 const BUCKET = "ml-arquivos";
 
@@ -490,7 +490,25 @@ async function salvarDestaque(c: Ctx, b: any) {
   const v = validarDestaque(b);
   if (!v.ok) erro(400, v.erro);
   await gravarConfig({ destaque: v.destaque });
-  return { ok: true };
+  if (!b.postar || !v.destaque) return { ok: true };
+
+  // "Salvar e postar no mural": publica também no feed do mural geral, com a foto se houver.
+  const d = await destaqueComFoto(v.destaque);
+  let imagem = "";
+  if (d?.foto) {
+    const f = lerFoto(d.foto);
+    if (f.ok) {
+      const caminho = `canais/${crypto.randomUUID()}.${f.ext}`;
+      const bin = Uint8Array.from(atob(f.base64), (ch) => ch.charCodeAt(0));
+      const { error: eu } = await sb.storage.from(BUCKET).upload(caminho, bin, { contentType: f.mime, upsert: false });
+      if (eu) console.error("foto destaque", eu); else imagem = caminho;
+    }
+  }
+  const post = { ...postDoDestaque(v.destaque, !!imagem), imagem };
+  const { data, error } = await sb.from("ml_canais_posts").insert({ ...post, autor: c.eu, autor_nome: c.nome }).select("id").single();
+  if (error) throw error;
+  await notificar(c, [...c.nomes.keys()], { titulo: "Destaque do mês no Canais MinasLab", corpo: post.titulo, link: linkPost(data.id), refId: data.id });
+  return { ok: true, postId: data.id };
 }
 
 const ACOES: Record<string, (c: Ctx, b: any) => Promise<unknown>> = {
