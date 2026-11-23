@@ -15,6 +15,7 @@ import {
 import { assinaturaHtml, citacaoHtml } from "../lib/emailAssinatura.js";
 import { emailMudou } from "../lib/emailContador.js";
 import { arvoreDePastas, pastasVisiveis, ancestrais } from "../lib/emailPastas.js";
+import { tipoPrevia, mimeDaPrevia, lerXlsx, lerDocx, textoDe } from "../lib/anexoPrevia.js";
 import { assuntoBase, assuntoResposta, lerEnderecos } from "../../supabase/functions/_shared/email-texto.mjs";
 
 const BASE = import.meta.env.BASE_URL || "/";
@@ -47,9 +48,13 @@ function arquivoParaBase64(f) {
     r.readAsDataURL(f);
   });
 }
-function baixarBase64(nome, tipo, b64) {
+function bytesDeBase64(b64) {
   const bin = atob(b64), u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+function baixarBase64(nome, tipo, b64) { baixarBytes(nome, tipo, bytesDeBase64(b64)); }
+function baixarBytes(nome, tipo, u) {
   const url = URL.createObjectURL(new Blob([u], { type: tipo || "application/octet-stream" }));
   const a = document.createElement("a");
   a.href = url; a.download = nome || "anexo"; document.body.appendChild(a); a.click(); a.remove();
@@ -88,6 +93,14 @@ export default function Email() {
   const conta = contas.find((c) => c.id === contaId) || contas[0] || null;
   const corDe = (id) => CORES_CAIXA[Math.max(0, contas.findIndex((c) => c.id === id)) % CORES_CAIXA.length];
   const pasta = pastas.find((p) => p.id === pastaId) || null;
+  const [previa, setPrevia] = useState(null); // anexo aberto para visualizar: { nome, tipo, bytes?, erro? }
+  async function verAnexo(a, origem) {
+    setPrevia({ nome: a.nome, tipo: a.tipo });
+    try {
+      const r = await baixarAnexoEmail(conta.id, origem.pasta, origem.uid, a.indice);
+      setPrevia((p) => p?.nome === a.nome ? { nome: r.nome || a.nome, tipo: r.tipo || a.tipo, bytes: bytesDeBase64(r.base64) } : p);
+    } catch (e) { setPrevia((p) => p?.nome === a.nome ? { ...p, erro: e.message } : p); }
+  }
   const { sistema: pastasSistema, arvore } = useMemo(() => arvoreDePastas(pastas), [pastas]);
   // Pastas com subpastas: começam fechadas; o que a pessoa abre fica lembrado por caixa.
   const [abertas, setAbertas] = useState(() => new Set());
@@ -380,6 +393,7 @@ export default function Email() {
               aoVoltar={() => { setSel(null); setAberta(null); }}
               aoResponder={(modo) => novaEscrita(modo, aberta)}
               aoAgir={(tipo, destino) => agir([aberta.uid], tipo, destino)}
+              aoVer={(a, origem = { pasta: pastaId, uid: aberta.uid }) => verAnexo(a, origem)}
               aoBaixar={async (a, origem = { pasta: pastaId, uid: aberta.uid }) => {
                 try { const r = await baixarAnexoEmail(conta.id, origem.pasta, origem.uid, a.indice); baixarBase64(r.nome, r.tipo, r.base64); } catch (e) { erroMsg(e); }
               }} />
@@ -387,6 +401,7 @@ export default function Email() {
         </section>
       </div>
 
+      <VisualizarAnexo previa={previa} aoFechar={() => setPrevia(null)} />
       <Escrever estado={escrita} contas={contas} assinaturaDe={assinaturaDe} aoFechar={() => setEscrita(null)}
         aoEnviado={() => { setEscrita(null); setAviso({ tipo: "ok", texto: "E-mail enviado. A cópia fica em Enviados." }); atualizarTudo(); }} />
       <FormCaixa aberto={!!caixaForm} inicial={caixaForm} ini={ini} aoFechar={() => setCaixaForm(null)}
@@ -508,7 +523,7 @@ function CorpoMensagem({ html }) {
 // Leitura em conversa (como no webmail): as mensagens com o mesmo assunto (sem Re:/Enc:) — da
 // pasta aberta, da Caixa de entrada e de Enviados — em cartões, da mais antiga para a mais nova.
 // A que foi clicada já vem aberta; as outras mostram só quem, quando e uma prévia, e abrem no clique.
-function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar }) {
+function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, temArquivo, temSpam, aoVoltar, aoResponder, aoAgir, aoBaixar, aoVer }) {
   const chaveDe = (x) => `${x.pasta}|${x.uid}`;
   const minha = chaveDe({ pasta: pastaId, uid: m.uid });
   const [conversa, setConversa] = useState(null);
@@ -569,7 +584,7 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
         </p>
         {erro && <p className="mb-2 rounded-lg bg-bad-50 p-2 text-xs text-bad-700">{erro}</p>}
         {!varias ? (
-          <CorpoCompleto m={m} aoBaixar={(a) => aoBaixar(a)} />
+          <CorpoCompleto m={m} aoBaixar={(a) => aoBaixar(a)} aoVer={(a) => aoVer(a)} />
         ) : (
           <div className="flex flex-col gap-3">
             {itens.map((x) => {
@@ -578,7 +593,7 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
                 <article key={k} ref={k === minha ? minhaRef : undefined} className={clsx("scroll-mt-2 rounded-xl border bg-white", aberto ? "border-slate-200 shadow-sm" : "border-slate-200 hover:bg-slate-50")}>
                   {aberto && c ? (
                     <div className="px-4 pb-3 pt-3">
-                      <CorpoCompleto m={c} aoRecolher={() => alternar(x)} aoBaixar={(a) => aoBaixar(a, { pasta: x.pasta, uid: x.uid })} />
+                      <CorpoCompleto m={c} aoRecolher={() => alternar(x)} aoBaixar={(a) => aoBaixar(a, { pasta: x.pasta, uid: x.uid })} aoVer={(a) => aoVer(a, { pasta: x.pasta, uid: x.uid })} />
                     </div>
                   ) : (
                     <button type="button" onClick={() => alternar(x)} className="block w-full px-4 py-3 text-left" aria-expanded={aberto}>
@@ -601,8 +616,77 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
   );
 }
 
+// Visualizar anexo sem baixar: PDF e imagem pelo próprio navegador; texto/CSV/XML, planilha
+// (.xlsx) e Word (.docx) lidos aqui. Outros tipos só baixam.
+function VisualizarAnexo({ previa, aoFechar }) {
+  const [aba, setAba] = useState(0);
+  const tipo = previa ? tipoPrevia(previa.nome, previa.tipo) : null;
+  const mime = previa ? mimeDaPrevia(previa.nome, previa.tipo) : "";
+  const url = useMemo(() => (previa?.bytes && (tipo === "pdf" || tipo === "imagem") ? URL.createObjectURL(new Blob([previa.bytes], { type: mime })) : ""), [previa?.bytes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  useEffect(() => setAba(0), [previa?.nome]);
+  const conteudo = useMemo(() => {
+    if (!previa?.bytes) return null;
+    try {
+      if (tipo === "planilha") return { abas: lerXlsx(previa.bytes) };
+      if (tipo === "documento") return { paragrafos: lerDocx(previa.bytes) };
+      if (tipo === "texto") return { texto: textoDe(previa.bytes) };
+    } catch { return { falhou: true }; }
+    return null;
+  }, [previa?.bytes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const baixar = () => previa?.bytes && baixarBytes(previa.nome, previa.tipo, previa.bytes);
+  const planilha = conteudo?.abas?.[aba];
+  return (
+    <Modal titulo={previa?.nome || ""} aberto={!!previa} aoFechar={aoFechar} largura="max-w-5xl">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-primary h-9 px-3 text-sm" onClick={baixar} disabled={!previa?.bytes}><Download size={15} aria-hidden="true" /> Baixar</button>
+          {url && <a className="btn-outline h-9 px-3 text-sm" href={url} target="_blank" rel="noreferrer">Abrir em outra aba</a>}
+          {conteudo?.abas?.length > 1 && (
+            <div className="ml-auto flex flex-wrap gap-1" role="tablist" aria-label="Abas da planilha">
+              {conteudo.abas.map((a, i) => (
+                <button key={i} type="button" role="tab" aria-selected={i === aba} onClick={() => setAba(i)}
+                  className={clsx("rounded-full px-3 py-1 text-xs", i === aba ? "bg-brand-600 font-semibold text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{a.nome}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="min-h-[50vh] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          {previa?.erro ? <p className="p-6 text-sm text-bad-700">{previa.erro}</p>
+            : !previa?.bytes ? <div className="grid h-[60vh] place-items-center text-sm text-slate-500"><Loader2 className="animate-spin" aria-label="Carregando o anexo" /></div>
+            : tipo === "pdf" ? <iframe title={previa.nome} src={url} className="h-[72vh] w-full border-0 bg-white" />
+            : tipo === "imagem" ? <div className="grid max-h-[72vh] place-items-center overflow-auto p-3"><img src={url} alt={previa.nome} className="max-w-full" /></div>
+            : conteudo?.texto != null ? <pre className="max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-white p-4 font-mono text-xs text-slate-700">{conteudo.texto}</pre>
+            : conteudo?.paragrafos ? (
+              <div className="max-h-[72vh] overflow-auto bg-white px-8 py-6 text-sm leading-relaxed text-slate-800">
+                {conteudo.paragrafos.map((t, i) => <p key={i} className="min-h-[1em] whitespace-pre-wrap">{t}</p>)}
+              </div>
+            )
+            : planilha ? (
+              <div className="max-h-[72vh] overflow-auto bg-white">
+                <table className="border-collapse text-xs">
+                  <tbody>
+                    {planilha.linhas.map((l, i) => (
+                      <tr key={i} className={i === 0 ? "bg-slate-100 font-semibold" : ""}>
+                        {l.map((c, j) => <td key={j} className="max-w-[280px] truncate border border-slate-200 px-2 py-1" title={c}>{c}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {planilha.cortada && <p className="p-2 text-xs text-slate-500">Mostrando as primeiras 500 linhas. Baixe para ver tudo.</p>}
+                {!planilha.linhas.length && <p className="p-6 text-sm text-slate-500">Aba vazia.</p>}
+              </div>
+            )
+            : <p className="p-6 text-sm text-slate-600">Não consegui mostrar este arquivo aqui. Use <b>Baixar</b> para abrir no computador.</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Uma mensagem por inteiro: quem mandou, para quem, quando, corpo e anexos.
-function CorpoCompleto({ m, aoBaixar, aoRecolher }) {
+function CorpoCompleto({ m, aoBaixar, aoVer, aoRecolher }) {
   const [baixando, setBaixando] = useState(null);
   const data = m.data ? new Date(m.data).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
   return (
@@ -618,14 +702,22 @@ function CorpoCompleto({ m, aoBaixar, aoRecolher }) {
       <div className="py-3"><CorpoMensagem html={m.html} /></div>
       {m.anexos?.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-          {m.anexos.map((a) => (
-            <button key={a.indice} type="button" disabled={baixando === a.indice} onClick={async () => { setBaixando(a.indice); await aoBaixar(a); setBaixando(null); }}
-              className="flex w-64 items-center gap-2.5 rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50">
-              <span className="grid h-9 w-8 shrink-0 place-items-center rounded bg-slate-600 text-[9px] font-bold uppercase text-white">{(a.nome.split(".").pop() || "arq").slice(0, 4)}</span>
-              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{a.nome}</span><span className="text-xs text-slate-500">{tamanho(a.tamanho)} · Baixar</span></span>
-              {baixando === a.indice ? <Loader2 size={16} className="animate-spin text-slate-400" /> : <Download size={16} className="text-slate-400" aria-hidden="true" />}
-            </button>
-          ))}
+          {m.anexos.map((a) => {
+            const ver = !!tipoPrevia(a.nome, a.tipo);
+            const baixar = async () => { setBaixando(a.indice); await aoBaixar(a); setBaixando(null); };
+            return (
+              <div key={a.indice} className="flex w-64 items-center rounded-xl border border-slate-200 hover:bg-slate-50">
+                <button type="button" onClick={() => (ver ? aoVer(a) : baixar())} title={ver ? "Visualizar" : "Baixar"}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-3 text-left">
+                  <span className="grid h-9 w-8 shrink-0 place-items-center rounded bg-slate-600 text-[9px] font-bold uppercase text-white">{(a.nome.split(".").pop() || "arq").slice(0, 4)}</span>
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{a.nome}</span><span className="text-xs text-slate-500">{tamanho(a.tamanho)} · {ver ? "Visualizar" : "Baixar"}</span></span>
+                </button>
+                <button type="button" onClick={baixar} disabled={baixando === a.indice} className="grid h-11 w-10 shrink-0 place-items-center rounded-r-xl text-slate-400 hover:text-slate-700" title="Baixar" aria-label={`Baixar ${a.nome}`}>
+                  {baixando === a.indice ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} aria-hidden="true" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </>
