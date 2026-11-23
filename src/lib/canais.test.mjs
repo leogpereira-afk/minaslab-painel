@@ -202,3 +202,13 @@ test("resumoLeitura conta só quem precisa ler (sem o autor)", async () => {
   const semLista = resumoLeitura({ autor: "ana" }, canal, [], "ana");
   assert.equal(semLista.precisoLer, false); assert.equal(semLista.quemLeu, undefined);
 });
+
+test("postDoDestaque monta a publicação do destaque do mês", async () => {
+  const { postDoDestaque } = await import("../../supabase/functions/ml-canais/regras.mjs");
+  const p = postDoDestaque({ nome: "ANA CLAUDIA GONÇALVES PESSOA", mes: "2026-11", itens: [{ rotulo: "Laboratório", texto: "excelência" }, { rotulo: "", texto: "sempre pronta" }] });
+  assert.equal(p.titulo, "Destaque do mês de novembro: Ana Pessoa");
+  assert.match(p.texto, /Parabéns, Ana Pessoa! Você é o destaque de novembro/);
+  assert.match(p.texto, /• Laboratório: excelência\n• sempre pronta/);
+  assert.equal(p.visual.estilo, "capa");
+  assert.deepEqual(postDoDestaque({ nome: "Bia", mes: "2026-01", itens: [] }, true).visual, { cor: "amarelo" });
+});

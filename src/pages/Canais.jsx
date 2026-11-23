@@ -154,7 +154,7 @@ export default function Canais() {
         <p className="mb-3 text-sm text-slate-600">É assim que o post aparece sozinho no mural, às 8h do dia do aniversário, com o nome que está no RH. Esta prévia não é publicada: ninguém mais vê.</p>
         <Post post={previaParabens(dados.nome, dados.hoje, dados.eu)} eu={dados.eu} podeInteragir aoCurtir={() => {}} aoComentar={async () => false} aoApagarComentario={() => {}} aoEditar={() => {}} aoApagar={() => {}} aoFixar={() => {}} aoConfirmarLeitura={() => {}} />
       </Modal>
-      <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={() => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: "Destaque do mês atualizado." }); carregar(); }} />
+      <EditarDestaque aberto={editarDestaque} aoFechar={() => setEditarDestaque(false)} aoSalvo={(postou) => { setEditarDestaque(false); setAviso({ tipo: "ok", texto: postou ? "Destaque salvo e publicado no mural. Todos foram avisados." : "Destaque do mês atualizado." }); carregar(); }} />
       <Ajustes aberto={ajustes} aoFechar={() => setAjustes(false)} aoSalvo={() => { setAjustes(false); setAviso({ tipo: "ok", texto: "Ajustes salvos." }); carregar(); }} />
       <EditarCanal alvo={editarCanal} aoFechar={() => setEditarCanal(null)}
         aoSalvo={(id, novo) => { setEditarCanal(null); setAviso({ tipo: "ok", texto: novo ? "Canal criado. As pessoas do canal foram avisadas no sino." : "Canal atualizado." }); if (id !== canalId) irPara(id); else carregar(); }}
@@ -568,9 +568,13 @@ function EditarDestaque({ aberto, aoFechar, aoSalvo }) {
   }, [aberto]);
   async function salvar(corpo) {
     setSalvando(true); setErro("");
-    try { await canaisSalvarDestaque(corpo); aoSalvo(); } catch (e) { setErro(e.message); }
+    try { const r = await canaisSalvarDestaque(corpo); aoSalvo(!!r?.postId); } catch (e) { setErro(e.message); }
     setSalvando(false);
   }
+  const postar = () => {
+    if (!f.nome || !f.mes) { setErro("Escolha quem é o destaque e o mês."); return; }
+    if (window.confirm("Salvar e publicar no mural? Todos recebem um aviso no sino e no grupo MinasLab.")) salvar({ ...f, postar: true });
+  };
   return (
     <Modal titulo="Destaque do mês" aberto={aberto} aoFechar={aoFechar}>
       {!op && !erro && <p className="text-sm text-slate-500">Carregando…</p>}
@@ -591,8 +595,10 @@ function EditarDestaque({ aberto, aoFechar, aoSalvo }) {
           <div className="flex flex-wrap justify-end gap-2">
             {op.atual && <button type="button" className="btn-ghost mr-auto text-bad-600" disabled={salvando} onClick={() => window.confirm("Tirar o destaque do mural?") && salvar({ limpar: true })}>Tirar do mural</button>}
             <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
-            <button type="submit" className="btn-primary" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+            <button type="submit" className="btn-outline" disabled={salvando}>Só salvar</button>
+            <button type="button" className="btn-primary" disabled={salvando} onClick={postar}><Send size={16} /> {salvando ? "Salvando…" : "Salvar e postar no mural"}</button>
           </div>
+          <p className="text-xs text-slate-500">“Só salvar” atualiza o quadro da lateral. “Salvar e postar” também cria uma publicação no mural, com a foto e as qualidades, para todos curtirem e comentarem.</p>
         </form>
       )}
     </Modal>
