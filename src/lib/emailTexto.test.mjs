@@ -118,3 +118,19 @@ test("conversa: só junta o que está ligado pela cadeia de respostas", async ()
   // Resposta cujo original foi apagado continua ligada pela References.
   assert.deepEqual([...ligadasPorResposta(itens.slice(1, 3), "<3@x>")].sort(), ["<2@x>", "<3@x>"]);
 });
+
+test("assinatura: nome curto e cargo padronizado", async () => {
+  const { nomeCurtoPessoa, cargoFormatado } = await import("../../supabase/functions/_shared/email-texto.mjs");
+  assert.equal(nomeCurtoPessoa("ANA CLAUDIA GONÇALVES PESSOA"), "Ana Pessoa");
+  assert.equal(nomeCurtoPessoa("Giovanna Froes da silva Capuchinho"), "Giovanna Capuchinho");
+  assert.equal(nomeCurtoPessoa("Lidyane ALves Oliveira"), "Lidyane Oliveira");
+  assert.equal(nomeCurtoPessoa("JOSE ROBERTO ALVES DOS SANTOS"), "Jose Santos");
+  assert.equal(nomeCurtoPessoa("Thayna"), "Thayna");
+  assert.equal(cargoFormatado("AUXILIAR ADMINISTRATIVO"), "Auxiliar Administrativo");
+  assert.equal(cargoFormatado("Auxiliar Administrativo Comercial I"), "Auxiliar Administrativo Comercial I");
+  assert.equal(cargoFormatado("ESTAGIARIO DE LABORATORIO"), "Estagiario de Laboratorio");
+  assert.equal(cargoFormatado("supervisor da qualidade"), "Supervisor da Qualidade");
+  assert.equal(cargoFormatado("GERENTE-SÓCIO"), "Gerente-Sócio");
+  assert.equal(cargoFormatado("Analista II"), "Analista II");
+  assert.equal(cargoFormatado(""), "");
+});
