@@ -553,7 +553,7 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
 
   useEffect(() => {
     let vivo = true;
-    conversaEmail(contaId, pastaId, m.assunto).then((l) => vivo && setConversa(l || [])).catch(() => vivo && setConversa([]));
+    conversaEmail(contaId, pastaId, m.assunto, m.uid).then((l) => vivo && setConversa(l || [])).catch(() => vivo && setConversa([]));
     return () => { vivo = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

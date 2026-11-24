@@ -102,3 +102,19 @@ test("conversa: mesmo assunto sem Re:/RES:/Enc:/Fwd:", async () => {
   assert.ok(!mesmaConversa("Reunião de alinhamentos", "Reunião de alinhamentos 2"));
   assert.ok(!mesmaConversa("", "Re:"));
 });
+
+test("conversa: só junta o que está ligado pela cadeia de respostas", async () => {
+  const { ligadasPorResposta, idsDeCabecalho } = await import("../../supabase/functions/_shared/email-texto.mjs");
+  assert.deepEqual(idsDeCabecalho("<A@x> <b@Y>"), ["<a@x>", "<b@y>"]);
+  const itens = [
+    { chave: "<1@x>", mid: "<1@x>", refs: [] },                       // original
+    { chave: "<2@x>", mid: "<2@x>", refs: ["<1@x>"] },                // resposta
+    { chave: "<3@x>", mid: "<3@x>", refs: ["<1@x>", "<2@x>"] },       // resposta da resposta (enviada)
+    { chave: "<9@z>", mid: "<9@z>", refs: [] },                       // mesmo assunto, outro fornecedor
+    { chave: "<8@z>", mid: "<8@z>", refs: ["<7@z>"] },                // responde a outra coisa
+  ];
+  assert.deepEqual([...ligadasPorResposta(itens, "<2@x>")].sort(), ["<1@x>", "<2@x>", "<3@x>"]);
+  assert.deepEqual([...ligadasPorResposta(itens, "<9@z>")], ["<9@z>"]);
+  // Resposta cujo original foi apagado continua ligada pela References.
+  assert.deepEqual([...ligadasPorResposta(itens.slice(1, 3), "<3@x>")].sort(), ["<2@x>", "<3@x>"]);
+});

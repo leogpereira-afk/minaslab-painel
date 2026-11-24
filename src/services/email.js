@@ -21,7 +21,7 @@ export const removerCaixa = (id) => chamar("contaApagar", { id });
 export const lerPastas = (conta) => chamar("pastas", { conta }).then((r) => r.pastas);
 export const listarEmails = (conta, pasta, pagina = 1, filtro = {}) => chamar("listar", { conta, pasta, pagina, filtro });
 export const abrirEmail = (conta, pasta, uid) => chamar("ler", { conta, pasta, uid }).then((r) => r.mensagem);
-export const conversaEmail = (conta, pasta, assunto) => chamar("conversa", { conta, pasta, assunto }).then((r) => r.mensagens);
+export const conversaEmail = (conta, pasta, assunto, uid) => chamar("conversa", { conta, pasta, assunto, uid }).then((r) => r.mensagens);
 export const baixarAnexoEmail = (conta, pasta, uid, indice) => chamar("anexo", { conta, pasta, uid, indice }).then((r) => r.anexo);
 export const agirEmail = (conta, pasta, uids, tipo, destino) => chamar("agir", { conta, pasta, uids, tipo, destino });
 export const enviarEmail = (dados) => chamar("enviar", dados);
