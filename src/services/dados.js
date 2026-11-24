@@ -4,6 +4,7 @@
 // leva o crachá e trata erro do mesmo jeito.
 
 import { SYNC } from "../lib/api.js";
+import { registrarPessoas } from "../lib/nomesNaTela.js";
 import { comCracha, mensagemDoStatus, getToken, aoMudarSessao } from "../lib/sessao.js";
 import { novoId } from "../lib/format.js";
 import { mensagemAmigavel } from "../lib/errosAmigaveis.js";
@@ -16,6 +17,7 @@ async function chamar(action, corpo = {}) {
   });
   const body = await resp.json().catch(() => null);
   if (!resp.ok) throw new Error(body?.erro ? mensagemAmigavel(body.erro) : mensagemDoStatus(resp.status));
+  registrarPessoas(body); // nomes curtos na tela (lib/nomesNaTela.js)
   return body;
 }
 
