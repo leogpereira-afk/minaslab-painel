@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import { ligarNomesCurtos } from "./lib/nomesNaTela.js";
 import "./index.css";
 import "./nfse-layout.css";
 import "./styles/movimentacao-conta-responsive.css";
@@ -25,6 +26,9 @@ window.addEventListener("vite:preloadError", (evento) => {
   evento.preventDefault();
   window.location.reload();
 });
+
+// Nome de colaborador aparece curto (primeiro e último) em todas as telas.
+ligarNomesCurtos();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

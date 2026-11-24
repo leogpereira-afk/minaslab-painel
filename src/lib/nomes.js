@@ -2,6 +2,8 @@
 // "ANA CLAUDIA GONÇALVES PESSOA" → "Ana Pessoa". O cadastro continua com o nome
 // completo (padrão de Acessos e do RH); só a EXIBIÇÃO encurta.
 
+import { registrarPessoas } from "./nomesNaTela.js";
+
 const PARTICULAS = new Set(["da", "de", "do", "das", "dos", "e", "di", "du"]);
 
 const capitalizar = (p) => p.toLocaleLowerCase("pt-BR").replace(/(^|[-'])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase("pt-BR"));
@@ -25,6 +27,7 @@ const CHAVES_NOME = new Set(["nome", "autor_nome", "nome_autor", "nomeAutor", "a
 
 /** Percorre a resposta do servidor e encurta os nomes de pessoas (chaves de nome, mapas "nomes", "quemCurtiu"). */
 export function encurtarNomes(dados) {
+  registrarPessoas(dados); // antes de encurtar: a tela inteira aprende o nome completo
   if (Array.isArray(dados)) return dados.map(encurtarNomes);
   if (!dados || typeof dados !== "object") return dados;
   const out = {};

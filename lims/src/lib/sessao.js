@@ -6,6 +6,7 @@
 // Esconder telas aqui é conforto; quem tranca de verdade é o servidor
 // (Edge Function ml-lims), que confere o crachá e a conta em toda chamada.
 
+import { registrarPessoas } from "../../../src/lib/nomesNaTela.js";
 import { SYNC } from "./api.js";
 
 const K_TOKEN = "lims_token";
@@ -134,5 +135,6 @@ export async function comCracha(url, corpo) {
     erro.status = resp.status;
     throw erro;
   }
+  registrarPessoas(dados); // nomes curtos na tela (src/lib/nomesNaTela.js do painel)
   return dados;
 }

@@ -9,7 +9,8 @@ import logoMinasLab from "../assets/logo-minaslab.webp";
 import "../styles/painel-visual.css";
 import { getSessao, sair, podeAbrir, soColaborador } from "../lib/sessao.js";
 import { useAcessoGestao } from "../lib/acessoGestao.js";
-import { trocarMinhaSenha } from "../services/dados.js";
+import { trocarMinhaSenha, elenco, usuariosAtivos } from "../services/dados.js";
+import { registrarNome } from "../lib/nomesNaTela.js";
 import { atualizarMinhasPaginas } from "../services/perfis.js";
 import { LimiteModulo } from "./LimiteModulo.jsx";
 import { Modal, Aviso, CarregandoModulo } from "./ui.jsx";
@@ -220,6 +221,13 @@ export default function Layout() {
     window.addEventListener("focus", rodar);
     return () => { clearInterval(t); window.removeEventListener("focus", rodar); };
   }, []);
+
+  // Nomes dos colaboradores cadastrados: a tela inteira passa a mostrar primeiro + último nome.
+  useEffect(() => {
+    registrarNome(sessao?.nome);
+    elenco().catch(() => {});
+    usuariosAtivos().catch(() => {});
+  }, [sessao?.nome]);
 
   const aoSair = () => {
     sair();

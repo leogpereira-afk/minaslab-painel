@@ -80,9 +80,9 @@ function Aviso({ tom = "warn", texto, acao, aoAgir }) {
 }
 
 /* Rótulo em cima, valor embaixo. Vazio é travessão — nunca "N/A", nunca 0. */
-function Dado({ rotulo, valor }) {
+function Dado({ rotulo, valor, completo = false }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" data-nome-completo={completo || undefined}>
       <p className="label mb-0.5">{rotulo}</p>
       <p className="break-words whitespace-pre-wrap text-sm text-slate-800">{txt(valor) || "—"}</p>
     </div>
@@ -411,7 +411,7 @@ export default function FichaPessoa({
           <Card>
             <h2 className="mb-3 font-display text-base font-semibold text-slate-900">Identificação</h2>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Dado rotulo="Nome" valor={pessoa.nome} />
+              <Dado rotulo="Nome" valor={pessoa.nome} completo />
               <Dado rotulo="Apelido" valor={pessoa.apelido} />
               <Dado rotulo="CPF" valor={pessoa.cpf} />
               <Dado rotulo="Nascimento" valor={ehData(pessoa.dataNascimento) ? dataLonga(pessoa.dataNascimento) : ""} />
