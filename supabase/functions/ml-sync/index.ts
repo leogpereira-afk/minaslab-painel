@@ -37,6 +37,7 @@ import {
   normalizarItens, normalizarUrgencia, normalizarSetor, textoQuantidade, gerePedidos,
   destinatariosSolicitacao, avisoMudanca, rotuloUrgencia, SITUACOES_LOTE, ROTULO_SITUACAO,
   normalizarAprovacao, aplicarAprovacao, PODE_APROVAR, categoriaDoProdutoEstoque,
+  PRAZO_COLECAO, PRAZO_ID, normalizarPrazo, situacaoPrazo, textoPrazo, trataCompras, dataBR,
 } from "../_shared/compras-solicitacao.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -294,6 +295,13 @@ function statusValidadeBR(validade: unknown): string {
   if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return "Erro verificar";
   const dias = Math.round((Date.parse(v.slice(0, 10) + "T00:00:00Z") - Date.parse(hojeBR() + "T00:00:00Z")) / 86400000);
   return dias < 0 ? "Vencido" : dias < 30 ? "Vencimento em 30 dias" : "Dentro do prazo";
+}
+// Prazo dos pedidos de material (Compras): um registro só, { ate, definidoPor, ... }.
+async function lerPrazoPedidos() {
+  const { data, error } = await sb.from(T_REG).select("registro, apagado").eq("colecao", PRAZO_COLECAO).eq("id", PRAZO_ID).maybeSingle();
+  if (error) throw error;
+  const r = data && !data.apagado ? data.registro as Record<string, unknown> : {};
+  return { ate: normalizarPrazo(r.ate) || "", definidoPorNome: String(r.definidoPorNome ?? ""), definidoEm: String(r.definidoEm ?? "") };
 }
 const ehColecaoEstoque = (c: string) => Object.prototype.hasOwnProperty.call(COLECOES_ESTOQUE, c);
 
@@ -1778,6 +1786,9 @@ Deno.serve(async (req) => {
       // são carimbados AQUI, do crachá — a tela não escolhe quem pediu.
       case "comprasSolicitar": {
         if (papel !== "equipe" && papel !== "direcao") return resp({ erro: "Seu acesso só consulta; peça a quem compra.", semPermissao: true }, 403);
+        // Prazo do ciclo: passado o dia, o envio bloqueia aqui também (não só na tela).
+        const prazoAtual = situacaoPrazo((await lerPrazoPedidos()).ate, hojeBR());
+        if (!prazoAtual.aberto) return resp({ erro: textoPrazo(prazoAtual), prazoFechado: true }, 409);
         const { itens, erros } = normalizarItens(body.itens);
         if (erros.length) return resp({ erro: erros.join(" · ") }, 400);
         if (!itens.length) return resp({ erro: "Escreva pelo menos um produto." }, 400);
@@ -1851,7 +1862,29 @@ Deno.serve(async (req) => {
             status: c.status, data: c.data, dataRecebida: c.dataRecebida, motivoRecusa: c.motivoRecusa ?? "", criadoEm: c.criadoEm,
             qtdeSolicitada: c.qtdeSolicitada ?? "", quantidadeSolicitada: c.quantidadeSolicitada ?? null, quantidade: c.quantidade ?? null };
         });
-        return resp({ itens, sugestoes });
+        return resp({ itens, sugestoes, prazo: await lerPrazoPedidos() });
+      }
+
+      // Quem trata compras define ATÉ QUE DIA o ciclo aceita pedido. Trocar a data
+      // é prorrogar/antecipar; data vazia tira o prazo. Fica o histórico de quem mudou.
+      case "comprasDefinirPrazo": {
+        if (!trataCompras({ papel: ehMaquina ? "maquina" : papel, permissoes })) return resp({ erro: "Só quem cuida de compras define o prazo dos pedidos.", semPermissao: true }, 403);
+        const ate = normalizarPrazo(body.ate);
+        if (ate === null) return resp({ erro: "Data inválida." }, 400);
+        const { data: atual, error: eAt } = await sb.from(T_REG).select("registro").eq("colecao", PRAZO_COLECAO).eq("id", PRAZO_ID).maybeSingle();
+        if (eAt) throw eAt;
+        const antes = (atual?.registro ?? {}) as Record<string, unknown>;
+        const { data: eu } = await sb.from(T_CONTAS).select("nome").eq("usuario", usuario).maybeSingle();
+        const agora = new Date().toISOString();
+        const hist = Array.isArray(antes.historico) ? antes.historico : [];
+        const registro = {
+          id: PRAZO_ID, ate, definidoPor: usuario || "maquina", definidoPorNome: String(eu?.nome ?? usuario ?? "maquina"), definidoEm: agora,
+          historico: [...hist, { em: agora, por: usuario || "maquina", de: String(antes.ate ?? ""), para: ate }].slice(-50),
+        };
+        const { error } = await sb.from(T_REG).upsert({ colecao: PRAZO_COLECAO, id: PRAZO_ID, registro, apagado: false, atualizado_em: agora });
+        if (error) throw error;
+        await bump(PRAZO_COLECAO);
+        return resp({ ok: true, prazo: { ate, definidoPorNome: registro.definidoPorNome, definidoEm: agora }, texto: ate ? `Pedidos aceitos até ${dataBR(ate)}.` : "Prazo retirado: pedidos liberados." });
       }
 
       // Quem compra muda a situação de VÁRIOS de uma vez. Um aviso por pessoa

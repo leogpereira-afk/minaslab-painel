@@ -8,13 +8,13 @@
 // mudança de situação chega no sino.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Send, X, RefreshCw, Search, Package, PencilLine } from "lucide-react";
+import { Plus, Send, X, RefreshCw, Search, Package, PencilLine, CalendarClock, Lock } from "lucide-react";
 import { Card, Empty } from "../ui.jsx";
 import { dataCurta, ymdLocal } from "../../lib/format.js";
-import { comprasMinhas, comprasSolicitar } from "../../services/dados.js";
+import { comprasMinhas, comprasSolicitar, comprasDefinirPrazo } from "../../services/dados.js";
 import {
   CATEGORIAS_SOLICITACAO, UNIDADES_SOLICITACAO, URGENCIAS, SETORES, ROTULO_SITUACAO, ANDAMENTO, textoAprovacao,
-  rotuloUrgencia, MAX_ITENS, categoriaDoProdutoEstoque,
+  rotuloUrgencia, MAX_ITENS, categoriaDoProdutoEstoque, situacaoPrazo, textoPrazo, dataBR,
 } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
 import { comUnidade } from "./comum.jsx";
 
@@ -136,10 +136,10 @@ function Andamento({ status }) {
 
 // Uma busca só para as duas abas: o que eu pedi + os nomes já pedidos (sugestão do campo Produto).
 export function useMinhasSolicitacoes() {
-  const [estado, setEstado] = useState({ itens: null, sugestoes: [], erro: "" });
+  const [estado, setEstado] = useState({ itens: null, sugestoes: [], prazo: null, erro: "" });
   const recarregar = useCallback(() => {
     comprasMinhas()
-      .then((r) => setEstado({ itens: r.itens, sugestoes: r.sugestoes, erro: "" }))
+      .then((r) => setEstado({ itens: r.itens, sugestoes: r.sugestoes, prazo: r.prazo, erro: "" }))
       .catch((e) => setEstado((s) => ({ ...s, itens: s.itens || [], erro: e.message })));
   }, []);
   // Quem chama decide QUANDO buscar (a página de Compras busca junto com a
@@ -147,7 +147,70 @@ export function useMinhasSolicitacoes() {
   return { ...estado, recarregar };
 }
 
-export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, aoEnviar, avisar }) {
+/* Faixa do prazo em "Solicitar material": some sem prazo; avisa enquanto aberto;
+   fechado, diz por quê (o botão de enviar trava). */
+function FaixaPrazo({ prazo }) {
+  if (!prazo.temPrazo) return null;
+  const fechado = !prazo.aberto;
+  const tom = fechado ? "bg-bad-50 text-bad-800" : prazo.dias <= 1 ? "bg-warn-50 text-warn-800" : "bg-brand-50 text-brand-800";
+  const Icone = fechado ? Lock : CalendarClock;
+  return (
+    <div role={fechado ? "alert" : "status"} className={`mb-4 flex items-start gap-2 rounded-xl p-3 text-sm font-medium ${tom}`}>
+      <Icone size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <span>{textoPrazo(prazo)}</span>
+    </div>
+  );
+}
+
+/* PRAZO DOS PEDIDOS — quem trata compras escolhe até que dia o ciclo aceita
+   pedido. Trocar a data prorroga ou antecipa; "Tirar prazo" libera de novo. */
+export function PrazoPedidos({ prazo, hojeISO, aoMudar, avisar }) {
+  const atual = prazo?.ate || "";
+  const [data, setData] = useState(atual);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setData(atual); }, [atual]);
+  const sit = situacaoPrazo(atual, hojeISO);
+  const gravar = async (ate) => {
+    if (salvando) return;
+    setSalvando(true);
+    try {
+      const r = await comprasDefinirPrazo(ate);
+      avisar({ tipo: "ok", texto: r.texto });
+      aoMudar();
+    } catch (ex) {
+      avisar({ tipo: "erro", texto: ex.message });
+    } finally {
+      setSalvando(false);
+    }
+  };
+  return (
+    <Card className="mb-4">
+      <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); if (data) gravar(data); }} aria-busy={salvando}>
+        <div className="min-w-[12rem] flex-1">
+          <h2 className="font-display text-base font-semibold text-slate-900">Prazo para pedir material</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {!sit.temPrazo ? "Sem prazo: os pedidos estão liberados." : sit.aberto ? `Aceitando pedidos até ${dataBR(sit.ate)}, inclusive.` : `Fechado desde ${dataBR(sit.ate)}. Escolha uma data nova para reabrir.`}
+            {prazo?.definidoPorNome ? ` Definido por ${prazo.definidoPorNome.split(" ")[0]}.` : ""}
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor="prazo-pedidos">Pedidos aceitos até</label>
+          <input id="prazo-pedidos" type="date" className="input" value={data} onChange={(e) => setData(e.target.value)} />
+        </div>
+        <button type="submit" className="btn-primary min-h-11" disabled={salvando || !data || data === atual}>
+          <CalendarClock size={15} /> {salvando ? "Salvando…" : atual ? "Mudar prazo" : "Definir prazo"}
+        </button>
+        {atual && (
+          <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => gravar("")}>
+            <X size={15} /> Tirar prazo
+          </button>
+        )}
+      </form>
+    </Card>
+  );
+}
+
+export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, prazo: prazoBruto, aoEnviar, avisar }) {
   const produtosAtivos = useMemo(() => (produtos || []).filter((p) => p.ativo !== false && p.nome).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR")), [produtos]);
   const saldoDe = (id) => { const r = saldos?.get?.(id); return r ? r.saldo : null; };
   const [setor, setSetor] = useState(() => {
@@ -158,6 +221,8 @@ export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, ao
   const [obs, setObs] = useState("");
   const [enviando, setEnviando] = useState(false);
   const hoje = ymdLocal(new Date());
+  const prazo = situacaoPrazo(prazoBruto?.ate, hoje);
+  const fechado = !prazo.aberto;
 
   const atualizar = (chave, mudanca) => setItens((l) => l.map((it) => (it.chave === chave ? { ...it, ...mudanca } : it)));
   const mudar = (chave, campo) => (e) => setItens((l) => l.map((it) => (it.chave === chave ? { ...it, [campo]: e.target.value } : it)));
@@ -166,7 +231,7 @@ export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, ao
 
   const enviar = async (e) => {
     e.preventDefault();
-    if (enviando) return;
+    if (enviando || fechado) return;
     if (!preenchidos.length) return avisar({ tipo: "erro", texto: "Escreva pelo menos um produto." });
     const semQtd = preenchidos.find((it) => !(Number(String(it.quantidade).replace(",", ".")) > 0));
     if (semQtd) return avisar({ tipo: "erro", texto: `Confira a quantidade de "${semQtd.produto.trim()}".` });
@@ -194,6 +259,7 @@ export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, ao
     <Card>
       <form onSubmit={enviar} aria-busy={enviando}>
         <h2 className="mb-3 font-display text-base font-semibold text-slate-900">Nova solicitação</h2>
+        <FaixaPrazo prazo={prazo} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&>div]:min-w-0">
           <div>
             <label className="label" htmlFor="sol-quem">Solicitante</label>
@@ -257,8 +323,8 @@ export function SolicitarMaterial({ sessao, sugestoes, produtos = [], saldos, ao
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-500">Ao enviar, cada item vira um pedido “Solicitada” em Compras › Pedidos e quem compra recebe aviso no sino.</p>
-          <button type="submit" className="btn-primary min-h-11" disabled={enviando || !preenchidos.length}>
-            <Send size={15} /> {enviando ? "Enviando…" : "Enviar solicitação"}
+          <button type="submit" className="btn-primary min-h-11" disabled={enviando || fechado || !preenchidos.length} title={fechado ? "Prazo de pedidos encerrado" : undefined}>
+            {fechado ? <Lock size={15} /> : <Send size={15} />} {enviando ? "Enviando…" : fechado ? "Pedidos fechados" : "Enviar solicitação"}
           </button>
         </div>
       </form>

@@ -113,6 +113,52 @@ export function destinatariosSolicitacao(contas, autor) {
   return [...new Set(lista.map((c) => c.usuario))];
 }
 
+/* PRAZO DOS PEDIDOS (Ana, 24/11/2026): quem trata compras diz ATÉ QUE DIA o
+   ciclo aceita pedido de material. A data é escolhida a cada ciclo (não é dia
+   fixo do mês) e pode ser prorrogada, antecipada ou apagada a qualquer hora.
+   O dia escolhido ainda aceita pedido; no dia seguinte, o envio BLOQUEIA — na
+   tela e no servidor. Sem data, pedido aberto como sempre foi. */
+export const PRAZO_COLECAO = "compras_config";
+export const PRAZO_ID = "prazo-pedidos";
+
+// "AAAA-MM-DD" de verdade (30/02 não passa), "" para "sem prazo", null se inválida.
+export function normalizarPrazo(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : s;
+}
+
+export const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
+
+// { temPrazo, aberto, ate, dias } — dias que faltam (0 = hoje é o último dia; negativo = fechou).
+export function situacaoPrazo(ate, hojeISO) {
+  const a = normalizarPrazo(ate);
+  if (!a) return { temPrazo: false, aberto: true, ate: "", dias: null };
+  const dias = Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${String(hojeISO).slice(0, 10)}T00:00:00Z`)) / 86400000);
+  return { temPrazo: true, aberto: dias >= 0, ate: a, dias };
+}
+
+export function textoPrazo(s) {
+  if (!s?.temPrazo) return "";
+  if (!s.aberto) return `Os pedidos de material fecharam em ${dataBR(s.ate)}. Fale com quem cuida de compras se precisar de algo.`;
+  if (s.dias === 0) return `Hoje (${dataBR(s.ate)}) é o último dia para pedir material neste ciclo.`;
+  if (s.dias === 1) return `Pedidos de material até amanhã, ${dataBR(s.ate)}.`;
+  return `Pedidos de material até ${dataBR(s.ate)} (faltam ${s.dias} dias).`;
+}
+
+/* Quem DEFINE o prazo: quem trata compras (Compras inteiro, Estoque ou Ordens
+   em Acessos) e a direção. A aba Pedidos sozinha não basta — a Ana libera
+   Pedidos para todos, e aí qualquer um prorrogaria o próprio prazo. */
+export function trataCompras({ papel, permissoes }) {
+  if (papel === "direcao" || papel === "maquina") return true;
+  if (papel !== "equipe") return false;
+  const p = Array.isArray(permissoes) ? permissoes : [];
+  if (!p.includes("__matriz_v1")) return true;
+  return ["compras", "compras/estoque", "compras/ordens"].some((x) => p.includes(x));
+}
+
 // Situações que quem compra pode dar a vários de uma vez. "recebida" fica de
 // fora: chegar passa pela conferência de quantidade (entrada no estoque).
 export const SITUACOES_LOTE = ["cotando", "comprada", "cancelada"];

@@ -41,8 +41,8 @@ import AbaEstoque, { movimentoVazio, produtoParaForm } from "../components/compr
 import AbaPedidos, { pedidoParaForm } from "../components/compras/AbaPedidos.jsx";
 import AbaOrdens, { ordemParaForm } from "../components/compras/AbaOrdens.jsx";
 import AbaRetiradas, { retiradaVazia } from "../components/compras/AbaRetiradas.jsx";
-import { SolicitarMaterial, MinhasSolicitacoes, useMinhasSolicitacoes } from "../components/compras/AbaSolicitacao.jsx";
-import { ROTULO_SITUACAO } from "../../supabase/functions/_shared/compras-solicitacao.mjs";
+import { SolicitarMaterial, MinhasSolicitacoes, useMinhasSolicitacoes, PrazoPedidos } from "../components/compras/AbaSolicitacao.jsx";
+import { ROTULO_SITUACAO, trataCompras } from "../../supabase/functions/_shared/compras-solicitacao.mjs";
 
 const COL_PEDIDOS = "compras";
 const COL_PRODUTOS = "produtos";
@@ -87,6 +87,8 @@ export default function Compras() {
     paginasSessao.includes("compras") || paginasSessao.includes("compras/estoque"));
   // Pedir material grava: quem só tem acesso de leitura acompanha, mas não pede.
   const podeSolicitar = sessao?.papel === "equipe" || sessao?.papel === "direcao";
+  // Prazo dos pedidos: só quem trata compras (o servidor confere de novo).
+  const definePrazo = trataCompras({ papel: sessao?.papel, permissoes: paginasSessao });
   const abasPermitidas = ABAS.filter((item) =>
     item.valor === "solicitar" ? podeSolicitar : ABAS_DE_TODOS.has(item.valor) || podeVerSecao("compras", item.valor, sessao)
   );
@@ -910,6 +912,7 @@ export default function Compras() {
           sugestoes={minhas.sugestoes}
           produtos={dados?.produtos || []}
           saldos={resumo}
+          prazo={minhas.prazo}
           avisar={setAviso}
           aoEnviar={() => { recarregar(); trocarAba("minhas"); }}
         />
@@ -936,6 +939,10 @@ export default function Compras() {
           acoes={acoes}
           aoExportar={exportar}
         />
+      )}
+
+      {aba === "pedidos" && definePrazo && (
+        <PrazoPedidos prazo={minhas.prazo} hojeISO={hojeISO} avisar={setAviso} aoMudar={minhas.recarregar} />
       )}
 
       {aba === "pedidos" && (

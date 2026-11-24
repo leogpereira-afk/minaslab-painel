@@ -352,7 +352,12 @@ export const comprasSolicitar = (dados) => chamar("comprasSolicitar", dados).the
   esquecerColecao("compras");
   return r.itens;
 });
-export const comprasMinhas = () => chamar("comprasMinhas").then((r) => ({ itens: r.itens || [], sugestoes: r.sugestoes || [] }));
+export const comprasMinhas = () => chamar("comprasMinhas").then((r) => ({ itens: r.itens || [], sugestoes: r.sugestoes || [], prazo: r.prazo || { ate: "" } }));
+// Até que dia o ciclo aceita pedido de material ("" tira o prazo). Só quem trata compras.
+export const comprasDefinirPrazo = (ate) => chamar("comprasDefinirPrazo", { ate }).then((r) => {
+  if (!r?.ok) throw new Error("O servidor não confirmou o prazo.");
+  return r;
+});
 export const comprasExcluirEntrada = (id, motivo) => chamar("comprasExcluirEntrada", { id, motivo }).then((r) => {
   if (!r?.ok) throw new Error("O servidor não confirmou a exclusão da entrada.");
   esquecerColecao("estoque_mov");

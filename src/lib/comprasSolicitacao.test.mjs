@@ -123,3 +123,31 @@ test("produto escolhido da lista do Estoque leva o id; categoria do estoque vira
   assert.equal(m.categoriaDoProdutoEstoque("peca"), "manutencao");
   assert.equal(m.categoriaDoProdutoEstoque("xyz"), "outros");
 });
+
+test("prazo: data válida, vazia ou inválida", async () => {
+  const { normalizarPrazo } = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  assert.equal(normalizarPrazo("2026-11-28"), "2026-11-28");
+  assert.equal(normalizarPrazo(""), "");
+  assert.equal(normalizarPrazo(null), "");
+  assert.equal(normalizarPrazo("2026-02-30"), null);
+  assert.equal(normalizarPrazo("28/11/2026"), null);
+});
+
+test("prazo: o dia escolhido ainda aceita; o seguinte fecha; sem prazo é aberto", async () => {
+  const { situacaoPrazo, textoPrazo } = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  assert.deepEqual(situacaoPrazo("", "2026-11-24"), { temPrazo: false, aberto: true, ate: "", dias: null });
+  assert.equal(situacaoPrazo("2026-11-28", "2026-11-24").dias, 4);
+  assert.equal(situacaoPrazo("2026-11-28", "2026-11-28").aberto, true);
+  assert.equal(situacaoPrazo("2026-11-28", "2026-11-29").aberto, false);
+  assert.match(textoPrazo(situacaoPrazo("2026-11-28", "2026-11-29")), /fecharam em 28\/11\/2026/);
+  assert.match(textoPrazo(situacaoPrazo("2026-11-28", "2026-11-28")), /último dia/);
+  assert.equal(textoPrazo(situacaoPrazo("", "2026-11-28")), "");
+});
+
+test("prazo: só quem trata compras (ou a direção) define — a aba Pedidos sozinha não", async () => {
+  const { trataCompras } = await import("../../supabase/functions/_shared/compras-solicitacao.mjs");
+  assert.equal(trataCompras({ papel: "direcao", permissoes: [] }), true);
+  assert.equal(trataCompras({ papel: "equipe", permissoes: ["__matriz_v1", "compras/pedidos"] }), false);
+  assert.equal(trataCompras({ papel: "equipe", permissoes: ["__matriz_v1", "compras/estoque"] }), true);
+  assert.equal(trataCompras({ papel: "leitura", permissoes: ["compras"] }), false);
+});
