@@ -68,15 +68,18 @@ async function decifrar(cifra: string, id: string) {
 }
 
 // ---------------------------------------------------------------- assinatura
-// Cargo do RH: ficha (rh_pessoas) com o mesmo nome do login ou com o e-mail da caixa.
+// Cargo do RH: primeiro a ficha (rh_pessoas) com o mesmo nome do login; o e-mail só serve
+// quando o nome não acha ninguém. Caixas são compartilhadas (qualidade@, contato@…): pelo
+// e-mail, a Giovanna pegava o cargo da Lidyane, cuja ficha tem qualidade@minaslab.net.
 async function cargoDoRh(nome: string, emails: string[]) {
   const { data, error } = await sb.from("ml_registros").select("registro").eq("colecao", "rh_pessoas").eq("apagado", false);
   if (error || !data) return "";
   const norm = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
   const fichas = data.map((d) => d.registro as Record<string, unknown>).filter((r) => !r.desligadoEm && r.ativo !== false);
-  const porEmail = fichas.find((r) => emails.includes(norm(r.email)));
   const porNome = fichas.find((r) => norm(r.nome) && norm(r.nome) === norm(nome));
-  return txt((porEmail || porNome)?.cargo, 120);
+  if (porNome) return txt(porNome.cargo, 120);
+  const porEmail = fichas.filter((r) => emails.includes(norm(r.email)));
+  return porEmail.length === 1 ? txt(porEmail[0].cargo, 120) : "";
 }
 
 // Logo e selo da assinatura vão DENTRO do e-mail (cid:), para aparecerem mesmo quando o
