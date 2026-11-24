@@ -167,11 +167,13 @@ export default function Email() {
   const [atualizando, setAtualizando] = useState(false);
   async function atualizarAgora() {
     if (atualizando) return;
+    const daParaContar = pagina === 1 && !filtro.busca && !filtro.naoLidas && !filtro.comAnexo;
     const antes = Math.max(0, ...msgs.map((m) => m.uid));
     setAtualizando(true);
     try {
       const [r] = await Promise.all([carregarLista(), carregarPastas(true)]);
       if (!r) return;
+      if (!daParaContar) return setAviso({ tipo: "ok", texto: "Caixa atualizada." });
       const novos = antes ? (r.mensagens || []).filter((m) => m.uid > antes).length : 0;
       setAviso({ tipo: "ok", texto: novos ? `${novos} ${novos > 1 ? "e-mails novos" : "e-mail novo"}.` : "Caixa atualizada. Nenhum e-mail novo." });
     } finally { setAtualizando(false); }
@@ -216,7 +218,7 @@ export default function Email() {
     } catch (e) { erroMsg(e); } finally { setOcupado(false); }
   }
 
-  function novaEscrita(modo, base) {
+  function novaEscrita(modo, base, pastaDaBase = pastaId) {
     if (!conta) return;
     if (modo === "novo") return setEscrita({ modo, contaId: conta.id, para: "", cc: "", assunto: "" });
     const eu = new Set(contas.map((c) => c.email.toLowerCase()));
@@ -228,7 +230,7 @@ export default function Email() {
     }
     if (modo === "encaminhar") { para = []; cc = []; }
     setEscrita({
-      modo, base, contaId: conta.id, origemPasta: pastaId,
+      modo, base, contaId: conta.id, origemPasta: pastaDaBase,
       para: listaTexto(para.filter((e) => !eu.has(e.email) || modo !== "responderTodos")), cc: listaTexto(cc),
       assunto: assuntoResposta(base.assunto, modo === "encaminhar" ? "encaminhar" : "responder"),
     });
@@ -409,7 +411,7 @@ export default function Email() {
           {sel && aberta && (
             <Leitura key={`${pastaId}|${aberta.uid}`} m={aberta} contaId={conta.id} pastaId={pastaId} emLinha={emLinha} pasta={pasta} pastasMover={pastasMover} ocupado={ocupado} temArquivo={pastas.some((p) => p.tipo === "arquivo")} temSpam={pastas.some((p) => p.tipo === "spam")}
               aoVoltar={() => { setSel(null); setAberta(null); }}
-              aoResponder={(modo) => novaEscrita(modo, aberta)}
+              aoResponder={(modo, base = aberta, pastaDaBase = pastaId) => novaEscrita(modo, base, pastaDaBase)}
               aoAgir={(tipo, destino) => agir([aberta.uid], tipo, destino)}
               aoVer={(a, origem = { pasta: pastaId, uid: aberta.uid }) => verAnexo(a, origem)}
               aoBaixar={async (a, origem = { pasta: pastaId, uid: aberta.uid }) => {
@@ -578,14 +580,29 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
     finally { setCarregando(null); }
   }
 
+  // Botões do topo respondem à mensagem mais nova da conversa (como no webmail);
+  // cada cartão aberto também tem os próprios botões.
+  async function responderUltima(modo) {
+    const ultima = itens[itens.length - 1];
+    if (!ultima || chaveDe(ultima) === minha) return aoResponder(modo);
+    const k = chaveDe(ultima);
+    let c = corpos[k];
+    if (!c) {
+      setCarregando(k); setErro("");
+      try { c = await abrirEmail(contaId, ultima.pasta, ultima.uid); setCorpos((cs) => ({ ...cs, [k]: c })); }
+      catch (e) { setErro(e.message); return; } finally { setCarregando(null); }
+    }
+    aoResponder(modo, c, ultima.pasta);
+  }
+
   const varias = itens.length > 1;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2 sm:px-5">
         <button type="button" className={clsx("btn-ghost h-9 w-9 p-0", !emLinha && "md:hidden")} title="Voltar para a lista" aria-label="Voltar para a lista" onClick={aoVoltar}><ArrowLeft size={18} /></button>
-        <button type="button" className="btn-primary h-9 px-3 text-sm" onClick={() => aoResponder("responder")}><Reply size={15} aria-hidden="true" /> Responder</button>
-        <button type="button" className="btn-outline hidden h-9 px-3 text-sm sm:inline-flex" onClick={() => aoResponder("responderTodos")}><ReplyAll size={15} aria-hidden="true" /> Responder a todos</button>
-        <button type="button" className="btn-outline h-9 px-3 text-sm" onClick={() => aoResponder("encaminhar")}><Forward size={15} aria-hidden="true" /> <span className="hidden sm:inline">Encaminhar</span></button>
+        <button type="button" className="btn-primary h-9 px-3 text-sm" onClick={() => responderUltima("responder")}><Reply size={15} aria-hidden="true" /> Responder</button>
+        <button type="button" className="btn-outline hidden h-9 px-3 text-sm sm:inline-flex" onClick={() => responderUltima("responderTodos")}><ReplyAll size={15} aria-hidden="true" /> Responder a todos</button>
+        <button type="button" className="btn-outline h-9 px-3 text-sm" onClick={() => responderUltima("encaminhar")}><Forward size={15} aria-hidden="true" /> <span className="hidden sm:inline">Encaminhar</span></button>
         <div className="ml-auto flex items-center gap-1">
           <BotaoIcone titulo={m.estrela ? "Tirar estrela" : "Pôr estrela"} icone={Star} onClick={() => aoAgir(m.estrela ? "semEstrela" : "estrela")} desativado={ocupado} />
           <BotaoIcone titulo="Marcar como não lida" icone={Mail} onClick={() => aoAgir("naoLido")} desativado={ocupado} />
@@ -611,7 +628,8 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
                 <article key={k} ref={k === minha ? minhaRef : undefined} className={clsx("scroll-mt-2 rounded-xl border bg-white", aberto ? "border-slate-200 shadow-sm" : "border-slate-200 hover:bg-slate-50")}>
                   {aberto && c ? (
                     <div className="px-4 pb-3 pt-3">
-                      <CorpoCompleto m={c} aoRecolher={() => alternar(x)} aoBaixar={(a) => aoBaixar(a, { pasta: x.pasta, uid: x.uid })} aoVer={(a) => aoVer(a, { pasta: x.pasta, uid: x.uid })} />
+                      <CorpoCompleto m={c} aoRecolher={() => alternar(x)} aoBaixar={(a) => aoBaixar(a, { pasta: x.pasta, uid: x.uid })} aoVer={(a) => aoVer(a, { pasta: x.pasta, uid: x.uid })}
+                        aoResponder={(modo) => (k === minha ? aoResponder(modo) : aoResponder(modo, c, x.pasta))} />
                     </div>
                   ) : (
                     <button type="button" onClick={() => alternar(x)} className="block w-full px-4 py-3 text-left" aria-expanded={aberto}>
@@ -638,6 +656,9 @@ function Leitura({ m, contaId, pastaId, emLinha, pasta, pastasMover, ocupado, te
 // (.xlsx) e Word (.docx) lidos aqui. Outros tipos só baixam.
 function VisualizarAnexo({ previa, aoFechar }) {
   const [aba, setAba] = useState(0);
+  // Celular/tablet não mostra PDF dentro da página (Android fica em branco, iPhone só a 1ª
+  // página): lá as páginas são desenhadas pelo pdf.js. No computador fica o leitor do navegador.
+  const pdfNativo = typeof window !== "undefined" && !window.matchMedia?.("(pointer: coarse)").matches && window.innerWidth >= 768;
   const tipo = previa ? tipoPrevia(previa.nome, previa.tipo) : null;
   const mime = previa ? mimeDaPrevia(previa.nome, previa.tipo) : "";
   const url = useMemo(() => (previa?.bytes && (tipo === "pdf" || tipo === "imagem") ? URL.createObjectURL(new Blob([previa.bytes], { type: mime })) : ""), [previa?.bytes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -673,7 +694,7 @@ function VisualizarAnexo({ previa, aoFechar }) {
         <div className="min-h-[50vh] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {previa?.erro ? <p className="p-6 text-sm text-bad-700">{previa.erro}</p>
             : !previa?.bytes ? <div className="grid h-[60vh] place-items-center text-sm text-slate-500"><Loader2 className="animate-spin" aria-label="Carregando o anexo" /></div>
-            : tipo === "pdf" ? <iframe title={previa.nome} src={url} className="h-[72vh] w-full border-0 bg-white" />
+            : tipo === "pdf" ? (pdfNativo ? <iframe title={previa.nome} src={url} className="h-[72vh] w-full border-0 bg-white" /> : <PaginasPdf bytes={previa.bytes} />)
             : tipo === "imagem" ? <div className="grid max-h-[72vh] place-items-center overflow-auto p-3"><img src={url} alt={previa.nome} className="max-w-full" /></div>
             : conteudo?.texto != null ? <pre className="max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-white p-4 font-mono text-xs text-slate-700">{conteudo.texto}</pre>
             : conteudo?.paragrafos ? (
@@ -703,8 +724,52 @@ function VisualizarAnexo({ previa, aoFechar }) {
   );
 }
 
+// PDF desenhado página a página (pdf.js, que o painel já usa no RH).
+const MAX_PAGINAS_PDF = 60;
+function PaginasPdf({ bytes }) {
+  const caixa = useRef(null);
+  const [estado, setEstado] = useState({ total: 0, erro: "" });
+  useEffect(() => {
+    let vivo = true, doc = null;
+    (async () => {
+      try {
+        const [pdfjs, worker] = await Promise.all([
+          import("pdfjs-dist/legacy/build/pdf.mjs"),
+          import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
+        ]);
+        if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        doc = await pdfjs.getDocument({ data: bytes.slice(), useWorkerFetch: false, isEvalSupported: false }).promise;
+        if (!vivo) return;
+        setEstado({ total: doc.numPages, erro: "" });
+        const largura = Math.max(280, (caixa.current?.clientWidth || 600) - 16);
+        const nitidez = Math.min(window.devicePixelRatio || 1, 2);
+        for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGINAS_PDF) && vivo; n++) {
+          const pagina = await doc.getPage(n);
+          const v0 = pagina.getViewport({ scale: 1 });
+          const vp = pagina.getViewport({ scale: (largura / v0.width) * nitidez });
+          const tela = document.createElement("canvas");
+          tela.width = vp.width; tela.height = vp.height;
+          tela.style.width = `${largura}px`; tela.className = "mx-auto mb-2 block bg-white shadow-sm";
+          tela.setAttribute("aria-label", `Página ${n}`);
+          await pagina.render({ canvasContext: tela.getContext("2d"), viewport: vp }).promise;
+          if (vivo) caixa.current?.appendChild(tela);
+        }
+      } catch { if (vivo) setEstado({ total: 0, erro: "Não consegui mostrar este PDF aqui. Use Baixar." }); }
+    })();
+    return () => { vivo = false; doc?.destroy(); if (caixa.current) caixa.current.innerHTML = ""; }; // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bytes]);
+  return (
+    <div className="max-h-[72vh] overflow-auto p-2">
+      {estado.erro && <p className="p-4 text-sm text-bad-700">{estado.erro}</p>}
+      {!estado.total && !estado.erro && <div className="grid h-40 place-items-center"><Loader2 className="animate-spin text-slate-400" aria-label="Abrindo o PDF" /></div>}
+      <div ref={caixa} />
+      {estado.total > MAX_PAGINAS_PDF && <p className="p-2 text-center text-xs text-slate-500">Mostrando {MAX_PAGINAS_PDF} de {estado.total} páginas. Baixe para ver tudo.</p>}
+    </div>
+  );
+}
+
 // Uma mensagem por inteiro: quem mandou, para quem, quando, corpo e anexos.
-function CorpoCompleto({ m, aoBaixar, aoVer, aoRecolher }) {
+function CorpoCompleto({ m, aoBaixar, aoVer, aoRecolher, aoResponder }) {
   const [baixando, setBaixando] = useState(null);
   const data = m.data ? new Date(m.data).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
   return (
@@ -736,6 +801,13 @@ function CorpoCompleto({ m, aoBaixar, aoVer, aoRecolher }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {aoResponder && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+          <button type="button" className="btn-outline h-8 px-3 text-xs" onClick={() => aoResponder("responder")}><Reply size={14} aria-hidden="true" /> Responder</button>
+          <button type="button" className="btn-outline h-8 px-3 text-xs" onClick={() => aoResponder("responderTodos")}><ReplyAll size={14} aria-hidden="true" /> Responder a todos</button>
+          <button type="button" className="btn-outline h-8 px-3 text-xs" onClick={() => aoResponder("encaminhar")}><Forward size={14} aria-hidden="true" /> Encaminhar</button>
         </div>
       )}
     </>
