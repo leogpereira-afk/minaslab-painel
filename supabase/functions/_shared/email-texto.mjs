@@ -330,6 +330,28 @@ export const mesmaConversa = (a, b) => {
   return !!x && x === y;
 };
 
+// IDs <...> de um cabeçalho (Message-ID, In-Reply-To, References).
+export const idsDeCabecalho = (v) => [...String(v || "").matchAll(/<[^<>\s]+>/g)].map((m) => m[0].toLowerCase());
+
+// Conversa de verdade: só as mensagens ligadas à aberta pela cadeia de respostas
+// (Message-ID ↔ In-Reply-To/References), como o webmail e o Outlook fazem. Assunto igual
+// sozinho não basta — "Nota fiscal" de dois fornecedores não é a mesma conversa.
+// itens: [{ chave, mid, refs: [] }]; devolve as chaves que entram na conversa de `alvo`.
+export function ligadasPorResposta(itens, alvo) {
+  const pai = new Map();
+  const raiz = (x) => { while (pai.get(x) !== x) { pai.set(x, pai.get(pai.get(x))); x = pai.get(x); } return x; };
+  const no = (x) => { if (!pai.has(x)) pai.set(x, x); return x; };
+  const unir = (a, b) => { const ra = raiz(no(a)), rb = raiz(no(b)); if (ra !== rb) pai.set(ra, rb); };
+  for (const it of itens) {
+    const eu = "#" + it.chave;
+    no(eu);
+    if (it.mid) unir(eu, it.mid);
+    for (const r of it.refs || []) unir(eu, r);
+  }
+  const r0 = raiz(no("#" + alvo));
+  return new Set(itens.filter((it) => raiz("#" + it.chave) === r0).map((it) => it.chave));
+}
+
 export function assuntoResposta(assunto, modo) {
   const base = String(assunto || "").replace(/^\s*((re|res|enc|fwd?|tr)\s*:\s*)+/i, "");
   return (modo === "encaminhar" ? "Enc: " : "Re: ") + base;

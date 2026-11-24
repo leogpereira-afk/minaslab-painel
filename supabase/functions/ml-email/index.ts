@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
 
     if (acao === "conversa") {
       const c = await pegarConta(body.conta);
-      const mensagens = await comImap(await credencial(c), (imap) => lerConversa(imap, pasta(), txt(body.assunto, 500)));
+      const mensagens = await comImap(await credencial(c), (imap) => lerConversa(imap, pasta(), txt(body.assunto, 500), Number(body.uid) || 0));
       return json({ ok: true, mensagens });
     }
 

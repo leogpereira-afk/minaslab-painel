@@ -4,7 +4,7 @@
 import PostalMime from "https://esm.sh/postal-mime@2.4.4";
 import {
   aspas, conjuntoUids, deBase64, lerLinhaFetch, lerLinhaList, lerLinhaStatus, lerSearch, limparHtml,
-  htmlDeTexto, organizarPastas, assuntoBase, mesmaConversa, textoDeHtml, lerCabecalhos, pastaDecodificar, paraBase64, resumoDaMensagem, lerEnderecos, dataIso,
+  htmlDeTexto, organizarPastas, assuntoBase, mesmaConversa, textoDeHtml, lerCabecalhos, idsDeCabecalho, ligadasPorResposta, pastaDecodificar, paraBase64, resumoDaMensagem, lerEnderecos, dataIso,
 } from "./email-texto.mjs";
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -305,7 +305,7 @@ export async function lerMensagem(imap: Imap, pasta: string, uid: number, marcar
 // entrada e em Enviados — como o webmail mostra "3 mensagens" ao abrir um e-mail.
 // Volta só o resumo de cada uma (quem, quando, prévia); o corpo é aberto ao clicar.
 const MAX_CONVERSA = 30;
-export async function lerConversa(imap: Imap, pastaAtual: string, assunto: string) {
+export async function lerConversa(imap: Imap, pastaAtual: string, assunto: string, uidAberto = 0) {
   const base = assuntoBase(assunto);
   if (!base) return [];
   const todas = await listarPastas(imap, false);
@@ -321,15 +321,17 @@ export async function lerConversa(imap: Imap, pastaAtual: string, assunto: strin
     if (!s.ok) continue;
     const uids = lerSearch(s.linhas).slice(0, MAX_CONVERSA);
     if (!uids.length) continue;
-    const r = await imap.ok(`UID FETCH ${conjuntoUids(uids)} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE CONTENT-TYPE MESSAGE-ID)] BODY.PEEK[]<0.32768>)`);
+    const r = await imap.ok(`UID FETCH ${conjuntoUids(uids)} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE CONTENT-TYPE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODY.PEEK[]<0.32768>)`);
     for (const l of r.linhas) {
       const f = lerLinhaFetch(l, r.literais);
       if (!f?.uid) continue;
       const cabBytes = f.corpos.find((c: { secao: string }) => c.secao.startsWith("HEADER"))?.bytes || new Uint8Array();
       const resumo = resumoDaMensagem({ ...f, corpos: [{ secao: "HEADER", bytes: cabBytes }] });
       if (!mesmaConversa(resumo.assunto, assunto)) continue;
-      const mid = ((lerCabecalhos(cabBytes)["message-id"] || "").match(/<[^>]+>/) || [""])[0];
-      const chave = mid || `${resumo.data}|${resumo.de.email}`;
+      const cab = lerCabecalhos(cabBytes);
+      const mid = idsDeCabecalho(cab["message-id"])[0] || "";
+      const refs = [...idsDeCabecalho(cab["in-reply-to"]), ...idsDeCabecalho(cab["references"])];
+      const chave = mid || `${pasta}|${f.uid}`;
       const daqui = pasta === pastaAtual;
       if (vistos.has(chave)) { if (!daqui) continue; } // mesma mensagem em duas pastas: fica a da pasta aberta
       vistos.add(chave);
@@ -339,14 +341,19 @@ export async function lerConversa(imap: Imap, pastaAtual: string, assunto: strin
         if (parcial) { const m = await new PostalMime().parse(parcial); previa = (m.text || textoDeHtml(m.html || "")).replace(/\s+/g, " ").trim().slice(0, 220); }
       } catch { /* sem prévia */ }
       const i = achadas.findIndex((x) => x.chave === chave);
-      const item = { ...resumo, pasta, chave, previa };
+      const item = { ...resumo, pasta, chave, mid, refs, aberta: pasta === pastaAtual && f.uid === uidAberto, previa };
       if (i >= 0) achadas[i] = item; else achadas.push(item);
     }
   }
+  // Só fica o que se liga à mensagem aberta pela cadeia de respostas.
+  const alvo = achadas.find((x) => x.aberta);
+  if (!alvo) return [];
+  const ligadas = ligadasPorResposta(achadas as { chave: string; mid: string; refs: string[] }[], alvo.chave as string);
   return achadas
+    .filter((x) => ligadas.has(x.chave as string))
     .sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")))
     .slice(-MAX_CONVERSA)
-    .map(({ chave: _c, ...x }) => x);
+    .map(({ chave: _c, mid: _m, refs: _r, aberta: _a, ...x }) => x);
 }
 
 export async function baixarAnexo(imap: Imap, pasta: string, uid: number, indice: number) {
