@@ -17,7 +17,7 @@ import {
   SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, lerConversa, baixarAnexo, agir, smtp,
   guardarEnviado, marcarRespondida, anexosDoOriginal, naoLidasEntrada, type Credencial, type AcaoMensagem,
 } from "../_shared/email-cliente.ts";
-import { deBase64, paraBase64, emailValido, lerEnderecos, montarMensagem, textoDeHtml } from "../_shared/email-texto.mjs";
+import { nomeCurtoPessoa, cargoFormatado, deBase64, paraBase64, emailValido, lerEnderecos, montarMensagem, textoDeHtml } from "../_shared/email-texto.mjs";
 
 const U = Deno.env.get("SUPABASE_URL")!;
 const K = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")!;
@@ -110,7 +110,7 @@ async function imagensDaAssinatura(html: string) {
 
 // ---------------------------------------------------------------- contas
 type ContaEmail = { id: string; usuario: string; email: string; provedor: string; nome_exibicao: string | null; senha_cifra: string; assinatura_ativa: boolean; cargo_assinatura: string | null; ordem: number; ultimo_erro: string | null };
-const publica = (c: ContaEmail) => ({ id: c.id, email: c.email, provedor: c.provedor, nomeExibicao: c.nome_exibicao, assinaturaAtiva: c.assinatura_ativa, cargoAssinatura: c.cargo_assinatura, ultimoErro: c.ultimo_erro });
+const publica = (c: ContaEmail) => ({ id: c.id, email: c.email, provedor: c.provedor, nomeExibicao: c.nome_exibicao, assinaturaAtiva: c.assinatura_ativa, cargoAssinatura: c.cargo_assinatura ? cargoFormatado(c.cargo_assinatura) : null, ultimoErro: c.ultimo_erro });
 const provedorDe = (email: string, pedido: unknown) => {
   const p = txt(pedido, 20);
   if (p === "gmail" || p === "hostinger") return p;
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
     if (acao === "inicio") {
       const contas = await minhas();
       const cargo = await cargoDoRh(nomePessoa, contas.map((c) => c.email.toLowerCase()));
-      return json({ ok: true, usuario, nome: nomePessoa, cargo, contas: contas.map(publica) });
+      return json({ ok: true, usuario, nome: nomeCurtoPessoa(nomePessoa), cargo: cargoFormatado(cargo), contas: contas.map(publica) });
     }
 
     if (acao === "contaSalvar") {
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
         id: novoId, usuario, email, provedor,
         nome_exibicao: txt(d.nomeExibicao, 120) || null,
         assinatura_ativa: d.assinaturaAtiva !== false,
-        cargo_assinatura: txt(d.cargoAssinatura, 120) || null,
+        cargo_assinatura: cargoFormatado(txt(d.cargoAssinatura, 120)) || null,
         atualizado_em: new Date().toISOString(),
         ultimo_erro: senha ? null : atual?.ultimo_erro ?? null,
       };
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
           }
         }
         const mensagem = montarMensagem({
-          de: { nome: txt(c.nome_exibicao, 120) || nomePessoa, email: c.email },
+          de: { nome: txt(c.nome_exibicao, 120) || nomeCurtoPessoa(nomePessoa), email: c.email },
           para, cc, assunto,
           html, texto: textoDeHtml(html.replace(/<img[^>]*>/gi, "")),
           messageId: `<${crypto.randomUUID()}@${dominio}>`,

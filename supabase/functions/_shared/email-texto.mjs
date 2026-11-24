@@ -321,6 +321,27 @@ export function montarMensagem(o) {
 }
 
 // "Re: " / "Enc: " sem acumular ("Re: Re: Re:").
+// ---------------------------------------------------------------- nome e cargo na assinatura
+// Padrão do sistema: nome = primeiro + último ("ANA CLAUDIA GONÇALVES PESSOA" → "Ana Pessoa");
+// cargo = cada palavra com a primeira maiúscula, partículas em minúsculas e algarismo romano
+// em maiúsculas ("AUXILIAR ADMINISTRATIVO COMERCIAL I" → "Auxiliar Administrativo Comercial I").
+const PARTICULAS_NOME = new Set(["da", "de", "do", "das", "dos", "e", "di", "du", "a", "o", "em", "para"]);
+const ROMANO = /^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i;
+const maiusculaInicial = (p) => p.toLocaleLowerCase("pt-BR").replace(/(^|[-'/(])(\p{L})/gu, (_m, a, b) => a + b.toLocaleUpperCase("pt-BR"));
+export function nomeCurtoPessoa(nome) {
+  const partes = String(nome ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return "";
+  const uteis = partes.filter((p) => !PARTICULAS_NOME.has(p.toLocaleLowerCase("pt-BR")));
+  return (uteis.length >= 2 ? [uteis[0], uteis[uteis.length - 1]] : [partes[0]]).map(maiusculaInicial).join(" ");
+}
+export function cargoFormatado(cargo) {
+  return String(cargo ?? "").trim().replace(/\s+/g, " ").split(" ").filter(Boolean).map((p, i) => {
+    if (ROMANO.test(p)) return p.toUpperCase();
+    if (i > 0 && PARTICULAS_NOME.has(p.toLocaleLowerCase("pt-BR"))) return p.toLocaleLowerCase("pt-BR");
+    return maiusculaInicial(p);
+  }).join(" ");
+}
+
 // Assunto sem "Re:", "RES:", "Enc:", "Fwd:", "TR:" (repetidos) — é o que junta a conversa.
 export function assuntoBase(assunto) {
   return String(assunto || "").replace(/^\s*((re|res|enc|fwd?|tr)\s*(\[\d+\])?\s*:\s*)+/i, "").replace(/\s+/g, " ").trim();
