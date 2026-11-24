@@ -159,6 +159,18 @@ export function trataCompras({ papel, permissoes }) {
   return ["compras", "compras/estoque", "compras/ordens"].some((x) => p.includes(x));
 }
 
+/* FLUXO (Ana, 24/11/2026): Solicitar → Pedidos (aprovar) → fila "Aguardando ordem"
+   → Ordem de compra (juntar por fornecedor) → ordem Comprada → Chegou: dar entrada.
+   O aprovado não avança mais por botão em Pedidos: quem conduz é a ordem. */
+export const aguardandoOrdem = (c) => c.status === "aprovada" && !c.ordemId;
+// Entra numa ordem só o que já foi aprovado (ou pedido antigo já em cotação/comprado).
+const ENTRA_EM_ORDEM = new Set(["aprovada", "cotando", "comprada"]);
+export const podeEntrarEmOrdem = (c) => !c.ordemId && ENTRA_EM_ORDEM.has(c.status);
+// Criar a ordem põe o aprovado "Em cotação"; marcar a ordem Comprada põe "Comprada".
+// Nunca rebaixa nem ressuscita: recebido e recusado ficam como estão.
+export const statusAoCriarOrdem = (c) => (c.status === "aprovada" ? "cotando" : c.status);
+export const statusAoComprarOrdem = (c) => (c.status === "aprovada" || c.status === "cotando" ? "comprada" : c.status);
+
 // Situações que quem compra pode dar a vários de uma vez. "recebida" fica de
 // fora: chegar passa pela conferência de quantidade (entrada no estoque).
 export const SITUACOES_LOTE = ["cotando", "comprada", "cancelada"];

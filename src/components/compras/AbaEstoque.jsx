@@ -1,7 +1,6 @@
-// Aba Estoque — a resposta da pergunta nº 1 do dia: O QUE ESTÁ ACABANDO. E,
-// logo em seguida, a pergunta que a equipe faz em voz alta o dia inteiro: ONDE
-// ESTÁ GUARDADO. Por isso o local vem em destaque na linha, não escondido na
-// ficha.
+// Aba Estoque — só o CONTROLE (Ana, 24/11/2026): o que está acabando, entrada,
+// saída e extrato. O cadastro (nome, local, categoria, mínimo, custo, desativar,
+// excluir) mora na aba Produtos.
 //
 // Estado e gravação moram na casca (pages/Compras.jsx); aqui mora a
 // renderização e a inteligência de LEITURA. O saldo NÃO é lido de campo
@@ -9,17 +8,16 @@
 
 import { useMemo, useState } from "react";
 import {
-  Plus, Pencil, Download, Search, Package, PackagePlus, PackageMinus, MapPin,
+  Download, Search, Package, PackagePlus, PackageMinus,
   Boxes, AlertTriangle, HandCoins, Clock, ChevronDown, ChevronRight, Trash2,
 } from "lucide-react";
 import { dataCurta, dataLonga, diasEntre, moedaCheia, ymdLocal } from "../../lib/format.js";
 import { StatCard, Empty, Modal, Card } from "../ui.jsx";
 import {
-  CATEGORIAS, UNIDADES, TIPOS_MOV, rotuloCategoria, situacaoSaldo, numeroOuNull,
-  paraCampoNum, fmtQtd, comUnidade, sinalDe,
+  CATEGORIAS, TIPOS_MOV, rotuloCategoria, situacaoSaldo, numeroOuNull,
+  fmtQtd, comUnidade, sinalDe,
 } from "./comum.jsx";
 
-const SEM_LOCAL = "__sem_local";
 
 // Uma linha do extrato do produto. O livro não se apaga: saída e ajuste errados se
 // consertam com um AJUSTE novo. ENTRADA lançada errado pode ser EXCLUÍDA (Léo,
@@ -103,22 +101,6 @@ function LinhaProduto({ salvando, p, editavel, podeExcluirEntrada, aberto, aoAbr
 
         <span className="min-w-0 flex-1 basis-48">
           <button type="button" onClick={aoAbrir} aria-expanded={aberto} aria-controls={aberto ? `extrato-${p.id}` : undefined} className="min-h-11 w-full break-words text-left font-display text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4">{p.nome}<span className="sr-only"> — extrato do produto</span></button>
-          <span className="block break-words text-xs text-slate-500">
-            {[rotuloCategoria(p.categoria), p.fornecedorPadrao, p.obs].filter(Boolean).join(" · ")}
-          </span>
-        </span>
-
-        {/* O LOCAL em destaque: é a pergunta do dia a dia. Produto sem local
-            não fica em silêncio — quem guardou sem anotar precisa ver isso. */}
-        <span className="min-w-0 max-w-full">
-          {p.local ? (
-            <span className="chip-brand max-w-full whitespace-normal break-words" title={p.local}>
-              <MapPin size={12} strokeWidth={2.4} className="mr-1 shrink-0" />
-              {p.local}
-            </span>
-          ) : (
-            <span className="chip">sem local definido</span>
-          )}
         </span>
 
         <span className="w-28 shrink-0 text-right">
@@ -165,16 +147,6 @@ function LinhaProduto({ salvando, p, editavel, podeExcluirEntrada, aberto, aoAbr
                 </button>
               </>
             )}
-            <button
-              type="button"
-              disabled={salvando}
-              onClick={() => acoes.abrirProduto(p)}
-              className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-              title="Editar produto"
-              aria-label={`Editar produto: ${p.nome}`}
-            >
-              <Pencil size={14} />
-            </button>
           </span>
         )}
       </div>
@@ -198,112 +170,6 @@ function LinhaProduto({ salvando, p, editavel, podeExcluirEntrada, aberto, aoAbr
         </div>
       )}
     </div>
-  );
-}
-
-// EXCLUIR PRODUTO (Ana, 24/11/2026): só produto SEM lançamento no livro do
-// estoque — com entrada/saída, apagar deixaria movimento órfão; aí o caminho
-// é desativar (tira das escolhas novas e mantém o histórico legível).
-export function FormProduto({ form, setForm, salvando, aoSalvar, aoExcluir, temLancamento, aoFechar }) {
-  if (!form) return null;
-  const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
-  return (
-    <Modal titulo={form.id ? "Editar produto" : "Novo produto"} aberto={!!form} aoFechar={aoFechar}>
-      <form
-        aria-busy={salvando}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (salvando) return;
-          aoSalvar();
-        }}
-        className="space-y-4"
-      >
-        <div>
-          <label className="label" htmlFor="pr-nome">Nome do produto</label>
-          <input id="pr-nome" type="text" className="input" value={form.nome} onChange={setCampo("nome")} autoFocus required />
-        </div>
-        <div>
-          <label className="label" htmlFor="pr-local">Onde está guardado</label>
-          <input
-            id="pr-local" type="text" className="input"
-            placeholder="Ex.: Almoxarifado, prateleira B3"
-            value={form.local} onChange={setCampo("local")}
-          />
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
-          <div>
-            <label className="label" htmlFor="pr-cat">Categoria</label>
-            <select id="pr-cat" className="select" value={form.categoria} onChange={setCampo("categoria")}>
-              {Object.entries(CATEGORIAS).map(([valor, rotulo]) => (
-                <option key={valor} value={valor}>{rotulo}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="pr-un">Unidade</label>
-            <select id="pr-un" className="select" value={form.unidade} onChange={setCampo("unidade")}>
-              {UNIDADES.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="pr-min">Mínimo (ponto de reposição)</label>
-            <input
-              id="pr-min" type="text" inputMode="decimal" className="input"
-              placeholder="em branco = sem mínimo"
-              value={form.minimo} onChange={setCampo("minimo")}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="pr-custo">Custo médio (R$)</label>
-            <input
-              id="pr-custo" type="text" inputMode="decimal" className="input"
-              placeholder="em branco = sem registro"
-              value={form.custoMedio} onChange={setCampo("custoMedio")}
-            />
-          </div>
-        </div>
-        <div>
-          <label className="label" htmlFor="pr-forn">Fornecedor de costume</label>
-          <input id="pr-forn" type="text" className="input" placeholder="opcional" value={form.fornecedorPadrao} onChange={setCampo("fornecedorPadrao")} />
-        </div>
-        <div>
-          <label className="label" htmlFor="pr-obs">Observações</label>
-          <textarea id="pr-obs" className="input" rows={2} value={form.obs} onChange={setCampo("obs")} />
-        </div>
-        {form.id && (
-          <label className="flex items-center gap-2 text-sm text-slate-700" htmlFor="pr-ativo">
-            <input
-              id="pr-ativo" type="checkbox" className="h-4 w-4"
-              checked={form.ativo !== false}
-              onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
-            />
-            Produto ativo (desmarque para tirar das listas sem apagar o histórico)
-          </label>
-        )}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {form.id && aoExcluir && (
-            <button
-              type="button"
-              className="mr-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-bad-700 hover:bg-bad-50 disabled:opacity-40"
-              disabled={salvando || temLancamento}
-              title={temLancamento ? "Tem entrada ou saída no estoque: desmarque “Produto ativo” em vez de excluir" : undefined}
-              onClick={() => aoExcluir(form.id)}
-            >
-              <Trash2 size={15} /> Excluir produto
-            </button>
-          )}
-          <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
-          <button type="submit" className="btn-primary" disabled={salvando || !form.nome.trim()}>
-            {salvando ? "Gravando..." : "Gravar"}
-          </button>
-        </div>
-        {form.id && aoExcluir && temLancamento && (
-          <p className="text-xs text-slate-500">Para excluir, o produto não pode ter entrada ou saída no estoque. Com lançamentos, desmarque “Produto ativo”.</p>
-        )}
-      </form>
-    </Modal>
   );
 }
 
@@ -412,15 +278,13 @@ export function ModalMovimento({ form, setForm, equipe, resumo, salvando, aoSalv
 
 export default function AbaEstoque({
   produtos, movs, resumo, equipe, hojeISO, editavel, podeExcluirEntrada = false, salvando,
-  formProduto, setFormProduto, formMov, setFormMov, acoes, aoExportar,
+  formMov, setFormMov, acoes, aoExportar,
 }) {
   const [excluindo, setExcluindo] = useState(null); // { mv, produto, unidade }
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("");
-  const [local, setLocal] = useState("");
   const [recorte, setRecorte] = useState(null); // "abaixo" | "parado" | null
   const [aberto, setAberto] = useState(null);
-  const [verInativos, setVerInativos] = useState(false);
 
   const vm = useMemo(() => {
     const preparar = (p) => {
@@ -469,13 +333,12 @@ export default function AbaEstoque({
   }, [produtos, resumo, hojeISO]);
 
   const q = busca.trim().toLowerCase();
-  const base = verInativos ? [...vm.ativos, ...vm.inativos] : vm.ativos;
+  // Só o CONTROLE (Ana, 24/11/2026): cadastro, local e desativados ficam na aba Produtos.
+  const base = vm.ativos;
   const visiveis = base.filter((p) => {
     if (recorte === "abaixo" && p.sit.chave !== "abaixo") return false;
     if (recorte === "parado" && !(p.parado !== null && p.parado > 90)) return false;
     if (categoria && p.categoria !== categoria) return false;
-    if (local === SEM_LOCAL && String(p.local || "").trim()) return false;
-    if (local && local !== SEM_LOCAL && String(p.local || "").trim() !== local) return false;
     if (q && !String(p.nome || "").toLowerCase().includes(q)) return false;
     return true;
   });
@@ -495,12 +358,10 @@ export default function AbaEstoque({
   const exportar = () => {
     const filtros = [
       categoria ? rotuloCategoria(categoria) : null,
-      local === SEM_LOCAL ? "sem local" : local || null,
       recorte === "abaixo" ? "abaixo do mínimo" : recorte === "parado" ? "parados há mais de 90 dias" : null,
       q ? `busca "${busca.trim()}"` : null,
       // Desativado misturado sem aviso vira produto "do estoque" numa reunião:
       // o título diz, e a coluna abaixo diz linha a linha.
-      verInativos ? "inclui desativados" : null,
     ].filter(Boolean);
     aoExportar({
       nome: "estoque",
@@ -579,10 +440,10 @@ export default function AbaEstoque({
         />
       </div>
 
-      {(recorte || busca || categoria || local) && (
+      {(recorte || busca || categoria) && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
-          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "abaixo" ? "Abaixo do mínimo" : recorte === "parado" ? "Sem movimento há mais de 90 dias" : "Busca, categoria ou local"}.</p>
-          <button type="button" className="btn-outline min-h-11" onClick={() => { setRecorte(null); setBusca(""); setCategoria(""); setLocal(""); }}>Limpar filtros</button>
+          <p role="status" className="text-sm text-brand-800">Filtro ativo: {recorte === "abaixo" ? "Abaixo do mínimo" : recorte === "parado" ? "Sem movimento há mais de 90 dias" : "Busca ou categoria"}.</p>
+          <button type="button" className="btn-outline min-h-11" onClick={() => { setRecorte(null); setBusca(""); setCategoria(""); }}>Limpar filtros</button>
         </div>
       )}
 
@@ -606,29 +467,9 @@ export default function AbaEstoque({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="label" htmlFor="es-local">Local</label>
-              <select id="es-local" className="select w-full min-w-0 sm:w-48" value={local} onChange={(e) => setLocal(e.target.value)}>
-                <option value="">Todos</option>
-                {vm.locais.map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-                <option value={SEM_LOCAL}>(sem local definido)</option>
-              </select>
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {vm.inativos.length > 0 && (
-              <button
-                type="button"
-                className="btn-outline"
-                aria-pressed={verInativos}
-                onClick={() => setVerInativos((v) => !v)}
-              >
-                {verInativos ? "Esconder desativados" : `Ver desativados (${vm.inativos.length})`}
-              </button>
-            )}
             {/* Baixar é LEITURA: quem enxerga a tela leva o recorte embora,
                 mesmo sem permissão de escrita. */}
             <button
@@ -640,11 +481,6 @@ export default function AbaEstoque({
             >
               <Download size={16} strokeWidth={2.2} /> Baixar planilha
             </button>
-            {editavel && (
-              <button type="button" className="btn-primary" onClick={() => acoes.abrirProduto(null)}>
-                <Plus size={16} strokeWidth={2.5} /> Novo produto
-              </button>
-            )}
           </div>
         </div>
 
@@ -679,16 +515,6 @@ export default function AbaEstoque({
           aoConfirmar={async (motivo) => { const ok = await acoes.excluirEntrada(excluindo.mv.id, motivo); if (ok) setExcluindo(null); }} />
       )}
 
-      <FormProduto
-        form={formProduto}
-        setForm={setFormProduto}
-        salvando={salvando}
-        aoSalvar={acoes.salvarProduto}
-        aoExcluir={acoes.excluirProduto}
-        temLancamento={!!formProduto?.id && movs.some((m) => m.produtoId === formProduto.id)}
-        aoFechar={() => setFormProduto(null)}
-      />
-
       <ModalMovimento
         form={formMov}
         setForm={setFormMov}
@@ -720,15 +546,4 @@ export const movimentoVazio = (produto, tipo) => ({
 // Semente do formulário de produto. Os números voltam como TEXTO do jeito que
 // se digita — e zero volta como "0": paraCampo(0) devolveria "" e apagaria um
 // mínimo zero gravado de propósito.
-export const produtoParaForm = (p) => ({
-  id: p?.id || "",
-  nome: p?.nome || "",
-  unidade: p?.unidade || "un",
-  categoria: p?.categoria || "outro",
-  local: p?.local || "",
-  minimo: paraCampoNum(p?.minimo),
-  custoMedio: paraCampoNum(p?.custoMedio),
-  fornecedorPadrao: p?.fornecedorPadrao || "",
-  obs: p?.obs || "",
-  ativo: p ? p.ativo !== false : true,
-});
+

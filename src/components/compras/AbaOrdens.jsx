@@ -17,6 +17,7 @@ import { StatCard, Empty, Modal, Card } from "../ui.jsx";
 import {
   STATUS_PEDIDO, STATUS_ORDEM, PEDIDO_EM_ABERTO, ModalRecebimento, temValor,
 } from "./comum.jsx";
+import { aguardandoOrdem, podeEntrarEmOrdem, rotuloCategoria, rotuloUrgencia } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
 
 // Semente do FORMULÁRIO (o registro tem também `valorTotal`, que não se
 // digita: sai da soma dos pedidos marcados, na gravação).
@@ -41,7 +42,9 @@ function prazoOrdem(o, hojeISO) {
 
 function LinhaOrdem({ salvando, o, editavel, aberto, aoAbrir, acoes }) {
   const podeAvancar = o.status === "aberta";
-  const podeReceber = o.status === "aberta" || o.status === "enviada";
+  // Fluxo (Ana, 24/11/2026): a ordem é COMPRADA (seta) e, quando o material
+  // chega, "Chegou — dar entrada" confere e lança no estoque.
+  const podeReceber = o.status === "enviada";
   return (
     <div
       className={`rounded-xl border p-3 ${o.status === "cancelada" ? "bg-slate-50" : ""}`}
@@ -119,8 +122,8 @@ function LinhaOrdem({ salvando, o, editavel, aberto, aoAbrir, acoes }) {
                 type="button"
                 disabled={salvando}
                 onClick={() => acoes.avancarOrdem(o.id)}
-                title="Marcar como enviada ao fornecedor"
-                aria-label={`Marcar ordem OC ${o.numero} como enviada ao fornecedor`}
+                title="Marcar como comprada (os itens ficam “Comprada” e quem pediu é avisado)"
+                aria-label={`Marcar ordem OC ${o.numero} como comprada`}
                 className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-brand-50 hover:text-brand-700"
               >
                 <ArrowRight size={15} strokeWidth={2.2} />
@@ -131,11 +134,11 @@ function LinhaOrdem({ salvando, o, editavel, aberto, aoAbrir, acoes }) {
                 type="button"
                 disabled={salvando}
                 onClick={() => acoes.receberOrdem(o.id)}
-                title="Marcar recebida (oferece dar entrada nos itens)"
-                aria-label={`Receber ordem OC ${o.numero} e conferir seus itens`}
-                className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-ok-50 hover:text-ok-700"
+                title="Conferir as quantidades que chegaram e dar entrada no estoque"
+                aria-label={`Chegou: dar entrada no estoque da ordem OC ${o.numero}`}
+                className="mr-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-ok-50 px-3 text-sm font-semibold text-ok-800 hover:bg-ok-100"
               >
-                <PackageCheck size={15} strokeWidth={2.2} />
+                <PackageCheck size={15} strokeWidth={2.2} /> Chegou — dar entrada
               </button>
             )}
             <button
@@ -192,6 +195,67 @@ function LinhaOrdem({ salvando, o, editavel, aberto, aoAbrir, acoes }) {
   );
 }
 
+/* FILA "AGUARDANDO ORDEM" (Ana, 24/11/2026): o que foi aprovado em Pedidos e
+   ainda não está em ordem. Marque os do mesmo fornecedor e crie UMA ordem. */
+function FilaAguardando({ pedidos, editavel, salvando, aoCriar }) {
+  const fila = useMemo(
+    () => pedidos.filter(aguardandoOrdem).sort((a, b) =>
+      rotuloCategoria(a.categoria).localeCompare(rotuloCategoria(b.categoria), "pt-BR") ||
+      String(a.item || "").localeCompare(String(b.item || ""), "pt-BR")),
+    [pedidos]
+  );
+  const [marcados, setMarcados] = useState(() => new Set());
+  const sel = fila.filter((c) => marcados.has(c.id)).map((c) => c.id);
+  const alternar = (id) => setMarcados((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const todos = fila.length > 0 && sel.length === fila.length;
+  return (
+    <Card className="mb-6">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-base font-semibold text-slate-900">
+            Aguardando ordem <span className="font-normal text-slate-400">({fila.length})</span>
+          </h2>
+          <p className="text-xs text-slate-500">Aprovados em Pedidos. Marque os do mesmo fornecedor e crie a ordem de compra.</p>
+        </div>
+        {editavel && fila.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-outline min-h-11" onClick={() => setMarcados(todos ? new Set() : new Set(fila.map((c) => c.id)))}>
+              {todos ? "Desmarcar todos" : "Marcar todos"}
+            </button>
+            <button type="button" className="btn-primary min-h-11" disabled={salvando || !sel.length}
+              onClick={() => { aoCriar(sel); setMarcados(new Set()); }}>
+              <ScrollText size={15} /> Criar ordem{sel.length ? ` com ${sel.length}` : ""}
+            </button>
+          </div>
+        )}
+      </div>
+      {fila.length === 0 ? (
+        <Empty className="py-6">Nada aguardando ordem. Os pedidos aprovados em Pedidos aparecem aqui.</Empty>
+      ) : (
+        <div className="space-y-1">
+          {fila.map((c) => (
+            <label key={c.id} htmlFor={`fila-${c.id}`}
+              className={`flex min-h-11 flex-wrap items-center gap-3 rounded-lg px-2 py-1.5 ${editavel ? "cursor-pointer hover:bg-slate-50" : ""}`}>
+              {editavel && (
+                <input id={`fila-${c.id}`} type="checkbox" className="h-5 w-5 shrink-0 accent-brand-600" checked={marcados.has(c.id)} onChange={() => alternar(c.id)} />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-sm font-medium text-slate-900">
+                  {c.item}{c.qtde ? <span className="font-normal text-slate-500"> — {c.qtde}</span> : null}
+                </span>
+                <span className="block break-words text-xs text-slate-500">
+                  {[rotuloCategoria(c.categoria), c.solicitante && `pedido por ${c.solicitante}`, c.setor, c.fornecedor].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <span className="shrink-0 text-xs text-slate-500">urgência {rotuloUrgencia(c.urgencia).toLowerCase()}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar }) {
   const [verTodos, setVerTodos] = useState(false);
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
@@ -201,7 +265,7 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
      item recebido faria a gravação desmarcá-lo em silêncio e ele sairia da
      ordem sem ninguém pedir. */
   const disponiveis = pedidos.filter((c) =>
-    form.id && c.ordemId === form.id ? true : !c.ordemId && PEDIDO_EM_ABERTO(c)
+    form.id && c.ordemId === form.id ? true : podeEntrarEmOrdem(c)
   );
   const fornecedores = [...new Set(disponiveis.map((c) => String(c.fornecedor || "").trim()).filter(Boolean))].sort(
     (a, b) => a.localeCompare(b, "pt-BR")
@@ -283,13 +347,13 @@ export function FormOrdem({ form, setForm, pedidos, salvando, aoSalvar, aoFechar
             <span className="label mb-0">Pedidos desta ordem</span>
             {doFornecedor.length > 0 && (
               <button type="button" aria-pressed={verTodos} className="btn-ghost min-h-11 whitespace-normal px-2 py-1 text-xs" onClick={() => setVerTodos((v) => !v)}>
-                {verTodos ? `Só os de ${form.fornecedor.trim()}` : "Ver todos os pedidos em aberto"}
+                {verTodos ? `Só os de ${form.fornecedor.trim()}` : "Ver todos os aprovados"}
               </button>
             )}
           </div>
           {lista.length === 0 ? (
             <Empty className="py-6">
-              Nenhum pedido em aberto fora de ordem. Crie o pedido primeiro, na aba Pedidos.
+              Nenhum pedido aprovado aguardando ordem. Aprove os pedidos na aba Pedidos.
             </Empty>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border p-2" style={{ borderColor: "var(--hairline)" }}>
@@ -440,6 +504,8 @@ export default function AbaOrdens({
 
   return (
     <div>
+      <FilaAguardando pedidos={pedidos} editavel={editavel} salvando={salvando} aoCriar={acoes.novaOrdemCom} />
+
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           rotulo="Atrasadas"
@@ -453,7 +519,7 @@ export default function AbaOrdens({
         <StatCard
           rotulo="Em aberto"
           valor={String(vm.emAberto.length)}
-          sub="abertas e enviadas ao fornecedor"
+          sub="abertas e compradas, ainda sem chegar"
           tom={vm.emAberto.length > 0 ? "brand" : "neutral"}
           icone={Truck}
           onClick={() => setRecorte(recorte === "abertas" ? null : "abertas")}

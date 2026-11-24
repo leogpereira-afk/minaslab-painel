@@ -23,7 +23,7 @@ import {
 } from "./comum.jsx";
 import {
   CATEGORIAS_SOLICITACAO, URGENCIAS, SETORES, agruparPorCategoria, rotuloCategoria, rotuloUrgencia,
-  PODE_APROVAR, quantidadePedida, textoAprovacao,
+  PODE_APROVAR, quantidadePedida, textoAprovacao, aguardandoOrdem,
 } from "../../../supabase/functions/_shared/compras-solicitacao.mjs";
 import { imprimirListaCompras, qtdePedidaTexto, qtdeAprovadaTexto } from "../../lib/impressao/listaCompras.js";
 import { getSessao } from "../../lib/sessao.js";
@@ -43,7 +43,11 @@ export const PEDIDO_VAZIO = {
 function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar, aoAprovar }) {
   const Icone = c.st.icone;
   const final = FINAL.has(c.status);
-  const proxima = PROXIMO_PEDIDO[c.status];
+  /* A ordem conduz (Ana, 24/11/2026): aprovado vai para a fila "Aguardando ordem"
+     (aba Ordens de compra) e item numa ordem anda pela ordem. A seta fica para
+     aprovar e para pedido antigo, já em cotação/comprado fora de ordem. */
+  const fila = aguardandoOrdem(c);
+  const proxima = c.ordemId || fila ? null : PROXIMO_PEDIDO[c.status];
   return (
     <div
       className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors ${c.status === "cancelada" ? "bg-slate-50" : marcado ? "border-brand-300 bg-brand-50" : ""}`}
@@ -85,6 +89,12 @@ function Linha({ salvando, c, editavel, acoes, marcado, aoMarcar, aoAprovar }) {
 
       <span className={`shrink-0 text-xs ${COR_URGENCIA[c.urgencia] || "text-slate-500"}`} title="Urgência">{rotuloUrgencia(c.urgencia)}</span>
       <span className="shrink-0"><TagSituacao status={c.status} /></span>
+      {fila && (
+        <span className="chip-warn shrink-0 whitespace-nowrap" title="Aprovado: crie a ordem de compra na aba Ordens de compra">
+          <ScrollText size={12} strokeWidth={2.4} className="mr-1" />
+          Aguardando ordem
+        </span>
+      )}
       {c.ordemNumero && (
         <span className="chip shrink-0 whitespace-nowrap" title="Está numa ordem de compra">
           <ScrollText size={12} strokeWidth={2.4} className="mr-1" />
@@ -581,9 +591,6 @@ export default function AbaPedidos({
             <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => setMarcados(new Set())}>Desmarcar</button>
             <button type="button" className="btn-outline min-h-11 text-bad-700" disabled={salvando} onClick={() => setRecusando(true)}>Não aprovar…</button>
             <button type="button" className="btn-outline min-h-11 border-emerald-300 text-emerald-800 disabled:opacity-50" disabled={salvando || !paraAprovar.length} title={paraAprovar.length ? "" : "Só itens solicitados ou já aprovados"} onClick={() => setAprovando(paraAprovar)}><BadgeCheck size={15} /> Aprovar…</button>
-            <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => lote("cotando")}>Em cotação</button>
-            <button type="button" className="btn-outline min-h-11" disabled={salvando} onClick={() => lote("comprada")}>Comprada</button>
-            <button type="button" className="btn-primary min-h-11" disabled={salvando} onClick={() => lote("recebida")}>Recebida</button>
           </div>
         </div>
       )}
