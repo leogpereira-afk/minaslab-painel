@@ -270,6 +270,25 @@ export default function Compras() {
     if (gravado) setFormProduto(null);
   };
 
+  // Excluir produto cadastrado (Ana, 24/11/2026): só sem lançamento no estoque.
+  const excluirProduto = async (id) => {
+    const p = dados.produtos.find((x) => x.id === id);
+    if (!p) return avisarErro("Este produto não está mais na lista. Recarregue e tente de novo.");
+    if (dados.movs.some((m) => m.produtoId === id)) return avisarErro(`"${p.nome}" tem entrada ou saída no estoque. Desmarque “Produto ativo” em vez de excluir.`);
+    if (!window.confirm(`Excluir o produto "${p.nome}"? Ele sai do Estoque e da lista de “Solicitar material”.`)) return;
+    setSalvando(true);
+    try {
+      await apagar(COL_PRODUTOS, id);
+      setFormProduto(null);
+      setAviso({ tipo: "ok", texto: `Produto "${p.nome}" excluído.` });
+      recarregar();
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   // ---- movimentos (o livro) --------------------------------------------
   const lancarMovimento = async () => {
     const f = formMov;
@@ -847,6 +866,7 @@ export default function Compras() {
     abrirProduto: (p) =>
       setFormProduto(produtoParaForm(p ? dados.produtos.find((x) => x.id === p.id) || p : null)),
     salvarProduto,
+    excluirProduto,
     abrirMovimento: (p, tipo) => {
       const atual = dados.produtos.find((x) => x.id === p.id);
       if (!atual) return avisarErro("Este produto não está mais na lista. Recarregue e tente de novo.");

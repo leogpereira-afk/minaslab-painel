@@ -201,10 +201,10 @@ function LinhaProduto({ salvando, p, editavel, podeExcluirEntrada, aberto, aoAbr
   );
 }
 
-// Produto NÃO se apaga: o livro do estoque aponta para ele, e apagar deixaria
-// movimento órfão. Desativar tira das escolhas novas e mantém o histórico
-// legível.
-export function FormProduto({ form, setForm, salvando, aoSalvar, aoFechar }) {
+// EXCLUIR PRODUTO (Ana, 24/11/2026): só produto SEM lançamento no livro do
+// estoque — com entrada/saída, apagar deixaria movimento órfão; aí o caminho
+// é desativar (tira das escolhas novas e mantém o histórico legível).
+export function FormProduto({ form, setForm, salvando, aoSalvar, aoExcluir, temLancamento, aoFechar }) {
   if (!form) return null;
   const setCampo = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
   return (
@@ -282,12 +282,26 @@ export function FormProduto({ form, setForm, salvando, aoSalvar, aoFechar }) {
             Produto ativo (desmarque para tirar das listas sem apagar o histórico)
           </label>
         )}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {form.id && aoExcluir && (
+            <button
+              type="button"
+              className="mr-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-bad-700 hover:bg-bad-50 disabled:opacity-40"
+              disabled={salvando || temLancamento}
+              title={temLancamento ? "Tem entrada ou saída no estoque: desmarque “Produto ativo” em vez de excluir" : undefined}
+              onClick={() => aoExcluir(form.id)}
+            >
+              <Trash2 size={15} /> Excluir produto
+            </button>
+          )}
           <button type="button" className="btn-outline" onClick={aoFechar}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={salvando || !form.nome.trim()}>
             {salvando ? "Gravando..." : "Gravar"}
           </button>
         </div>
+        {form.id && aoExcluir && temLancamento && (
+          <p className="text-xs text-slate-500">Para excluir, o produto não pode ter entrada ou saída no estoque. Com lançamentos, desmarque “Produto ativo”.</p>
+        )}
       </form>
     </Modal>
   );
@@ -670,6 +684,8 @@ export default function AbaEstoque({
         setForm={setFormProduto}
         salvando={salvando}
         aoSalvar={acoes.salvarProduto}
+        aoExcluir={acoes.excluirProduto}
+        temLancamento={!!formProduto?.id && movs.some((m) => m.produtoId === formProduto.id)}
         aoFechar={() => setFormProduto(null)}
       />
 
