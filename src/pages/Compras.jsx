@@ -37,12 +37,13 @@ import {
   resumoEstoque, numeroOuNull, temValor, TIPOS_MOV, STATUS_PEDIDO, PROXIMO_PEDIDO,
   entradaDoPedido,
 } from "../components/compras/comum.jsx";
-import AbaEstoque, { movimentoVazio, produtoParaForm } from "../components/compras/AbaEstoque.jsx";
+import AbaEstoque, { movimentoVazio } from "../components/compras/AbaEstoque.jsx";
+import AbaProdutos, { produtoParaForm } from "../components/compras/AbaProdutos.jsx";
 import AbaPedidos, { pedidoParaForm } from "../components/compras/AbaPedidos.jsx";
 import AbaOrdens, { ordemParaForm } from "../components/compras/AbaOrdens.jsx";
 import AbaRetiradas, { retiradaVazia } from "../components/compras/AbaRetiradas.jsx";
 import { SolicitarMaterial, MinhasSolicitacoes, useMinhasSolicitacoes, PrazoPedidos } from "../components/compras/AbaSolicitacao.jsx";
-import { ROTULO_SITUACAO, trataCompras } from "../../supabase/functions/_shared/compras-solicitacao.mjs";
+import { ROTULO_SITUACAO, trataCompras, statusAoCriarOrdem, statusAoComprarOrdem } from "../../supabase/functions/_shared/compras-solicitacao.mjs";
 
 const COL_PEDIDOS = "compras";
 const COL_PRODUTOS = "produtos";
@@ -65,6 +66,7 @@ const ABAS = [
   { valor: "minhas", rotulo: "Minhas solicitações" },
   { valor: "pedidos", rotulo: "Pedidos" },
   { valor: "estoque", rotulo: "Estoque" },
+  { valor: "produtos", rotulo: "Produtos" },
   { valor: "ordens", rotulo: "Ordens de compra" },
   { valor: "retiradas", rotulo: "Retiradas" },
 ];
@@ -73,6 +75,7 @@ const COLECOES_POR_ABA = {
   solicitar: [COL_PRODUTOS, COL_MOV], // a lista de produtos do Estoque (com saldo) para escolher
   minhas: [],
   estoque: [COL_PRODUTOS, COL_MOV],
+  produtos: [COL_PRODUTOS, COL_MOV], // o livro só para saber se o produto pode ser excluído
   pedidos: [COL_PEDIDOS, COL_PRODUTOS, COL_MOV, COL_ORDENS],
   ordens: [COL_ORDENS, COL_PEDIDOS, COL_PRODUTOS],
   retiradas: [COL_MOV, COL_PRODUTOS],
@@ -90,7 +93,7 @@ export default function Compras() {
   // Prazo dos pedidos: só quem trata compras (o servidor confere de novo).
   const definePrazo = trataCompras({ papel: sessao?.papel, permissoes: paginasSessao });
   const abasPermitidas = ABAS.filter((item) =>
-    item.valor === "solicitar" ? podeSolicitar : ABAS_DE_TODOS.has(item.valor) || podeVerSecao("compras", item.valor, sessao)
+    item.valor === "solicitar" ? podeSolicitar : item.valor === "produtos" ? editaEstoque : ABAS_DE_TODOS.has(item.valor) || podeVerSecao("compras", item.valor, sessao)
   );
   const [busca, setBusca] = useSearchParams();
   const colecoesPermitidas = [...new Set(abasPermitidas.flatMap(item => COLECOES_POR_ABA[item.valor]))];
@@ -488,7 +491,8 @@ export default function Compras() {
       for (const c of marcados) {
         if (c.ordemId === gravada.id) continue;
         try {
-          await salvar(COL_PEDIDOS, { ...c, ordemId: gravada.id });
+          // Entrou na ordem: o aprovado passa a "Em cotação" (quem pediu é avisado).
+          await salvar(COL_PEDIDOS, { ...c, ordemId: gravada.id, status: statusAoCriarOrdem(c) });
         } catch (e) {
           falhas.push(`${c.item} (${e.message})`);
         }
@@ -496,7 +500,8 @@ export default function Compras() {
       for (const c of dados.pedidos) {
         if (c.ordemId !== gravada.id || f.pedidoIds.includes(c.id)) continue;
         try {
-          await salvar(COL_PEDIDOS, { ...c, ordemId: "" });
+          // Saiu da ordem antes da compra: volta para a fila "Aguardando ordem".
+          await salvar(COL_PEDIDOS, { ...c, ordemId: "", ...(c.status === "cotando" ? { status: "aprovada" } : {}) });
         } catch (e) {
           falhas.push(`${c.item} (${e.message})`);
         }
@@ -524,11 +529,33 @@ export default function Compras() {
     }
   };
 
-  const avancarOrdem = (id) => {
+  // Ordem COMPRADA (gravada como "enviada"): os itens dela ficam "Comprada" e
+  // quem pediu é avisado no sino. Recebido e recusado não mudam.
+  const avancarOrdem = async (id) => {
     const o = dados.ordens.find((x) => x.id === id);
     if (!o) return avisarErro("Esta ordem não está mais na lista. Recarregue e tente de novo.");
     if (o.status !== "aberta") return;
-    gravar(COL_ORDENS, { ...o, status: "enviada" }, `Ordem OC ${o.numero} marcada como enviada.`);
+    const itens = dados.pedidos.filter((c) => c.ordemId === o.id && statusAoComprarOrdem(c) !== c.status);
+    setSalvando(true);
+    const falhas = [];
+    try {
+      await salvar(COL_ORDENS, { ...o, status: "enviada" });
+      for (const c of itens) {
+        try {
+          await salvar(COL_PEDIDOS, { ...c, status: statusAoComprarOrdem(c) });
+        } catch (e) {
+          falhas.push(`${c.item} (${e.message})`);
+        }
+      }
+      setAviso(falhas.length
+        ? { tipo: "erro", texto: `Ordem OC ${o.numero} comprada, mas não consegui atualizar: ${falhas.join(" · ")}.` }
+        : { tipo: "ok", texto: `Ordem OC ${o.numero} comprada. Quando o material chegar, use “Chegou — dar entrada”.` });
+      recarregar();
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e.message });
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const receberOrdem = async (id) => {
@@ -585,9 +612,9 @@ export default function Compras() {
     try {
       // Solta os pedidos ANTES de apagar: pedido carimbado com uma ordem que
       // não existe mais some das duas telas sem dizer por quê.
-      for (const c of itens) await salvar(COL_PEDIDOS, { ...c, ordemId: "" });
+      for (const c of itens) await salvar(COL_PEDIDOS, { ...c, ordemId: "", ...(c.status === "cotando" ? { status: "aprovada" } : {}) });
       await apagar(COL_ORDENS, o.id);
-      setAviso({ tipo: "ok", texto: "Ordem apagada. Os pedidos dela continuam na aba Pedidos." });
+      setAviso({ tipo: "ok", texto: "Ordem apagada. Os pedidos dela voltaram para “Aguardando ordem”." });
       recarregar();
     } catch (e) {
       setAviso({ tipo: "erro", texto: e.message });
@@ -885,6 +912,12 @@ export default function Compras() {
     // ordens
     abrirOrdem: (id) =>
       setFormOrdem(ordemParaForm(id ? dados.ordens.find((o) => o.id === id) : null, dados.ordens, dados.pedidos)),
+    // Fila "Aguardando ordem": abre a ordem nova já com os aprovados marcados.
+    novaOrdemCom: (ids) => {
+      const itens = dados.pedidos.filter((c) => ids.includes(c.id));
+      const forn = [...new Set(itens.map((c) => String(c.fornecedor || "").trim()).filter(Boolean))];
+      setFormOrdem({ ...ordemParaForm(null, dados.ordens, dados.pedidos), pedidoIds: itens.map((c) => c.id), fornecedor: forn.length === 1 ? forn[0] : "" });
+    },
     salvarOrdem,
     avancarOrdem,
     receberOrdem,
@@ -952,12 +985,22 @@ export default function Compras() {
           editavel={editaEstoque}
           podeExcluirEntrada={sessao?.papel === "direcao"}
           salvando={salvando}
-          formProduto={formProduto}
-          setFormProduto={setFormProduto}
           formMov={formMov}
           setFormMov={setFormMov}
           acoes={acoes}
           aoExportar={exportar}
+        />
+      )}
+
+      {aba === "produtos" && (
+        <AbaProdutos
+          produtos={dados.produtos}
+          movs={dados.movs}
+          editavel={editaEstoque}
+          salvando={salvando}
+          formProduto={formProduto}
+          setFormProduto={setFormProduto}
+          acoes={acoes}
         />
       )}
 

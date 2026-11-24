@@ -42,7 +42,8 @@ export const PEDIDO_EM_ABERTO = (c) => c.status !== "recebida" && c.status !== "
 
 export const STATUS_ORDEM = {
   aberta: "Aberta",
-  enviada: "Enviada ao fornecedor",
+  // "enviada" é o valor gravado; para a equipe, é a ordem COMPRADA (Ana, 24/11/2026).
+  enviada: "Comprada",
   recebida: "Recebida",
   cancelada: "Cancelada",
 };
