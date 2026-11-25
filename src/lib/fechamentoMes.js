@@ -7,6 +7,12 @@ const dia = (v) => String(v || "").slice(0, 10);
 const noMes = (data, mes) => dia(data).slice(0, 7) === mes;
 const cancelado = (t) => ["CANCELADO", "CANCELADA"].includes(String(t?.status || "").toUpperCase()) || t?.apagado;
 const absVal = (m) => Math.abs(Number(m?.valor || 0));
+// Pago em dinheiro (forma do título ou de todas as baixas ativas): não passa pelo banco, então não é erro faltar extrato.
+const ehDinheiro = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase() === "DINHEIRO";
+const pagoEmDinheiro = (t) => {
+  const baixas = (t?.baixas || []).filter((b) => !b.estornada);
+  return baixas.length ? baixas.every((b) => ehDinheiro(b.forma_pagamento || t.forma_pagamento)) : ehDinheiro(t?.forma_pagamento);
+};
 
 export function fimDoMes(mes) {
   const [a, m] = mes.split("-").map(Number);
@@ -43,13 +49,14 @@ export function montarFechamento({ movimentos = [], receber = [], pagar = [], me
 
   // Título pago (ou com valor recebido/pago) sem o banco correspondente: a baixa existe, o dinheiro não foi visto no extrato.
   const pagoSemBanco = [];
+  const pagoDinheiro = [];
   for (const [lista, tipo] of [[receber, "REC"], [pagar, "DESP"]]) {
     for (const t of lista) {
       if (cancelado(t)) continue;
       const pago = Number(tipo === "REC" ? t.valor_recebido : t.valor_pago) || 0;
       const conc = Number(t.valor_conciliado) || 0;
       if (pago > 0.005 && conc < pago - 0.005) {
-        pagoSemBanco.push({
+        (pagoEmDinheiro(t) ? pagoDinheiro : pagoSemBanco).push({
           texto: `${tipo === "REC" ? "Recebimento" : "Despesa"} · ${t.numero_nf ? `NF ${t.numero_nf} · ` : ""}${t.cliente ?? t.fornecedor ?? "Sem nome"} · pago em ${dia(t.data_pagamento).split("-").reverse().join("/") || "data não informada"}${t.origem ? ` · origem ${t.origem}` : ""}`,
           valor: arred(pago - conc),
         });
@@ -80,7 +87,8 @@ export function montarFechamento({ movimentos = [], receber = [], pagar = [], me
   const itens = [
     item("pendentes-mes", "Movimentos do banco ainda sem conciliar neste mês", sev(mesFechado), pendMes.map(linhaMov), pendMes.reduce((s, m) => s + restanteMovimento(m), 0), { acao: { rotulo: "Conciliar agora", to: "/financas/conciliacao-mlab" } }),
     item("pendentes-antes", "Pendências de meses anteriores", "erro", pendAntes.map(linhaMov), pendAntes.reduce((s, m) => s + restanteMovimento(m), 0), { acao: { rotulo: "Conciliar agora", to: "/financas/conciliacao-mlab" } }),
-    item("pago-sem-banco", "Títulos pagos sem o dinheiro no extrato", "erro", pagoSemBanco, pagoSemBanco.reduce((s, x) => s + x.valor, 0), { dica: "A baixa existe, mas não há movimento do banco ligado. Confira se o dinheiro entrou (outra conta, dinheiro) ou se a baixa foi indevida." }),
+    item("pago-sem-banco", "Títulos pagos sem o dinheiro no extrato", "erro", pagoSemBanco, pagoSemBanco.reduce((s, x) => s + x.valor, 0), { dica: "A baixa existe, mas não há movimento do banco ligado. Se foi pago em dinheiro, edite a nota e troque a forma de pagamento para DINHEIRO; se entrou em outra conta, concilie lá; se não foi pago, a baixa está errada." }),
+    item("pago-dinheiro", "Pagos em dinheiro (fora do banco)", "info", pagoDinheiro, pagoDinheiro.reduce((s, x) => s + x.valor, 0), { dica: "Forma de pagamento: dinheiro. Por isso não aparecem no extrato e não contam como pendência. Se o dinheiro foi depositado depois, concilie o depósito com a nota." }),
     item("repasses", "Repasses da MinasLab deste mês sem NF", sev(mesFechado), listaRepasses, repasses.reduce((s, r) => s + r.total, 0), { acao: { rotulo: "Emitir NFS-e do mês", to: "/financas/conciliacao-mlab" }, dica: "Emita a NFS-e para a MinasLab com o total repassado e depois concilie tudo de uma vez." }),
     item("sem-vinculo", "Marcados como conciliados, mas sem vínculo nem classificação", "erro", semNada.map(linhaMov), semNada.reduce((s, m) => s + absVal(m), 0), { dica: "Inconsistência de dado: o movimento diz conciliado, mas não há com o quê." }),
     item("parciais", "Conciliações parciais (sobra ou falta valor)", "atencao", [...parciaisMov.map((m) => ({ ...linhaMov(m), texto: `Movimento · ${linhaMov(m).texto}` })), ...parciaisTit.map((t) => ({ texto: `Título · ${t.numero_nf ? `NF ${t.numero_nf} · ` : ""}${t.cliente ?? t.fornecedor ?? "Sem nome"}`, valor: arred(Number(t.valor_previsto ?? t.valor_original) - Number(t.valor_conciliado)) }))], [...parciaisMov.map(restanteMovimento), ...parciaisTit.map((t) => Number(t.valor_previsto ?? t.valor_original) - Number(t.valor_conciliado))].reduce((s, v) => s + v, 0), { dica: "Normalmente é juros, multa ou desconto que faltou registrar." }),

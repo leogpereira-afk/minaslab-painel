@@ -1,7 +1,7 @@
 // Fechamento do mês da M Lab: um painel com os cruzamentos banco × títulos e o que falta resolver.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Printer, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Printer, RefreshCw, XCircle, Info } from "lucide-react";
 import { PageTitle } from "../components/ui.jsx";
 import { financeiroOpcoes, finDespesasListar, finMovimentosListar, finNotasListar, finRecebimentosListar } from "../services/financeiro.js";
 import { servicosGeradosListar } from "../services/servicosGerados.js";
@@ -18,6 +18,8 @@ const ESTILO = {
   ok: { icone: CheckCircle2, cor: "text-emerald-700", faixa: "border-emerald-200 bg-emerald-50", rotulo: "Em ordem" },
   atencao: { icone: AlertTriangle, cor: "text-amber-700", faixa: "border-amber-200 bg-amber-50", rotulo: "Atenção" },
   erro: { icone: XCircle, cor: "text-red-700", faixa: "border-red-200 bg-red-50", rotulo: "Resolver" },
+  // Informativo: mostrado para conferência, não conta como pendência (ex.: pagos em dinheiro).
+  info: { icone: Info, cor: "text-slate-600", faixa: "border-slate-200 bg-slate-50", rotulo: "Informativo" },
 };
 
 function Conferencia({ i }) {
@@ -29,7 +31,7 @@ function Conferencia({ i }) {
         <div className="flex min-w-0 items-center gap-2">
           <Icone size={20} className={`shrink-0 ${e.cor}`} aria-hidden="true" />
           <h3 className="font-semibold text-slate-900">{i.titulo}</h3>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${i.severidade === "ok" ? "bg-emerald-100 text-emerald-700" : i.severidade === "atencao" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>{e.rotulo}</span>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${i.severidade === "ok" ? "bg-emerald-100 text-emerald-700" : i.severidade === "atencao" ? "bg-amber-100 text-amber-800" : i.severidade === "info" ? "bg-slate-100 text-slate-700" : "bg-red-100 text-red-700"}`}>{e.rotulo}</span>
         </div>
         <div className="text-sm text-slate-600">{i.quantidade ? <><b>{i.quantidade}</b> {i.quantidade === 1 ? "item" : "itens"}{i.valor > 0.005 && <> · <b>{moeda(i.valor)}</b></>}</> : "Nada pendente"}</div>
       </div>
