@@ -1,5 +1,6 @@
 import { respostaDelta } from "../_shared/financeiro-delta.mjs";
 import { lerTodasPaginas } from "../_shared/financeiro-paginacao.mjs";
+import { realizadoTitulo } from "../_shared/financeiro-realizado.mjs";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { acessoFinanceiro, PAGINAS_FINANCEIRO, PAGINAS_VISAO } from "../_shared/acesso-financeiro.ts";
 
@@ -63,13 +64,15 @@ async function opcoes(){
 }
 async function recalcularRecebimento(id:string,usuario:string){
   const{data:t,error}=await sb.from("recebimentos").select("*").eq("id",id).maybeSingle();if(error)throw error;if(!t)throw new Error("Recebimento não encontrado.");if(t.origem==="OMIE")return t;
-  const{data:bs,error:eb}=await sb.from("baixas_recebimentos").select("valor,data_pagamento").eq("recebimento_id",id).eq("estornada",false);if(eb)throw eb;const recebido=(bs??[]).reduce((s,x)=>s+n(x.valor),0);const ultima=[...(bs??[])].sort((a,b)=>texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];const st=statusReceber(n(t.valor_previsto),recebido,"",texto(t.data_vencimento));
-  const{data,error:eu}=await sb.from("recebimentos").update({valor_recebido:st.recebido,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?ultima?.data_pagamento??null:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
+  const{data:bs,error:eb}=await sb.from("baixas_recebimentos").select("valor,data_pagamento").eq("recebimento_id",id).eq("estornada",false);if(eb)throw eb;// Baixas e conciliações com o banco: vale a maior (ver _shared/financeiro-realizado.mjs).
+  const r=realizadoTitulo({baixas:bs??[],conciliado:t.valor_conciliado,dataAtual:t.data_pagamento});const st=statusReceber(n(t.valor_previsto),r.realizado,"",texto(t.data_vencimento));
+  const{data,error:eu}=await sb.from("recebimentos").update({valor_recebido:st.recebido,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?r.data:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
 }
 async function recalcularDespesa(id:string,usuario:string){
   const{data:t,error}=await sb.from("despesas").select("*").eq("id",id).maybeSingle();if(error)throw error;if(!t)throw new Error("Despesa não encontrada.");if(t.origem==="OMIE")return t;
-  const{data:bs,error:eb}=await sb.from("baixas_despesas").select("valor,data_pagamento").eq("despesa_id",id).eq("estornada",false);if(eb)throw eb;const pago=(bs??[]).reduce((s,x)=>s+n(x.valor),0);const ultima=[...(bs??[])].sort((a,b)=>texto(b.data_pagamento).localeCompare(texto(a.data_pagamento)))[0];const st=statusPagar(n(t.valor_original),pago,"",texto(t.data_vencimento));
-  const{data,error:eu}=await sb.from("despesas").update({valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?ultima?.data_pagamento??null:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
+  const{data:bs,error:eb}=await sb.from("baixas_despesas").select("valor,data_pagamento").eq("despesa_id",id).eq("estornada",false);if(eb)throw eb;// Baixas e conciliações com o banco: vale a maior (ver _shared/financeiro-realizado.mjs).
+  const r=realizadoTitulo({baixas:bs??[],conciliado:t.valor_conciliado,dataAtual:t.data_pagamento});const st=statusPagar(n(t.valor_original),r.realizado,"",texto(t.data_vencimento));
+  const{data,error:eu}=await sb.from("despesas").update({valor_pago:st.pago,valor_pendente:st.pendente,status:st.status,data_pagamento:st.status==="PAGO"?r.data:null,updated_by:usuario,updated_at:iso()}).eq("id",id).select("*").maybeSingle();if(eu)throw eu;return data;
 }
 
 // Páginas do financeiro que liberam cada ação (tela Acessos) e se a ação grava.

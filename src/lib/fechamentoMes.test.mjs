@@ -35,3 +35,16 @@ test('conciliação parcial e duplicados com pendência', () => {
   const f = montarFechamento({ mes: '2026-10', hoje: '2026-10-20', movimentos: [mov('a', 969.31, 'Boleto', { conciliacoes: [{ valor_movimento: 950 }] }), mov('b', 80, 'FRIGORIFICO'), mov('c', 80, 'FRIGORIFICO'), mov('d', 80, 'FRIGORIFICO', { data_movimento: '2026-10-06' })], receber: [], pagar: [] });
   assert.equal(get(f, 'parciais').quantidade, 1); assert.equal(get(f, 'duplicados').quantidade, 2);
 });
+test('pago em dinheiro não é erro: sai de "pagos sem banco" e vai para o item informativo (NF 74 recebida em dinheiro)', () => {
+  const nf74 = rec('a', '74', 'WEMERSON', 360, { status: 'PAGO', valor_recebido: 360, valor_conciliado: 0, data_pagamento: '2026-08-17', forma_pagamento: 'DINHEIRO' });
+  const pix = rec('b', '80', 'OUTRO', 200, { status: 'PAGO', valor_recebido: 200, valor_conciliado: 0, data_pagamento: '2026-10-03', forma_pagamento: 'PIX' });
+  const porBaixa = rec('c', '81', 'BAIXA', 50, { status: 'PAGO', valor_recebido: 50, valor_conciliado: 0, forma_pagamento: 'PIX', baixas: [{ valor: 50, forma_pagamento: 'Dinheiro', estornada: false }] });
+  const despesa = { id: 'd', fornecedor: 'PADARIA', valor_original: 30, valor_pago: 30, valor_conciliado: 0, status: 'PAGO', forma_pagamento: 'dinheiro' };
+  const f = montarFechamento({ mes: '2026-10', hoje: '2026-11-02', movimentos: [], receber: [nf74, pix, porBaixa], pagar: [despesa] });
+  const erro = get(f, 'pago-sem-banco'); assert.equal(erro.quantidade, 1); assert.match(erro.lista[0].texto, /NF 80/);
+  const din = get(f, 'pago-dinheiro'); assert.equal(din.severidade, 'info'); assert.equal(din.quantidade, 3); assert.equal(din.valor, 440);
+  assert.match(din.lista.map((x) => x.texto).join(' '), /NF 74 · WEMERSON/);
+  assert.equal(f.erros, 1, 'o informativo não conta como erro');
+  const so = montarFechamento({ mes: '2026-10', hoje: '2026-11-02', movimentos: [], receber: [nf74], pagar: [] });
+  assert.equal(so.emOrdem, true, 'só dinheiro: mês em ordem');
+});
