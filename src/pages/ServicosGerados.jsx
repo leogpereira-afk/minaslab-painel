@@ -34,9 +34,12 @@ export default function ServicosGerados({ somenteLeitura = false, onGerenciarGru
  const empresaEdit=useMemo(()=>opcoes.empresas.find(x=>x.id===edit?.empresa_id),[opcoes,edit?.empresa_id]);
  const ehMlab=!!empresaEdit&&empresaEdit.nome?.toUpperCase().includes("M LAB")&&!empresaEdit.nome?.toUpperCase().includes("MINASLAB");
  async function carregar(){const id=++requisicaoRef.current;setCarregando(true);setErro("");try{const r=await servicosGeradosListar({busca});if(id===requisicaoRef.current)setDados(r)}catch(e){if(id===requisicaoRef.current)setErro(e.message)}finally{if(id===requisicaoRef.current)setCarregando(false)}}
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só nos gatilhos listados; incluir carregar (recriada a cada render) recarregaria sem parar; somenteLeitura é fixo durante a vida da tela
  useEffect(()=>{if(!somenteLeitura)financeiroOpcoes().then(setOpcoes).catch(e=>setErro(e.message));carregar()},[]);
  useEffect(()=>{if(somenteLeitura&&dados.itens.length)setOpcoes({empresas:[...new Map(dados.itens.flatMap(x=>x.grupo_itens?.length?x.grupo_itens:[x]).filter(x=>x.empresa?.id).map(x=>[x.empresa.id,x.empresa])).values()],formas:[]})},[somenteLeitura,dados.itens]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só nos gatilhos listados; incluir carregar (recriada a cada render) recarregaria sem parar
  useEffect(()=>{if(primeiraBuscaRef.current){primeiraBuscaRef.current=false;return}const t=setTimeout(()=>carregar(),350);return()=>clearTimeout(t)},[busca]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só nos gatilhos listados; incluir carregar (recriada a cada render) recarregaria sem parar
  useEffect(()=>{if(versaoLista)carregar()},[versaoLista]);
  useEffect(()=>{setPagina(1);setSelecionados([])},[tab,empresaFiltro,busca,porPagina,filtros]);
  const formasDisponiveis=useMemo(()=>Array.from(new Set(dados.itens.flatMap(x=>x.grupo_itens?.length?x.grupo_itens:[x]).map(x=>x.forma_pagamento).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"pt-BR")),[dados.itens]);
@@ -52,7 +55,7 @@ export default function ServicosGerados({ somenteLeitura = false, onGerenciarGru
  const contagem=useMemo(()=>Object.fromEntries(tabs.map(([k])=>[k,base.filter(x=>naAba(x,k)).length])),[base]);
  useEffect(()=>{window.__minaslabServicosGeradosExportInfo={empresa:empresaFiltro==="TODAS"?"":empresaFiltro==="SEM_EMPRESA"?"Sem empresa definida":(opcoes.empresas.find(e=>e.id===empresaFiltro)?.nome||""),visao:(tabs.find(([k])=>k===tab)||[])[1]||"Todos",busca:busca.trim()};return()=>{delete window.__minaslabServicosGeradosExportInfo}},[empresaFiltro,tab,busca,opcoes.empresas]);
  useEffect(()=>{window.__minaslabServicosGeradosExport=itens;return()=>{if(window.__minaslabServicosGeradosExport===itens)delete window.__minaslabServicosGeradosExport}},[itens]);
- const totalPaginas=Math.max(1,Math.ceil(itens.length/porPagina)),paginaSegura=Math.min(pagina,totalPaginas),inicio=(paginaSegura-1)*porPagina,itensPagina=itens.slice(inicio,inicio+porPagina),filtrosAtivos=Object.values(filtros).some(Boolean);
+ const totalPaginas=Math.max(1,Math.ceil(itens.length/porPagina)),paginaSegura=Math.min(pagina,totalPaginas),inicio=(paginaSegura-1)*porPagina,itensPagina=itens.slice(inicio,inicio+porPagina);
  const itensSelecionados=useMemo(()=>dados.itens.filter(x=>!x.grupo_faturamento&&selecionados.includes(x.id)),[dados.itens,selecionados]);
  const totalSelecionado=itensSelecionados.reduce((s,x)=>s+Number(valorServico(x)),0);
  const chaveCliente=x=>String(x?.cnpj_cpf||"").replace(/\D/g,"")||String(x?.cliente||"").trim().toUpperCase();

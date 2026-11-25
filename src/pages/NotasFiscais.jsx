@@ -13,7 +13,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import {
   LinhaFiltrosColuna,
@@ -156,9 +156,11 @@ export default function NotasFiscais() {
   const navigate = useNavigate(),
     xmlRef = useRef(null),
     pdfRef = useRef(null);
+  // Vindo do painel, abre na empresa que o painel mostrava.
+  const empresaDoCartao = useLocation().state?.filtroCartao?.empresa || "";
   const [op, setOp] = useState({ empresas: [] }),
     [itens, setItens] = useState([]),
-    [empresa, setEmpresa] = useState(""),
+    [empresa, setEmpresa] = useState(empresaDoCartao),
     [busca, setBusca] = useState(""),
     [status, setStatus] = useState(""),
     [ano, setAno] = useState(""),
@@ -251,6 +253,7 @@ export default function NotasFiscais() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando os filtros mudam; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [empresa, busca, status, ano, mes, limite]);
   function limparArquivos() {
     setXmlFile(null);

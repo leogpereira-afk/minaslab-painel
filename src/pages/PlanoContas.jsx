@@ -24,6 +24,7 @@ export default function PlanoContas(){
     }catch(e){setErro(e.message||"Não foi possível carregar o plano de contas.")}
     finally{setCarregando(false)}
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando os filtros mudam; incluir carregar (recriada a cada render) recarregaria sem parar
   useEffect(()=>{carregar()},[]);
 
   const categorias=useMemo(()=>{

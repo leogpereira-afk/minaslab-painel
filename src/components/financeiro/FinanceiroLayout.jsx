@@ -6,6 +6,7 @@ import ServicosGeradosPrintButton from "./ServicosGeradosPrintButton.jsx";
 import "./financeiro-redesign.css";
 import { ehDirecao, getSessao } from "../../lib/sessao.js";
 import { podeAbrirRotaFinanceiro } from "../../lib/rotasFinanceiro.js";
+import { hojeSaoPaulo } from "../../lib/tituloVencido.js";
 
 const PERIODO_KEY="financeiro.periodo.global.v1";
 const principais=[
@@ -30,11 +31,9 @@ const complementares=[
 ];
 function ativa(location,label,to){const p=location.pathname;if(label==="Visão Geral")return p===to;if(label==="Receber")return p===to||p==="/financas/recebimentos";if(label==="Pagar")return p===to||p==="/financas/despesas";if(label==="Bancos")return p===to||p==="/financas/bancos"||p==="/financas/extrato";if(label==="Conciliar")return p.startsWith("/financas/conciliacao");if(label==="Notas")return p.startsWith("/financas/notas-fiscais");return p===to||p.startsWith(`${to}/`)}
 function periodoSalvo(){try{const p=JSON.parse(sessionStorage.getItem(PERIODO_KEY)||"{}");return{de:String(p?.de||""),ate:String(p?.ate||"")}}catch{return{de:"",ate:""}}}
-function mesAtual(){const d=new Date(),a=d.getFullYear(),m=d.getMonth()+1,mm=String(m).padStart(2,"0"),ultimo=new Date(a,m,0).getDate();return{de:`${a}-${mm}-01`,ate:`${a}-${mm}-${String(ultimo).padStart(2,"0")}`}}
+function mesAtual(){const h=hojeSaoPaulo(),a=Number(h.slice(0,4)),m=Number(h.slice(5,7)),ultimo=new Date(Date.UTC(a,m,0)).getUTCDate();return{de:`${h.slice(0,7)}-01`,ate:`${h.slice(0,7)}-${String(ultimo).padStart(2,"0")}`}}
 function rotaPeriodo(p){return p==="/financas/contas-a-receber"||p==="/financas/recebimentos"||p==="/financas/contas-a-pagar"||p==="/financas/despesas"||p==="/financas/notas-fiscais"||p.startsWith("/financas/conciliacao-titulos")}
 function rotaListaPeriodo(p){return p==="/financas/contas-a-receber"||p==="/financas/recebimentos"||p==="/financas/contas-a-pagar"||p==="/financas/despesas"||p==="/financas/notas-fiscais"}
-function selectPorRotulo(rotulo){return [...document.querySelectorAll(".financeiro-shell label")].find(el=>el.querySelector(".label")?.textContent?.trim()===rotulo)?.querySelector("select")||null}
-function valorSelect(rotulo){return selectPorRotulo(rotulo)?.value||""}
 export default function FinanceiroLayout(){
  const direcao=ehDirecao();
  // Fora da direção, o menu mostra só as páginas liberadas na tela Acessos.
@@ -49,10 +48,12 @@ export default function FinanceiroLayout(){
  function definirMesAtual(){guardarPeriodo(mesAtual())}
  function limparPeriodo(){guardarPeriodo({de:"",ate:""})}
  async function baixarModelo(){if(baixandoModelo)return;setBaixandoModelo(true);try{await servicosGeradosBaixarModelo()}catch(e){alert(e?.message||"Não foi possível baixar o modelo de importação.")}finally{setBaixandoModelo(false)}}
- function abrirContexto(destino,{status="",mes=false}={}){const empresa=valorSelect("Empresa");const atual=mesAtual();const filtroCartao={empresa,status};if(mes){filtroCartao.ano=atual.de.slice(0,4);filtroCartao.mes=String(Number(atual.de.slice(5,7)));guardarPeriodo(atual)}else limparPeriodo();navigate(destino,{state:{filtroCartao}})}
- function capturarCliqueContextual(e){if(location.pathname!=="/financas")return;const botao=e.target.closest("button");if(!botao)return;const texto=String(botao.textContent||"").replace(/\s+/g," ").trim();if(texto.includes("Contas a receber vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{status:"VENCIDO"});return}if(texto.includes("Contas a pagar vencidas")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{status:"VENCIDO"});return}if(texto.includes("A receber no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-receber",{mes:true});return}if(texto.includes("A pagar no mês")){e.preventDefault();e.stopPropagation();abrirContexto("/financas/contas-a-pagar",{mes:true});return}if(texto.includes("Vencidos")){e.preventDefault();e.stopPropagation();abrirContexto(botao.dataset.destino==="/financas/contas-a-pagar"?"/financas/contas-a-pagar":"/financas/contas-a-receber",{status:"VENCIDO"})}}
+ // O painel chama esta função com o filtro do cartão (empresa, status, mês). Antes o layout
+ // adivinhava o filtro pelo texto do botão e lia a empresa da tela, o que quebrava calado
+ // quando um rótulo mudava. O período global só muda quando o destino é uma lista com período.
+ function abrirContexto(destino,{empresa="",status="",mes=false,novo=false}={}){const atual=mesAtual();const filtroCartao={empresa,status};if(novo)filtroCartao.novo=true;if(mes){filtroCartao.ano=atual.de.slice(0,4);filtroCartao.mes=String(Number(atual.de.slice(5,7)))}if(rotaPeriodo(destino)&&!novo){if(mes)guardarPeriodo(atual);else limparPeriodo()}navigate(destino,{state:{filtroCartao}})}
  const classes=["financeiro-shell","space-y-4",listaPeriodo?"financeiro-periodo-listas":"",conciliacaoPeriodo?"financeiro-periodo-conciliacao":"",fluxo?"financeiro-fluxo":""].filter(Boolean).join(" ");
- return <div className={classes} onClickCapture={capturarCliqueContextual}>
+ return <div className={classes}>
   <nav className="financeiro-navegacao" aria-label="Menu financeiro">
    {[principais,complementares].map(grupo=>grupo.filter(({to})=>pode(to))).filter(grupo=>grupo.length).map((grupo,i)=><div className="financeiro-nav-linha" key={i}>
     {grupo.map(({label,curto,to,end,icon:Icon,descricao})=><NavLink key={to} to={to} end={end} aria-label={label} title={descricao?`${label}: ${descricao}`:label} className={`financeiro-nav-link${ativa(location,label,to)?" financeiro-nav-link-ativo":""}`}><Icon size={18} aria-hidden="true"/><span>{curto||label}</span></NavLink>)}
@@ -61,6 +62,6 @@ export default function FinanceiroLayout(){
   {usaPeriodo&&<section className="financeiro-periodo-bar flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between"><div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><CalendarRange size={19}/></span><div><p className="text-sm font-bold text-slate-900">Período</p><p className="text-xs text-slate-500">Filtra os registros pela data da tela, sem limitar a um único mês.</p></div></div><div className="grid gap-2 sm:grid-cols-[160px_160px_auto_auto]"><label><span className="label">De</span><input className="input" type="date" value={periodo.de} onChange={e=>setData("de",e.target.value)}/></label><label><span className="label">Até</span><input className="input" type="date" value={periodo.ate} onChange={e=>setData("ate",e.target.value)}/></label><button type="button" className="btn-outline self-end" onClick={definirMesAtual}>Este mês</button><button type="button" className="btn-ghost self-end" onClick={limparPeriodo}><RotateCcw size={15}/>Todo período</button></div></section>}
   {location.pathname==="/financas/servicos-gerados"&&<section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2.5 shadow-sm"><div><p className="text-sm font-bold text-slate-900">Modelo de importação — Serviços Gerados</p><p className="text-xs text-slate-600">Baixe o modelo aprovado, mantenha a aba <b>Serviços</b> e as 20 colunas na mesma ordem e importe o arquivo preenchido nesta tela.</p></div><div className="flex flex-wrap items-center gap-2"><ServicosGeradosPrintButton/><button type="button" className="btn-outline h-9 px-3 py-2 text-xs" onClick={baixarModelo} disabled={!direcao||baixandoModelo}><Download size={15}/>{baixandoModelo?"Baixando...":"Baixar modelo"}</button></div></section>}
   {location.pathname.startsWith("/financas/notas-fiscais")&&<section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm"><div><p className="font-bold text-slate-900">Central de Notas Fiscais</p><p className="text-sm text-slate-500">MinasLab acompanha as notas da Omie; M Lab emite e gerencia NFS-e pelo sistema.</p></div>{pode("/financas/notas-fiscais/emitir")&&<button className="btn-primary" onClick={()=>navigate("/financas/notas-fiscais/emitir")}><ReceiptText size={16}/>Emitir NFS-e M Lab</button>}</section>}
-  <Outlet key={`${location.pathname}|${usaPeriodo?periodo.de:""}|${usaPeriodo?periodo.ate:""}`}/>
+  <Outlet context={{abrirContexto}} key={`${location.pathname}|${usaPeriodo?periodo.de:""}|${usaPeriodo?periodo.ate:""}`}/>
  </div>;
 }

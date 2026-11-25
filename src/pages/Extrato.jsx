@@ -8,9 +8,6 @@ import {
   financeiroOpcoes,
   finMovimentosPagina,
   finMovimentosImportar,
-  finRecebimentosListar,
-  finDespesasListar,
-  finConciliar,
   finListaPaginada,
 } from "../services/financeiro.js";
 
@@ -21,7 +18,6 @@ const dataBR = (v) => {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : v;
 };
 const soDigitos = (v) => String(v || "").replace(/\D/g, "");
-const normaliza = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function tag(bloco, nome) {
@@ -139,14 +135,8 @@ function favorecidoMov(m) {
   if (m?.documento && desc.length > 80) return String(d.cOrigem || m.documento || "Movimento bancário");
   return desc || m?.documento || d.cOrigem || "Movimento bancário";
 }
-function valorTitulo(x, tipo) { return Math.max(0, Number(tipo === "CREDITO" ? x.valor_previsto : x.valor_original) || 0); }
-function conciliadoTitulo(x) { return Math.max(0, Number(x.valor_conciliado || 0)); }
-function restanteTitulo(x, tipo) { return Math.max(0, valorTitulo(x, tipo) - conciliadoTitulo(x)); }
 function conciliadoMov(m) { return conciliacoesReais(m).reduce((s, c) => s + Number(c?.valor_conciliado || 0), 0); }
 function restanteMov(m) { return Math.max(0, Math.abs(Number(m?.valor || 0)) - conciliadoMov(m)); }
-function nomeTitulo(x) { return x.cliente || x.fornecedor || "Sem nome"; }
-function docTitulo(x) { return x.numero_nf || x.cnpj_cpf || x.codigo_lancamento_integracao || ""; }
-function dataTitulo(x) { return x.c6_data_credito || x.data_pagamento || x.data_vencimento || x.data_lancamento || ""; }
 
 export default function Extrato() {
   const navigate = useNavigate();
@@ -156,8 +146,6 @@ export default function Extrato() {
   const [empresa, setEmpresa] = useState("");
   const [conta, setConta] = useState("");
   const [itens, setItens] = useState([]);
-  const [receber, setReceber] = useState([]);
-  const [pagar, setPagar] = useState([]);
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState("");
   const [tipoMovimento, setTipoMovimento] = useState("");
@@ -170,12 +158,7 @@ export default function Extrato() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [loading, setLoading] = useState(true);
-  const [conciliando, setConciliando] = useState(null);
   const [detalhando, setDetalhando] = useState(null);
-  const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
-  const [buscaConciliacao, setBuscaConciliacao] = useState("");
-  const [selecionados, setSelecionados] = useState([]);
-  const [salvandoConciliacao, setSalvandoConciliacao] = useState(false);
   const [desfazendoConciliacao, setDesfazendoConciliacao] = useState("");
 
   const consultas = useRef(criarControleConsulta());
@@ -205,38 +188,9 @@ export default function Extrato() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando os filtros mudam; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [empresa, conta, busca, status, tipoMovimento, ano, mes, limite]);
   const saldoResumo = Number(resumo.entradas || 0) - Number(resumo.saidas || 0);
-
-  function titulosDisponiveis(mov) {
-    const fonte = mov.tipo === "CREDITO" ? receber : pagar;
-    const termo = normaliza(buscaConciliacao);
-    const restante = restanteMov(mov);
-    return fonte
-      .filter((x) => String(x.status || "").toUpperCase() !== "CANCELADO" && restanteTitulo(x, mov.tipo) > 0.005)
-      .filter((x) => {
-        if (!termo) return true;
-        const texto = normaliza([nomeTitulo(x), x.cnpj_cpf, x.descricao, x.numero_nf, x.observacao, x.categoria_texto, x.forma_pagamento, dataTitulo(x), valorTitulo(x, mov.tipo).toFixed(2)].filter(Boolean).join(" "));
-        return texto.includes(termo);
-      })
-      .map((x) => {
-        const vr = restanteTitulo(x, mov.tipo);
-        const dm = new Date(`${mov.data_movimento}T00:00:00`);
-        const dt = new Date(`${dataTitulo(x) || "1900-01-01"}T00:00:00`);
-        const dias = Math.abs(dm - dt) / 86400000;
-        const descricaoMov = normaliza(`${mov.descricao || ""} ${mov.documento || ""}`);
-        const nome = normaliza(nomeTitulo(x));
-        const doc = normaliza(docTitulo(x));
-        let score = 0;
-        if (Math.abs(vr - restante) < 0.01) score += 5;
-        if (dias <= 3) score += 3; else if (dias <= 7) score += 1;
-        if (nome && descricaoMov.includes(nome)) score += 5;
-        if (doc && doc.length >= 2 && descricaoMov.includes(doc)) score += 3;
-        return { x, vr, dias, score };
-      })
-      .sort((a, b) => b.score - a.score || a.dias - b.dias || a.vr - b.vr)
-      .slice(0, buscaConciliacao ? 100 : 40);
-  }
 
   async function abrirConciliacao(m) {
     if (!empresa) { setErro("Selecione uma empresa para conciliar com segurança."); return; }
@@ -246,43 +200,6 @@ export default function Extrato() {
     const tipo = m.tipo === "CREDITO" ? "RECEBIMENTO" : "DESPESA";
     navigate(`/financas/conciliacao?tipo=${tipo}&empresaId=${encodeURIComponent(m.empresa_id || empresa)}&movimentoId=${encodeURIComponent(m.id || "")}&voltar=${encodeURIComponent("/financas/extrato")}`);
   }
-  function fecharConciliacao() { setConciliando(null); setBuscaConciliacao(""); setSelecionados([]); }
-  function alternarTitulo(id) { setSelecionados((atual) => atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]); }
-
-  async function conciliarSelecionados() {
-    if (!conciliando || !selecionados.length) return;
-    const fonte = conciliando.tipo === "CREDITO" ? receber : pagar;
-    let restante = restanteMov(conciliando);
-    if (restante <= 0.005) return;
-    setSalvandoConciliacao(true);
-    setErro("");
-    try {
-      let feitos = 0;
-      for (const id of selecionados) {
-        if (restante <= 0.005) break;
-        const dest = fonte.find((x) => x.id === id);
-        if (!dest) continue;
-        const disponivel = restanteTitulo(dest, conciliando.tipo);
-        const valor = Math.min(restante, disponivel);
-        if (valor <= 0.005) continue;
-        await finConciliar(conciliando.id, {
-          recebimentoId: conciliando.tipo === "CREDITO" ? dest.id : null,
-          despesaId: conciliando.tipo === "DEBITO" ? dest.id : null,
-          valor,
-        });
-        restante -= valor;
-        feitos++;
-      }
-      setAviso(`${feitos} título(s) conciliado(s).${restante > 0.005 ? ` Restante do movimento: ${moeda(restante)}.` : " Movimento totalmente conciliado."}`);
-      fecharConciliacao();
-      await carregar(pagina);
-    } catch (ex) {
-      setErro(ex.message);
-    } finally {
-      setSalvandoConciliacao(false);
-    }
-  }
-
   async function desfazerConciliacao(c) {
     if (!c?.id || c?.somente_categoria_omie || desfazendoConciliacao) return;
     const destino = c.recebimento_id ? "recebimento" : c.despesa_id ? "despesa" : "título";
@@ -335,13 +252,6 @@ export default function Extrato() {
       e.target.value = "";
     }
   }
-
-  const listaConciliacao = conciliando ? titulosDisponiveis(conciliando) : [];
-  const selecionadosValor = conciliando ? selecionados.reduce((s, id) => {
-    const fonte = conciliando.tipo === "CREDITO" ? receber : pagar;
-    const x = fonte.find((t) => t.id === id);
-    return s + (x ? restanteTitulo(x, conciliando.tipo) : 0);
-  }, 0) : 0;
 
   return <div className="space-y-5">
     <div className="flex items-center gap-3">
@@ -442,19 +352,6 @@ export default function Extrato() {
 
           {!detalhando.conciliado && <div className="mt-6 flex justify-end"><button className="btn-primary" onClick={() => abrirConciliacao(detalhando)}><Link2 size={15}/>Conciliar movimento</button></div>}
         </div>
-      </div>
-    </div>}
-
-    {conciliando && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4"><div><h2 className="font-bold">Conciliar {moeda(conciliando.valor)}</h2><p className="text-sm text-slate-500">{dataBR(conciliando.data_movimento)} · {favorecidoMov(conciliando)}</p></div><button className="btn-ghost" onClick={fecharConciliacao} disabled={salvandoConciliacao}>Fechar</button></div>
-        <div className="mb-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Valor do movimento</div><div className="font-bold">{moeda(Math.abs(Number(conciliando.valor || 0)))}</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Já conciliado</div><div className="font-bold text-emerald-700">{moeda(conciliadoMov(conciliando))}</div></div><div className="rounded-xl bg-amber-50 p-3"><div className="text-xs text-amber-700">Restante</div><div className="font-bold text-amber-800">{moeda(restanteMov(conciliando))}</div></div></div>
-        <label className="mb-4 block"><span className="label">Pesquisar título</span><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input autoFocus className="input pl-9" value={buscaConciliacao} onChange={(e)=>setBuscaConciliacao(e.target.value)} placeholder="Cliente/fornecedor, NF, CNPJ/CPF, descrição, data ou valor"/></div></label>
-        {carregandoCandidatos ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Buscando títulos...</p> : listaConciliacao.length===0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Nenhum título disponível para este movimento. Ele pode permanecer pendente sem criar lançamento artificial.</p> : <div className="space-y-2">{listaConciliacao.map(({x,vr,score}) => {
-          const marcado=selecionados.includes(x.id);
-          return <label key={x.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${marcado ? "border-blue-400 bg-blue-50" : "hover:bg-slate-50"}`}><input type="checkbox" className="mt-1" checked={marcado} onChange={()=>alternarTitulo(x.id)}/><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{nomeTitulo(x)}</span><span className="font-semibold">{moeda(vr)}</span></div><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500"><span>{docTitulo(x) ? `NF/Doc ${docTitulo(x)}` : "Sem documento"}</span><span>Data {dataBR(dataTitulo(x))}</span><span>Status {x.status || "—"}</span><span>{x.importacao_origem || x.origem || "MANUAL"}</span>{score>=5 && <span className="font-semibold text-emerald-700">Sugestão forte</span>}</div></div></label>;
-        })}</div>}
-        <div className="sticky bottom-0 mt-5 flex flex-col gap-3 border-t bg-white pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm text-slate-600">Selecionados: <strong>{selecionados.length}</strong> · disponível nos títulos: <strong>{moeda(selecionadosValor)}</strong> · movimento restante: <strong>{moeda(restanteMov(conciliando))}</strong></div><button className="btn-primary" disabled={!selecionados.length || salvandoConciliacao || restanteMov(conciliando)<=0.005} onClick={conciliarSelecionados}>{salvandoConciliacao ? "Conciliando..." : "Confirmar conciliação"}</button></div>
       </div>
     </div>}
   </div>;

@@ -20,7 +20,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageTitle } from "../components/ui.jsx";
 import {
   LinhaFiltrosColuna,
@@ -183,7 +183,9 @@ export default function MovimentacaoContaNova() {
     fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
       .toISOString()
       .slice(0, 10);
-  const filtrosIniciais = lerFiltrosSalvos(iniMes, fimMes);
+  // Vindo de um cartão do painel, abre na empresa que o painel mostrava (a conta salva pode ser de outra).
+  const doCartao = useLocation().state?.filtroCartao;
+  const filtrosIniciais = { ...lerFiltrosSalvos(iniMes, fimMes), ...(doCartao ? { empresa: doCartao.empresa || "", conta: "" } : {}) };
   const [op, setOp] = useState({ empresas: [], contas: [] }),
     [empresa, setEmpresa] = useState(filtrosIniciais.empresa),
     [conta, setConta] = useState(filtrosIniciais.conta),
@@ -260,6 +262,7 @@ export default function MovimentacaoContaNova() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 180);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando os filtros mudam; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [empresa, conta, busca, status, tipoMovimento, de, ate, limite]);
   useEffect(() => {
     try {

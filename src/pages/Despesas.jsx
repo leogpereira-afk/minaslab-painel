@@ -221,6 +221,7 @@ export default function Despesas() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só quando os filtros mudam; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [empresa, busca, status, ano, mes, limite]);
   function limparArquivos() {
     setComprovanteFile(null);
@@ -232,6 +233,15 @@ export default function Despesas() {
     setForm({ ...vazio, empresa_id: empresa || "", data_lancamento: hoje() });
     setModal("form");
   }
+  // Atalho "Nova conta" do painel: abre o formulário uma vez e tira a marca do histórico,
+  // para recarregar a página não abrir o formulário de novo.
+  const abriuNovo = useRef(false);
+  useEffect(() => {
+    if (!filtroInicial.novo || abriuNovo.current) return;
+    abriuNovo.current = true;
+    novo();
+    navigate(".", { replace: true, state: { filtroCartao: { ...filtroInicial, novo: false } } });
+  });
   function editar(x) {
     limparArquivos();
     setForm({

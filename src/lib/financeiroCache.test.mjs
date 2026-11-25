@@ -41,3 +41,10 @@ test('falha parcial não altera a cópia anterior',async()=>{
 test('servidor antigo retorna lista completa sem misturar hashes antigos',()=>{
  assert.deepEqual(aplicarDelta({itens:[{id:'velho'}],hashes:{velho:'a'}},{itens:[{id:'novo'}],cobertura:{completa:true,registros:1}}),{itens:[{id:'novo'}],hashes:{}});
 });
+
+test('lista negada pelo servidor fica marcada como sem acesso, não como zero', async () => {
+ const consultar=async nome=>nome==='despesasListar'?{itens:[],semAcesso:true,cobertura:{completa:true,registros:0}}:nome==='opcoes'?{}:await respostaDelta([],{});
+ const copia=await sincronizarCopia(null,consultar);
+ assert.equal(copia.listas.despesasListar.semAcesso,true);
+ assert.equal(copia.listas.recebimentosListar.semAcesso,undefined);
+});
