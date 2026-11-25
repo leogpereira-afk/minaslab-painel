@@ -8,7 +8,7 @@
 // do servidor (ml-financeiro-listas, filtrosBase): título em aberto, com saldo, e vencimento
 // antes de hoje em São Paulo. Vencer hoje ainda não é vencido. Sem data, não é vencido.
 
-const EM_ABERTO = new Set(["VENCIDO", "A PAGAR", "A RECEBER", "PARCIAL"]);
+export const EM_ABERTO = new Set(["VENCIDO", "A PAGAR", "A RECEBER", "PARCIAL"]);
 
 export function hojeSaoPaulo(agora = new Date()) {
   const p = Object.fromEntries(

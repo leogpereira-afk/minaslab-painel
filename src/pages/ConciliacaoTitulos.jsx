@@ -190,6 +190,7 @@ export default function ConciliacaoTitulos() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só nos gatilhos listados; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [tipo, empresa, busca, situacao, periodo, limite]);
   async function abrir(x, tipoForcado = tipo) {
     if (!x?.empresa_id) {
@@ -247,6 +248,7 @@ export default function ConciliacaoTitulos() {
         setLoading(false);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- abre o título direto uma vez por endereço; abrir é recriada a cada render
   }, [tituloDiretoId, tipoInicial, empresaInicial]);
 
   const candidatos = useMemo(() => {

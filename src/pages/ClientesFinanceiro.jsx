@@ -159,6 +159,7 @@ export default function ClientesFinanceiro() {
     setPaginaLocal(1);
     if (ligar && !todos)
       finClientesListar("").then(setTodos).catch((e) => setErro(e.message));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- todos só é lido para não buscar de novo; incluí-lo dispararia o efeito ao chegar a lista
   }, [filtrosColuna.quantidade, filtrosColuna.filtros]);
   const modoTodos = usarTodos && !!baseTodos;
   const totalLocal = filtrosColuna.filtrados.length;
@@ -207,6 +208,7 @@ export default function ClientesFinanceiro() {
   useEffect(() => {
     const t = setTimeout(() => carregar(1), 250);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega só nos gatilhos listados; incluir carregar (recriada a cada render) recarregaria sem parar
   }, [busca, status, limite]);
   useEffect(() => {
     carregarIndicadores();

@@ -49,7 +49,7 @@ async function lerCopiaFinanceira({ atualizar = false } = {}) {
       const body = await resp.json();
       if (!resp.ok) {
         // Fora da direção, lista não liberada (403) vira lista vazia; 401 e falhas seguem como erro.
-        if (!direcao && resp.status === 403 && action !== 'opcoes' && body?.semPermissao) return { itens: [], cobertura: { completa: true, registros: 0 } };
+        if (!direcao && resp.status === 403 && action !== 'opcoes' && body?.semPermissao) return { itens: [], semAcesso: true, cobertura: { completa: true, registros: 0 } };
         const erro = new Error(body?.erro || mensagemDoStatus(resp.status)); erro.status = resp.status; throw erro;
       }
       return body;
@@ -77,9 +77,13 @@ export async function consultarBaseFinanceira(empresa = '', atualizar = false) {
 let emCurso = null;
 export function carregarCopiaFinanceira(opcoes = {}) {
  const token=getToken();
- if(emCurso?.token===token)return emCurso.tarefa;
- const atual={token};
- atual.tarefa=lerCopiaFinanceira(opcoes).finally(()=>{if(emCurso===atual)emCurso=null;});
+ const atualizar=!!opcoes.atualizar;
+ // Reaproveita a consulta em curso, menos quando pedem "Atualizar" durante uma leitura comum:
+ // aí espera a leitura terminar e busca de novo, para o clique não ser ignorado.
+ if(emCurso?.token===token&&(!atualizar||emCurso.atualizar))return emCurso.tarefa;
+ const antes=emCurso?.token===token?emCurso.tarefa.catch(()=>{}):Promise.resolve();
+ const atual={token,atualizar};
+ atual.tarefa=antes.then(()=>lerCopiaFinanceira(opcoes)).finally(()=>{if(emCurso===atual)emCurso=null;});
  emCurso=atual;
  return atual.tarefa;
 }

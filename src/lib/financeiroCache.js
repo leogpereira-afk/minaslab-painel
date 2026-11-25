@@ -18,6 +18,6 @@ export async function sincronizarCopia(anterior, consultar) {
   const nomes = ['recebimentosListar', 'despesasListar', 'notasListar', 'movimentosListar'];
   const respostas = await Promise.all(nomes.map(nome => consultar(nome, { conhecidos: anterior?.listas?.[nome]?.hashes || {} })));
   const opcoes = await consultar('opcoes', {});
-  const listas = Object.fromEntries(nomes.map((nome, i) => [nome, aplicarDelta(anterior?.listas?.[nome], respostas[i])]));
+  const listas = Object.fromEntries(nomes.map((nome, i) => [nome, respostas[i]?.semAcesso ? { itens: [], hashes: {}, semAcesso: true } : aplicarDelta(anterior?.listas?.[nome], respostas[i])]));
   return { versao: 1, listas, opcoes, atualizadoEm: new Date().toISOString() };
 }
