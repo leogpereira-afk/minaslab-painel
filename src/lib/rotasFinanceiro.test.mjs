@@ -66,3 +66,9 @@ test("cópia local das listas só para quem tem página que lista títulos", () 
   assert.equal(usaListasFinanceiro([M, "financas/recibos"]), false);
   assert.equal(usaListasFinanceiro(["financas/visao-geral"]), false);
 });
+
+test("DRE abre com a liberação de Relatórios (que já lê as listas)", () => {
+  assert.deepEqual(chavesDaRota("/financas/dre"), ["financas/relatorios"]);
+  assert.equal(podeAbrirRotaFinanceiro("/financas/dre", [M, "financas/relatorios"]), true);
+  assert.equal(podeAbrirRotaFinanceiro("/financas/dre", [M, "financas/receber"]), false);
+});

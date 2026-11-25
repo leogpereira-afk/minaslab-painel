@@ -25,6 +25,7 @@ const complementares=[
  {label:"Conferência financeira",curto:"Conferência",to:"/financas/conferencia",icon:ListChecks,descricao:"Datas, históricos e documentos para revisão."},
  {label:"Fluxo de Caixa",to:"/financas/fluxo-caixa",icon:LineChart,descricao:"Previsto, realizado e projeção financeira."},
  {label:"Relatórios",to:"/financas/relatorios",icon:BarChart3,descricao:"Análises e exportações financeiras."},
+ {label:"DRE",to:"/financas/dre",icon:BarChart3,descricao:"Resultado do mês: receita, impostos, custos e despesas."},
  {label:"Clientes",to:"/financas/clientes",icon:Users,descricao:"Cadastro financeiro de clientes."},
  {label:"Recibos",to:"/financas/recibos",icon:ReceiptText,descricao:"Recibos, horas extras, estágio e termos para imprimir."},
  {label:"Configurações",to:"/financas/configuracoes",icon:Settings,descricao:"Contas, categorias e parâmetros do Financeiro."},
