@@ -56,6 +56,7 @@ const ROTAS = {
   aplicacoes: ["financas/aplicacoes"],
   socios: ["financas/socios"],
   relatorios: ["financas/relatorios"],
+  dre: ["financas/relatorios"],
   "fluxo-caixa": ["financas/fluxo-caixa"],
   "movimentacao-conta": ["financas/bancos"],
   bancos: ["financas/bancos"],
