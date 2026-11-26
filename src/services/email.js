@@ -23,5 +23,6 @@ export const listarEmails = (conta, pasta, pagina = 1, filtro = {}) => chamar("l
 export const abrirEmail = (conta, pasta, uid) => chamar("ler", { conta, pasta, uid }).then((r) => r.mensagem);
 export const conversaEmail = (conta, pasta, assunto, uid) => chamar("conversa", { conta, pasta, assunto, uid }).then((r) => r.mensagens);
 export const baixarAnexoEmail = (conta, pasta, uid, indice) => chamar("anexo", { conta, pasta, uid, indice }).then((r) => r.anexo);
+export const marcarPastaEmail = (conta, pasta, filtro, lida) => chamar("marcarPasta", { conta, pasta, filtro, lida }).then((r) => r.total);
 export const agirEmail = (conta, pasta, uids, tipo, destino) => chamar("agir", { conta, pasta, uids, tipo, destino });
 export const enviarEmail = (dados) => chamar("enviar", dados);

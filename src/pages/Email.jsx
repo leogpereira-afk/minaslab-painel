@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Aviso, CarregandoModulo, ErroModulo, Modal } from "../components/ui.jsx";
 import {
-  iniciarEmail, salvarCaixa, removerCaixa, lerPastas, listarEmails, abrirEmail, conversaEmail, baixarAnexoEmail, agirEmail, enviarEmail,
+  iniciarEmail, salvarCaixa, removerCaixa, lerPastas, listarEmails, abrirEmail, conversaEmail, baixarAnexoEmail, marcarPastaEmail, agirEmail, enviarEmail,
 } from "../services/email.js";
 import { assinaturaHtml, citacaoHtml } from "../lib/emailAssinatura.js";
 import { emailMudou } from "../lib/emailContador.js";
@@ -84,6 +84,8 @@ export default function Email() {
   const [aberta, setAberta] = useState(null);
   const [carregandoMsg, setCarregandoMsg] = useState(false);
   const [marcados, setMarcados] = useState(() => new Set());
+  // Gmail: com a página toda marcada, dá para estender a seleção à pasta inteira (só lida/não lida).
+  const [pastaToda, setPastaToda] = useState(false);
   const [escrita, setEscrita] = useState(null);
   const [caixaForm, setCaixaForm] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -91,6 +93,7 @@ export default function Email() {
 
   const contas = useMemo(() => ini?.contas || [], [ini]);
   const conta = contas.find((c) => c.id === contaId) || contas[0] || null;
+  useEffect(() => { setPastaToda(false); }, [conta?.id, pastaId, pagina, filtro]);
   const corDe = (id) => CORES_CAIXA[Math.max(0, contas.findIndex((c) => c.id === id)) % CORES_CAIXA.length];
   const pasta = pastas.find((p) => p.id === pastaId) || null;
   const [previa, setPrevia] = useState(null); // anexo aberto para visualizar: { nome, tipo, bytes?, erro? }
@@ -192,6 +195,16 @@ export default function Email() {
     } catch (e) { erroMsg(e); setSel(null); } finally { setCarregandoMsg(false); }
   }
 
+  async function marcarPastaToda(lida) {
+    setOcupado(true);
+    try {
+      const n = await marcarPastaEmail(conta.id, pastaId, filtro, lida);
+      setMarcados(new Set()); setPastaToda(false);
+      setAviso({ tipo: "ok", texto: `${n.toLocaleString("pt-BR")} ${n === 1 ? "mensagem marcada" : "mensagens marcadas"} como ${lida ? "lida" : "não lida"}${n === 1 ? "" : "s"}.` });
+      carregarLista(true); carregarPastas(true); emailMudou();
+    } catch (e) { erroMsg(e); } finally { setOcupado(false); }
+  }
+
   async function agir(uids, tipo, destino) {
     if (!uids.length) return;
     if (tipo === "excluir" && (pasta?.tipo === "lixeira" || !pastas.some((p) => p.tipo === "lixeira"))) {
@@ -270,6 +283,9 @@ export default function Email() {
   const msgs = lista?.mensagens || [];
   const totalPaginas = lista ? Math.max(1, Math.ceil(lista.total / lista.porPagina)) : 1;
   const todosMarcados = msgs.length > 0 && msgs.every((m) => marcados.has(m.uid));
+  const podePastaToda = todosMarcados && lista && lista.total > msgs.length;
+  const todaPasta = pastaToda && podePastaToda; // desmarcou uma? volta a valer só a página
+  const filtroAtivo = !!(filtro.busca || filtro.naoLidas || filtro.comAnexo);
   const marcadosArr = [...marcados];
   // "Mover para…": pastas do sistema que aceitam mensagem + a árvore inteira (com recuo).
   // A pasta atual e os agrupadores (\Noselect) aparecem, mas desativados, para não quebrar a árvore.
@@ -355,14 +371,14 @@ export default function Email() {
             : clsx("border-r border-slate-200 md:w-[22rem] md:shrink-0 xl:w-[25rem] 2xl:w-[30rem]", sel ? "hidden md:flex" : "flex flex-1 md:flex-none"))} aria-label="Mensagens">
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <input type="checkbox" className="h-4 w-4 accent-brand-600" aria-label="Marcar todas desta página" checked={todosMarcados}
-              onChange={() => setMarcados(todosMarcados ? new Set() : new Set(msgs.map((m) => m.uid)))} />
+              onChange={() => { setPastaToda(false); setMarcados(todosMarcados ? new Set() : new Set(msgs.map((m) => m.uid))); }} />
             {marcados.size ? (
               <div className="flex flex-1 items-center gap-1">
-                <span className="mr-1 text-xs text-slate-500">{marcados.size} marcada{marcados.size > 1 ? "s" : ""}</span>
-                <BotaoIcone titulo="Marcar como lidas" icone={MailOpen} onClick={() => agir(marcadosArr, "lido")} desativado={ocupado} />
-                <BotaoIcone titulo="Marcar como não lidas" icone={Mail} onClick={() => agir(marcadosArr, "naoLido")} desativado={ocupado} />
-                <BotaoIcone titulo="Excluir" icone={Trash2} onClick={() => agir(marcadosArr, "excluir")} desativado={ocupado} perigo />
-                <SeletorMover pastas={pastasMover} aoEscolher={(d) => agir(marcadosArr, "mover", d)} desativado={ocupado} />
+                <span className="mr-1 text-xs text-slate-500">{todaPasta ? `Todas (${lista.total.toLocaleString("pt-BR")})` : `${marcados.size} marcada${marcados.size > 1 ? "s" : ""}`}</span>
+                <BotaoIcone titulo="Marcar como lidas" icone={MailOpen} onClick={() => (todaPasta ? marcarPastaToda(true) : agir(marcadosArr, "lido"))} desativado={ocupado} girando={ocupado && todaPasta} />
+                <BotaoIcone titulo="Marcar como não lidas" icone={Mail} onClick={() => (todaPasta ? marcarPastaToda(false) : agir(marcadosArr, "naoLido"))} desativado={ocupado} />
+                {!todaPasta && <BotaoIcone titulo="Excluir" icone={Trash2} onClick={() => agir(marcadosArr, "excluir")} desativado={ocupado} perigo />}
+                {!todaPasta && <SeletorMover pastas={pastasMover} aoEscolher={(d) => agir(marcadosArr, "mover", d)} desativado={ocupado} />}
               </div>
             ) : (
               <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
@@ -382,7 +398,25 @@ export default function Email() {
               <RefreshCw size={14} className={atualizando || carregandoLista ? "animate-spin" : ""} aria-hidden="true" />
               <span className="hidden sm:inline">{atualizando ? "Atualizando…" : "Atualizar"}</span>
             </button>
+            {lista && lista.total > lista.porPagina && <Paginacao pagina={pagina} total={lista.total} porPagina={lista.porPagina} totalPaginas={totalPaginas} aoIr={setPagina} compacta />}
           </div>
+          {podePastaToda && (
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-slate-100 bg-slate-50 px-3 py-2 text-center text-xs text-slate-600">
+              {todaPasta ? (
+                <>
+                  <span>Todas as <b>{lista.total.toLocaleString("pt-BR")}</b> mensagens {filtroAtivo ? "deste filtro" : "desta pasta"} estão selecionadas.</span>
+                  <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => { setPastaToda(false); setMarcados(new Set()); }}>Limpar seleção</button>
+                </>
+              ) : (
+                <>
+                  <span>As <b>{msgs.length}</b> mensagens desta página estão selecionadas.</span>
+                  <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => setPastaToda(true)}>
+                    Selecionar todas as {lista.total.toLocaleString("pt-BR")} {filtroAtivo ? "deste filtro" : `de "${pasta?.rotulo || nomeDaPasta(pastaId) || "esta pasta"}"`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {erroLista && <div className="m-3 rounded-lg bg-bad-50 p-3 text-sm text-bad-700">{erroLista} <button type="button" className="underline" onClick={() => carregarLista()}>Tentar de novo</button></div>}
             {!lista && !erroLista && <ListaCarregando />}
@@ -395,11 +429,10 @@ export default function Email() {
                 aoEstrela={() => agir([m.uid], m.estrela ? "semEstrela" : "estrela")} />
             ))}
           </div>
+          {/* Embaixo fica à esquerda: o canto direito é do balão das Mensagens. */}
           {lista && lista.total > lista.porPagina && (
-            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3 py-1.5 text-xs text-slate-500">
-              <span>{(pagina - 1) * lista.porPagina + 1}–{Math.min(pagina * lista.porPagina, lista.total)} de {lista.total.toLocaleString("pt-BR")}</span>
-              <BotaoIcone titulo="Página anterior" icone={ChevronLeft} onClick={() => setPagina((p) => Math.max(1, p - 1))} desativado={pagina <= 1} />
-              <BotaoIcone titulo="Próxima página" icone={ChevronRight} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} desativado={pagina >= totalPaginas} />
+            <div className="flex items-center border-t border-slate-100 px-3 py-1.5">
+              <Paginacao pagina={pagina} total={lista.total} porPagina={lista.porPagina} totalPaginas={totalPaginas} aoIr={setPagina} />
             </div>
           )}
         </section>
@@ -429,6 +462,16 @@ export default function Email() {
         aoRemover={async (c) => {
           try { await removerCaixa(c.id); setCaixaForm(null); setContaId(null); setAviso({ tipo: "ok", texto: "Caixa desconectada do painel. Os e-mails continuam na caixa." }); carregarInicio(); emailMudou(300); } catch (e) { erroMsg(e); }
         }} />
+    </div>
+  );
+}
+
+function Paginacao({ pagina, total, porPagina, totalPaginas, aoIr, compacta }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 text-xs text-slate-500">
+      <span className={clsx("whitespace-nowrap", compacta && "hidden xl:inline")}>{((pagina - 1) * porPagina + 1).toLocaleString("pt-BR")}–{Math.min(pagina * porPagina, total).toLocaleString("pt-BR")} de {total.toLocaleString("pt-BR")}</span>
+      <BotaoIcone titulo="Página anterior" icone={ChevronLeft} onClick={() => aoIr((p) => Math.max(1, p - 1))} desativado={pagina <= 1} />
+      <BotaoIcone titulo="Próxima página" icone={ChevronRight} onClick={() => aoIr((p) => Math.min(totalPaginas, p + 1))} desativado={pagina >= totalPaginas} />
     </div>
   );
 }
