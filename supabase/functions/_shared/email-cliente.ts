@@ -374,6 +374,19 @@ export async function anexosDoOriginal(imap: Imap, pasta: string, uid: number) {
 }
 
 export type AcaoMensagem = "lido" | "naoLido" | "estrela" | "semEstrela" | "mover" | "excluir" | "arquivar" | "spam";
+// "Selecionar todas da pasta" (como no Gmail): marca como lida/não lida TODAS as mensagens da
+// pasta que passam no filtro da tela, não só as da página. Só essas duas ações, que não apagam nada.
+export async function marcarPastaInteira(imap: Imap, provedor: string, pasta: string, filtro: Filtro, lida: boolean) {
+  await selecionar(imap, pasta, false);
+  // Só mexe no que precisa: para "lida" busca as não lidas; para "não lida", as lidas.
+  const uids = await buscarUids(imap, provedor, lida ? { ...filtro, naoLidas: true } : filtro);
+  for (let i = 0; i < uids.length; i += 2000) {
+    const conj = conjuntoUids(uids.slice(i, i + 2000));
+    if (conj) await imap.ok(`UID STORE ${conj} ${lida ? "+" : "-"}FLAGS.SILENT (\\Seen)`);
+  }
+  return uids.length;
+}
+
 export async function agir(imap: Imap, pasta: string, uids: number[], acao: AcaoMensagem, destino?: string) {
   const conj = conjuntoUids(uids);
   if (!conj) throw new ErroEmail("Nenhuma mensagem escolhida.");

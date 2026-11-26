@@ -14,7 +14,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, lerConversa, baixarAnexo, agir, smtp,
+  SERVIDORES, ErroEmail, comImap, listarPastas, listarMensagens, lerMensagem, lerConversa, marcarPastaInteira, baixarAnexo, agir, smtp,
   guardarEnviado, marcarRespondida, anexosDoOriginal, naoLidasEntrada, type Credencial, type AcaoMensagem,
 } from "../_shared/email-cliente.ts";
 import { nomeCurtoPessoa, cargoFormatado, deBase64, paraBase64, emailValido, lerEnderecos, montarMensagem, textoDeHtml } from "../_shared/email-texto.mjs";
@@ -252,6 +252,14 @@ Deno.serve(async (req) => {
       if (!uid || !Number.isInteger(indice) || indice < 0) return json({ erro: "Anexo inválido." }, 400);
       const a = await comImap(await credencial(c), (imap) => baixarAnexo(imap, pasta(), uid, indice));
       return json({ ok: true, anexo: a });
+    }
+
+    if (acao === "marcarPasta") {
+      const c = await pegarConta(body.conta);
+      const f = body.filtro ?? {};
+      const filtro = { busca: txt(f.busca, 200), naoLidas: f.naoLidas === true, comAnexo: f.comAnexo === true, estrela: f.estrela === true };
+      const total = await comImap(await credencial(c), (imap) => marcarPastaInteira(imap, c.provedor, pasta(), filtro, body.lida !== false));
+      return json({ ok: true, total });
     }
 
     if (acao === "agir") {
