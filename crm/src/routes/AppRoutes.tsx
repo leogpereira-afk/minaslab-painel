@@ -52,6 +52,7 @@ import { MeuPerfil } from '../pages/MeuPerfil/MeuPerfil'
 import { HomeRedirect } from './HomeRedirect'
 import { Licitacoes } from '../pages/Licitacoes/Licitacoes'
 import { AcompanhamentoProvedores } from '../pages/Provedores/AcompanhamentoProvedores'
+import { ControleKits } from '../pages/Kits/ControleKits'
 
 // Login unificado: publicado, entrar, esqueci a senha e trocar senha não existem no CRM — tudo é pelo painel.
 const semLoginProprio=(tela:ReactElement)=>ssoAtivo()?<Navigate to="/" replace/>:tela
@@ -63,7 +64,7 @@ export function AppRoutes(){return <Routes>
   <Route element={<ProtectedRoute/>}><Route element={<AppLayout/>}>
     <Route path="/" element={<HomeRedirect/>}/><Route path="/meu-perfil" element={<MeuPerfil/>}/>
     <Route element={<PermissionRoute anyOf={['crm.read','operational.read']}/>}>
-      <Route path="/dashboard" element={<Dashboard/>}/><Route path="/provedores" element={<AcompanhamentoProvedores/>}/><Route path="/catalogo" element={<Catalogo/>}/><Route path="/relatorios" element={<Relatorios/>}/>
+      <Route path="/dashboard" element={<Dashboard/>}/><Route path="/provedores" element={<AcompanhamentoProvedores/>}/><Route path="/kits" element={<ControleKits/>}/><Route path="/catalogo" element={<Catalogo/>}/><Route path="/relatorios" element={<Relatorios/>}/>
       <Route path="/pos-venda/visao-geral" element={<PosVendaVisaoGeral/>}/><Route path="/pos-venda/clientes-recorrentes" element={<PosVenda/>}/><Route path="/pos-venda/acompanhamentos" element={<PosVendaAcompanhamentos/>}/><Route path="/pos-venda/nps" element={<PosVendaNps/>}/><Route path="/pos-venda/satisfacao" element={<PosVendaSatisfacao/>}/><Route path="/pos-venda/historico" element={<PosVendaHistorico/>}/>
     </Route>
     <Route element={<PermissionRoute anyOf={['crm.read']}/>}>
