@@ -372,6 +372,12 @@ export default function Email() {
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <input type="checkbox" className="h-4 w-4 accent-brand-600" aria-label="Marcar todas desta página" checked={todosMarcados}
               onChange={() => { setPastaToda(false); setMarcados(todosMarcados ? new Set() : new Set(msgs.map((m) => m.uid))); }} />
+            <SeletorMarcar desativado={!msgs.length || ocupado}
+              aoEscolher={(o) => {
+                setPastaToda(false);
+                const qual = { todas: () => true, nenhuma: () => false, lidas: (m) => m.lida, naoLidas: (m) => !m.lida, estrela: (m) => m.estrela }[o];
+                setMarcados(new Set(msgs.filter(qual).map((m) => m.uid)));
+              }} />
             {marcados.size ? (
               <div className="flex flex-1 items-center gap-1">
                 <span className="mr-1 text-xs text-slate-500">{todaPasta ? `Todas (${lista.total.toLocaleString("pt-BR")})` : `${marcados.size} marcada${marcados.size > 1 ? "s" : ""}`}</span>
@@ -511,6 +517,24 @@ function ItemArvore({ p, aberta, atual, aoAlternar, aoAbrir }) {
         </button>
       </div>
     </li>
+  );
+}
+
+// Setinha ao lado da caixinha do topo (como no Gmail): marcar por tipo na página.
+function SeletorMarcar({ aoEscolher, desativado }) {
+  return (
+    <label className="relative -ml-1 inline-flex h-8 w-5 items-center justify-center rounded text-slate-500 hover:bg-slate-100" title="Selecionar…">
+      <ChevronDown size={14} aria-hidden="true" />
+      <select className="absolute inset-0 cursor-pointer opacity-0" aria-label="Selecionar mensagens" value="" disabled={desativado}
+        onChange={(e) => e.target.value && aoEscolher(e.target.value)}>
+        <option value="">Selecionar…</option>
+        <option value="todas">Todas (desta página)</option>
+        <option value="nenhuma">Nenhuma</option>
+        <option value="naoLidas">Não lidas (desta página)</option>
+        <option value="lidas">Lidas (desta página)</option>
+        <option value="estrela">Com estrela (desta página)</option>
+      </select>
+    </label>
   );
 }
 
