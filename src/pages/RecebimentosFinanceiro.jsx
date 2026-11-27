@@ -1,4 +1,5 @@
 import { criarControleConsulta } from "../lib/ultimaConsulta.js";
+import { avaliarExclusaoTitulo } from "../lib/tituloExclusao.js";
 import { operacaoManual } from "../lib/financeiroIntegridade.js";
 import Modal from "../components/financeiro/ModalFinanceiro.jsx";
 import {
@@ -287,7 +288,9 @@ export default function RecebimentosFinanceiro() {
     }
   }
   async function excluir(x) {
-    if (!confirm(`Excluir o recebimento de ${x.cliente}?`)) return;
+    const aviso = avaliarExclusaoTitulo(x, "REC");
+    if (aviso.bloqueado) return setErro(aviso.mensagem);
+    if (!confirm(aviso.mensagem)) return;
     try {
       await finRecebimentoExcluir(x.id);
       await carregar(pagina);
