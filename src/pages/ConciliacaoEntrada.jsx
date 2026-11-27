@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { paraNumero } from "../lib/format.js";
 import { Building2, CheckCircle2, FileText, Landmark, Search, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import MovimentacaoContaNova from "./MovimentacaoContaNova.jsx";
@@ -11,7 +12,8 @@ import { comCracha } from "../lib/sessao.js";
 const moeda=(v)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const dataBR=(v)=>{if(!v)return"—";const p=String(v).slice(0,10).split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:String(v)};
 const normaliza=(v)=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
-const num=(v)=>Number.isFinite(Number(v))?Number(v):0;
+// Lê número do banco ou digitado no formato brasileiro ("1.200,00", "6,27"). Antes, "1.200,00" virava 0.
+const num=(v)=>paraNumero(v);
 const valorTitulo=(x,tipo)=>Math.max(0,Number(tipo==="RECEBIMENTO"?x?.valor_previsto:x?.valor_original)||0);
 const conciliadoTitulo=(x)=>Math.max(0,Number(x?.valor_conciliado||0));
 const restanteTitulo=(x,tipo)=>Math.max(0,valorTitulo(x,tipo)-conciliadoTitulo(x));
@@ -93,5 +95,5 @@ function ConciliacaoMovimentoDireta({movimentoId}){
 }
 
 function AjusteTitulo({indice,total,tipo,titulo,dados,onChange}){return <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4"><div className="mb-3 flex flex-col gap-1 border-b pb-3 sm:flex-row sm:items-center sm:justify-between"><div><b className="text-slate-800">{total>1?`${indice}. `:""}{nomeTitulo(titulo,tipo)||"Sem nome"}</b><div className="text-xs text-slate-500">{documentoTitulo(titulo)||titulo.descricao||"Sem documento"} · Venc. {dataBR(titulo.data_vencimento)}</div></div><div className="text-sm text-slate-600">Saldo do título: <strong>{moeda(dados.restante)}</strong></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Campo label="Valor do título nesta conciliação" value={dados.valorTitulo} onChange={v=>onChange("valorTitulo",v)}/><Campo label="Desconto (-)" value={dados.desconto} onChange={v=>onChange("desconto",v)}/><Campo label="Juros (+)" value={dados.juros} onChange={v=>onChange("juros",v)}/><Campo label="Multa (+)" value={dados.multa} onChange={v=>onChange("multa",v)}/><Campo label="Outros ajustes (+/-)" value={dados.ajuste} onChange={v=>onChange("ajuste",v)}/></div><div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end"><div className="grid flex-1 gap-3 rounded-lg bg-white p-3 sm:grid-cols-2"><Resumo k="Valor do título" v={moeda(dados.valor)}/><Resumo k="Valor calculado no banco" v={moeda(dados.esperado)}/></div><label className="flex-[2]"><span className="label">Observação deste título (opcional)</span><input className="input" value={dados.observacao} onChange={e=>onChange("observacao",e.target.value)} placeholder="Ex.: juros por atraso, desconto comercial..."/></label></div></div>}
-function Campo({label,value,onChange}){return <label><span className="label">{label}</span><input className="input text-right" inputMode="decimal" value={value} onChange={e=>onChange(e.target.value.replace(",","."))}/></label>}
+function Campo({label,value,onChange}){return <label><span className="label">{label}</span><input className="input text-right" inputMode="decimal" value={value} onChange={e=>onChange(e.target.value)}/></label>}
 function Resumo({k,v,ok}){return <div><span className="text-xs text-slate-500">{k}</span><p className={`font-bold ${ok?"text-emerald-700":""}`}>{v}</p></div>}

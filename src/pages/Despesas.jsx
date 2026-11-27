@@ -1,4 +1,5 @@
 import Modal from "../components/financeiro/ModalFinanceiro.jsx";
+import { avaliarExclusaoTitulo } from "../lib/tituloExclusao.js";
 import {
   LinhaFiltrosColuna,
   ResumoFiltrosColuna,
@@ -422,7 +423,9 @@ export default function Despesas() {
     }
   }
   async function excluir(x) {
-    if (!confirm(`Excluir a despesa de ${x.fornecedor}?`)) return;
+    const aviso = avaliarExclusaoTitulo(x, "DESP");
+    if (aviso.bloqueado) return setErro(aviso.mensagem);
+    if (!confirm(aviso.mensagem)) return;
     try {
       await finDespesaExcluir(x.id);
       await carregar(pagina);
